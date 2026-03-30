@@ -1,0 +1,11 @@
+import api from './client';
+export const getAttendees = (params) => api.get('/attendees', { params });
+export const getAttendee = (id) => api.get(`/attendees/${id}`);
+export const createAttendee = (data) => api.post('/attendees', data);
+export const updateAttendee = (id, data) => api.patch(`/attendees/${id}`, data);
+export const inviteAttendee = (id) => api.post(`/attendees/${id}/invite`);
+export const verifyPhoto = (id, data) => api.patch(`/attendees/${id}/verify-photo`, data);
+export const bulkUpload = (formData) => api.post('/attendees/bulk-upload', formData);
+export const downloadTemplate = () => api.get('/attendees/template', { responseType: 'blob' });
+export const getConfirmInfo = (token) => api.get(`/attendees/confirm/${token}`);
+export const confirmIdentity = (token, formData) => api.post(`/attendees/confirm/${token}`, formData);
