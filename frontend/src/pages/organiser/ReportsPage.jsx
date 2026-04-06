@@ -15,11 +15,11 @@ const ReportsPage = () => {
   const [stats, setStats] = useState(null);
   const [totalAttendees, setTotalAttendees] = useState(0);
 
-  useEffect(() => { getMyEvents().then(r => { const evs = r.data.data.events; setEvents(evs); if (evs.length) setSelectedEvent(evs[0]._id); }); }, []);
+  useEffect(() => { getMyEvents().then(r => { const evs = r.data?.data?.events || []; setEvents(evs); if (evs.length) setSelectedEvent(evs[0]._id); }); }, []);
 
   useEffect(() => {
     if (!selectedEvent) return;
-    const ev = events.find(e => e._id === selectedEvent);
+    const ev = (events || []).find(e => e._id === selectedEvent);
     if (!ev) return;
     Promise.all([getAttendees({ eventId: selectedEvent, limit: 1 }), getEntryStats(selectedEvent)])
       .then(([ar, sr]) => {

@@ -1,6 +1,20 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const normalizeRoleForStorage = (role) => {
+  const normalized = String(role || '').trim().toUpperCase();
+
+  if (normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'MAIN_ADMIN') return 'main_admin';
+  if (normalized === 'ORGANISER' || normalized === 'MAIN_ORGANISER') return 'main_organiser';
+  if (normalized === 'SUB_ORGANISER') return 'sub_organiser';
+  if (normalized === 'STAFF') return 'staff';
+  if (normalized === 'VOLUNTEER') return 'volunteer';
+  if (normalized === 'AUDITOR') return 'auditor';
+  if (normalized === 'BUYER') return 'buyer';
+
+  return String(role || '').trim().toLowerCase();
+};
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -26,6 +40,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor', 'buyer'],
     required: true,
+    set: normalizeRoleForStorage,
   },
   phone: { type: String, trim: true },
   profilePhoto: { type: String },

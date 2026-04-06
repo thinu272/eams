@@ -1,186 +1,307 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
 const Order = require('../models/Order');
+const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
-const Event = require('../models/Event');
-const { protect, requireEventAccess } = require('../middleware/auth');
-const { sendOrderConfirmation } = require('../utils/email');
-const { v4: uuidv4 } = require('uuid');
+const QRCode = require('qrcode');
+const { notifyOrderConfirmation, notifyFinalTicket } = require('../services/notificationService');
 
-// POST /api/orders - create order (public)
+// POST /api/orders - Create new order
 router.post('/', [
-  body('eventId').notEmpty().withMessage('Event ID required'),
-  body('buyerName').notEmpty().withMessage('Buyer name required'),
-  body('buyerEmail').isEmail().withMessage('Valid buyer email required'),
-  body('items').isArray({ min: 1 }).withMessage('At least one item required'),
-  body('items.*.categoryId').notEmpty().withMessage('Category ID required'),
-  body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-], async (req, res, next) => {
+  body('eventId').notEmpty().withMessage('Event ID is required'),
+  body('buyerName').notEmpty().withMessage('Buyer name is required'),
+  body('buyerEmail').isEmail().withMessage('Valid email is required'),
+  body('buyerPhone').optional({ checkFalsy: true }).matches(/^\+947\d{8}$/).withMessage('Phone number must be in +947XXXXXXXX format'),
+  body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
+  body('tickets').isArray({ min: 1 }).withMessage('At least one ticket is required'),
+  body('tickets.*.categoryName').notEmpty().withMessage('Category name is required'),
+  body('tickets.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  body('tickets.*.price').isNumeric().withMessage('Price must be a number'),
+], async (req, res) => {
   try {
+    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
     }
-    const { eventId, buyerName, buyerEmail, buyerPhone, items } = req.body;
 
+    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel } = req.body;
+
+    // Validate event exists
     const event = await Event.findById(eventId);
-    if (!event || event.status !== 'published') {
-      return res.status(404).json({ success: false, message: 'Event not found or not available.' });
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
     }
 
-    // Validate items and calculate totals
+    // Check if event is published
+    if (event.status !== 'published') {
+      return res.status(400).json({
+        success: false,
+        message: 'Event is not available for ticket purchase'
+      });
+    }
+
+    // Calculate total on backend (don't trust frontend)
     let totalAmount = 0;
-    const orderItems = [];
-    for (const item of items) {
-      const category = event.categories.find(c => c.id === item.categoryId);
+    const validatedTickets = [];
+
+    for (const ticket of tickets) {
+      // Find matching category in event
+      const category = event.categories.find(cat => cat.name === ticket.categoryName);
       if (!category) {
-        return res.status(400).json({ success: false, message: `Category ${item.categoryId} not found.` });
-      }
-      const remaining = category.capacity - category.sold;
-      if (item.quantity > remaining) {
         return res.status(400).json({
           success: false,
-          message: `Only ${remaining} tickets remaining for ${category.name}.`,
+          message: `Category "${ticket.categoryName}" not found in event`
         });
       }
-      const subtotal = category.price * item.quantity;
-      totalAmount += subtotal;
-      orderItems.push({ categoryId: category.id, categoryName: category.name, quantity: item.quantity, unitPrice: category.price, subtotal });
+
+      // Check availability
+      const remaining = category.capacity - category.sold;
+      if (ticket.quantity > remaining) {
+        return res.status(400).json({
+          success: false,
+          message: `Only ${remaining} tickets remaining for ${ticket.categoryName}`
+        });
+      }
+
+      // Use backend price (don't trust frontend)
+      const backendPrice = category.price;
+      totalAmount += backendPrice * ticket.quantity;
+
+      validatedTickets.push({
+        categoryName: ticket.categoryName,
+        quantity: ticket.quantity,
+        price: backendPrice
+      });
     }
 
-    // Create buyer as attendee record
-    const buyer = await Attendee.create({
-      fullName: buyerName,
-      email: buyerEmail,
-      phone: buyerPhone,
-      event: eventId,
-      addedVia: 'self_purchase',
-      confirmationStatus: 'confirmed',
-    });
-
+    // Generate unique confirmation token
     const confirmationToken = uuidv4();
-    const order = await Order.create({
-      event: eventId,
-      buyer: buyer._id,
-      buyerEmail,
+
+    // Create order
+    const order = new Order({
+      eventId,
       buyerName,
+      buyerEmail,
       buyerPhone,
-      items: orderItems,
+      tickets: validatedTickets,
       totalAmount,
-      paymentStatus: 'pending',
-      confirmationLink: confirmationToken,
-      confirmationLinkExpires: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      status: 'PENDING',
+      confirmationToken
     });
 
-    // Update buyer with order reference
-    buyer.order = order._id;
-    await buyer.save();
+    await order.save();
 
-    // Create individual ticket slots
-    const ticketsData = [];
-    let ticketIndex = 1;
-    for (const item of orderItems) {
-      for (let i = 1; i <= item.quantity; i++) {
-        let attendeeId;
-        const isFirstTicket = ticketsData.length === 0;
-
-        if (isFirstTicket) {
-          // Assign first ticket to the buyer
-          attendeeId = buyer._id;
-          buyer.categoryId = item.categoryId;
-          buyer.categoryName = item.categoryName;
-          const category = event.categories.find(c => c.id === item.categoryId);
-          buyer.allowedZones = category?.allowedZones || [];
-          await buyer.save();
-        } else {
-          // Create a pending attendee for other tickets
-          const attendee = await Attendee.create({
-            event: eventId,
-            order: order._id,
-            categoryId: item.categoryId,
-            categoryName: item.categoryName,
-            addedVia: 'self_purchase',
-            confirmationStatus: 'pending',
-          });
-          attendeeId = attendee._id;
-        }
-
-        ticketsData.push({
-          event: eventId,
+    // Create individual ticket documents
+    const ticketPromises = [];
+    let slotIndex = 1;
+    for (const ticketSummary of validatedTickets) {
+      // Find the category to get its ID
+      const category = event.categories.find(cat => cat.name === ticketSummary.categoryName);
+      
+      for (let i = 0; i < ticketSummary.quantity; i++) {
+        const ticket = new Ticket({
           order: order._id,
-          attendee: attendeeId,
-          categoryId: item.categoryId,
-          categoryName: item.categoryName,
-          price: item.unitPrice,
-          slotIndex: ticketIndex++,
-          ticketNumber: `TKT-${order.orderNumber.split('-')[1]}-${item.categoryId.toUpperCase()}-${uuidv4().substring(0, 4).toUpperCase()}`,
+          event: eventId,
+          categoryId: category.id,
+          categoryName: ticketSummary.categoryName,
+          allowedZones: category.allowedZones || [],
+          price: ticketSummary.price,
+          status: 'PENDING',
+          slotIndex: slotIndex,
+          ticketNumber: `${order.orderNumber}-${slotIndex}`,
         });
+        ticketPromises.push(ticket.save());
+        slotIndex++;
       }
-      // Update sold count
+    }
+    await Promise.all(ticketPromises);
+
+    // Update sold counts for each category using MongoDB $inc
+    for (const ticket of validatedTickets) {
       await Event.updateOne(
-        { _id: eventId, 'categories.id': item.categoryId },
-        { $inc: { 'categories.$.sold': item.quantity } }
+        { _id: eventId, 'categories.name': ticket.categoryName },
+        { $inc: { 'categories.$.sold': ticket.quantity } }
       );
     }
-    await Ticket.create(ticketsData);
 
-    // Send confirmation email (non-blocking)
-    sendOrderConfirmation(order, event).catch(console.error);
+    await notifyOrderConfirmation({
+      order,
+      event,
+      buyerPhone,
+      notificationChannel,
+    });
 
     res.status(201).json({
       success: true,
       data: {
-        order: { ...order.toObject(), confirmationLink: confirmationToken },
-        message: 'Order created. Check your email for confirmation link.',
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        confirmationToken: order.confirmationToken,
+        totalAmount: order.totalAmount
       },
+      message: 'Order created successfully'
     });
-  } catch (err) { next(err); }
+
+  } catch (error) {
+    console.error('Order creation error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', req.body);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 });
 
-// GET /api/orders/confirm/:token - get order by confirmation token (public)
-router.get('/confirm/:token', async (req, res, next) => {
+// POST /api/orders/finalize/:orderId - finalize all tickets + QR + email
+router.post('/finalize/:orderId', async (req, res) => {
   try {
-    const order = await Order.findOne({ confirmationLink: req.params.token })
-      .populate('event', 'name venue startDate categories zones settings')
-      .populate('buyer', 'fullName email');
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
-    if (order.confirmationLinkExpires && order.confirmationLinkExpires < new Date()) {
-      return res.status(410).json({ success: false, message: 'Confirmation link has expired.' });
+    const order = await Order.findById(req.params.orderId).populate('eventId');
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
     }
+
     const tickets = await Ticket.find({ order: order._id }).populate('attendee');
-    res.json({ success: true, data: { order, tickets } });
-  } catch (err) { next(err); }
+    if (!tickets.length) {
+      return res.status(400).json({ success: false, message: 'No tickets found for this order' });
+    }
+
+    const unassigned = tickets.filter(t => !['ASSIGNED', 'CONFIRMED'].includes(t.status));
+    if (unassigned.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'All tickets must be assigned before finalizing.',
+        unassignedCount: unassigned.length
+      });
+    }
+
+    const event = order.eventId;
+    const finalizedAttendees = [];
+
+    for (const ticket of tickets) {
+      if (!ticket.attendee) continue;
+      const attendee = await Attendee.findById(ticket.attendee);
+      if (!attendee) continue;
+
+      // Generate secure qrToken if missing
+      if (!attendee.qrToken) {
+        attendee.qrToken = uuidv4();
+      }
+
+      // Compose QR payload (no raw DB IDs)
+      const payload = {
+        attendeeToken: attendee.qrToken,
+        eventToken: event?._id?.toString?.() || '',
+        ticketNumber: ticket.ticketNumber,
+        generatedAt: new Date().toISOString(),
+      };
+      const qrData = JSON.stringify(payload);
+
+      attendee.qrCode = await QRCode.toDataURL(qrData);
+      attendee.confirmationStatus = 'confirmed';
+      attendee.isConfirmed = true;
+      attendee.confirmedAt = attendee.confirmedAt || new Date();
+      attendee.confirmedBy = attendee.confirmedBy || 'order_finalize';
+      attendee.categoryId = attendee.categoryId || ticket.categoryId;
+      attendee.categoryName = attendee.categoryName || ticket.categoryName;
+      attendee.allowedZones = Array.isArray(attendee.allowedZones) && attendee.allowedZones.length
+        ? attendee.allowedZones
+        : (ticket.allowedZones || []);
+      await attendee.save();
+
+      finalizedAttendees.push(attendee);
+
+      await notifyFinalTicket({
+        attendee,
+        event,
+        phone: attendee.phone,
+        notificationChannel: 'both',
+      });
+
+      // Update ticket status to CONFIRMED (safe idempotence)
+      ticket.status = 'CONFIRMED';
+      await ticket.save();
+    }
+
+    order.status = 'CONFIRMED';
+    order.allAssigned = true;
+    await order.save();
+
+    return res.json({
+      success: true,
+      data: {
+        orderId: order._id,
+        confirmedTickets: finalizedAttendees.length,
+        totalTickets: tickets.length
+      },
+      message: 'Order finalized, attendees confirmed, QR codes generated and notifications sent.'
+    });
+  } catch (error) {
+    console.error('Order finalization error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
 });
 
-// PATCH /api/orders/:id/mark-paid - simulate payment completion (hook for payment gateway)
-router.patch('/:id/mark-paid', async (req, res, next) => {
+// GET /api/orders/confirm/:token - Get order by confirmation token
+router.get('/confirm/:token', async (req, res) => {
   try {
-    const { paymentReference, paymentMethod } = req.body;
-    const order = await Order.findByIdAndUpdate(req.params.id, {
-      paymentStatus: 'paid',
-      paymentReference,
-      paymentMethod,
-      paidAt: new Date(),
-    }, { new: true });
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
-    res.json({ success: true, data: { order } });
-  } catch (err) { next(err); }
-});
+    const order = await Order.findOne({ confirmationToken: req.params.token })
+      .populate('eventId', 'name venue startDate endDate status categories');
 
-// GET /api/orders - list orders for event (organiser)
-router.get('/', protect, async (req, res, next) => {
-  try {
-    const { eventId, page = 1, limit = 20 } = req.query;
-    if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [orders, total] = await Promise.all([
-      Order.find({ event: eventId }).populate('buyer', 'fullName email').sort('-createdAt').skip(skip).limit(parseInt(limit)),
-      Order.countDocuments({ event: eventId }),
-    ]);
-    res.json({ success: true, data: { orders, total } });
-  } catch (err) { next(err); }
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Get individual tickets for this order
+    const tickets = await Ticket.find({ order: order._id })
+      .populate('attendee', 'fullName email confirmationToken')
+      .sort({ slotIndex: 1 });
+
+    // Format response with proper event structure
+    const response = {
+      success: true,
+      data: {
+        order: {
+          ...order.toObject(),
+          event: order.eventId ? {
+            _id: order.eventId._id,
+            name: order.eventId.name,
+            startDate: order.eventId.startDate,
+            endDate: order.eventId.endDate,
+            status: order.eventId.status,
+            venue: order.eventId.venue,
+            categories: order.eventId.categories
+          } : null
+        },
+        tickets
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Order fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 });
 
 module.exports = router;

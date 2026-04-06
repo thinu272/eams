@@ -1,6 +1,14 @@
 const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
+  res.locals.errorMessage = err.message;
+
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      success: false,
+      message: 'Cover image is too large. Maximum size is 10MB.',
+    });
+  }
 
   // Mongoose duplicate key
   if (err.code === 11000) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getEvent, updateEvent } from '../../api/events';
+import { getEventForEdit, updateEvent } from '../../api/events';
 import { getUsers } from '../../api/users';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
@@ -10,26 +10,44 @@ import toast from 'react-hot-toast';
 const EventEditPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin: authIsAdmin } = useAuth();
   const [event, setEvent] = useState(null);
   const [organisers, setOrganisers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
+  // Validate ID format
+  const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
+
   useEffect(() => {
+    if (!id || !isValidObjectId(id)) {
+      toast.error('Invalid event ID');
+      navigate(authIsAdmin ? '/admin/events' : '/organiser/events');
+      return;
+    }
+
     Promise.all([
-      getEvent(id),
+      getEventForEdit(id),
       getUsers({ role: 'main_organiser' })
     ])
       .then(([eventRes, usersRes]) => {
         setEvent(eventRes.data.data.event);
         setOrganisers(usersRes.data.data.users);
       })
-      .catch(err => toast.error('Failed to load data'))
+      .catch(err => {
+        console.error('Load error:', err);
+        toast.error(err.response?.data?.message || 'Failed to load event');
+        navigate(authIsAdmin ? '/admin/events' : '/organiser/events');
+      })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, navigate, authIsAdmin]);
 
   const handleSubmit = async (formData) => {
+    if (!id || !isValidObjectId(id)) {
+      toast.error('Invalid event ID');
+      return;
+    }
+
     setUpdating(true);
     try {
       const updateData = { ...formData };
@@ -38,14 +56,36 @@ const EventEditPage = () => {
       delete updateData.updatedAt;
       delete updateData.slug;
       delete updateData.__v;
+      delete updateData.coverImageFile;
+      if (!updateData.mainOrganiser) {
+        delete updateData.mainOrganiser;
+      }
 
       if (updateData.mainOrganiser?._id) {
         updateData.mainOrganiser = updateData.mainOrganiser._id;
       }
 
-      await updateEvent(id, updateData);
+      // Handle file upload
+      if (formData.coverImageFile) {
+        const formDataToSend = new FormData();
+        Object.keys(updateData).forEach(key => {
+          if (updateData[key] !== null && updateData[key] !== undefined) {
+            if (typeof updateData[key] === 'object' && !Array.isArray(updateData[key])) {
+              formDataToSend.append(key, JSON.stringify(updateData[key]));
+            } else {
+              formDataToSend.append(key, updateData[key]);
+            }
+          }
+        });
+        formDataToSend.append('coverImage', formData.coverImageFile);
+
+        await updateEvent(id, formDataToSend);
+      } else {
+        await updateEvent(id, updateData);
+      }
+
       toast.success('Event updated successfully');
-      navigate(user?.role === 'main_admin' ? '/admin/events' : '/organiser/dashboard');
+      navigate(authIsAdmin ? '/admin/events' : '/organiser/events');
     } catch (err) {
       console.error('Update Error:', err.response?.data);
       toast.error(err.response?.data?.message || 'Update failed');
@@ -84,6 +124,7 @@ const EventEditPage = () => {
 
         <EventForm 
           initialData={event} 
+          organisers={authIsAdmin ? organisers : []}
           onSubmit={handleSubmit} 
           onCancel={() => navigate(-1)} 
           loading={updating}

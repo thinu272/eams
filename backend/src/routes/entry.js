@@ -2,86 +2,228 @@ const express = require('express');
 const router = express.Router();
 const EntryLog = require('../models/EntryLog');
 const Attendee = require('../models/Attendee');
-const Event = require('../models/Event');
+const mongoose = require('mongoose');
 const { protect, restrictTo } = require('../middleware/auth');
+const { emitDashboardEvent } = require('../utils/socket');
+
+const normalizeGate = (value) => (value || '').trim();
+const parseScannedToken = (value) => {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.attendeeToken || parsed.token || parsed.qrToken || raw;
+  } catch (error) {
+    return raw;
+  }
+};
+
+const userHasEventAccess = (user, eventId) => {
+  if (!user || !eventId) return false;
+  if (user.role === 'main_admin') return true;
+
+  return (user.assignedEvents || []).some((assignedEvent) => assignedEvent.toString() === eventId.toString());
+};
+
+const userHasGateAccess = (user, gateName) => {
+  if (['main_admin', 'main_organiser', 'sub_organiser'].includes(user.role)) return true;
+
+  const assignedGates = (user.assignedGates || []).map((gate) => normalizeGate(gate)).filter(Boolean);
+  if (!assignedGates.length) return true;
+
+  return assignedGates.includes(normalizeGate(gateName));
+};
+
+const startOfToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const buildLogPayload = ({ attendee, gateId, gateName, zoneId, zoneName, action, method, deviceId, accessGranted, denialReason, processedBy }) => ({
+  event: attendee.event._id || attendee.event,
+  attendee: attendee._id,
+  gateId,
+  gateName,
+  zoneId,
+  zoneName,
+  action,
+  method,
+  deviceId,
+  accessGranted,
+  denialReason,
+  processedBy,
+  snapshot: {
+    fullName: attendee.fullName,
+    categoryId: attendee.categoryId,
+    categoryName: attendee.categoryName,
+    allowedZones: attendee.allowedZones || [],
+    photoVerified: attendee.photoVerificationStatus === 'verified',
+  },
+});
 
 // POST /api/entry/scan - scan QR or RFID at entry point
 router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
   try {
-    const { qrToken, rfidId, gateId, gateName, zoneId, zoneName, action = 'check_in', method = 'qr' } = req.body;
+    const {
+      qrToken,
+      rfidId,
+      gateId,
+      gateName,
+      zoneId,
+      zoneName,
+      action = 'check_in',
+      method = 'qr',
+      deviceId,
+    } = req.body;
+    const io = req.app.get('io');
 
-    // Find attendee by QR token or RFID wristband
     let attendee;
     if (qrToken) {
-      attendee = await Attendee.findOne({ qrToken }).populate('event');
+      attendee = await Attendee.findOne({ qrToken: parseScannedToken(qrToken) }).populate('event');
     } else if (rfidId) {
-      attendee = await Attendee.findOne({ wristbandId: rfidId }).populate('event');
+      attendee = await Attendee.findOne({ wristbandId: rfidId.trim() }).populate('event');
     }
 
     if (!attendee) {
-      return res.status(404).json({ success: false, message: 'Attendee not found. Invalid QR or RFID.' });
+      return res.status(404).json({ success: false, reason: 'NOT_FOUND', message: 'Attendee not found. Invalid QR or RFID.' });
+    }
+
+    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+      return res.status(403).json({ success: false, reason: 'EVENT_ACCESS_DENIED', message: 'You do not have access to this event.' });
+    }
+
+    const resolvedGate = normalizeGate(gateName || gateId);
+    if (!resolvedGate) {
+      return res.status(400).json({ success: false, reason: 'GATE_REQUIRED', message: 'Gate is required.' });
+    }
+
+    if (!userHasGateAccess(req.user, resolvedGate)) {
+      return res.status(403).json({ success: false, reason: 'GATE_ACCESS_DENIED', message: `You are not assigned to ${resolvedGate}.` });
     }
 
     if (!attendee.isActive) {
-      return res.status(403).json({ success: false, message: 'Attendee is deactivated.' });
+      const log = await EntryLog.create(buildLogPayload({
+        attendee,
+        gateId: resolvedGate,
+        gateName: resolvedGate,
+        zoneId,
+        zoneName,
+        action: 'denied',
+        method,
+        deviceId,
+        accessGranted: false,
+        denialReason: 'Attendee is deactivated',
+        processedBy: req.user._id,
+      }));
+      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+        source: 'entry',
+        eventId: attendee.event._id,
+        name: attendee.fullName,
+        action: 'DENIED ENTRY',
+        zoneName: zoneName || resolvedGate || 'Main Entry',
+        timestamp: log.timestamp,
+        accessGranted: false,
+      });
+      return res.status(403).json({ success: false, reason: 'DEACTIVATED', message: 'Attendee is deactivated.', data: { log } });
     }
 
-    // Check confirmation status
-    if (attendee.confirmationStatus !== 'confirmed') {
-      const log = await EntryLog.create({
-        event: attendee.event._id,
-        attendee: attendee._id,
-        gateId, gateName, zoneId, zoneName,
-        action: 'denied', method,
+    if (attendee.confirmationStatus !== 'confirmed' || !attendee.isConfirmed) {
+      const log = await EntryLog.create(buildLogPayload({
+        attendee,
+        gateId: resolvedGate,
+        gateName: resolvedGate,
+        zoneId,
+        zoneName,
+        action: 'denied',
+        method,
+        deviceId,
         accessGranted: false,
         denialReason: 'Identity not confirmed',
         processedBy: req.user._id,
-        snapshot: {
-          fullName: attendee.fullName,
-          categoryId: attendee.categoryId,
-          categoryName: attendee.categoryName,
-          allowedZones: attendee.allowedZones,
-          photoVerified: attendee.photoVerificationStatus === 'verified',
-        },
+      }));
+      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+        source: 'entry',
+        eventId: attendee.event._id,
+        name: attendee.fullName,
+        action: 'DENIED ENTRY',
+        zoneName: zoneName || resolvedGate || 'Main Entry',
+        timestamp: log.timestamp,
+        accessGranted: false,
       });
-      return res.status(403).json({ success: false, message: 'Identity not confirmed.', data: { log, attendee } });
+      return res.status(403).json({ success: false, reason: 'NOT_CONFIRMED', message: 'Identity not confirmed.', data: { log } });
     }
 
-    // Zone access check
+    if (attendee.checkedIn) {
+      const log = await EntryLog.create(buildLogPayload({
+        attendee,
+        gateId: resolvedGate,
+        gateName: resolvedGate,
+        zoneId,
+        zoneName,
+        action: 'denied',
+        method,
+        deviceId,
+        accessGranted: false,
+        denialReason: 'Already checked in',
+        processedBy: req.user._id,
+      }));
+      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+        source: 'entry',
+        eventId: attendee.event._id,
+        name: attendee.fullName,
+        action: 'DENIED ENTRY',
+        zoneName: zoneName || resolvedGate || 'Main Entry',
+        timestamp: log.timestamp,
+        accessGranted: false,
+      });
+      return res.status(409).json({ success: false, reason: 'ALREADY_CHECKED_IN', message: 'Attendee has already checked in.', data: { log, attendee } });
+    }
+
     let accessGranted = true;
     let denialReason = null;
     if (zoneId && action !== 'check_in') {
-      if (!attendee.allowedZones.includes(zoneId)) {
+      if (!(attendee.allowedZones || []).includes(zoneId)) {
         accessGranted = false;
         denialReason = `No access to zone: ${zoneName || zoneId}`;
       }
     }
 
-    // If check_in and no wristband yet, issue wristband reference
+    if (action === 'check_in' && accessGranted) {
+      attendee.checkedIn = true;
+      attendee.checkedInAt = new Date();
+    }
+
     if (action === 'check_in' && accessGranted && !attendee.wristbandId) {
       attendee.wristbandId = req.body.wristbandId || `WB-${Date.now()}`;
       attendee.wristbandIssuedAt = new Date();
       attendee.wristbandIssuedBy = req.user._id;
-      await attendee.save();
     }
 
-    // Log the event
-    const logEntry = await EntryLog.create({
-      event: attendee.event._id,
-      attendee: attendee._id,
-      gateId, gateName, zoneId, zoneName,
+    await attendee.save();
+
+    const logEntry = await EntryLog.create(buildLogPayload({
+      attendee,
+      gateId: resolvedGate,
+      gateName: resolvedGate,
+      zoneId,
+      zoneName,
       action: accessGranted ? action : 'denied',
       method,
+      deviceId,
       accessGranted,
       denialReason,
       processedBy: req.user._id,
-      snapshot: {
-        fullName: attendee.fullName,
-        categoryId: attendee.categoryId,
-        categoryName: attendee.categoryName,
-        allowedZones: attendee.allowedZones,
-        photoVerified: attendee.photoVerificationStatus === 'verified',
-      },
+    }));
+
+    emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+      source: 'entry',
+      eventId: attendee.event._id,
+      name: attendee.fullName,
+      action: accessGranted ? (action === 'check_in' ? 'CHECK-IN' : action === 'check_out' ? 'CHECK-OUT' : action.toUpperCase()) : 'DENIED ENTRY',
+      zoneName: zoneName || resolvedGate || 'Main Entry',
+      timestamp: logEntry.timestamp,
+      accessGranted,
     });
 
     res.json({
@@ -92,6 +234,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         attendee: {
           _id: attendee._id,
           fullName: attendee.fullName,
+          phone: attendee.phone,
           photo: attendee.photo,
           categoryId: attendee.categoryId,
           categoryName: attendee.categoryName,
@@ -111,20 +254,37 @@ router.get('/logs', protect, async (req, res, next) => {
   try {
     const { eventId, gateId, zoneId, action, page = 1, limit = 50 } = req.query;
     if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+    if (!userHasEventAccess(req.user, eventId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
 
     const filter = { event: eventId };
     if (gateId) filter.gateId = gateId;
     if (zoneId) filter.zoneId = zoneId;
     if (action) filter.action = action;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    if (['staff', 'volunteer'].includes(req.user.role) && (req.user.assignedGates || []).length) {
+      const assignedGates = req.user.assignedGates.map((gate) => normalizeGate(gate)).filter(Boolean);
+      if (typeof filter.gateId === 'string') {
+        if (!assignedGates.includes(normalizeGate(filter.gateId))) {
+          return res.json({ success: true, data: { logs: [], total: 0 } });
+        }
+      } else {
+        filter.gateId = { $in: assignedGates };
+      }
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const [logs, total] = await Promise.all([
       EntryLog.find(filter)
-        .populate('attendee', 'fullName photo categoryName')
+        .populate('attendee', 'fullName photo categoryName phone')
         .populate('processedBy', 'name')
         .sort('-timestamp')
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit, 10)),
       EntryLog.countDocuments(filter),
     ]);
     res.json({ success: true, data: { logs, total } });
@@ -134,23 +294,118 @@ router.get('/logs', protect, async (req, res, next) => {
 // GET /api/entry/stats - live stats for event
 router.get('/stats', protect, async (req, res, next) => {
   try {
-    const { eventId } = req.query;
+    const { eventId, gateId } = req.query;
     if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+    if (!userHasEventAccess(req.user, eventId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
 
-    const [checkedIn, byZone, byCategory, denied] = await Promise.all([
-      EntryLog.countDocuments({ event: eventId, action: 'check_in', accessGranted: true }),
+    const gateFilter = {};
+    if (gateId) {
+      gateFilter.gateId = normalizeGate(gateId);
+    }
+
+    if (['staff', 'volunteer'].includes(req.user.role) && (req.user.assignedGates || []).length) {
+      const assignedGates = req.user.assignedGates.map((gate) => normalizeGate(gate)).filter(Boolean);
+      if (gateFilter.gateId && !assignedGates.includes(gateFilter.gateId)) {
+        return res.json({
+          success: true,
+          data: {
+            checkedIn: 0,
+            byZone: [],
+            byCategory: [],
+            denied: 0,
+            today: { totalScanned: 0, successfulEntries: 0, deniedEntries: 0 },
+          },
+        });
+      }
+      if (!gateFilter.gateId) {
+        gateFilter.gateId = { $in: assignedGates };
+      }
+    }
+
+    const eventObjectId = new mongoose.Types.ObjectId(eventId);
+    const todayMatch = {
+      event: eventObjectId,
+      timestamp: { $gte: startOfToday() },
+      ...gateFilter,
+    };
+
+    const [checkedIn, byZone, byCategory, denied, todaySummary] = await Promise.all([
+      EntryLog.countDocuments({ event: eventId, action: 'check_in', accessGranted: true, ...gateFilter }),
       EntryLog.aggregate([
-        { $match: { event: new (require('mongoose').Types.ObjectId)(eventId), action: 'zone_entry', accessGranted: true } },
+        { $match: { event: eventObjectId, action: 'zone_entry', accessGranted: true, ...gateFilter } },
         { $group: { _id: '$zoneId', zoneName: { $first: '$zoneName' }, count: { $sum: 1 } } },
       ]),
       EntryLog.aggregate([
-        { $match: { event: new (require('mongoose').Types.ObjectId)(eventId), action: 'check_in', accessGranted: true } },
+        { $match: { event: eventObjectId, action: 'check_in', accessGranted: true, ...gateFilter } },
         { $group: { _id: '$snapshot.categoryId', categoryName: { $first: '$snapshot.categoryName' }, count: { $sum: 1 } } },
       ]),
-      EntryLog.countDocuments({ event: eventId, action: 'denied' }),
+      EntryLog.countDocuments({ event: eventId, action: 'denied', ...gateFilter }),
+      EntryLog.aggregate([
+        { $match: todayMatch },
+        {
+          $group: {
+            _id: null,
+            totalScanned: { $sum: 1 },
+            successfulEntries: {
+              $sum: {
+                $cond: [{ $and: [{ $eq: ['$action', 'check_in'] }, { $eq: ['$accessGranted', true] }] }, 1, 0],
+              },
+            },
+            deniedEntries: {
+              $sum: {
+                $cond: [{ $eq: ['$accessGranted', false] }, 1, 0],
+              },
+            },
+          },
+        },
+      ]),
     ]);
 
-    res.json({ success: true, data: { checkedIn, byZone, byCategory, denied } });
+    res.json({
+      success: true,
+      data: {
+        checkedIn,
+        byZone,
+        byCategory,
+        denied,
+        today: todaySummary[0] || { totalScanned: 0, successfulEntries: 0, deniedEntries: 0 },
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/entry/search - staff lookup by attendee name or phone
+router.get('/search', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { eventId, q, limit = 10 } = req.query;
+    if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!q?.trim()) return res.json({ success: true, data: { attendees: [] } });
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+    if (!userHasEventAccess(req.user, eventId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const query = q.trim();
+    const attendees = await Attendee.find({
+      event: eventId,
+      isActive: true,
+      $or: [
+        { fullName: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
+      ],
+    })
+      .select('fullName phone qrToken categoryName confirmationStatus checkedIn photo')
+      .sort({ checkedIn: 1, fullName: 1 })
+      .limit(Math.min(parseInt(limit, 10) || 10, 20));
+
+    res.json({ success: true, data: { attendees } });
   } catch (err) { next(err); }
 });
 
@@ -160,6 +415,9 @@ router.get('/attendee/:qrToken', protect, async (req, res, next) => {
     const attendee = await Attendee.findOne({ qrToken: req.params.qrToken })
       .populate('event', 'name venue startDate zones categories');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });

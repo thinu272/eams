@@ -5,64 +5,73 @@ const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
     unique: true,
-    default: () => 'ORD-' + uuidv4().substring(0, 8).toUpperCase(),
+    default: function() {
+      return 'ORD-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    },
   },
-  event: {
+  eventId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Event',
     required: true,
   },
-  buyer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Attendee',
+  buyerName: {
+    type: String,
     required: true,
+    trim: true,
   },
-  buyerEmail: { type: String, required: true },
-  buyerName: { type: String, required: true },
-  buyerPhone: { type: String },
-
-  // Line items per category
-  items: [{
-    categoryId: { type: String, required: true },
-    categoryName: { type: String, required: true },
-    quantity: { type: Number, required: true, min: 1 },
-    unitPrice: { type: Number, required: true },
-    subtotal: { type: Number, required: true },
+  buyerEmail: {
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+  },
+  buyerPhone: {
+    type: String,
+    trim: true,
+  },
+  tickets: [{
+    categoryName: {
+      type: String,
+      required: true,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    price: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
   }],
-
-  totalAmount: { type: Number, required: true },
-  currency: { type: String, default: 'LKR' },
-
-  // Payment
-  paymentStatus: {
-    type: String,
-    enum: ['pending', 'paid', 'failed', 'refunded'],
-    default: 'pending',
+  totalAmount: {
+    type: Number,
+    required: true,
+    min: 0,
   },
-  paymentMethod: { type: String },
-  paymentReference: { type: String },
-  paidAt: { type: Date },
-
-  // Confirmation tracking
-  confirmationStatus: {
+  status: {
     type: String,
-    enum: ['pending', 'partial', 'complete'],
-    default: 'pending',
+    enum: ['PENDING', 'CONFIRMED', 'CANCELLED'],
+    default: 'PENDING',
   },
-  confirmationLink: {
+  confirmationToken: {
     type: String,
     default: () => uuidv4(),
-    unique: true,
   },
-  confirmationLinkExpires: { type: Date },
-
-  // Email tracking
-  confirmationEmailSent: { type: Boolean, default: false },
-  finalEmailSent: { type: Boolean, default: false },
-
-  notes: { type: String },
+  allAssigned: {
+    type: Boolean,
+    default: false,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
 }, {
   timestamps: true,
 });
+
+// Index for efficient lookups
+orderSchema.index({ eventId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Order', orderSchema);

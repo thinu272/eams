@@ -29,6 +29,7 @@ const entryLogSchema = new mongoose.Schema({
     enum: ['qr', 'rfid', 'manual'],
     default: 'qr',
   },
+  deviceId: { type: String },
 
   // Result
   accessGranted: { type: Boolean, required: true },

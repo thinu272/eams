@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Event = require('../models/Event');
 
 const connectDB = async () => {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/eams');
+  await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/eams');
   console.log('MongoDB connected for seeding...');
 };
 
@@ -36,7 +36,7 @@ const seed = async () => {
   });
 
   const event = await Event.create({
-    name: 'The Big Match 2025', description: 'The most anticipated cricket match of the year at R. Premadasa Stadium.',
+    name: 'The Big Match 2025', slug: 'the-big-match-2025', description: 'The most anticipated cricket match of the year at R. Premadasa Stadium.',
     eventType: 'cricket',
     venue: { name: 'R. Premadasa International Cricket Stadium', address: 'Khettarama Road', city: 'Colombo', country: 'Sri Lanka' },
     startDate: new Date('2025-07-15T08:00:00Z'), endDate: new Date('2025-07-17T20:00:00Z'),

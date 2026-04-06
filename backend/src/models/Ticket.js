@@ -7,19 +7,28 @@ const ticketSchema = new mongoose.Schema({
 
   categoryId: { type: String, required: true },
   categoryName: { type: String, required: true },
+  allowedZones: [{ type: String }],
   price: { type: Number, required: true },
   slotIndex: { type: Number, required: true }, // 1-based index within the order
 
   status: {
     type: String,
-    enum: ['unassigned', 'invited', 'confirmed', 'cancelled'],
-    default: 'unassigned',
+    enum: ['PENDING', 'ASSIGNED', 'INVITED', 'CONFIRMED', 'CANCELLED'],
+    default: 'PENDING',
   },
 
   // Invite tracking (when buyer delegates to someone else)
   inviteEmail: { type: String },
   inviteToken: { type: String },
+  inviteStatus: {
+    type: String,
+    enum: ['PENDING', 'ACCEPTED', 'DECLINED'],
+    default: 'PENDING',
+  },
   inviteSentAt: { type: Date },
+  inviteExpiresAt: { type: Date },
+  inviteRespondedAt: { type: Date },
+  inviteUsedAt: { type: Date },
 
   ticketNumber: { type: String, unique: true },
 }, {
