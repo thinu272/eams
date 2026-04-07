@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
 const path = require('path');
 const XLSX = require('xlsx');
 const QRCode = require('qrcode');
@@ -10,20 +9,48 @@ const Ticket = require('../models/Ticket');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { protect, restrictTo, requireEventAccess, requirePermission } = require('../middleware/auth');
-const { sendAttendeeInvite, sendFinalConfirmation } = require('../utils/email');
+const { notifyInvite, notifyFinalTicket } = require('../services/notificationService');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
 
-const upload = multer({
-  dest: path.join(__dirname, '../../uploads/'),
-  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.xlsx', '.xls'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
-  },
-});
+const hasEventAccess = async (user, eventId) => {
+  if (!eventId) return false;
+  if (user.role === 'main_admin') return true;
+  if (user.assignedEvents?.some((assigned) => assigned.toString() === eventId.toString())) return true;
+  const event = await Event.findById(eventId).select('createdBy mainOrganiser');
+  return !!event && (
+    event.createdBy?.toString() === user._id.toString() ||
+    event.mainOrganiser?.toString() === user._id.toString()
+  );
+};
+
+const euclideanDistance = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const diff = a[i] - b[i];
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+};
+
+const similarityFromDistance = (distance) => {
+  if (typeof distance !== 'number' || Number.isNaN(distance)) return 0;
+  const sim = 1 - distance;
+  return Math.max(0, Math.min(1, sim));
+};
+
+const clampThreshold = (value) => {
+  let threshold = parseFloat(value);
+  if (Number.isNaN(threshold)) threshold = 0.5;
+  return Math.max(0.4, Math.min(0.6, threshold));
+};
+
+// Multer configured in s3Upload middleware
+// Using memory storage with S3 upload handler
 
 // POST /api/attendees/confirm/:token - attendee self-confirms identity (public)
-router.post('/confirm/:token', upload.single('photo'), async (req, res, next) => {
+router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
   try {
     const attendee = await Attendee.findOne({ confirmationToken: req.params.token });
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
@@ -39,9 +66,26 @@ router.post('/confirm/:token', upload.single('photo'), async (req, res, next) =>
     if (nationalId) attendee.nationalId = nationalId;
     if (passportNumber) attendee.passportNumber = passportNumber;
     if (nationality) attendee.nationality = nationality;
-    if (req.file) attendee.photo = `uploads/${req.file.filename}`;
+    
+    // Store S3 photo data
+    if (req.s3Data) {
+      attendee.photo = req.s3Data.url;
+      attendee.photoS3Key = req.s3Data.key;
+      attendee.photoUploadedAt = new Date();
+    }
+
+    let incomingDescriptor = [];
+    try {
+      incomingDescriptor = req.body.faceDescriptor ? JSON.parse(req.body.faceDescriptor) : [];
+    } catch (err) {
+      incomingDescriptor = [];
+    }
+    if (Array.isArray(incomingDescriptor) && incomingDescriptor.every((v) => typeof v === 'number')) {
+      attendee.faceDescriptor = incomingDescriptor;
+    }
 
     attendee.confirmationStatus = 'confirmed';
+    attendee.isConfirmed = true;
     attendee.confirmedAt = new Date();
     attendee.confirmedBy = 'self';
 
@@ -52,18 +96,23 @@ router.post('/confirm/:token', upload.single('photo'), async (req, res, next) =>
     await attendee.save();
 
     // IMPORTANT: Sync Ticket status
-    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'confirmed' });
+    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
 
     // Check if all tickets in the order are now confirmed
     if (attendee.order) {
       const tickets = await Ticket.find({ order: attendee.order });
-      const confirmedCount = tickets.filter(t => t.status === 'confirmed').length;
+      const confirmedCount = tickets.filter(t => t.status === 'CONFIRMED' || t.status === 'ASSIGNED').length;
       if (confirmedCount === tickets.length) {
         await Order.findByIdAndUpdate(attendee.order, { confirmationStatus: 'complete' });
-        // Send final confirmation emails to all attendees
+        // Send final confirmation notifications to all attendees
         const allAttendees = await Attendee.find({ order: attendee.order });
         const event = await Event.findById(attendee.event);
-        allAttendees.forEach(a => sendFinalConfirmation(a, event).catch(console.error));
+        allAttendees.forEach(a => notifyFinalTicket({
+          attendee: a,
+          event,
+          phone: a.phone,
+          notificationChannel: 'both',
+        }).catch(console.error));
       } else {
         await Order.findByIdAndUpdate(attendee.order, { confirmationStatus: 'partial' });
       }
@@ -88,6 +137,9 @@ router.get('/', protect, async (req, res, next) => {
   try {
     const { eventId, status, categoryId, search, page = 1, limit = 20 } = req.query;
     if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!(await hasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
 
     const filter = { event: eventId, isActive: true };
     if (status) filter.confirmationStatus = status;
@@ -108,10 +160,59 @@ router.get('/', protect, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/attendees/export - export attendees for event as CSV
+router.get('/export', protect, async (req, res, next) => {
+  try {
+    const { eventId, status, categoryId, search } = req.query;
+    if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!(await hasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const filter = { event: eventId, isActive: true };
+    if (status) filter.confirmationStatus = status;
+    if (categoryId) filter.categoryId = categoryId;
+    if (search) {
+      filter.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const attendees = await Attendee.find(filter).sort('-createdAt');
+    const rows = [
+      ['Full Name', 'Email', 'Phone', 'Category', 'Status', 'Photo Status', 'QR Token', 'Checked In'],
+      ...attendees.map((attendee) => [
+        attendee.fullName || '',
+        attendee.email || '',
+        attendee.phone || '',
+        attendee.categoryName || '',
+        attendee.confirmationStatus || '',
+        attendee.photoVerificationStatus || '',
+        attendee.qrToken || '',
+        attendee.checkedIn ? 'Yes' : 'No',
+      ]),
+    ];
+
+    const csv = rows
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="attendees-${eventId}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/attendees - manually add attendee (sub-organiser)
 router.post('/', protect, requirePermission('canAddAttendees'), async (req, res, next) => {
   try {
-    const { eventId, categoryId, ...attendeeData } = req.body;
+    const { eventId, categoryId, notificationChannel, ...attendeeData } = req.body;
+    if (!(await hasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
 
@@ -126,13 +227,23 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
       allowedZones,
       addedBy: req.user._id,
       addedVia: 'manual',
-      confirmationStatus: 'pending',
+      confirmationStatus: notificationChannel && notificationChannel !== 'none' ? 'invited' : 'pending',
     });
 
     // Generate QR code
     const qrData = JSON.stringify({ token: attendee.qrToken, event: eventId });
     attendee.qrCode = await QRCode.toDataURL(qrData);
     await attendee.save();
+
+    if (notificationChannel && notificationChannel !== 'none') {
+      await notifyInvite({
+        attendee,
+        event,
+        phone: attendee.phone,
+        email: attendee.email,
+        notificationChannel,
+      });
+    }
 
     res.status(201).json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
@@ -143,6 +254,9 @@ router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), upload.
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'Excel file required.' });
     const { eventId, categoryId } = req.body;
+    if (!(await hasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -202,6 +316,62 @@ router.get('/template', protect, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/attendees/invite-by-ticket/:ticketId - invite attendee by ticket ID and email (public for buyers)
+router.post('/invite-by-ticket/:ticketId', async (req, res, next) => {
+  try {
+    const { email, phone, notificationChannel } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
+
+    const ticket = await Ticket.findById(req.params.ticketId).populate('order').populate('event');
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    if (ticket.status !== 'PENDING') return res.status(400).json({ success: false, message: 'Ticket is already assigned.' });
+
+    // Create attendee
+    const attendee = new Attendee({
+      order: ticket.order._id,
+      event: ticket.event._id,
+      ticket: ticket._id,
+      email: email,
+      phone,
+      categoryId: ticket.categoryId,
+      categoryName: ticket.categoryName,
+      allowedZones: ticket.allowedZones || [],
+      confirmationToken: uuidv4(),
+      qrToken: uuidv4(),
+      confirmationStatus: 'invited',
+      invitedAt: new Date(),
+      addedVia: 'invite',
+    });
+
+    await attendee.save();
+
+    // Update ticket
+    ticket.attendee = attendee._id;
+    ticket.inviteEmail = email;
+    ticket.inviteToken = attendee.confirmationToken;
+    ticket.status = 'INVITED';
+    ticket.inviteSentAt = new Date();
+    ticket.inviteExpiresAt = new Date(Date.now() + (parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72', 10) * 60 * 60 * 1000));
+    ticket.inviteStatus = 'PENDING';
+    ticket.inviteRespondedAt = null;
+    ticket.inviteUsedAt = null;
+    await ticket.save();
+
+    await notifyInvite({
+      attendee,
+      event: ticket.event,
+      phone,
+      email,
+      notificationChannel: notificationChannel || 'email',
+    });
+
+    res.json({ success: true, message: 'Invite sent successfully.' });
+  } catch (err) {
+    console.error('INVITE BY TICKET ERROR:', err);
+    next(err);
+  }
+});
+
 // POST /api/attendees/:id/invite - send invite to attendee
 router.post('/:id/invite', protect, async (req, res, next) => {
   try {
@@ -232,7 +402,25 @@ router.post('/:id/invite', protect, async (req, res, next) => {
 
     attendee.confirmationStatus = 'invited';
     await attendee.save();
-    await sendAttendeeInvite(attendee, attendee.event);
+    const ticket = await Ticket.findOne({ attendee: attendee._id });
+    if (ticket) {
+      ticket.status = 'INVITED';
+      ticket.inviteStatus = 'PENDING';
+      ticket.inviteSentAt = new Date();
+      ticket.inviteExpiresAt = new Date(Date.now() + (parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72', 10) * 60 * 60 * 1000));
+      ticket.inviteRespondedAt = null;
+      ticket.inviteUsedAt = null;
+      if (!ticket.inviteToken) ticket.inviteToken = attendee.confirmationToken;
+      if (!ticket.inviteEmail && attendee.email) ticket.inviteEmail = attendee.email;
+      await ticket.save();
+    }
+    await notifyInvite({
+      attendee,
+      event: attendee.event,
+      phone: req.body.phone || attendee.phone,
+      email: attendee.email,
+      notificationChannel: req.body.notificationChannel || 'email',
+    });
     res.json({ success: true, message: 'Invite sent.' });
   } catch (err) {
     console.error('INVITE ERROR:', err);
@@ -244,6 +432,12 @@ router.post('/:id/invite', protect, async (req, res, next) => {
 router.patch('/:id/verify-photo', protect, requirePermission('canVerifyPhotos'), async (req, res, next) => {
   try {
     const { status, rejectionReason } = req.body;
+    const existingAttendee = await Attendee.findById(req.params.id).select('event');
+    if (!existingAttendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, existingAttendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+
     const attendee = await Attendee.findByIdAndUpdate(req.params.id, {
       photoVerificationStatus: status,
       photoVerifiedBy: req.user._id,
@@ -255,11 +449,180 @@ router.patch('/:id/verify-photo', protect, requirePermission('canVerifyPhotos'),
   } catch (err) { next(err); }
 });
 
+// POST /api/attendees/reject-photo - reject photo and send resubmit notification
+router.post('/reject-photo', protect, requirePermission('canVerifyPhotos'), async (req, res, next) => {
+  try {
+    const { attendeeId, reason } = req.body;
+    if (!attendeeId || !reason) {
+      return res.status(400).json({ success: false, message: 'Attendee ID and reason are required.' });
+    }
+
+    const attendee = await Attendee.findById(attendeeId).populate('event', 'name');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, attendee.event?._id))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+
+    const resubmitToken = uuidv4();
+    const resubmitCount = (attendee.resubmitCount || 0) + 1;
+
+    await Attendee.findByIdAndUpdate(attendeeId, {
+      photoVerificationStatus: 'rejected',
+      photoRejectionReason: reason,
+      resubmitToken,
+      resubmitCount,
+      photoVerifiedBy: req.user._id,
+      photoVerifiedAt: new Date(),
+    });
+
+    // Send notifications
+    const { notifyPhotoRejection } = require('../services/notificationService');
+    await notifyPhotoRejection({ attendee, reason, resubmitToken });
+
+    res.json({ success: true, message: 'Photo rejected and resubmit notification sent.' });
+  } catch (err) { next(err); }
+});
+
+// GET /api/attendees/resubmit/:token - get resubmit info (public)
+router.get('/resubmit/:token', async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findOne({ resubmitToken: req.params.token }).populate('event', 'name photoRequirements');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Invalid resubmit link.' });
+
+    // Check resubmit limit (max 3)
+    if (attendee.resubmitCount >= 3) {
+      return res.status(400).json({ success: false, message: 'Maximum resubmissions reached.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        attendee: {
+          id: attendee._id,
+          fullName: attendee.fullName,
+          email: attendee.email,
+          rejectionReason: attendee.photoRejectionReason,
+          resubmitCount: attendee.resubmitCount,
+          photo: attendee.photo,
+          faceDescriptor: attendee.faceDescriptor || [],
+        },
+        event: attendee.event,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/attendees/resubmit/photo - resubmit photo
+router.post('/resubmit/photo', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: 'Token is required.' });
+
+    const attendee = await Attendee.findOne({ resubmitToken: token });
+    if (!attendee) return res.status(404).json({ success: false, message: 'Invalid token.' });
+
+    if (attendee.resubmitCount >= 3) {
+      return res.status(400).json({ success: false, message: 'Maximum resubmissions reached.' });
+    }
+
+    if (!req.s3Data) return res.status(400).json({ success: false, message: 'Photo is required.' });
+
+    const faceValidationPassed = req.body.faceValidationPassed === 'true' || req.body.faceValidationPassed === true;
+    if (!faceValidationPassed) {
+      return res.status(400).json({ success: false, message: 'Frontend face validation not passed.' });
+    }
+
+    // Face descriptor matching logic
+    let newFaceDescriptor = [];
+    try {
+      newFaceDescriptor = req.body.faceDescriptor ? JSON.parse(req.body.faceDescriptor) : [];
+    } catch (err) {
+      newFaceDescriptor = [];
+    }
+    if (!Array.isArray(newFaceDescriptor) || newFaceDescriptor.some((v) => typeof v !== 'number')) {
+      newFaceDescriptor = [];
+    }
+
+    const existingDescriptor = Array.isArray(attendee.faceDescriptor) ? attendee.faceDescriptor : [];
+    const threshold = clampThreshold(req.body.threshold);
+
+    let matchDistance = 0;
+    let matchSimilarity = 0;
+    let isMatchPass = true;
+
+    if (existingDescriptor.length > 0) {
+      if (newFaceDescriptor.length === 0) {
+        return res.status(400).json({ success: false, message: 'Face descriptor missing from submission.' });
+      }
+      matchDistance = euclideanDistance(existingDescriptor, newFaceDescriptor);
+      if (matchDistance === null) {
+        return res.status(400).json({ success: false, message: 'Face descriptor should be same dimensionality.' });
+      }
+      matchSimilarity = similarityFromDistance(matchDistance);
+
+      if (matchSimilarity < threshold) {
+        // Delete the S3 image if face doesn't match
+        if (req.s3Data?.key) {
+          await deleteImageFromS3(req.s3Data.key).catch(console.error);
+        }
+
+        attendee.photoVerificationStatus = 'rejected';
+        attendee.photoRejectionReason = `Face mismatch: similarity ${matchSimilarity.toFixed(3)} below threshold ${threshold}`;
+        attendee.photoValidationMetrics = {
+          faceCount: Number(req.body.faceCount || 0),
+          faceConfidence: Number(req.body.faceConfidence || 0),
+          brightness: Number(req.body.brightness || 0),
+          sharpness: Number(req.body.sharpness || 0),
+          faceMatchDistance: Number(matchDistance),
+          faceMatchSimilarity: Number(matchSimilarity),
+          faceMatchThreshold: threshold,
+        };
+        await attendee.save();
+        return res.status(400).json({ success: false, message: 'Face does not match the existing attendee record.', data: { matchSimilarity, matchDistance, threshold } });
+      }
+    }
+
+    if (newFaceDescriptor.length > 0) {
+      attendee.faceDescriptor = newFaceDescriptor;
+    }
+
+    // Delete old photo from S3 if exists
+    if (attendee.photoS3Key) {
+      await deleteImageFromS3(attendee.photoS3Key).catch(console.error);
+    }
+
+    // Store new S3 photo data
+    attendee.photo = req.s3Data.url;
+    attendee.photoS3Key = req.s3Data.key;
+    attendee.photoUploadedAt = new Date();
+
+    // Log stats for audit
+    attendee.photoValidationMetrics = {
+      faceCount: Number(req.body.faceCount || 0),
+      faceConfidence: Number(req.body.faceConfidence || 0),
+      brightness: Number(req.body.brightness || 0),
+      sharpness: Number(req.body.sharpness || 0),
+      faceMatchDistance: Number(matchDistance),
+      faceMatchSimilarity: Number(matchSimilarity),
+      faceMatchThreshold: threshold,
+    };
+
+    attendee.photoVerificationStatus = 'pending';
+    attendee.photoRejectionReason = null; // Clear rejection reason
+    await attendee.save();
+
+    res.json({ success: true, message: 'Photo resubmitted successfully.' });
+  } catch (err) { next(err); }
+});
+
 // GET /api/attendees/:id - get single attendee
 router.get('/:id', protect, async (req, res, next) => {
   try {
     const attendee = await Attendee.findById(req.params.id).populate('event', 'name venue startDate zones categories');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, attendee.event?._id || attendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });
@@ -267,8 +630,12 @@ router.get('/:id', protect, async (req, res, next) => {
 // PATCH /api/attendees/:id - update attendee
 router.patch('/:id', protect, async (req, res, next) => {
   try {
+    const existingAttendee = await Attendee.findById(req.params.id).select('event');
+    if (!existingAttendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, existingAttendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
     const attendee = await Attendee.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });

@@ -84,7 +84,7 @@ const sendOrderConfirmation = async (order, event) => {
 
 const sendAttendeeInvite = async (attendee, event) => {
   const transporter = createTransporter();
-  const confirmUrl = `${process.env.FRONTEND_URL}/attendee/confirm/${attendee.confirmationToken}`;
+  const confirmUrl = `${process.env.FRONTEND_URL}/invite/${attendee.confirmationToken}`;
   const html = baseTemplate(`
     <h2>You've Been Invited!</h2>
     <p>You have been invited to attend <strong>${event.name}</strong>.</p>
@@ -134,4 +134,30 @@ const sendFinalConfirmation = async (attendee, event) => {
   });
 };
 
-module.exports = { sendOrderConfirmation, sendAttendeeInvite, sendFinalConfirmation };
+const sendPhotoRejection = async (attendee, event, reason, resubmitLink) => {
+  const transporter = createTransporter();
+  const html = baseTemplate(`
+    <h2>Photo Verification Failed ❌</h2>
+    <div class="alert" style="background:#FFEBEE;border-left-color:#D32F2F;">Your photo was rejected and needs to be resubmitted.</div>
+    <p>Dear <strong>${attendee.fullName}</strong>,</p>
+    <p>Your photo for <strong>${event.name}</strong> was not accepted for verification.</p>
+    <div class="info-row"><span class="info-label">Reason</span><span>${reason}</span></div>
+    <p>Please re-upload a clear photo that meets the following requirements:</p>
+    <ul>
+      <li>Clear face visible</li>
+      <li>Good lighting</li>
+      <li>No blur or distortion</li>
+      <li>Recent photo</li>
+    </ul>
+    <a href="${resubmitLink}" class="btn">Resubmit Photo</a>
+    <p style="font-size:13px;color:#555;">If you have any questions, please contact the event organiser.</p>
+  `);
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'noreply@eams.com',
+    to: attendee.email,
+    subject: `Photo Rejected — Resubmit for ${event.name}`,
+    html,
+  });
+};
+
+module.exports = { sendOrderConfirmation, sendAttendeeInvite, sendFinalConfirmation, sendPhotoRejection };

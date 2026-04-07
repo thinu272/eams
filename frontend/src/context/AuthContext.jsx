@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
+import { getCanonicalRole, hasAnyRole } from '../utils/rbac';
 
 const AuthContext = createContext(null);
 
@@ -12,7 +13,10 @@ export const AuthProvider = ({ children }) => {
     if (!token) { setLoading(false); return; }
     try {
       const { data } = await api.get('/auth/me');
-      setUser(data.data.user);
+      setUser({
+        ...data.data.user,
+        rbacRole: getCanonicalRole(data.data.user?.role),
+      });
     } catch {
       localStorage.removeItem('eams_token');
     } finally {
@@ -25,8 +29,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('eams_token', data.token);
-    setUser(data.data.user);
-    return data.data.user;
+    const nextUser = {
+      ...data.data.user,
+      rbacRole: getCanonicalRole(data.data.user?.role),
+    };
+    setUser(nextUser);
+    return nextUser;
   };
 
   const logout = () => {
@@ -36,13 +44,13 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, login, logout,
-      isAdmin: user?.role === 'main_admin',
-      isOrganiser: user?.role === 'main_organiser',
-      isSubOrg: user?.role === 'sub_organiser',
-      isStaff: ['staff', 'volunteer'].includes(user?.role),
-      isAuditor: user?.role === 'auditor',
-      canManageEvent: ['main_admin', 'main_organiser'].includes(user?.role),
+      user, loading, login, logout, loadUser,
+      isAdmin: hasAnyRole(user?.role, ['SUPER_ADMIN']),
+      isOrganiser: hasAnyRole(user?.role, ['ORGANISER']),
+      isSubOrg: hasAnyRole(user?.role, ['SUB_ORGANISER']),
+      isStaff: hasAnyRole(user?.role, ['STAFF']),
+      isAuditor: hasAnyRole(user?.role, ['AUDITOR']),
+      canManageEvent: hasAnyRole(user?.role, ['SUPER_ADMIN', 'ORGANISER']),
     }}>
       {children}
     </AuthContext.Provider>

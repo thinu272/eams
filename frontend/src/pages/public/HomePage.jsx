@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { CalendarDaysIcon, MapPinIcon } from '@heroicons/react/24/solid';
 import { getEvents } from '../../api/events';
 import { format } from 'date-fns';
 import PublicLayout from '../../components/layout/PublicLayout';
@@ -26,7 +27,7 @@ const HomePage = () => {
           </div>
           <h1 className="text-5xl font-bold mb-4 leading-tight">Experience the Match Live</h1>
           <p className="text-xl text-blue-200 mb-8 max-w-2xl mx-auto">Secure your seats for the biggest cricket events. VIP, General, School, and Media tickets available.</p>
-          <a href="#events" className="bg-white text-blue-900 px-8 py-3 rounded-xl font-semibold text-lg hover:bg-blue-50 transition-colors inline-block">Browse Events</a>
+          <a href="/events" className="bg-white text-blue-900 px-8 py-3 rounded-xl font-semibold text-lg hover:bg-blue-50 transition-colors inline-block">Browse Events</a>
         </div>
       </div>
 
@@ -45,22 +46,34 @@ const HomePage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {events.map(event => (
               <Link key={event._id} to={`/events/${event.slug}`} className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all hover:border-blue-300">
-                <div className="bg-gradient-to-br from-blue-600 to-blue-800 h-36 flex items-end p-4">
-                  <div>
-                    {event.matchDetails?.teamA && (
-                      <p className="text-blue-200 text-xs font-medium mb-1">{event.matchDetails.teamA} vs {event.matchDetails.teamB}</p>
-                    )}
-                    <Badge color={statusColor[event.status] || 'gray'}>{event.status}</Badge>
+                <div className="relative h-36 overflow-hidden">
+                  {event.coverImage ? (
+                    <img
+                      src={`http://localhost:5000/${event.coverImage}`}
+                      alt={event.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-600 to-blue-800"></div>
+                  )}
+                  <div className="absolute inset-0 bg-black/20"></div>
+                  <div className="absolute bottom-0 left-0 right-0 p-4">
+                    <div>
+                      {event.matchDetails?.teamA && (
+                        <p className="text-white text-xs font-medium mb-1">{event.matchDetails.teamA} vs {event.matchDetails.teamB}</p>
+                      )}
+                      <Badge color={statusColor[event.status] || 'gray'}>{event.status}</Badge>
+                    </div>
                   </div>
                 </div>
                 <div className="p-5">
                   <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-2 leading-tight">{event.name}</h3>
                   <div className="flex items-center gap-1.5 text-sm text-gray-500 mb-1">
-                    <span>📅</span>
+                    <CalendarDaysIcon className="h-4 w-4 text-blue-500" />
                     <span>{format(new Date(event.startDate), 'EEE, MMM d yyyy')}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-sm text-gray-500 mb-4">
-                    <span>📍</span>
+                    <MapPinIcon className="h-4 w-4 text-blue-500" />
                     <span>{event.venue?.name}, {event.venue?.city}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">

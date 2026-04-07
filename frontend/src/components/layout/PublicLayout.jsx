@@ -1,15 +1,11 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getDashboardPathForRole } from '../../config/roleNavigation';
 
 const PublicLayout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const dashboardPath = {
-    main_admin: '/admin/dashboard', main_organiser: '/organiser/dashboard',
-    sub_organiser: '/suborg/dashboard', staff: '/entry', volunteer: '/entry', auditor: '/auditor/dashboard',
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -24,7 +20,7 @@ const PublicLayout = ({ children }) => {
             <div className="flex items-center gap-3">
               {user ? (
                 <>
-                  <Link to={dashboardPath[user.role] || '/login'} className="text-sm font-medium text-blue-600 hover:text-blue-700">Dashboard</Link>
+                  <Link to={getDashboardPathForRole(user.role)} className="text-sm font-medium text-blue-600 hover:text-blue-700">Dashboard</Link>
                   <button onClick={() => { logout(); navigate('/'); }} className="text-sm text-gray-500 hover:text-gray-700">Logout</button>
                 </>
               ) : (

@@ -102,6 +102,15 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea name="description" value={form.description} onChange={handleChange} rows="3" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
               </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image</label>
+                <input type="file" accept="image/*" onChange={(e) => setForm(prev => ({ ...prev, coverImageFile: e.target.files[0] }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                {form.coverImage && (
+                  <div className="mt-2">
+                    <img src={form.coverImage} alt="Current cover" className="w-32 h-20 object-cover rounded" />
+                  </div>
+                )}
+              </div>
               {organisers.length > 0 && (
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Main Organiser</label>

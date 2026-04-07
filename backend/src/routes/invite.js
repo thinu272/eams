@@ -1,0 +1,241 @@
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const { body, validationResult } = require('express-validator');
+const Ticket = require('../models/Ticket');
+const Attendee = require('../models/Attendee');
+const Order = require('../models/Order');
+const Event = require('../models/Event');
+const { notifyFinalTicket } = require('../services/notificationService');
+
+const getInviteExpiryDate = (ticket) => {
+  if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
+  if (!ticket.inviteSentAt) return null;
+  const expirationHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72', 10);
+  return new Date(new Date(ticket.inviteSentAt).getTime() + expirationHours * 60 * 60 * 1000);
+};
+
+const isInviteExpired = (ticket) => {
+  const expiryDate = getInviteExpiryDate(ticket);
+  return !!expiryDate && expiryDate.getTime() < Date.now();
+};
+
+const upload = multer({
+  dest: path.join(__dirname, '../../uploads/'),
+  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowed.includes(ext)) return cb(new Error('Only JPG/JPEG/PNG images are allowed'));
+    cb(null, true);
+  },
+});
+
+// GET /api/invite/:token - validate invite token and return event/ticket
+router.get('/:token', async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
+    if (!ticket || !ticket.inviteToken) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
+    }
+    if (ticket.inviteUsedAt) {
+      return res.status(400).json({ success: false, message: 'This invitation has already been used.' });
+    }
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+      return res.status(400).json({ success: false, message: 'This ticket is not open for invitation confirmation.' });
+    }
+
+    if (isInviteExpired(ticket)) {
+      return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        invite: {
+          ticketId: ticket._id,
+          eventId: ticket.event._id,
+          eventName: ticket.event.name,
+          categoryName: ticket.categoryName,
+          status: ticket.status,
+          inviteStatus: ticket.inviteStatus || 'PENDING',
+          inviteRespondedAt: ticket.inviteRespondedAt,
+          inviteExpiresAt: getInviteExpiryDate(ticket),
+          eventStartDate: ticket.event.startDate,
+          eventVenue: ticket.event.venue,
+        }
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/invite/respond - record invitation preview response
+router.post('/respond', [
+  body('token').notEmpty().withMessage('Invite token is required'),
+  body('response').isIn(['ACCEPTED', 'DECLINED']).withMessage('Response must be ACCEPTED or DECLINED'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { token, response } = req.body;
+    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
+    if (!ticket || !ticket.inviteToken) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
+    }
+    if (ticket.inviteUsedAt) {
+      return res.status(400).json({ success: false, message: 'This invitation has already been used.' });
+    }
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+      return res.status(400).json({ success: false, message: 'This ticket is not open for invitation confirmation.' });
+    }
+    if (isInviteExpired(ticket)) {
+      return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    ticket.inviteStatus = response;
+    ticket.inviteRespondedAt = new Date();
+    ticket.status = response === 'DECLINED' ? 'PENDING' : 'INVITED';
+    await ticket.save();
+
+    if (ticket.attendee) {
+      await Attendee.findByIdAndUpdate(ticket.attendee, {
+        confirmationStatus: response === 'DECLINED' ? 'pending' : 'invited',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ticketId: ticket._id,
+        inviteStatus: ticket.inviteStatus,
+        respondedAt: ticket.inviteRespondedAt,
+        canProceed: response === 'ACCEPTED',
+      },
+      message: response === 'ACCEPTED' ? 'Invitation accepted.' : 'Invitation declined.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/invite/confirm - accept invite and confirm identity
+router.post('/confirm', upload.single('photo'), [
+  body('token').notEmpty().withMessage('Invite token is required'),
+  body('fullName').notEmpty().withMessage('Full name is required'),
+  body('nicPassport').notEmpty().withMessage('NIC / Passport number is required'),
+  body('dateOfBirth').notEmpty().isISO8601().withMessage('Valid date of birth is required'),
+  body('phone').notEmpty().matches(/^\+947\d{8}$/).withMessage('Phone number must be in +947XXXXXXXX format'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { token, fullName, nicPassport, dateOfBirth, phone, email } = req.body;
+
+    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event order');
+    if (!ticket || !ticket.inviteToken) return res.status(404).json({ success: false, message: 'Invalid invitation token.' });
+    if (ticket.inviteUsedAt) return res.status(400).json({ success: false, message: 'Invitation has already been accepted.' });
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+      return res.status(400).json({ success: false, message: 'Ticket is no longer available for acceptance.' });
+    }
+    if ((ticket.inviteStatus || 'PENDING') !== 'ACCEPTED') {
+      return res.status(400).json({ success: false, message: 'Please accept the invitation before completing the form.' });
+    }
+
+    if (isInviteExpired(ticket)) {
+      return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    // Duplicate check by NIC/passport for same event
+    const [nationalId, passportNumber] = nicPassport.includes('P') || nicPassport.includes('p') ? [null, nicPassport] : [nicPassport, null];
+    const duplicate = await Attendee.findOne({
+      event: ticket.event._id,
+      $or: [{ nationalId }, { passportNumber }],
+      confirmationStatus: { $in: ['confirmed', 'assigned'] }
+    });
+    if (duplicate) {
+      return res.status(409).json({ success: false, message: 'An attendee with this ID is already confirmed for this event.' });
+    }
+
+    const attendeeData = {
+      fullName,
+      email: email || ticket.inviteEmail,
+      phone,
+      dateOfBirth: new Date(dateOfBirth),
+      nationalId: nationalId || undefined,
+      passportNumber: passportNumber || undefined,
+      event: ticket.event._id,
+      order: ticket.order?._id,
+      ticket: ticket._id,
+      categoryId: ticket.categoryId,
+      categoryName: ticket.categoryName,
+      allowedZones: ticket.allowedZones || [],
+      confirmationToken: ticket.inviteToken,
+      confirmationStatus: 'confirmed',
+      confirmedAt: new Date(),
+      confirmedBy: 'online_invite',
+      addedVia: 'invite',
+      verificationStatus: 'PENDING',
+    };
+
+    if (req.file) {
+      attendeeData.photo = `uploads/${req.file.filename}`;
+      attendeeData.photoUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${req.file.filename}`;
+    }
+
+    const attendee = new Attendee(attendeeData);
+    await attendee.save();
+
+    ticket.attendee = attendee._id;
+    ticket.status = 'ASSIGNED';
+    ticket.inviteStatus = 'ACCEPTED';
+    ticket.inviteRespondedAt = ticket.inviteRespondedAt || new Date();
+    ticket.inviteUsedAt = new Date();
+    ticket.inviteToken = null;
+    await ticket.save();
+
+    // Update order progress
+    if (ticket.order) {
+      const orderId = ticket.order._id || ticket.order;
+      const allTickets = await Ticket.find({ order: orderId });
+      const confirmedCount = allTickets.filter(t => ['ASSIGNED', 'CONFIRMED'].includes(t.status)).length;
+      const isComplete = confirmedCount === allTickets.length;
+      await Order.findByIdAndUpdate(orderId, {
+        allAssigned: isComplete,
+        confirmationStatus: isComplete ? 'complete' : 'partial',
+      });
+
+      if (isComplete) {
+        const allAttendees = await Attendee.find({ order: ticket.order });
+        const event = ticket.event;
+        allAttendees.forEach(a => notifyFinalTicket({
+          attendee: a,
+          event,
+          phone: a.phone,
+          notificationChannel: 'both',
+        }).catch(err => console.error('FINAL CONFIRM NOTIFY ERROR:', err)));
+      }
+    }
+
+    await notifyFinalTicket({
+      attendee,
+      event: ticket.event,
+      phone,
+      notificationChannel: 'both',
+    });
+
+    res.json({ success: true, data: { attendee, ticket: { _id: ticket._id, status: ticket.status }}, message: 'Invite accepted and identity confirmed.' });
+  } catch (err) {
+    console.error('INVITE CONFIRM ERROR:', err);
+    next(err);
+  }
+});
+
+module.exports = router;

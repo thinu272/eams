@@ -6,8 +6,8 @@ import { getEntryStats } from '../../api/entry';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Stat from '../../components/ui/Stat';
 import Card, { CardHeader } from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
 import { Link } from 'react-router-dom';
+import { CalendarDaysIcon, MapPinIcon, UserIcon, UsersIcon, ClipboardDocumentListIcon, ChartBarIcon, TicketIcon } from '@heroicons/react/24/solid';
 import { format } from 'date-fns';
 
 const OrganiserDashboard = () => {
@@ -33,6 +33,7 @@ const OrganiserDashboard = () => {
 
   const statusCounts = (dashData?.attendeeStats || []).reduce((acc, s) => { acc[s._id] = s.count; return acc; }, {});
   const totalAttendees = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  const totalTicketsSold = (dashData?.event?.categories || []).reduce((sum, category) => sum + (category.sold || 0), 0);
 
   return (
     <DashboardLayout>
@@ -52,8 +53,8 @@ const OrganiserDashboard = () => {
               <div>
                 <h3 className="font-semibold text-blue-900 text-lg">{dashData.event?.name}</h3>
                 <div className="flex gap-4 text-sm text-blue-700 mt-1">
-                  <span>📅 {dashData.event?.startDate ? format(new Date(dashData.event.startDate), 'EEE MMM d, yyyy') : ''}</span>
-                  <span>📍 {dashData.event?.venue?.name}, {dashData.event?.venue?.city}</span>
+                  <div className="flex items-center gap-1"><CalendarDaysIcon className="h-4 w-4" />{dashData.event?.startDate ? format(new Date(dashData.event.startDate), 'EEE MMM d, yyyy') : ''}</div>
+                  <div className="flex items-center gap-1"><MapPinIcon className="h-4 w-4" />{dashData.event?.venue?.name}, {dashData.event?.venue?.city}</div>
                 </div>
               </div>
               <Link to={`/organiser/events/${selectedEvent}`} className="bg-white text-blue-600 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-200 hover:bg-blue-50 transition-colors">
@@ -63,13 +64,35 @@ const OrganiserDashboard = () => {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <Stat label="Total Attendees" value={totalAttendees} color="blue"/>
-            <Stat label="Confirmed" value={statusCounts.confirmed || 0} color="green"/>
-            <Stat label="Pending" value={statusCounts.pending || 0} color="orange"/>
-            <Stat label="Checked In Today" value={entryStats?.checkedIn || 0} color="purple"/>
+            <Stat label="Total Tickets Sold" value={totalTicketsSold} color="blue"/>
+            <Stat label="Confirmed Attendees" value={statusCounts.confirmed || 0} color="green"/>
+            <Stat label="Checked-In Count" value={entryStats?.checkedIn || 0} color="purple"/>
+            <Stat label="Pending Attendees" value={Math.max(totalAttendees - (statusCounts.confirmed || 0), 0)} color="orange"/>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader title="Overview" subtitle="Core event numbers at a glance"/>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Total attendees</span>
+                  <span className="font-semibold text-gray-900">{totalAttendees}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Confirmed attendees</span>
+                  <span className="font-semibold text-gray-900">{statusCounts.confirmed || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Checked in</span>
+                  <span className="font-semibold text-gray-900">{entryStats?.checkedIn || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Pending</span>
+                  <span className="font-semibold text-gray-900">{statusCounts.pending || 0}</span>
+                </div>
+              </div>
+            </Card>
+
             <Card>
               <CardHeader title="Zone Access Today" subtitle="Live entry counts by zone"/>
               <div className="space-y-3">
@@ -84,22 +107,26 @@ const OrganiserDashboard = () => {
             </Card>
 
             <Card>
-              <CardHeader title="Quick Actions"/>
+              <CardHeader title="Quick Actions" subtitle="Shortcuts for day-of-event operations"/>
               <div className="grid grid-cols-2 gap-3">
+                <Link to="/organiser/events" className="flex flex-col items-center p-4 bg-sky-50 rounded-xl hover:bg-sky-100 transition-colors">
+                  <TicketIcon className="h-6 w-6 text-sky-700 mb-1" />
+                  <span className="text-sm font-medium text-sky-900">Events</span>
+                </Link>
                 <Link to="/organiser/attendees" className="flex flex-col items-center p-4 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors">
-                  <span className="text-2xl mb-1">👤</span>
+                  <UserIcon className="h-6 w-6 text-blue-700 mb-1" />
                   <span className="text-sm font-medium text-blue-900">Attendees</span>
                 </Link>
                 <Link to="/organiser/team" className="flex flex-col items-center p-4 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors">
-                  <span className="text-2xl mb-1">👥</span>
+                  <UsersIcon className="h-6 w-6 text-purple-700 mb-1" />
                   <span className="text-sm font-medium text-purple-900">My Team</span>
                 </Link>
                 <Link to="/organiser/entry-logs" className="flex flex-col items-center p-4 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
-                  <span className="text-2xl mb-1">📋</span>
+                  <ClipboardDocumentListIcon className="h-6 w-6 text-green-700 mb-1" />
                   <span className="text-sm font-medium text-green-900">Entry Logs</span>
                 </Link>
                 <Link to="/organiser/reports" className="flex flex-col items-center p-4 bg-orange-50 rounded-xl hover:bg-orange-100 transition-colors">
-                  <span className="text-2xl mb-1">📊</span>
+                  <ChartBarIcon className="h-6 w-6 text-orange-700 mb-1" />
                   <span className="text-sm font-medium text-orange-900">Reports</span>
                 </Link>
               </div>

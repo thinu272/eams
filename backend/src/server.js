@@ -8,6 +8,8 @@ const path = require("path");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const requestLogger = require("./middleware/requestLogger");
+const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
 
 // Load environment variables
 dotenv.config();
@@ -27,18 +29,34 @@ app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
+
 app.use(express.json());
+app.use(requestLogger);
+// Note: File uploads now go to S3 via s3Upload middleware
+// Local uploads folder kept for backward compatibility
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/socket.io-client', express.static(path.join(__dirname, '../node_modules/socket.io/client-dist')));
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }, // allow frontend
 });
+app.set('io', io);
 
 // Socket.IO connection
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
+  socket.on("join_dashboard", ({ eventId } = {}) => {
+    if (eventId) {
+      socket.join(`dashboard:${eventId}`);
+    }
+  });
+  socket.on("leave_dashboard", ({ eventId } = {}) => {
+    if (eventId) {
+      socket.leave(`dashboard:${eventId}`);
+    }
+  });
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
@@ -56,16 +74,33 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/events', require('./routes/events'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/attendees', require('./routes/attendees'));
+app.use('/api/verification', require('./routes/verification'));
+app.use('/api/tickets', require('./routes/tickets'));
+app.use('/api/invite', require('./routes/invite'));
 app.use('/api/entry', require('./routes/entry'));
+app.use('/api/zone', require('./routes/zone'));
+app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/audit', require('./routes/audit'));
+app.use('/api/super-admin', require('./routes/superAdmin'));
+app.use('/api/user', require('./routes/userPortal'));
+app.use('/api/short-links', require('./routes/shortLinks'));
 
 // --- DATABASE CONNECTION ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";
 
 mongoose
   .connect(MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
+  .then(() => {
+    console.log("MongoDB connected");
+    // Initialize S3 cleanup scheduler after database connection
+    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      initializeCleanupScheduler();
+    }
+  })
   .catch((err) => console.log("MongoDB connection error:", err));
 
 // Start server
 const PORT = process.env.PORT || 5000;
+app.use(require('./middleware/errorHandler').notFound);
+app.use(require('./middleware/errorHandler').errorHandler);
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

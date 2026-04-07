@@ -1,9 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getCanonicalRole } from '../../utils/rbac';
 import toast from 'react-hot-toast';
 
-const DASHBOARD = { main_admin: '/admin/dashboard', main_organiser: '/organiser/dashboard', sub_organiser: '/suborg/dashboard', staff: '/entry', volunteer: '/entry', auditor: '/auditor/dashboard' };
+const DASHBOARD = {
+  SUPER_ADMIN: '/admin/dashboard',
+  ORGANISER: '/organiser/dashboard',
+  SUB_ORGANISER: '/suborg/dashboard',
+  STAFF: '/entry',
+  AUDITOR: '/auditor/dashboard',
+  BUYER: '/dashboard',
+};
 
 const LoginPage = () => {
   const { login } = useAuth();
@@ -17,7 +25,7 @@ const LoginPage = () => {
     try {
       const user = await login(form.email, form.password);
       toast.success(`Welcome, ${user.name}!`);
-      navigate(DASHBOARD[user.role] || '/');
+      navigate(DASHBOARD[getCanonicalRole(user.role)] || '/');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally { setLoading(false); }
@@ -61,6 +69,8 @@ const LoginPage = () => {
           <p>Organiser: organiser@eams.com / Organiser@123</p>
           <p>Sub-org: suborg@eams.com / SubOrg@123</p>
           <p>Staff: staff@eams.com / Staff@123</p>
+          <p>Auditor: jp@gmail.com / 123456789</p>
+          <p>User: ks@gmail.com / 123456789</p>
         </div>
         <div className="mt-4 text-center">
           <Link to="/" className="text-sm text-blue-600 hover:underline">← Back to events</Link>

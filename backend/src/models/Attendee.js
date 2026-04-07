@@ -10,7 +10,9 @@ const attendeeSchema = new mongoose.Schema({
   nationalId: { type: String, trim: true },
   passportNumber: { type: String, trim: true },
   nationality: { type: String, trim: true },
-  photo: { type: String }, // file path or URL
+  photo: { type: String }, // S3 URL or file path
+  photoS3Key: { type: String }, // S3 object key for deletion/tracking
+  photoUploadedAt: { type: Date },
   customFieldValues: { type: Map, of: String },
 
   // Ticket linkage
@@ -22,6 +24,10 @@ const attendeeSchema = new mongoose.Schema({
   order: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Order',
+  },
+  ticket: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ticket',
   },
   categoryId: { type: String },
   categoryName: { type: String },
@@ -41,11 +47,19 @@ const attendeeSchema = new mongoose.Schema({
     enum: ['pending', 'invited', 'confirmed', 'rejected'],
     default: 'pending',
   },
+  isConfirmed: { type: Boolean, default: false },
   confirmationToken: { type: String, default: () => uuidv4() },
   confirmedAt: { type: Date },
   confirmedBy: {
     type: String,
     enum: ['self', 'organiser', 'sub_organiser'],
+  },
+
+  // Checkout option
+  checkoutOption: {
+    type: String,
+    enum: ['standard', 'vip', 'premium', 'group', 'corporate', 'early_bird'],
+    default: 'standard',
   },
 
   // Photo verification
@@ -57,6 +71,18 @@ const attendeeSchema = new mongoose.Schema({
   photoVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   photoVerifiedAt: { type: Date },
   photoRejectionReason: { type: String },
+  faceDescriptor: { type: [Number], default: [] },
+  photoValidationMetrics: {
+    faceCount: { type: Number, default: 0 },
+    faceConfidence: { type: Number, default: 0 },
+    brightness: { type: Number, default: 0 },
+    sharpness: { type: Number, default: 0 },
+    faceMatchDistance: { type: Number, default: 0 },
+    faceMatchSimilarity: { type: Number, default: 0 },
+    faceMatchThreshold: { type: Number, default: 0.5 },
+  },
+  resubmitToken: { type: String },
+  resubmitCount: { type: Number, default: 0 },
 
   // Source of attendee record
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -76,6 +102,8 @@ const attendeeSchema = new mongoose.Schema({
   confirmationEmailSent: { type: Boolean, default: false },
 
   notes: { type: String },
+  checkedIn: { type: Boolean, default: false },
+  checkedInAt: { type: Date },
   isActive: { type: Boolean, default: true },
 }, {
   timestamps: true,

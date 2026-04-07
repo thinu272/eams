@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getConfirmInfo, confirmIdentity } from '../../api/attendees';
+import { CheckBadgeIcon } from '@heroicons/react/24/solid';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 
 const AttendeeConfirmPage = () => {
   const { token } = useParams();
+  const phoneRegex = /^\+947\d{8}$/;
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,7 @@ const AttendeeConfirmPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.fullName || !form.email) return toast.error('Name and email are required');
+    if (form.phone && !phoneRegex.test(form.phone.trim())) return toast.error('Use Sri Lanka format: +947XXXXXXXX');
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -63,10 +66,10 @@ const AttendeeConfirmPage = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center max-w-md w-full">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="text-3xl">✓</span>
+          <CheckBadgeIcon className="h-8 w-8 text-green-600" />
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Identity Confirmed!</h2>
-        <p className="text-gray-500 text-sm">Your ticket has been confirmed. You will receive a final confirmation email with your QR code once all tickets in the order are confirmed.</p>
+        <p className="text-gray-500 text-sm">Your ticket has been confirmed. You will receive a final confirmation notification with your QR code once all tickets in the order are confirmed.</p>
       </div>
     </div>
   );
