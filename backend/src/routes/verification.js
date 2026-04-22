@@ -3,8 +3,10 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
+const Ticket = require('../models/Ticket');
 const { protect, requirePermission } = require('../middleware/auth');
 const { triggerCleanupNow } = require('../utils/s3Cleanup');
+const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 
 // Check organiser event access
 const hasEventAccess = async (user, eventId) => {
@@ -32,7 +34,7 @@ router.get('/pending', protect, requirePermission('canVerifyPhotos'), async (req
       sortOrder = -1,
     } = req.query;
 
-    if (!eventId) {
+    if (!eventId || eventId === 'undefined' || eventId === '') {
       return res.status(400).json({ success: false, message: 'eventId is required.' });
     }
 
@@ -116,9 +118,22 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
         photoRejectionReason: null,
       },
       { new: true },
-    ).select('_id fullName email photoVerificationStatus');
+    ).select('_id fullName email photoVerificationStatus order');
 
-    res.json({ success: true, message: 'Photo approved successfully.', data: { attendee: updated } });
+    // Keep ticket lifecycle in sync once attendee is verified.
+    await Ticket.findOneAndUpdate({ attendee: attendeeId }, { status: 'CONFIRMED' });
+
+    // Trigger final confirmation email workflow only when all slots in order are verified.
+    const finalConfirmation = await processOrderFinalConfirmation({ orderId: updated.order });
+
+    res.json({
+      success: true,
+      message: 'Photo approved successfully.',
+      data: {
+        attendee: updated,
+        finalConfirmation,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -162,7 +177,7 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
 router.get('/stats', protect, requirePermission('canVerifyPhotos'), async (req, res, next) => {
   try {
     const { eventId } = req.query;
-    if (!eventId) {
+    if (!eventId || eventId === 'undefined' || eventId === '') {
       return res.status(400).json({ success: false, message: 'eventId is required.' });
     }
 

@@ -6,6 +6,13 @@ const zoneSchema = new mongoose.Schema({
   description: { type: String },
   capacity: { type: Number, default: 0 },
   color: { type: String, default: '#3B82F6' },
+  assignedSubOrganiser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  accessRules: {
+    allowedRoles: [{ type: String }],
+    timeStart: { type: String },
+    timeEnd: { type: String },
+    notes: { type: String, default: '' },
+  },
 }, { _id: false });
 
 const categorySchema = new mongoose.Schema({
@@ -20,10 +27,20 @@ const categorySchema = new mongoose.Schema({
   benefits: [{ type: String }],
   customFields: [{
     name: { type: String },
-    type: { type: String, enum: ['text', 'number', 'date', 'select'], default: 'text' },
+    type: { type: String, enum: ['text', 'number', 'date', 'select', 'file'], default: 'text' },
     required: { type: Boolean, default: false },
     options: [{ type: String }],
+    label: { type: String },
+    placeholder: { type: String },
+    visibility: { type: String, enum: ['public', 'private'], default: 'public' },
   }],
+  // Private Ticket System fields
+  isPrivate: { type: Boolean, default: false },
+  accessCode: { type: String },
+  accessCodeHash: { type: String },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  usageCount: { type: Number, default: 0 },
+  maxUsage: { type: Number },
 }, { _id: false });
 
 const eventSchema = new mongoose.Schema({
@@ -56,12 +73,26 @@ const eventSchema = new mongoose.Schema({
   },
   coverImage: { type: String },
   bannerImage: { type: String },
+  logoImage: { type: String },
+  branding: {
+    themeColor: { type: String, default: '#2563EB' },
+    logoImage: { type: String, default: '' },
+    bannerImage: { type: String, default: '' },
+  },
 
   // Ticket categories (e.g., VIP, General, School, Media)
   categories: [categorySchema],
 
   // Physical zones inside the venue
   zones: [zoneSchema],
+
+  // Custom fields to collect per attendee
+  customFields: [{
+    name: { type: String },
+    type: { type: String, enum: ['text', 'number', 'date', 'select'], default: 'text' },
+    required: { type: Boolean, default: false },
+    options: [{ type: String }],
+  }],
 
   // Team / match details for cricket
   matchDetails: {
@@ -85,6 +116,26 @@ const eventSchema = new mongoose.Schema({
     confirmationDeadlineHours: { type: Number, default: 48 },
     maxTicketsPerOrder: { type: Number, default: 10 },
     rfidEnabled: { type: Boolean, default: true },
+    inviteLimitPerAttendee: { type: Number, default: 3 },
+    emailTemplates: {
+      invite: { type: String, default: '' },
+      confirmation: { type: String, default: '' },
+      rejection: { type: String, default: '' },
+    },
+    smsTemplates: {
+      invite: { type: String, default: '' },
+      confirmation: { type: String, default: '' },
+      rejection: { type: String, default: '' },
+    },
+    inviteSystemEnabled: { type: Boolean, default: true },
+    manualApprovalEnabled: { type: Boolean, default: false },
+    autoConfirmEnabled: { type: Boolean, default: false },
+    accessRules: {
+      whoCanEnter: [{ type: String }],
+      entryWindowStart: { type: String, default: '' },
+      entryWindowEnd: { type: String, default: '' },
+      restrictedZones: [{ type: String }],
+    },
   },
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

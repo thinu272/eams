@@ -1,0 +1,199 @@
+const express = require('express');
+const router = express.Router();
+const { body, validationResult } = require('express-validator');
+const Ticket = require('../models/Ticket');
+const Attendee = require('../models/Attendee');
+const Order = require('../models/Order');
+const { notifyFinalTicket } = require('../services/notificationService');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+
+const getInviteExpiryDate = (ticket) => {
+  if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
+  if (!ticket.inviteSentAt) return null;
+  const expirationHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72', 10);
+  return new Date(new Date(ticket.inviteSentAt).getTime() + expirationHours * 60 * 60 * 1000);
+};
+
+const isInviteExpired = (ticket) => {
+  const expiryDate = getInviteExpiryDate(ticket);
+  return !!expiryDate && expiryDate.getTime() < Date.now();
+};
+
+const isTicketSlotConfirmed = (status) => ['PENDING_VERIFICATION', 'ASSIGNED', 'CONFIRMED'].includes(status);
+
+// GET /api/confirm/:inviteToken - validate token and return event/ticket info
+router.get('/:inviteToken', async (req, res, next) => {
+  try {
+    const { inviteToken } = req.params;
+    const ticket = await Ticket.findOne({ inviteToken })
+      .populate('event', 'name startDate venue')
+      .populate('attendee', 'fullName email phone');
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
+    }
+
+    if (ticket.inviteUsedAt) {
+      return res.status(400).json({ success: false, message: 'This invite link has already been used.' });
+    }
+
+    if (isInviteExpired(ticket)) {
+      return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        inviteToken,
+        event: {
+          id: ticket.event?._id,
+          name: ticket.event?.name,
+          date: ticket.event?.startDate,
+          venue: ticket.event?.venue,
+        },
+        ticket: {
+          id: ticket._id,
+          categoryName: ticket.categoryName,
+          slotIndex: ticket.slotIndex,
+        },
+        attendee: ticket.attendee
+          ? {
+              fullName: ticket.attendee.fullName || '',
+              email: ticket.attendee.email || ticket.inviteEmail || '',
+              phone: ticket.attendee.phone || '',
+            }
+          : {
+              fullName: '',
+              email: ticket.inviteEmail || '',
+              phone: '',
+            },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/confirm/:inviteToken - save attendee details and mark ticket as pending verification
+router.post(
+  '/:inviteToken',
+  upload.single('photo'),
+  handleS3Upload('attendee-photos'),
+  [
+    body('fullName').notEmpty().withMessage('Full name is required'),
+    body('idNumber').notEmpty().withMessage('National ID / Passport number is required'),
+    body('dateOfBirth').notEmpty().isISO8601().withMessage('Valid date of birth is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('phone').notEmpty().withMessage('Phone is required'),
+  ],
+  async (req, res, next) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array(),
+        });
+      }
+
+      const { inviteToken } = req.params;
+      const { fullName, idNumber, dateOfBirth, email, phone } = req.body;
+      const ticket = await Ticket.findOne({ inviteToken }).populate('event order');
+
+      if (!ticket) {
+        return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
+      }
+
+      if (ticket.inviteUsedAt) {
+        return res.status(400).json({ success: false, message: 'This invite link has already been used.' });
+      }
+
+      if (isInviteExpired(ticket)) {
+        return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+      }
+
+      const attendee =
+        (ticket.attendee && (await Attendee.findById(ticket.attendee))) ||
+        new Attendee({
+          ticket: ticket._id,
+          order: ticket.order?._id || ticket.order,
+          event: ticket.event?._id || ticket.event,
+          categoryId: ticket.categoryId,
+          categoryName: ticket.categoryName,
+          allowedZones: ticket.allowedZones || [],
+          addedVia: 'invite',
+        });
+
+      attendee.fullName = fullName;
+      attendee.email = email;
+      attendee.phone = phone;
+      attendee.dateOfBirth = new Date(dateOfBirth);
+      attendee.confirmationStatus = 'pending';
+      attendee.photoVerificationStatus = 'pending';
+
+      // Save incoming id number into one of the existing schema fields.
+      if (idNumber.toUpperCase().startsWith('P')) {
+        attendee.passportNumber = idNumber;
+        attendee.nationalId = undefined;
+      } else {
+        attendee.nationalId = idNumber;
+        attendee.passportNumber = undefined;
+      }
+
+      if (req.s3Data) {
+        attendee.photo = req.s3Data.url;
+        attendee.photoS3Key = req.s3Data.key;
+        attendee.photoUploadedAt = new Date();
+      }
+
+      await attendee.save();
+
+      ticket.attendee = attendee._id;
+      ticket.status = 'PENDING_VERIFICATION';
+      ticket.inviteStatus = 'ACCEPTED';
+      ticket.inviteRespondedAt = ticket.inviteRespondedAt || new Date();
+      ticket.inviteUsedAt = new Date();
+      await ticket.save();
+
+      if (ticket.order) {
+        const orderId = ticket.order?._id || ticket.order;
+        const orderTickets = await Ticket.find({ order: orderId });
+        const allSlotsSubmitted = orderTickets.length > 0 && orderTickets.every((t) => isTicketSlotConfirmed(t.status));
+
+        if (allSlotsSubmitted) {
+          const allAttendees = await Attendee.find({ order: orderId });
+          const event = ticket.event;
+          await Promise.all(
+            allAttendees.map((a) =>
+              notifyFinalTicket({
+                attendee: a,
+                event,
+                phone: a.phone,
+                notificationChannel: 'both',
+              }).catch((err) => {
+                console.error('FINAL CONFIRMATION NOTIFY ERROR:', err);
+              })
+            )
+          );
+          await Order.findByIdAndUpdate(orderId, { allAssigned: true });
+        }
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          attendeeId: attendee._id,
+          ticketId: ticket._id,
+          status: ticket.status,
+          verificationStatus: attendee.photoVerificationStatus,
+        },
+        message: 'Attendee details submitted successfully.',
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+module.exports = router;

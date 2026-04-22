@@ -7,12 +7,14 @@ const QRScannerComponent = ({
   fps = 10,
   qrbox = 250,
   aspectRatio = 1.0,
+  scanCooldownMs = 2000,
 }) => {
   const scannerRef = useRef(null);
   const elementIdRef = useRef(`reader-${Math.random().toString(36).slice(2, 10)}`);
   const onScanSuccessRef = useRef(onScanSuccess);
   const onScanErrorRef = useRef(onScanError);
   const isRunningRef = useRef(false);
+  const lastScanRef = useRef({ value: '', timestamp: 0 });
   const [status, setStatus] = useState('Starting camera...');
 
   useEffect(() => {
@@ -53,6 +55,14 @@ const QRScannerComponent = ({
             aspectRatio,
           },
           (decodedText, decodedResult) => {
+            const now = Date.now();
+            if (
+              lastScanRef.current.value === decodedText &&
+              now - lastScanRef.current.timestamp < scanCooldownMs
+            ) {
+              return;
+            }
+            lastScanRef.current = { value: decodedText, timestamp: now };
             onScanSuccessRef.current?.(decodedText, decodedResult);
           },
           () => {}
@@ -110,7 +120,7 @@ const QRScannerComponent = ({
         }
       }
     };
-  }, [aspectRatio, fps, qrbox]);
+  }, [aspectRatio, fps, qrbox, scanCooldownMs]);
 
   return (
     <div className="w-full max-w-sm mx-auto overflow-hidden rounded-xl border border-gray-200 bg-white">

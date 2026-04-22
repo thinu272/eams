@@ -7,14 +7,14 @@ const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const QRCode = require('qrcode');
-const { notifyOrderConfirmation, notifyFinalTicket } = require('../services/notificationService');
+const { notifyOrderConfirmation, notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
 
 // POST /api/orders - Create new order
 router.post('/', [
   body('eventId').notEmpty().withMessage('Event ID is required'),
   body('buyerName').notEmpty().withMessage('Buyer name is required'),
   body('buyerEmail').isEmail().withMessage('Valid email is required'),
-  body('buyerPhone').optional({ checkFalsy: true }).matches(/^\+947\d{8}$/).withMessage('Phone number must be in +947XXXXXXXX format'),
+  body('buyerPhone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
   body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
   body('tickets').isArray({ min: 1 }).withMessage('At least one ticket is required'),
   body('tickets.*.categoryName').notEmpty().withMessage('Category name is required'),
@@ -127,11 +127,18 @@ router.post('/', [
     }
     await Promise.all(ticketPromises);
 
-    // Update sold counts for each category using MongoDB $inc
+    // Update sold counts and usage counts for each category using MongoDB $inc
     for (const ticket of validatedTickets) {
+      const category = event.categories.find(c => c.name === ticket.categoryName);
+      const updateData = { 'categories.$.sold': ticket.quantity };
+      
+      if (category.isPrivate) {
+        updateData['categories.$.usageCount'] = ticket.quantity;
+      }
+
       await Event.updateOne(
         { _id: eventId, 'categories.name': ticket.categoryName },
-        { $inc: { 'categories.$.sold': ticket.quantity } }
+        { $inc: updateData }
       );
     }
 
@@ -239,6 +246,12 @@ router.post('/finalize/:orderId', async (req, res) => {
     order.allAssigned = true;
     await order.save();
 
+    await notifyBuyerFinalSummary({
+      order,
+      event,
+      attendees: finalizedAttendees,
+    }).catch(console.error);
+
     return res.json({
       success: true,
       data: {
@@ -254,13 +267,16 @@ router.post('/finalize/:orderId', async (req, res) => {
   }
 });
 
-// GET /api/orders/confirm/:token - Get order by confirmation token
-router.get('/confirm/:token', async (req, res) => {
+const getOrderByTokenHandler = async (req, res) => {
   try {
+    console.log('[GET /api/orders/:token] Received request for token:', req.params.token);
     const order = await Order.findOne({ confirmationToken: req.params.token })
       .populate('eventId', 'name venue startDate endDate status categories');
 
+    console.log('[GET /api/orders/:token] Query result:', order ? 'Found' : 'Not Found');
+
     if (!order) {
+      console.log('[GET /api/orders/:token] Order NOT FOUND in database for token:', req.params.token);
       return res.status(404).json({
         success: false,
         message: 'Order not found'
@@ -302,6 +318,12 @@ router.get('/confirm/:token', async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-});
+};
+
+// GET /api/orders/confirm/:token - Get order by confirmation token (legacy)
+router.get('/confirm/:token', getOrderByTokenHandler);
+
+// GET /api/orders/:token - Get order by confirmation token (buyer portal)
+router.get('/:token', getOrderByTokenHandler);
 
 module.exports = router;

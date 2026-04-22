@@ -1,65 +1,84 @@
-let twilioClient = null;
+/**
+ * SMS Service Adapter Pattern
+ * This service manages SMS providers and handles rate limiting.
+ */
 
-try {
-  // Twilio is optional in local/dev; the app falls back to logging when it isn't configured.
-  const twilio = require('twilio');
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const { v4: uuidv4 } = require('uuid');
+
+// Provider Interface (Implicit) should implement:
+// async send(to, message) -> { success: boolean, messageId?: string, error?: string }
+
+class TwilioProvider {
+  constructor() {
+    this.client = null;
+    this.from = process.env.TWILIO_PHONE_NUMBER;
+    
+    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+      this.client = require('twilio')(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN
+      );
+    }
   }
-} catch (err) {
-  console.warn('SMS: Twilio SDK not available, falling back to console logging.');
+
+  async send(to, message) {
+    if (!this.client || !this.from) {
+      console.log(`[SMS MOCK] To: ${to} | Message: ${message}`);
+      return { success: true, mock: true };
+    }
+
+    try {
+      const result = await this.client.messages.create({
+        from: this.from,
+        to,
+        body: message,
+      });
+      return { success: true, messageId: result.sid };
+    } catch (error) {
+      console.error('Twilio Send Error:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
-const phoneRegex = /^\+947\d{8}$/;
-const windowMs = parseInt(process.env.SMS_RATE_WINDOW_MS || '900000', 10);
-const maxPerWindow = parseInt(process.env.SMS_RATE_LIMIT_PER_WINDOW || '5', 10);
-const rateStore = new Map();
+class SMSManager {
+  constructor() {
+    this.provider = new TwilioProvider();
+    this.rateStore = new Map();
+    this.windowMs = parseInt(process.env.SMS_RATE_WINDOW_MS || '900000', 10);
+    this.maxPerWindow = parseInt(process.env.SMS_RATE_LIMIT_PER_WINDOW || '5', 10);
+  }
 
-const normalizePhone = (phone) => (phone || '').replace(/\s+/g, '').trim();
+  _isRateLimited(key) {
+    const now = Date.now();
+    const history = (this.rateStore.get(key) || []).filter((ts) => now - ts < this.windowMs);
+    history.push(now);
+    this.rateStore.set(key, history);
+    return history.length > this.maxPerWindow;
+  }
 
-const isValidSriLankanPhone = (phone) => phoneRegex.test(normalizePhone(phone));
+  async sendSMS(to, message, { rateKey } = {}) {
+    if (!to || !message) return { sent: false, skipped: true };
 
-const isRateLimited = (key) => {
-  const now = Date.now();
-  const history = (rateStore.get(key) || []).filter((ts) => now - ts < windowMs);
-  history.push(now);
-  rateStore.set(key, history);
-  return history.length > maxPerWindow;
+    const phone = to.replace(/\s+/g, '').trim();
+    
+    // Basic validation for Sri Lankan numbers if needed, but keeping generic for now
+    if (this._isRateLimited(rateKey || phone)) {
+      throw new Error('SMS rate limit exceeded.');
+    }
+
+    const res = await this.provider.send(phone, message);
+    return {
+      sent: res.success,
+      messageId: res.messageId,
+      mock: res.mock,
+      error: res.error
+    };
+  }
+}
+
+const manager = new SMSManager();
+
+module.exports = {
+  sendSMS: (to, message, options) => manager.sendSMS(to, message, options),
 };
-
-const sendSMS = async (to, message, { rateKey } = {}) => {
-  const phone = normalizePhone(to);
-  if (!phone || !message) {
-    return { sent: false, skipped: true };
-  }
-
-  if (!isValidSriLankanPhone(phone)) {
-    throw new Error('Invalid Sri Lankan phone number. Use +947XXXXXXXX.');
-  }
-
-  if (isRateLimited(rateKey || phone)) {
-    throw new Error('SMS rate limit exceeded.');
-  }
-
-  if (!twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
-    console.log('[SMS - dev mode, not sent]');
-    console.log('To:', phone);
-    console.log('Message:', message);
-    return { sent: false, devMode: true };
-  }
-
-  try {
-    const result = await twilioClient.messages.create({
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phone,
-      body: message,
-    });
-
-    return { sent: true, messageSid: result.sid };
-  } catch (error) {
-    console.error('SMS send failed:', error);
-    throw error;
-  }
-};
-
-module.exports = { sendSMS, isValidSriLankanPhone, normalizePhone };

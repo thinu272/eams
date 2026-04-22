@@ -1,5 +1,12 @@
+const fs = require('fs');
+
 const errorHandler = (err, req, res, next) => {
   let error = { ...err };
+  error.message = err.message;
+  
+  if (!err.statusCode || err.statusCode === 500) {
+    fs.appendFileSync('error.log', new Date().toISOString() + '\\n' + err.stack + '\\n\\n');
+  }
   error.message = err.message;
   res.locals.errorMessage = err.message;
 

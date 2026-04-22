@@ -3,7 +3,11 @@ const mongoose = require('mongoose');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
+const Notification = require('../models/Notification');
 const { protect, checkRole } = require('../middleware/auth');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { deleteImageFromS3 } = require('../services/s3Service');
+const QRCode = require('qrcode');
 
 const router = express.Router();
 
@@ -32,6 +36,9 @@ const mapTicket = (ticket) => {
       startDate: event.startDate,
       endDate: event.endDate,
       venue: event.venue,
+      instructions: event.instructions,
+      status: event.status,
+      requirePhotoVerification: !!(event.settings?.requirePhotoVerification),
     } : null,
     attendee: attendee?._id ? {
       _id: attendee._id,
@@ -40,10 +47,14 @@ const mapTicket = (ticket) => {
       phone: attendee.phone,
       qrCode: attendee.qrCode,
       qrToken: attendee.qrToken,
+      confirmationToken: attendee.confirmationToken,
       confirmationStatus: attendee.confirmationStatus,
       isConfirmed: attendee.isConfirmed,
       checkedIn: attendee.checkedIn,
       allowedZones: attendee.allowedZones || ticket.allowedZones || [],
+      photo: attendee.photo,
+      photoVerificationStatus: attendee.photoVerificationStatus,
+      photoRejectionReason: attendee.photoRejectionReason,
     } : null,
   };
 };
@@ -80,6 +91,19 @@ const getUserScopedTickets = async (user) => {
 };
 
 router.use(protect, checkRole(['BUYER']));
+
+const isUserAllowedToManageAttendee = async ({ user, attendee }) => {
+  if (!user || !attendee) return false;
+  const email = user.email?.toLowerCase?.() || '';
+  if (attendee.email && attendee.email.toLowerCase() === email) return true;
+
+  if (attendee.order) {
+    const order = await Order.findById(attendee.order).select('buyerEmail');
+    if (order?.buyerEmail?.toLowerCase?.() === email) return true;
+  }
+
+  return false;
+};
 
 // GET /api/user/dashboard
 router.get('/dashboard', async (req, res, next) => {
@@ -131,6 +155,30 @@ router.get('/dashboard', async (req, res, next) => {
   }
 });
 
+// GET /api/user/events - unique events for the user
+router.get('/events', async (req, res, next) => {
+  try {
+    const tickets = await getUserScopedTickets(req.user);
+    const normalizedTickets = tickets.map(mapTicket);
+
+    const byId = new Map();
+    normalizedTickets.forEach((ticket) => {
+      if (ticket.event?._id) {
+        byId.set(String(ticket.event._id), ticket.event);
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        events: Array.from(byId.values()).sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0)),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/user/tickets
 router.get('/tickets', async (req, res, next) => {
   try {
@@ -169,6 +217,21 @@ router.get('/ticket/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/user/profile
+router.get('/profile', async (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      user: {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        phone: req.user.phone,
+      },
+    },
+  });
 });
 
 // PUT /api/user/profile
@@ -231,6 +294,174 @@ router.put('/profile', async (req, res, next) => {
       },
       message: 'Profile updated successfully.',
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/user/notifications
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const { unreadOnly, limit = 20 } = req.query;
+    const filter = { user: req.user._id };
+    if (unreadOnly === 'true') filter.read = false;
+
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(parseInt(limit, 10) || 20, 50));
+
+    const unreadCount = await Notification.countDocuments({ user: req.user._id, read: false });
+    res.json({ success: true, data: { notifications, unreadCount } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/user/notifications/:id/read
+router.patch('/notifications/:id/read', async (req, res, next) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id },
+      { read: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found.' });
+    }
+    res.json({ success: true, data: { notification } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/user/notifications/mark-all-read
+router.patch('/notifications/mark-all-read', async (req, res, next) => {
+  try {
+    await Notification.updateMany({ user: req.user._id, read: false }, { read: true });
+    res.json({ success: true, message: 'All notifications marked as read.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/user/notifications/:id
+router.delete('/notifications/:id', async (req, res, next) => {
+  try {
+    const deleted = await Notification.findOneAndDelete({ _id: req.params.id, user: req.user._id });
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'Notification not found.' });
+    }
+    res.json({ success: true, message: 'Notification deleted.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/user/confirm/:token - fetch attendee confirmation info (scoped)
+router.get('/confirm/:token', async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findOne({ confirmationToken: req.params.token }).populate('event', 'name venue startDate endDate settings instructions');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
+    if (!(await isUserAllowedToManageAttendee({ user: req.user, attendee }))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this confirmation link.' });
+    }
+    res.json({
+      success: true,
+      data: {
+        attendee,
+        event: attendee.event,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/user/confirm/:token - submit confirmation (scoped)
+router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findOne({ confirmationToken: req.params.token });
+    if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
+    if (!(await isUserAllowedToManageAttendee({ user: req.user, attendee }))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this confirmation link.' });
+    }
+    if (attendee.confirmationStatus === 'confirmed') {
+      return res.status(400).json({ success: false, message: 'Already confirmed.' });
+    }
+
+    const { fullName, email, phone, dateOfBirth, nationalId, passportNumber, nationality } = req.body;
+    if (!fullName || !email || !phone) {
+      return res.status(400).json({ success: false, message: 'fullName, email, and phone are required.' });
+    }
+
+    attendee.fullName = String(fullName).trim();
+    attendee.email = String(email).trim().toLowerCase();
+    attendee.phone = String(phone).trim();
+    if (dateOfBirth) attendee.dateOfBirth = new Date(dateOfBirth);
+    if (nationalId) attendee.nationalId = nationalId;
+    if (passportNumber) attendee.passportNumber = passportNumber;
+    if (nationality) attendee.nationality = nationality;
+
+    if (req.s3Data) {
+      attendee.photo = req.s3Data.url;
+      attendee.photoS3Key = req.s3Data.key;
+      attendee.photoUploadedAt = new Date();
+      attendee.photoVerificationStatus = 'pending';
+      attendee.photoRejectionReason = null;
+    }
+
+    attendee.confirmationStatus = 'confirmed';
+    attendee.isConfirmed = true;
+    attendee.confirmedAt = new Date();
+    attendee.confirmedBy = 'self';
+    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+
+    await attendee.save();
+    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
+
+    res.json({ success: true, data: { attendee }, message: 'Identity confirmed successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/user/upload-photo - upload / re-upload photo for a ticket you own
+router.post('/upload-photo', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+  try {
+    const { ticketId } = req.body;
+    if (!ticketId || !mongoose.Types.ObjectId.isValid(ticketId)) {
+      return res.status(400).json({ success: false, message: 'Valid ticketId is required.' });
+    }
+    if (!req.s3Data) {
+      return res.status(400).json({ success: false, message: 'Photo is required.' });
+    }
+
+    const tickets = await getUserScopedTickets(req.user);
+    const ticket = tickets.find((item) => item._id.toString() === ticketId);
+    if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+
+    const attendeeId = ticket.attendee?._id || ticket.attendee;
+    if (!attendeeId) return res.status(400).json({ success: false, message: 'No attendee is linked to this ticket yet.' });
+
+    const attendee = await Attendee.findById(attendeeId);
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await isUserAllowedToManageAttendee({ user: req.user, attendee }))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+
+    if (attendee.photoS3Key) {
+      await deleteImageFromS3(attendee.photoS3Key).catch(() => null);
+    }
+
+    attendee.photo = req.s3Data.url;
+    attendee.photoS3Key = req.s3Data.key;
+    attendee.photoUploadedAt = new Date();
+    attendee.photoVerificationStatus = 'pending';
+    attendee.photoRejectionReason = null;
+    attendee.resubmitCount = (attendee.resubmitCount || 0) + 1;
+
+    await attendee.save();
+    res.json({ success: true, data: { attendee }, message: 'Photo uploaded successfully.' });
   } catch (err) {
     next(err);
   }

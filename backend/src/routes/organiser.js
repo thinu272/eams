@@ -1,0 +1,1573 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const XLSX = require('xlsx');
+const { body, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
+const User = require('../models/User');
+const Attendee = require('../models/Attendee');
+const Event = require('../models/Event');
+const Ticket = require('../models/Ticket');
+const EntryLog = require('../models/EntryLog');
+const ZoneLog = require('../models/ZoneLog');
+const Notification = require('../models/Notification');
+const Role = require('../models/Role');
+const { protect, checkRole, requireEventAccess, requirePermission } = require('../middleware/auth');
+const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite } = require('../services/notificationService');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rbac');
+
+const router = express.Router();
+const ORGANISER_ROLES = ['sub_organiser', 'main_organiser', 'main_admin', 'super_admin'];
+
+const toObjectId = (value) => new mongoose.Types.ObjectId(value);
+const normalizeSearch = (value) => String(value || '').trim();
+const clamp = (value, min, max, fallback) => {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+};
+
+const buildActivityNotification = async ({ userId, eventId, title, message, type = 'info', metadata = {} }) => {
+  if (!userId) return null;
+
+  return Notification.create({
+    user: userId,
+    title,
+    message,
+    type,
+    metadata: {
+      eventId: String(eventId),
+      ...metadata,
+    },
+  });
+};
+
+const slugify = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+const resolveEventId = (req) => (
+  req.params.eventId ||
+  req.body.eventId ||
+  req.query.eventId ||
+  req.user?.assignedEvents?.[0]
+);
+
+const getScopedEvent = async (req) => {
+  const eventId = resolveEventId(req);
+
+  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+    return null;
+  }
+
+    return Event.findById(eventId)
+      .populate('mainOrganiser', 'name email phone')
+      .populate({
+        path: 'subOrganisers',
+        select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
+        populate: { path: 'customRole', select: 'name slug permissions zoneIds' },
+      })
+      .lean();
+  };
+
+const buildAttendeeFilter = ({ eventId, query = {} }) => {
+  const {
+    search = '',
+    status = '',
+    category = '',
+    ticketCategory = '',
+    photoStatus = '',
+  } = query;
+
+  const filter = { event: eventId, isActive: true };
+  const trimmedSearch = normalizeSearch(search);
+
+  if (trimmedSearch) {
+    filter.$or = [
+      { fullName: { $regex: trimmedSearch, $options: 'i' } },
+      { email: { $regex: trimmedSearch, $options: 'i' } },
+      { phone: { $regex: trimmedSearch, $options: 'i' } },
+      { nationalId: { $regex: trimmedSearch, $options: 'i' } },
+    ];
+  }
+
+  if (category || ticketCategory) filter.categoryName = category || ticketCategory;
+  if (status) filter.confirmationStatus = status;
+  if (photoStatus) filter.photoVerificationStatus = photoStatus;
+
+  return filter;
+};
+
+const mapInviteRow = (ticket) => ({
+  _id: ticket._id,
+  inviteStatus: ticket.inviteStatus || 'PENDING',
+  ticketStatus: ticket.status,
+  inviteSentAt: ticket.inviteSentAt,
+  inviteRespondedAt: ticket.inviteRespondedAt,
+  inviteExpiresAt: ticket.inviteExpiresAt,
+  categoryId: ticket.categoryId,
+  categoryName: ticket.categoryName,
+  slotIndex: ticket.slotIndex,
+  attendee: ticket.attendee ? {
+    _id: ticket.attendee._id,
+    fullName: ticket.attendee.fullName,
+    email: ticket.attendee.email,
+    phone: ticket.attendee.phone,
+    confirmationStatus: ticket.attendee.confirmationStatus,
+    confirmationToken: ticket.attendee.confirmationToken,
+  } : null,
+  inviteHistory: [
+    ticket.inviteSentAt ? { type: 'sent', at: ticket.inviteSentAt } : null,
+    ticket.inviteRespondedAt ? { type: String(ticket.inviteStatus || '').toLowerCase(), at: ticket.inviteRespondedAt } : null,
+  ].filter(Boolean),
+});
+
+const getTicketCategorySummary = async (event) => {
+  const ticketSummary = await Ticket.aggregate([
+    { $match: { event: toObjectId(event._id) } },
+    {
+      $group: {
+        _id: '$categoryId',
+        categoryName: { $first: '$categoryName' },
+        soldCount: { $sum: 1 },
+        assignedCount: {
+          $sum: {
+            $cond: [{ $ifNull: ['$attendee', false] }, 1, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  const summaryByCategory = new Map(ticketSummary.map((item) => [item._id, item]));
+
+  return (event.categories || []).map((category) => {
+    const live = summaryByCategory.get(category.id) || {};
+    const soldCount = live.soldCount || category.sold || 0;
+    const assignedCount = live.assignedCount || 0;
+
+    return {
+      id: category.id,
+      name: category.name,
+      description: category.description || '',
+      price: category.price,
+      capacity: category.capacity,
+      soldCount,
+      assignedCount,
+      unassignedCount: Math.max(soldCount - assignedCount, 0),
+      remainingCapacity: Math.max(category.capacity - soldCount, 0),
+      allowedZones: category.allowedZones || [],
+      color: category.color || '#3B82F6',
+    };
+  });
+};
+
+const requireScopedEvent = async (req, res, next) => {
+  const event = await getScopedEvent(req);
+
+  if (!event) {
+    return res.status(404).json({ success: false, message: 'Scoped event not found.' });
+  }
+
+  req.scopedEvent = event;
+  return next();
+};
+
+router.use(protect, checkRole(ORGANISER_ROLES));
+
+router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+  try {
+    const eventId = String(req.scopedEvent._id);
+    const page = clamp(req.query.page, 1, 9999, 1);
+    const limit = clamp(req.query.limit, 1, 50, 10);
+    const skip = (page - 1) * limit;
+    const attendeeFilter = buildAttendeeFilter({ eventId, query: req.query });
+
+    const [
+      totalTickets,
+      ticketsSold,
+      confirmedAttendees,
+      checkedInCount,
+      zoneOccupancyRows,
+      hourlyCheckins,
+      recentEntries,
+      recentNotifications,
+      attendeeRows,
+      attendeeTotal,
+      pendingVerificationRows,
+      inviteRows,
+      zoneRows,
+      notificationRows,
+      ticketCategories,
+      customRoles,
+      teamMembers,
+    ] = await Promise.all([
+      Ticket.countDocuments({ event: eventId }),
+      Ticket.countDocuments({ event: eventId, status: { $ne: 'CANCELLED' } }),
+      Attendee.countDocuments({ event: eventId, isActive: true, confirmationStatus: 'confirmed' }),
+      EntryLog.countDocuments({ event: eventId, action: 'check_in', accessGranted: true }),
+      ZoneLog.aggregate([
+        { $match: { eventId: toObjectId(eventId), accessGranted: true } },
+        { $group: { _id: { zoneName: '$zoneName', action: '$action' }, count: { $sum: 1 } } },
+      ]),
+      EntryLog.aggregate([
+        { $match: { event: toObjectId(eventId), action: 'check_in', accessGranted: true } },
+        { $group: { _id: { $hour: '$timestamp' }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+        {
+          $project: {
+            _id: 0,
+            hour: '$_id',
+            label: { $concat: [{ $toString: '$_id' }, ':00'] },
+            count: 1,
+          },
+        },
+      ]),
+      EntryLog.find({ event: eventId }).populate('attendee', 'fullName categoryName').sort({ timestamp: -1 }).limit(5).lean(),
+      Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(5).lean(),
+      Attendee.find(attendeeFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Attendee.countDocuments(attendeeFilter),
+      Attendee.find({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }).sort({ createdAt: -1 }).limit(8).lean(),
+      Ticket.find({ event: eventId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).limit(20).lean(),
+      ZoneLog.find({ eventId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).limit(10).lean(),
+      Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(20).lean(),
+      getTicketCategorySummary(req.scopedEvent),
+      Role.find({ event: eventId }).sort({ createdAt: -1 }).lean(),
+      User.find({
+        assignedEvents: toObjectId(eventId),
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
+      })
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
+        .populate('customRole')
+        .populate('createdBy', 'name email role')
+        .sort({ role: 1, createdAt: -1 })
+        .lean(),
+    ]);
+
+    const zoneOccupancy = {};
+    zoneOccupancyRows.forEach((row) => {
+      const current = zoneOccupancy[row._id.zoneName] || { zoneName: row._id.zoneName, entries: 0, exits: 0, occupancy: 0 };
+      if (row._id.action === 'ENTRY') current.entries = row.count;
+      if (row._id.action === 'EXIT') current.exits = row.count;
+      current.occupancy = Math.max(current.entries - current.exits, 0);
+      zoneOccupancy[row._id.zoneName] = current;
+    });
+    const topZoneOccupancy = Object.values(zoneOccupancy).sort((a, b) => b.occupancy - a.occupancy)[0]?.occupancy || 0;
+
+    const activityFeed = [...recentEntries.map((row) => ({
+      id: `entry-${row._id}`,
+      type: 'entry',
+      title: row.accessGranted ? 'Entry activity' : 'Denied access',
+      message: `${row.attendee?.fullName || row.snapshot?.fullName || 'Attendee'} ${row.accessGranted ? row.action.replace('_', ' ') : 'denied'} at ${row.gateName || row.zoneName || 'gate'}`,
+      timestamp: row.timestamp,
+    })), ...recentNotifications.map((row) => ({
+      id: `notification-${row._id}`,
+      type: row.metadata?.actionType || 'notification',
+      title: row.title,
+      message: row.message,
+      timestamp: row.createdAt,
+    }))]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 5);
+
+    res.json({
+      success: true,
+      data: {
+        event: {
+          _id: req.scopedEvent._id,
+          name: req.scopedEvent.name,
+          startDate: req.scopedEvent.startDate,
+          endDate: req.scopedEvent.endDate,
+          venue: req.scopedEvent.venue,
+          status: req.scopedEvent.status,
+          zones: req.scopedEvent.zones || [],
+          settings: req.scopedEvent.settings || {},
+        },
+        overview: { totalTickets, ticketsSold, confirmedAttendees, checkedInCount, zoneOccupancy: topZoneOccupancy },
+        charts: { checkinsOverTime: hourlyCheckins },
+        activityFeed,
+        attendees: {
+          rows: attendeeRows,
+          total: attendeeTotal,
+          page,
+          pages: Math.ceil(attendeeTotal / limit) || 1,
+        },
+        tickets: ticketCategories,
+        subOrganisers: req.scopedEvent.subOrganisers || [],
+        teamMembers,
+        customRoles,
+        verificationQueue: pendingVerificationRows,
+        invites: inviteRows.map(mapInviteRow),
+        entryLogs: recentEntries,
+        zoneLogs: zoneRows,
+        zoneOccupancy: Object.values(zoneOccupancy),
+        notifications: notificationRows,
+        reports: {
+          available: [
+            { id: 'attendees', label: 'Attendee List', exportType: 'attendees' },
+            { id: 'tickets', label: 'Ticket Categories', exportType: 'tickets' },
+            { id: 'logs', label: 'Entry Logs', exportType: 'logs' },
+          ],
+        },
+        settings: req.scopedEvent.settings || {},
+        customization: {
+          basicInfo: {
+            name: req.scopedEvent.name,
+            description: req.scopedEvent.description || '',
+            startDate: req.scopedEvent.startDate,
+            endDate: req.scopedEvent.endDate,
+            venue: req.scopedEvent.venue || {},
+          },
+          branding: {
+            bannerImage: req.scopedEvent.bannerImage || req.scopedEvent.branding?.bannerImage || '',
+            logoImage: req.scopedEvent.logoImage || req.scopedEvent.branding?.logoImage || '',
+            themeColor: req.scopedEvent.branding?.themeColor || '#2563EB',
+          },
+          customFields: req.scopedEvent.customFields || [],
+          accessRules: req.scopedEvent.settings?.accessRules || {},
+          confirmationFlow: {
+            inviteSystemEnabled: req.scopedEvent.settings?.inviteSystemEnabled !== false,
+            manualApprovalEnabled: !!req.scopedEvent.settings?.manualApprovalEnabled,
+            autoConfirmEnabled: !!req.scopedEvent.settings?.autoConfirmEnabled,
+          },
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/attendees', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const page = clamp(req.query.page, 1, 9999, 1);
+    const limit = clamp(req.query.limit, 1, 100, 20);
+    const skip = (page - 1) * limit;
+    const filter = buildAttendeeFilter({ eventId, query: req.query });
+
+    const [attendees, total] = await Promise.all([
+      Attendee.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Attendee.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        attendees,
+        total,
+        page,
+        pages: Math.ceil(total / limit) || 1,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post(
+  '/attendees',
+  requirePermission('canAddAttendees'),
+  upload.single('photo'),
+  handleS3Upload('attendee-photos'),
+  [
+    body('eventId').notEmpty().withMessage('eventId is required'),
+    body('fullName').notEmpty().withMessage('Name is required'),
+    body('categoryId').notEmpty().withMessage('Category is required'),
+  ],
+  async (req, res, next) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
+      }
+
+      const { eventId, fullName, nationalId, dateOfBirth, email, phone, categoryId } = req.body;
+      const event = await Event.findById(eventId);
+      if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+      const category = (event.categories || []).find((item) => item.id === categoryId);
+      if (!category) return res.status(400).json({ success: false, message: 'Invalid category for this event.' });
+
+      const attendee = await Attendee.create({
+        fullName,
+        nationalId,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+        email,
+        phone,
+        event: eventId,
+        categoryId,
+        categoryName: category.name,
+        allowedZones: category.allowedZones || [],
+        addedBy: req.user._id,
+        addedVia: 'manual',
+        confirmationStatus: 'pending',
+        photoVerificationStatus: 'pending',
+        photo: req.s3Data?.url,
+        photoS3Key: req.s3Data?.key,
+        photoUploadedAt: req.s3Data ? new Date() : undefined,
+      });
+
+      await buildActivityNotification({
+        userId: req.user._id,
+        eventId,
+        title: 'Attendee created',
+        message: `${attendee.fullName} was added to ${event.name}.`,
+        type: 'success',
+        metadata: { actionType: 'attendee_create', attendeeId: String(attendee._id) },
+      });
+
+      res.status(201).json({ success: true, data: { attendee }, message: 'Attendee added.' });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'Excel file is required.' });
+
+    const { eventId } = req.body;
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const docs = [];
+    const errors = [];
+
+    rows.forEach((row, index) => {
+      const rowNum = index + 2;
+      const fullName = String(row['Full Name'] || '').trim();
+      const categoryId = String(row['Category ID'] || '').trim();
+      const category = (event.categories || []).find((item) => item.id === categoryId);
+
+      if (!fullName) {
+        errors.push({ row: rowNum, message: 'Full Name is required.' });
+        return;
+      }
+
+      if (!category) {
+        errors.push({ row: rowNum, message: `Invalid category id: ${categoryId || '(empty)'}` });
+        return;
+      }
+
+      docs.push({
+        fullName,
+        nationalId: String(row['National ID'] || '').trim(),
+        dateOfBirth: row['Date of Birth (YYYY-MM-DD)'] ? new Date(row['Date of Birth (YYYY-MM-DD)']) : undefined,
+        email: String(row.Email || '').trim(),
+        phone: String(row.Phone || '').trim(),
+        event: eventId,
+        categoryId: category.id,
+        categoryName: category.name,
+        allowedZones: category.allowedZones || [],
+        confirmationStatus: 'pending',
+        photoVerificationStatus: 'pending',
+        addedVia: 'bulk_upload',
+        addedBy: req.user._id,
+      });
+    });
+
+    if (docs.length) {
+      await Attendee.insertMany(docs);
+    }
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId,
+      title: 'Bulk attendee upload complete',
+      message: `${docs.length} attendee records imported${errors.length ? ` with ${errors.length} row issues` : ''}.`,
+      type: errors.length ? 'warning' : 'success',
+      metadata: { actionType: 'attendee_bulk_upload', created: docs.length, errorCount: errors.length },
+    });
+
+    res.json({
+      success: true,
+      data: { created: docs.length, errors },
+      message: `${docs.length} attendees created.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/attendee/:id', requireEventAccess, requirePermission('canAddAttendees'), async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findById(req.params.id);
+    if (!attendee || !attendee.isActive) {
+      return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    }
+
+    const event = await Event.findById(attendee.event);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const nextCategoryId = req.body.categoryId || attendee.categoryId;
+    const category = (event.categories || []).find((item) => item.id === nextCategoryId);
+    if (!category) {
+      return res.status(400).json({ success: false, message: 'Invalid category for attendee.' });
+    }
+
+    attendee.fullName = req.body.fullName ?? attendee.fullName;
+    attendee.email = req.body.email ?? attendee.email;
+    attendee.phone = req.body.phone ?? attendee.phone;
+    attendee.nationalId = req.body.nationalId ?? attendee.nationalId;
+    attendee.categoryId = category.id;
+    attendee.categoryName = category.name;
+    attendee.allowedZones = category.allowedZones || [];
+    attendee.notes = req.body.notes ?? attendee.notes;
+    await attendee.save();
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: attendee.event,
+      title: 'Attendee updated',
+      message: `${attendee.fullName} details were updated.`,
+      type: 'info',
+      metadata: { actionType: 'attendee_update', attendeeId: String(attendee._id) },
+    });
+
+    res.json({ success: true, data: { attendee }, message: 'Attendee updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/attendee/:id', requireEventAccess, requirePermission('canAddAttendees'), async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findById(req.params.id);
+    if (!attendee || !attendee.isActive) {
+      return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    }
+
+    attendee.isActive = false;
+    await attendee.save();
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: attendee.event,
+      title: 'Attendee removed',
+      message: `${attendee.fullName} was removed from the event roster.`,
+      type: 'warning',
+      metadata: { actionType: 'attendee_delete', attendeeId: String(attendee._id) },
+    });
+
+    res.json({ success: true, message: 'Attendee removed.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/attendees/:id/invite', requireEventAccess, requirePermission('canInviteAttendees'), async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findById(req.params.id).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!attendee.email) return res.status(400).json({ success: false, message: 'Attendee email is required to send invite.' });
+
+    if (!attendee.confirmationToken) attendee.confirmationToken = uuidv4();
+    attendee.confirmationStatus = 'invited';
+    attendee.inviteEmailSent = true;
+    attendee.confirmationSentAt = new Date();
+    await attendee.save();
+
+    await Ticket.findOneAndUpdate(
+      { attendee: attendee._id, event: attendee.event._id },
+      {
+        inviteStatus: 'PENDING',
+        inviteSentAt: new Date(),
+        inviteExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      }
+    );
+
+    await notifyInvite({
+      attendee,
+      event: attendee.event,
+      email: attendee.email,
+      phone: attendee.phone,
+      notificationChannel: 'both',
+    });
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: attendee.event._id,
+      title: 'Invite sent',
+      message: `Invite sent to ${attendee.fullName}.`,
+      type: 'success',
+      metadata: { actionType: 'invite_send', attendeeId: String(attendee._id), channel: 'email_sms' },
+    });
+
+    res.json({ success: true, message: 'Invite sent successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/ticket-categories', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+  try {
+    const categories = await getTicketCategorySummary(req.scopedEvent);
+    res.json({ success: true, data: { categories } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/ticket-categories', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const category = {
+      id: req.body.id || uuidv4(),
+      name: req.body.name,
+      description: req.body.description || '',
+      price: Number(req.body.price || 0),
+      capacity: Number(req.body.capacity || 0),
+      sold: 0,
+      allowedZones: req.body.allowedZones || [],
+      color: req.body.color || '#2563EB',
+      benefits: req.body.benefits || [],
+    };
+
+    event.categories.push(category);
+    await event.save();
+
+    res.status(201).json({ success: true, data: { category }, message: 'Ticket category created.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/ticket-categories/:categoryId', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const category = (event.categories || []).find((item) => item.id === req.params.categoryId);
+    if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
+
+    category.name = req.body.name ?? category.name;
+    category.description = req.body.description ?? category.description;
+    category.price = req.body.price != null ? Number(req.body.price) : category.price;
+    category.capacity = req.body.capacity != null ? Number(req.body.capacity) : category.capacity;
+    category.color = req.body.color ?? category.color;
+    category.allowedZones = req.body.allowedZones || category.allowedZones;
+    category.benefits = req.body.benefits || category.benefits;
+    await event.save();
+
+    res.json({ success: true, data: { category }, message: 'Ticket category updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/ticket-categories/:categoryId', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const liveTickets = await Ticket.countDocuments({ event: event._id, categoryId: req.params.categoryId });
+    if (liveTickets > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete a category that already has issued tickets.' });
+    }
+
+    event.categories = (event.categories || []).filter((item) => item.id !== req.params.categoryId);
+    await event.save();
+
+    res.json({ success: true, message: 'Ticket category deleted.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+  try {
+    const isMainOrganiser = hasRolePower(req.user.role, ROLES.MAIN_ORGANISER);
+    let users = [];
+    
+    if (isMainOrganiser) {
+      // Main Organisers see all sub-organisers assigned to this event
+      users = req.scopedEvent.subOrganisers || [];
+    } else {
+      // Sub-Organisers see:
+      // 1. team members they created for this event
+      // 2. existing members they assigned into this event, limited to their zone scope
+      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+      users = await User.find({
+        assignedEvents: req.scopedEvent._id,
+        role: { $in: [ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
+        $or: [
+          { createdBy: req.user._id },
+          myZoneIds.length
+            ? { 'responsibilities.zoneIds': { $in: myZoneIds } }
+            : { _id: req.user._id },
+        ],
+      }).select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy').populate('customRole').lean();
+      }
+      
+      res.json({ success: true, data: { users } });
+    } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+      const targetRole = normalizeRole(req.body.role || ROLES.SUB_ORGANISER);
+      const requesterRole = normalizeRole(req.user.role);
+      const canHaveCheckpoints = [ROLES.STAFF, ROLES.VOLUNTEER].includes(targetRole);
+
+    // 1. Role level check: Cannot create a user with equal or higher role
+    if (ROLE_LEVELS[targetRole] >= ROLE_LEVELS[requesterRole]) {
+      return res.status(403).json({ 
+        success: false, 
+        message: `You do not have permission to create a user with the role: ${targetRole}` 
+      });
+    }
+
+    // 2. Zone scoping check for Sub-Organisers
+      if (requesterRole === ROLES.SUB_ORGANISER) {
+        const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+        const requestedZoneIds = (req.body.responsibilities?.zoneIds || []).map(String);
+        const unauthorizedZones = requestedZoneIds.filter(id => !myZoneIds.includes(id));
+      
+      if (unauthorizedZones.length > 0) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `You cannot assign zones outside your own scope: ${unauthorizedZones.join(', ')}` 
+        });
+        }
+      }
+
+      const requestedAssignedZones = canHaveCheckpoints ? (req.body.assignedZones || []).map(String).filter(Boolean) : [];
+      const requestedAssignedGates = canHaveCheckpoints ? (req.body.assignedGates || []).map(String).filter(Boolean) : [];
+
+      if (requesterRole === ROLES.SUB_ORGANISER && requestedAssignedZones.length > 0) {
+        const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+        const unauthorizedAssignedZones = requestedAssignedZones.filter(id => !myZoneIds.includes(id));
+        if (unauthorizedAssignedZones.length > 0) {
+          return res.status(403).json({
+            success: false,
+            message: `You cannot assign checkpoint zones outside your own scope: ${unauthorizedAssignedZones.join(', ')}`,
+          });
+        }
+      }
+
+      let existing = await User.findOne({ email: String(req.body.email || '').toLowerCase().trim() });
+    let isNewUser = false;
+    let user;
+
+    if (existing) {
+      // 1. Role level check: Cannot re-assign a user with equal or higher role than yours
+      const existingRole = normalizeRole(existing.role);
+      if (ROLE_LEVELS[existingRole] >= ROLE_LEVELS[requesterRole]) {
+         return res.status(403).json({ 
+           success: false, 
+           message: `You do not have permission to manage this existing user (${existingRole}).` 
+         });
+      }
+
+      user = existing;
+
+      // 2. Add as assigned event if not already
+      const userIdStr = String(user._id);
+      const alreadyAssigned = (user.assignedEvents || []).map(String).includes(String(event._id));
+      if (!alreadyAssigned) {
+        user.assignedEvents = Array.from(new Set([...(user.assignedEvents || []).map(String), String(event._id)])).map(toObjectId);
+      }
+
+      // 3. Update permissions and merge responsibilities
+        if (req.body.permissions) {
+          user.permissions = { ...(user.permissions || {}), ...req.body.permissions };
+        }
+
+        user.assignedGates = Array.from(new Set(requestedAssignedGates));
+        user.assignedZones = Array.from(new Set(requestedAssignedZones));
+
+        if (req.body.responsibilities) {
+        // Merge strategy: Preserve zones that do NOT belong to the current event
+        const currentEventZoneIds = (event.zones || []).map(z => String(z.id || z.name)).filter(Boolean);
+        const existingZonesFromOtherEvents = (user.responsibilities?.zoneIds || []).filter(zid => !currentEventZoneIds.includes(String(zid)));
+        
+        const newZonesFromThisEvent = req.body.responsibilities.zoneIds || [];
+        
+        user.responsibilities = {
+          ...(user.responsibilities?.toObject ? user.responsibilities.toObject() : user.responsibilities || {}),
+          ...req.body.responsibilities,
+          zoneIds: Array.from(new Set([...existingZonesFromOtherEvents, ...newZonesFromThisEvent]))
+        };
+      }
+      
+      await user.save();
+    } else {
+      isNewUser = true;
+        user = await User.create({
+        name: req.body.name,
+        email: String(req.body.email || '').toLowerCase().trim(),
+        phone: req.body.phone,
+        password: req.body.password || 'ChangeMe123!',
+        role: targetRole,
+        status: req.body.status || 'Active',
+          assignedEvents: [event._id],
+          assignedGates: Array.from(new Set(requestedAssignedGates)),
+          assignedZones: Array.from(new Set(requestedAssignedZones)),
+          permissions: {
+          canAddAttendees: !!req.body.permissions?.canAddAttendees,
+          canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
+          canInviteAttendees: !!req.body.permissions?.canInviteAttendees,
+          canBulkUpload: !!req.body.permissions?.canBulkUpload,
+          canEntryAccess: !!req.body.permissions?.canEntryAccess,
+        },
+        customRole: req.body.customRole || undefined,
+        responsibilities: {
+          zoneIds: req.body.responsibilities?.zoneIds || [],
+          verificationAccess: !!req.body.responsibilities?.verificationAccess,
+          entryAccess: !!req.body.responsibilities?.entryAccess,
+        },
+        createdBy: req.user._id,
+      });
+    }
+
+    // Add to event personnel collections
+    const userIdStr = String(user._id);
+    if (targetRole === ROLES.SUB_ORGANISER) {
+      event.subOrganisers = Array.from(new Set([...(event.subOrganisers || []).map(String), userIdStr])).map(toObjectId);
+    } else if (targetRole === ROLES.STAFF) {
+      event.staff = Array.from(new Set([...(event.staff || []).map(String), userIdStr])).map(toObjectId);
+    } else if (targetRole === ROLES.VOLUNTEER) {
+      event.volunteers = Array.from(new Set([...(event.volunteers || []).map(String), userIdStr])).map(toObjectId);
+    } else if (targetRole === ROLES.AUDITOR) {
+      event.auditors = Array.from(new Set([...(event.auditors || []).map(String), userIdStr])).map(toObjectId);
+    }
+    await event.save();
+
+    if (isNewUser) {
+      await notifySubOrganiserInvite({ user, event, phone: user.phone, email: user.email });
+    }
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: event._id,
+      title: isNewUser ? 'Team member created' : 'Team member reassigned',
+      message: `${user.name} (${targetRole}) was ${isNewUser ? 'created and ' : ''}assigned to ${event.name}.`,
+      type: 'success',
+      metadata: { actionType: isNewUser ? 'team_member_create' : 'team_member_assign', subOrganiserId: String(user._id) },
+    });
+
+    res.status(isNewUser ? 201 : 200).json({ 
+      success: true, 
+      data: { user }, 
+      message: isNewUser ? 'Team member created.' : 'Access granted to existing team member.' 
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Team member not found.' });
+
+    const requesterRole = normalizeRole(req.user.role);
+    
+    // Authorization check: Sub-organisers can only edit users they created
+    if (requesterRole === ROLES.SUB_ORGANISER && String(user.createdBy) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'You can only manage team members you created.' });
+    }
+
+    // Role level check if role is being changed
+      if (req.body.role) {
+        const targetRole = normalizeRole(req.body.role);
+        if (ROLE_LEVELS[targetRole] >= ROLE_LEVELS[requesterRole]) {
+           return res.status(403).json({ success: false, message: 'Cannot assign a role equal to or higher than your own.' });
+        }
+        user.role = targetRole;
+      }
+      const effectiveRole = normalizeRole(req.body.role || user.role);
+      const canHaveCheckpoints = [ROLES.STAFF, ROLES.VOLUNTEER].includes(effectiveRole);
+
+    const eventId = req.body.eventId || req.query.eventId || req.params.eventId;
+    const event = eventId ? await Event.findById(eventId) : null;
+
+    // Zone scoping check for Sub-Organisers
+    if (requesterRole === ROLES.SUB_ORGANISER && req.body.responsibilities?.zoneIds) {
+      // Logic for zone check remains same but we'll use 'event' if available for merging
+      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+      const requestedZoneIds = req.body.responsibilities.zoneIds.map(String);
+      const unauthorizedZones = requestedZoneIds.filter(id => !myZoneIds.includes(id));
+      
+      if (unauthorizedZones.length > 0) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `You cannot assign zones outside your own scope: ${unauthorizedZones.join(', ')}` 
+        });
+      }
+    }
+
+    user.name = req.body.name ?? user.name;
+    user.phone = req.body.phone ?? user.phone;
+    user.status = req.body.status ?? user.status;
+    user.permissions = {
+      ...(user.permissions || {}),
+      ...(req.body.permissions || {}),
+    };
+    user.assignedGates = canHaveCheckpoints && Array.isArray(req.body.assignedGates)
+      ? Array.from(new Set(req.body.assignedGates.map(String).filter(Boolean)))
+      : [];
+    user.assignedZones = canHaveCheckpoints && Array.isArray(req.body.assignedZones)
+      ? Array.from(new Set(req.body.assignedZones.map(String).filter(Boolean)))
+      : [];
+    user.customRole = req.body.customRole ?? user.customRole;
+    user.responsibilities = {
+      ...(user.responsibilities?.toObject ? user.responsibilities.toObject() : user.responsibilities || {}),
+      ...(req.body.responsibilities || {}),
+    };
+
+    if (event && req.body.responsibilities?.zoneIds) {
+      const currentEventZoneIds = (event.zones || []).map(z => String(z.id || z.name)).filter(Boolean);
+      const existingZonesFromOtherEvents = (user.responsibilities?.zoneIds || []).filter(zid => !currentEventZoneIds.includes(String(zid)));
+      const newZonesFromThisEvent = req.body.responsibilities.zoneIds || [];
+      user.responsibilities.zoneIds = Array.from(new Set([...existingZonesFromOtherEvents, ...newZonesFromThisEvent]));
+    }
+
+    if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
+      const nextAssignments = new Set((user.assignedEvents || []).map((item) => String(item)));
+      nextAssignments.add(String(eventId));
+      user.assignedEvents = Array.from(nextAssignments).map((item) => toObjectId(item));
+    }
+
+    await user.save();
+    res.json({ success: true, data: { user }, message: 'Sub-organiser updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/verification', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const page = clamp(req.query.page, 1, 9999, 1);
+    const limit = clamp(req.query.limit, 1, 50, 12);
+    const skip = (page - 1) * limit;
+
+    const filter = {
+      event: eventId,
+      isActive: true,
+      photoVerificationStatus: req.query.status || { $in: ['pending', 'Pending'] },
+    };
+
+    if (req.query.search) {
+      filter.$or = [
+        { fullName: { $regex: req.query.search, $options: 'i' } },
+        { email: { $regex: req.query.search, $options: 'i' } },
+      ];
+    }
+
+    const [attendees, total] = await Promise.all([
+      Attendee.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Attendee.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, data: { attendees, total, page, pages: Math.ceil(total / limit) || 1 } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/verification/:attendeeId', requireEventAccess, requirePermission('canVerifyPhotos'), async (req, res, next) => {
+  try {
+    const { status, reason = '' } = req.body;
+    if (!['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be verified or rejected.' });
+    }
+
+    const attendee = await Attendee.findById(req.params.attendeeId).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+
+    attendee.photoVerificationStatus = status;
+    attendee.photoVerifiedAt = new Date();
+    attendee.photoVerifiedBy = req.user._id;
+    attendee.photoRejectionReason = status === 'rejected' ? reason : null;
+    attendee.confirmationStatus = status === 'verified' ? 'confirmed' : attendee.confirmationStatus;
+    attendee.isConfirmed = status === 'verified' ? true : attendee.isConfirmed;
+
+    if (status === 'rejected') {
+      attendee.resubmitToken = attendee.resubmitToken || uuidv4();
+      attendee.resubmitCount = (attendee.resubmitCount || 0) + 1;
+    }
+
+    await attendee.save();
+
+    if (status === 'rejected') {
+      await notifyPhotoRejectionNotification({ attendee, event: attendee.event, reason });
+    } else {
+      await notifyStatusChange({
+        attendee,
+        event: attendee.event,
+        status: 'Photo approved',
+        message: 'Your attendee verification was approved.',
+      });
+    }
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: attendee.event._id,
+      title: status === 'verified' ? 'Photo approved' : 'Photo rejected',
+      message: status === 'verified' ? `${attendee.fullName} was approved.` : `${attendee.fullName} was rejected. Reason: ${reason || 'No reason provided.'}`,
+      type: status === 'verified' ? 'success' : 'warning',
+      metadata: { actionType: 'verification', attendeeId: String(attendee._id), outcome: status, channel: 'email_sms' },
+    });
+
+    res.json({ success: true, data: { attendee }, message: 'Verification updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/invites', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const tickets = await Ticket.find({ event: eventId })
+      .populate('attendee', 'fullName email phone confirmationStatus confirmationToken')
+      .sort({ inviteSentAt: -1, createdAt: -1 });
+
+    res.json({ success: true, data: { invites: tickets.map(mapInviteRow) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/invites/:ticketId/resend', requireEventAccess, requirePermission('canInviteAttendees'), async (req, res, next) => {
+  try {
+    const ticket = await Ticket.findById(req.params.ticketId).populate('attendee').populate('event');
+    if (!ticket || !ticket.attendee) {
+      return res.status(404).json({ success: false, message: 'Invite ticket not found.' });
+    }
+
+    if (!ticket.attendee.email) {
+      return res.status(400).json({ success: false, message: 'Attendee email is required to resend invite.' });
+    }
+
+    ticket.inviteStatus = 'PENDING';
+    ticket.inviteSentAt = new Date();
+    ticket.inviteExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    await ticket.save();
+
+    await notifyInvite({
+      attendee: ticket.attendee,
+      event: ticket.event,
+      email: ticket.attendee.email,
+      phone: ticket.attendee.phone,
+      notificationChannel: 'both',
+    });
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: ticket.event._id,
+      title: 'Invite resent',
+      message: `Invite resent to ${ticket.attendee.fullName}.`,
+      type: 'info',
+      metadata: { actionType: 'invite_resend', attendeeId: String(ticket.attendee._id), ticketId: String(ticket._id), channel: 'email_sms' },
+    });
+
+    res.json({ success: true, message: 'Invite resent.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/invites/:ticketId/cancel', requireEventAccess, requirePermission('canInviteAttendees'), async (req, res, next) => {
+  try {
+    const ticket = await Ticket.findById(req.params.ticketId).populate('attendee');
+    if (!ticket) return res.status(404).json({ success: false, message: 'Invite ticket not found.' });
+
+    ticket.inviteStatus = 'DECLINED';
+    ticket.inviteRespondedAt = new Date();
+    await ticket.save();
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: ticket.event,
+      title: 'Invite cancelled',
+      message: `Invite cancelled for ${ticket.attendee?.fullName || 'attendee'}.`,
+      type: 'warning',
+      metadata: { actionType: 'invite_cancel', ticketId: String(ticket._id) },
+    });
+
+    res.json({ success: true, message: 'Invite cancelled.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/event/:eventId/stats', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.eventId).lean();
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const [totalTickets, confirmedAttendees, checkedInCount, totalRevenue] = await Promise.all([
+      Ticket.countDocuments({ event: event._id }),
+      Attendee.countDocuments({ event: event._id, confirmationStatus: 'confirmed', isActive: true }),
+      EntryLog.countDocuments({ event: event._id, action: 'check_in', accessGranted: true }),
+      Ticket.aggregate([
+        { $match: { event: event._id, status: { $ne: 'CANCELLED' } } },
+        { $group: { _id: null, total: { $sum: '$price' } } },
+      ]),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalTickets,
+        totalAttendees: totalTickets,
+        confirmedAttendees,
+        checkedInCount,
+        totalRevenue: totalRevenue[0]?.total || 0,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/event/:eventId/entry-logs', requireEventAccess, async (req, res, next) => {
+  try {
+    const page = clamp(req.query.page, 1, 9999, 1);
+    const limit = clamp(req.query.limit, 1, 100, 20);
+    const skip = (page - 1) * limit;
+    const filter = { event: req.params.eventId };
+
+    if (req.query.gate) filter.gateName = req.query.gate;
+    if (req.query.status === 'allowed') filter.accessGranted = true;
+    if (req.query.status === 'denied') filter.accessGranted = false;
+    if (req.query.from || req.query.to) {
+      filter.timestamp = {};
+      if (req.query.from) filter.timestamp.$gte = new Date(req.query.from);
+      if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);
+    }
+
+    const [logs, total] = await Promise.all([
+      EntryLog.find(filter)
+        .populate('attendee', 'fullName categoryName')
+        .populate('processedBy', 'name')
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit),
+      EntryLog.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, data: { logs, total, page, pages: Math.ceil(total / limit) || 1 } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/event/:eventId/zones/report', requireEventAccess, async (req, res, next) => {
+  try {
+    const zoneLogs = await ZoneLog.find({ eventId: req.params.eventId })
+      .populate('attendeeId', 'fullName categoryName')
+      .populate('scannedBy', 'name')
+      .sort({ timestamp: -1 })
+      .limit(100);
+
+    const occupancy = await ZoneLog.aggregate([
+      { $match: { eventId: toObjectId(req.params.eventId), accessGranted: true } },
+      { $group: { _id: { zoneName: '$zoneName', action: '$action' }, count: { $sum: 1 } } },
+    ]);
+
+    const zoneMap = new Map();
+    occupancy.forEach((row) => {
+      const current = zoneMap.get(row._id.zoneName) || { zoneName: row._id.zoneName, entries: 0, exits: 0, occupancy: 0 };
+      if (row._id.action === 'ENTRY') current.entries = row.count;
+      if (row._id.action === 'EXIT') current.exits = row.count;
+      current.occupancy = Math.max(current.entries - current.exits, 0);
+      zoneMap.set(row._id.zoneName, current);
+    });
+
+    res.json({ success: true, data: { zoneOccupancy: Array.from(zoneMap.values()), logs: zoneLogs } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/zones', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+  try {
+    res.json({ success: true, data: { zones: req.scopedEvent.zones || [] } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/zones', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const zone = {
+      id: req.body.id || uuidv4(),
+      name: req.body.name,
+      description: req.body.description || '',
+      capacity: Number(req.body.capacity || 0),
+      color: req.body.color || '#0F766E',
+      assignedSubOrganiser: req.body.assignedSubOrganiser || undefined,
+      accessRules: {
+        allowedRoles: req.body.accessRules?.allowedRoles || [],
+        timeStart: req.body.accessRules?.timeStart || '',
+        timeEnd: req.body.accessRules?.timeEnd || '',
+        notes: req.body.accessRules?.notes || '',
+      },
+    };
+
+    event.zones.push(zone);
+    await event.save();
+    res.status(201).json({ success: true, data: { zone }, message: 'Zone created.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const zone = (event.zones || []).find((item) => item.id === req.params.zoneId);
+    if (!zone) return res.status(404).json({ success: false, message: 'Zone not found.' });
+
+    zone.name = req.body.name ?? zone.name;
+    zone.description = req.body.description ?? zone.description;
+    zone.capacity = req.body.capacity != null ? Number(req.body.capacity) : zone.capacity;
+    zone.color = req.body.color ?? zone.color;
+    zone.assignedSubOrganiser = req.body.assignedSubOrganiser ?? zone.assignedSubOrganiser;
+    zone.accessRules = {
+      ...(zone.accessRules?.toObject ? zone.accessRules.toObject() : zone.accessRules || {}),
+      ...(req.body.accessRules || {}),
+    };
+    await event.save();
+
+    res.json({ success: true, data: { zone }, message: 'Zone updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    event.zones = (event.zones || []).filter((item) => item.id !== req.params.zoneId);
+    event.categories = (event.categories || []).map((category) => ({
+      ...category.toObject(),
+      allowedZones: (category.allowedZones || []).filter((item) => item !== req.params.zoneId),
+    }));
+    await event.save();
+
+    res.json({ success: true, message: 'Zone deleted.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/zones/:zoneId/categories', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const { categoryIds = [] } = req.body;
+    event.categories.forEach((category) => {
+      const allowed = new Set(category.allowedZones || []);
+      if (categoryIds.includes(category.id)) allowed.add(req.params.zoneId);
+      else allowed.delete(req.params.zoneId);
+      category.allowedZones = Array.from(allowed);
+    });
+    await event.save();
+
+    res.json({ success: true, message: 'Zone assignments updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/notifications', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const notifications = await Notification.find({ 'metadata.eventId': String(eventId) })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({ success: true, data: { notifications } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/notifications/:id/resend', requireEventAccess, async (req, res, next) => {
+  try {
+    const notification = await Notification.findById(req.params.id);
+    if (!notification) return res.status(404).json({ success: false, message: 'Notification not found.' });
+
+    await Notification.create({
+      user: req.user._id,
+      title: `${notification.title} (resent)`,
+      message: notification.message,
+      type: notification.type,
+      metadata: {
+        ...(notification.metadata || {}),
+        resentFrom: String(notification._id),
+        resentAt: new Date().toISOString(),
+      },
+    });
+
+    res.json({ success: true, message: 'Notification re-queued.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/custom-roles', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const roles = await Role.find({ event: eventId }).sort({ createdAt: -1 });
+    res.json({ success: true, data: { roles } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/custom-roles', requireEventAccess, async (req, res, next) => {
+  try {
+    const eventId = resolveEventId(req);
+    const role = await Role.create({
+      name: req.body.name,
+      slug: slugify(req.body.name || req.body.slug),
+      description: req.body.description || '',
+      event: eventId,
+      permissions: {
+        canViewAttendees: !!req.body.permissions?.canViewAttendees,
+        canEditAttendees: !!req.body.permissions?.canEditAttendees,
+        canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
+        canScanEntry: !!req.body.permissions?.canScanEntry,
+        canManageZones: !!req.body.permissions?.canManageZones,
+        canInviteAttendees: !!req.body.permissions?.canInviteAttendees,
+        canBulkUpload: !!req.body.permissions?.canBulkUpload,
+      },
+      zoneIds: req.body.zoneIds || [],
+      createdBy: req.user._id,
+    });
+    res.status(201).json({ success: true, data: { role }, message: 'Custom role created.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
+  try {
+    const role = await Role.findById(req.params.id);
+    if (!role) return res.status(404).json({ success: false, message: 'Role not found.' });
+    role.name = req.body.name ?? role.name;
+    role.slug = req.body.slug ? slugify(req.body.slug) : role.slug;
+    role.description = req.body.description ?? role.description;
+    role.permissions = {
+      ...(role.permissions?.toObject ? role.permissions.toObject() : role.permissions || {}),
+      ...(req.body.permissions || {}),
+    };
+    role.zoneIds = req.body.zoneIds || role.zoneIds;
+    await role.save();
+    res.json({ success: true, data: { role }, message: 'Custom role updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/event-customization', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (req.body.basicInfo) {
+      event.name = req.body.basicInfo.name ?? event.name;
+      event.description = req.body.basicInfo.description ?? event.description;
+      event.eventType = req.body.basicInfo.eventType ?? event.eventType;
+      if (req.body.basicInfo.startDate) event.startDate = new Date(req.body.basicInfo.startDate);
+      if (req.body.basicInfo.endDate) event.endDate = new Date(req.body.basicInfo.endDate);
+      
+      if (req.body.basicInfo.venue) {
+        event.venue = {
+          ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
+          ...req.body.basicInfo.venue,
+        };
+        event.markModified('venue');
+      }
+    }
+
+    if (req.body.branding) {
+      const b = req.body.branding;
+      event.branding = {
+        ...(event.branding?.toObject ? event.branding.toObject() : event.branding || {}),
+        ...b,
+      };
+      
+      // Sync top-level fields for legacy/listing support
+      if (b.bannerImage !== undefined) {
+        event.bannerImage = b.bannerImage;
+        event.coverImage = b.bannerImage; 
+      }
+      if (b.logoImage !== undefined) {
+        event.logoImage = b.logoImage;
+      }
+      
+      event.markModified('branding');
+    }
+
+    if (Array.isArray(req.body.customFields)) {
+      event.customFields = req.body.customFields;
+    }
+
+    // Settings & Access Rules
+    const settings = event.settings?.toObject ? event.settings.toObject() : (event.settings || {});
+    
+    if (req.body.confirmationFlow) {
+      Object.assign(settings, req.body.confirmationFlow);
+    }
+    
+    if (req.body.accessRules) {
+      settings.accessRules = {
+        ...(settings.accessRules || {}),
+        ...req.body.accessRules
+      };
+    }
+    
+    event.settings = settings;
+    event.markModified('settings');
+    
+    await event.save();
+
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: event._id,
+      title: 'Event customization updated',
+      message: `${event.name} customization settings were updated.`,
+      type: 'success',
+      metadata: { actionType: 'event_customization_update' },
+    });
+
+    res.json({ success: true, data: { event }, message: 'Event customization updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/settings', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+  try {
+    res.json({ success: true, data: { event: req.scopedEvent, settings: req.scopedEvent.settings || {} } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/settings', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    event.name = req.body.name ?? event.name;
+    event.startDate = req.body.startDate ? new Date(req.body.startDate) : event.startDate;
+    event.endDate = req.body.endDate ? new Date(req.body.endDate) : event.endDate;
+    event.venue = {
+      ...(event.venue || {}),
+      ...(req.body.venue || {}),
+    };
+    const incomingSettings = req.body.settings || {};
+    if (incomingSettings.emailTemplates === undefined || incomingSettings.emailTemplates === null) {
+      delete incomingSettings.emailTemplates;
+    }
+    if (incomingSettings.smsTemplates === undefined || incomingSettings.smsTemplates === null) {
+      delete incomingSettings.smsTemplates;
+    }
+
+    event.settings = {
+      ...(event.settings || {}),
+      ...incomingSettings,
+    };
+    await event.save();
+
+    res.json({ success: true, data: { event, settings: event.settings }, message: 'Event settings updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/template', requireEventAccess, async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const rows = [
+      ['Full Name', 'National ID', 'Date of Birth (YYYY-MM-DD)', 'Email', 'Phone', 'Category ID'],
+      [],
+      ['Allowed Categories'],
+      ['Category ID', 'Category Name'],
+      ...(event.categories || []).map((item) => [item.id, item.name]),
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendees');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', `attachment; filename="attendees-template-${event._id}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/event/:eventId/export', requireEventAccess, async (req, res, next) => {
+  try {
+    const type = req.query.type || 'attendees';
+    const wb = XLSX.utils.book_new();
+
+    if (type === 'attendees') {
+      const attendees = await Attendee.find({ event: req.params.eventId, isActive: true }).lean();
+      const rows = [
+        ['Full Name', 'Email', 'Phone', 'Category', 'Confirmation Status', 'Photo Status'],
+        ...attendees.map((item) => [item.fullName, item.email, item.phone, item.categoryName, item.confirmationStatus, item.photoVerificationStatus]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Attendees');
+    } else if (type === 'tickets') {
+      const event = await Event.findById(req.params.eventId).lean();
+      const rows = [
+        ['Category Name', 'Price', 'Capacity', 'Sold', 'Allowed Zones'],
+        ...((event?.categories || []).map((item) => [item.name, item.price, item.capacity, item.sold || 0, (item.allowedZones || []).join(', ')])),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Tickets');
+    } else {
+      const logs = await EntryLog.find({ event: req.params.eventId }).populate('attendee', 'fullName').lean();
+      const rows = [
+        ['Timestamp', 'Attendee', 'Action', 'Gate', 'Zone', 'Status'],
+        ...logs.map((item) => [
+          item.timestamp ? new Date(item.timestamp).toISOString() : '',
+          item.attendee?.fullName || item.snapshot?.fullName || '-',
+          item.action,
+          item.gateName || item.gateId || '-',
+          item.zoneName || '-',
+          item.accessGranted ? 'Allowed' : 'Denied',
+        ]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Entry Logs');
+    }
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'csv' });
+    res.setHeader('Content-Disposition', `attachment; filename="${type}-${req.params.eventId}.csv"`);
+    res.setHeader('Content-Type', 'text/csv');
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

@@ -10,8 +10,9 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { protect, restrictTo, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyFinalTicket } = require('../services/notificationService');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, excelUpload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
+const { ROLES, normalizeRole } = require('../utils/rbac');
 
 const hasEventAccess = async (user, eventId) => {
   if (!eventId) return false;
@@ -107,12 +108,17 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
         // Send final confirmation notifications to all attendees
         const allAttendees = await Attendee.find({ order: attendee.order });
         const event = await Event.findById(attendee.event);
+        const order = await Order.findById(attendee.order);
         allAttendees.forEach(a => notifyFinalTicket({
           attendee: a,
           event,
           phone: a.phone,
           notificationChannel: 'both',
         }).catch(console.error));
+        if (order) {
+          const { notifyBuyerFinalSummary } = require('../services/notificationService');
+          notifyBuyerFinalSummary({ order, event, attendees: allAttendees }).catch(console.error);
+        }
       } else {
         await Order.findByIdAndUpdate(attendee.order, { confirmationStatus: 'partial' });
       }
@@ -217,6 +223,23 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
 
     const category = event.categories.find(c => c.id === categoryId);
+    if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
+
+    // Zone validation for Sub-Organisers (Overlap logic)
+    const role = normalizeRole(req.user.role);
+    if (role === ROLES.SUB_ORGANISER) {
+      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+      const categoryZones = (category.allowedZones || []).map(String);
+      
+      const hasOverlap = categoryZones.length === 0 || categoryZones.some(z => myZoneIds.includes(z));
+      if (!hasOverlap) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `This category does not grant access to any of your assigned zones.` 
+        });
+      }
+    }
+
     const allowedZones = category ? category.allowedZones : [];
 
     const attendee = await Attendee.create({
@@ -250,7 +273,7 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
 });
 
 // POST /api/attendees/bulk-upload - parse Excel file
-router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), upload.single('file'), async (req, res, next) => {
+router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), excelUpload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'Excel file required.' });
     const { eventId, categoryId } = req.body;
@@ -260,9 +283,25 @@ router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), upload.
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
-    const category = event.categories.find(c => c.id === categoryId);
+    const category = (event.categories || []).find(c => c.id === categoryId);
+    if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
 
-    const workbook = XLSX.readFile(req.file.path);
+    // Zone validation for Sub-Organisers (Overlap logic)
+    const role = normalizeRole(req.user.role);
+    if (role === ROLES.SUB_ORGANISER) {
+      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+      const categoryZones = (category.allowedZones || []).map(String);
+      
+      const hasOverlap = categoryZones.length === 0 || categoryZones.some(z => myZoneIds.includes(z));
+      if (!hasOverlap) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `This category does not grant access to any of your assigned zones.` 
+        });
+      }
+    }
+
+    const workbook = XLSX.read(req.file.buffer);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet);
 

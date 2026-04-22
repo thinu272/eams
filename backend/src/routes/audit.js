@@ -5,6 +5,7 @@ const EntryLog = require('../models/EntryLog');
 const Event = require('../models/Event');
 const ZoneLog = require('../models/ZoneLog');
 const { protect, restrictTo } = require('../middleware/auth');
+const { normalizeRole, ROLES } = require('../utils/rbac');
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const toObjectId = (value) => new mongoose.Types.ObjectId(value);
 
 const userHasEventAccess = async (user, eventId) => {
   if (!user || !eventId) return false;
-  if (user.role === 'main_admin') return true;
+  if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) return true;
 
   const assigned = (user.assignedEvents || []).map((item) => item.toString());
   if (assigned.includes(eventId.toString())) return true;

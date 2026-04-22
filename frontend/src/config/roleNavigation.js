@@ -11,95 +11,102 @@ import {
   ArrowLeftOnRectangleIcon,
   ArrowUpTrayIcon,
   CheckBadgeIcon,
+  SignalIcon,
 } from '@heroicons/react/24/solid';
 import { getCanonicalRole } from '../utils/rbac';
 
 export const ROLE_NAVIGATION = {
-  main_admin: {
+  MainAdmin: {
     sections: [
       {
-        title: 'Admin',
+        title: 'Super Admin',
         items: [
-          { to: '/admin/dashboard', label: 'Dashboard', icon: HomeIcon },
-          { to: '/admin/events', label: 'Events', icon: TicketIcon },
-          { to: '/admin/users', label: 'Users', icon: UsersIcon },
-          { to: '/admin/reports', label: 'Reports', icon: ChartBarIcon },
-        ],
-      },
-      {
-        title: 'Operations',
-        items: [
-          { to: '/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
-          { to: '/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
+          { to: '/admin/dashboard', label: 'Overview', icon: HomeIcon },
+          { to: '/admin/dashboard?section=events', label: 'Events', icon: TicketIcon },
+          { to: '/admin/dashboard?section=organisations', label: 'Organisations', icon: UserGroupIcon },
+          { to: '/admin/dashboard?section=users', label: 'Users', icon: UsersIcon },
+          { to: '/admin/dashboard?section=tickets', label: 'Tickets', icon: ClipboardDocumentListIcon },
+          { to: '/admin/dashboard?section=verification', label: 'Verification', icon: CheckBadgeIcon },
+          { to: '/admin/dashboard?section=entry-logs', label: 'Entry Logs', icon: ClipboardDocumentListIcon },
+          { to: '/admin/dashboard?section=zone-activity', label: 'Zone Activity', icon: ShieldCheckIcon },
+          { to: '/admin/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
+          { to: '/admin/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
+          { to: '/admin/dashboard?section=settings', label: 'System Settings', icon: ShieldCheckIcon },
+          { to: '/admin/dashboard?section=events', label: 'Create Event', icon: ArrowUpTrayIcon },
         ],
       },
     ],
   },
-  main_organiser: {
+  MainOrganiser: {
     sections: [
       {
         title: 'Event Control',
         items: [
-          { to: '/organiser/dashboard', label: 'Dashboard', icon: HomeIcon },
-          { to: '/organiser/events', label: 'Events', icon: TicketIcon },
-          { to: '/organiser/attendees', label: 'Attendees', icon: UserGroupIcon },
-          { to: '/organiser/team', label: 'My Team', icon: UsersIcon },
-          { to: '/organiser/reports', label: 'Reports', icon: ChartBarIcon },
-        ],
-      },
-      {
-        title: 'Operations',
-        items: [
-          { to: '/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
-          { to: '/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
-          { to: '/organiser/entry-logs', label: 'Entry Logs', icon: ClipboardDocumentListIcon },
+          { to: '/organiser/dashboard', label: 'Overview', icon: HomeIcon },
+          { to: '/organiser/dashboard?section=customization', label: 'Event Customization', icon: ArrowUpTrayIcon },
+          { to: '/organiser/dashboard?section=attendees', label: 'Attendees', icon: UserGroupIcon },
+          { to: '/organiser/dashboard?section=tickets', label: 'Tickets', icon: TicketIcon },
+          { to: '/organiser/dashboard?section=zones', label: 'Zones & Areas', icon: ShieldCheckIcon },
+          { to: '/organiser/dashboard?section=suborganisers', label: 'Team Management', icon: UsersIcon },
+          { to: '/organiser/dashboard?section=invites', label: 'Invites', icon: GlobeAltIcon },
+          { to: '/organiser/dashboard?section=verification', label: 'Verification', icon: CheckBadgeIcon },
+          { to: '/organiser/dashboard?section=logs', label: 'Entry Logs', icon: ClipboardDocumentListIcon },
+          { to: '/organiser/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
+          { to: '/organiser/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
+          { to: '/organiser/dashboard?section=settings', label: 'Settings', icon: ShieldCheckIcon },
         ],
       },
     ],
   },
-  sub_organiser: {
+  SubOrganiser: {
     sections: [
       {
         title: 'Worklist',
         items: [
-          { to: '/suborg/dashboard', label: 'Dashboard', icon: HomeIcon },
+          { to: '/suborg/dashboard', label: 'Overview', icon: HomeIcon },
+          { to: '/suborg/zones', label: 'My Zones', icon: ShieldCheckIcon },
+          { to: '/suborg/tickets', label: 'Tickets', icon: TicketIcon },
           { to: '/suborg/attendees', label: 'Attendees', icon: UserGroupIcon },
+          { to: '/suborg/team', label: 'Team Management', icon: UsersIcon },
+          { to: '/suborg/verification', label: 'Verification', icon: CheckBadgeIcon },
+        ],
+      },
+      {
+        title: 'Operations',
+        items: [
+          { to: '/suborg/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
+          { to: '/suborg/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
           { to: '/suborg/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
-          { to: '/suborg/verify', label: 'Photo Verify', icon: CheckBadgeIcon },
-        ],
-      },
-      {
-        title: 'Operations',
-        items: [
-          { to: '/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
+          { to: '/suborg/logs', label: 'Activity Logs', icon: ClipboardDocumentListIcon },
         ],
       },
     ],
   },
-  staff: {
+  Staff: {
+    sections: [
+      {
+        title: 'Operations',
+        items: [
+          { to: '/staff/scan', label: 'Scan Entry', icon: MagnifyingGlassIcon },
+          { to: '/staff/zone-access', label: 'Zone Access', icon: ShieldCheckIcon },
+          { to: '/staff/search', label: 'Manual Search', icon: UserGroupIcon },
+          { to: '/staff/activity', label: 'Activity Log', icon: ClipboardDocumentListIcon },
+        ],
+      },
+    ],
+  },
+  Volunteer: {
     sections: [
       {
         title: 'Operations',
         items: [
           { to: '/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
           { to: '/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
-          { to: '/entry/logs', label: 'Scan Logs', icon: ClipboardDocumentListIcon },
         ],
       },
     ],
   },
-  volunteer: {
-    sections: [
-      {
-        title: 'Operations',
-        items: [
-          { to: '/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
-          { to: '/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
-        ],
-      },
-    ],
-  },
-  auditor: {
+  Auditor: {
     sections: [
       {
         title: 'Audit',
@@ -114,30 +121,34 @@ export const ROLE_NAVIGATION = {
 };
 
 export const ROLE_LABELS = {
-  SUPER_ADMIN: 'Super Admin',
-  ORGANISER: 'Organiser',
-  SUB_ORGANISER: 'Sub Organiser',
-  STAFF: 'Staff',
-  AUDITOR: 'Auditor',
-  BUYER: 'Buyer',
+  MainAdmin: 'Super Admin',
+  MainOrganiser: 'Main Organiser',
+  SubOrganiser: 'Sub Organiser',
+  Staff: 'Staff',
+  Volunteer: 'Volunteer',
+  Auditor: 'Auditor',
+  Attendee: 'Buyer',
 };
 
 export const ROLE_COLORS = {
-  SUPER_ADMIN: 'bg-purple-100 text-purple-700',
-  ORGANISER: 'bg-blue-100 text-blue-700',
-  SUB_ORGANISER: 'bg-teal-100 text-teal-700',
-  STAFF: 'bg-orange-100 text-orange-700',
-  AUDITOR: 'bg-gray-100 text-gray-700',
-  BUYER: 'bg-slate-100 text-slate-700',
+  MainAdmin: 'bg-emerald-100 text-emerald-700',
+  MainOrganiser: 'bg-blue-100 text-blue-700',
+  SubOrganiser: 'bg-sky-100 text-sky-700',
+  Staff: 'bg-cyan-100 text-cyan-700',
+  Volunteer: 'bg-indigo-100 text-indigo-700',
+  Auditor: 'bg-amber-100 text-amber-700',
+  Attendee: 'bg-slate-100 text-slate-700',
 };
 
 export const PUBLIC_DASHBOARD_PATH = {
-  SUPER_ADMIN: '/admin/dashboard',
-  ORGANISER: '/organiser/dashboard',
-  SUB_ORGANISER: '/suborg/dashboard',
-  STAFF: '/entry',
-  AUDITOR: '/auditor/dashboard',
-  BUYER: '/dashboard',
+  MainAdmin: '/admin/dashboard',
+  MainOrganiser: '/organiser/dashboard',
+  SubOrganiser: '/suborg/dashboard',
+  Staff: '/staff/scan',
+  Volunteer: '/entry',
+  Auditor: '/auditor/dashboard',
+  // BUYER role normalizes to Attendee; send them to the mobile user portal
+  Attendee: '/buyer/home',
 };
 
 export const getRoleLabel = (role) => ROLE_LABELS[getCanonicalRole(role)] || getCanonicalRole(role);

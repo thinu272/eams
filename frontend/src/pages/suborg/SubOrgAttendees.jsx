@@ -1,218 +1,139 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getMyEvents } from '../../api/events';
-import {
-  createAttendee,
-  exportAttendees,
-  getAttendee,
-  getAttendees,
-  inviteAttendee,
-} from '../../api/attendees';
-import { useAuth } from '../../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import Badge from '../../components/ui/Badge';
-import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { Table, Td, Th, Tr } from '../../components/ui/Table';
+import AttendeeTable from '../../components/suborg/AttendeeTable';
+import { getSubAttendees, getSubZones, scanSubEntry } from '../../api/sub';
+import { createAttendee } from '../../api/attendees';
+import { useAuth } from '../../context/AuthContext';
+import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 
-const phoneRegex = /^\+947\d{8}$/;
-const pageSize = 10;
-
-const confirmationColors = {
-  confirmed: 'green',
-  invited: 'blue',
-  pending: 'yellow',
-  rejected: 'red',
-};
-
-const photoColors = {
-  verified: 'green',
-  pending: 'yellow',
-  rejected: 'red',
-};
-
-const buildAssetUrl = (photoPath) => {
-  if (!photoPath) return '';
-  if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
-  const base = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
-  return `${base}/${photoPath}`;
-};
-
-const defaultForm = {
-  fullName: '',
-  nationalId: '',
-  phone: '',
-  email: '',
-  categoryId: '',
-  notificationChannel: 'sms',
-};
+const emptyWorkspace = { event: null, attendees: [], total: 0, pages: 1 };
 
 const SubOrgAttendees = () => {
-  const { user } = useAuth();
-  const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
-  const [attendees, setAttendees] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const [searchParams] = useSearchParams();
+  const initialZone = searchParams.get('zone') || '';
+  const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [filters, setFilters] = useState({ search: '', category: '', status: '', verificationStatus: '', zone: initialZone });
+  const [workspace, setWorkspace] = useState(emptyWorkspace);
+  const [zones, setZones] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [addModal, setAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [selectedAttendee, setSelectedAttendee] = useState(null);
-  const [form, setForm] = useState(defaultForm);
+  const { user } = useAuth();
+  
+  const initialAttendee = { fullName: '', email: '', phone: '', categoryId: '', notificationChannel: 'email_sms' };
+  const [newAttendee, setNewAttendee] = useState(initialAttendee);
 
-  useEffect(() => {
-    getMyEvents().then((response) => {
-      const myEvents = response.data?.data?.events || [];
-      setEvents(myEvents);
-      if (myEvents.length > 0) {
-        setSelectedEvent(myEvents[0]._id);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    setPage(1);
-  }, [selectedEvent, statusFilter, categoryFilter, search]);
-
-  useEffect(() => {
-    if (!selectedEvent) return;
-
+  const load = async (eventId = currentEventId) => {
     setLoading(true);
-    getAttendees({
-      eventId: selectedEvent,
-      status: statusFilter || undefined,
-      categoryId: categoryFilter || undefined,
-      search: search || undefined,
-      page,
-      limit: pageSize,
-    })
-      .then((response) => {
-        setAttendees(response.data?.data?.attendees || []);
-        setTotal(response.data?.data?.total || 0);
-        setPages(response.data?.data?.pages || 1);
-      })
-      .finally(() => setLoading(false));
-  }, [selectedEvent, statusFilter, categoryFilter, search, page]);
-
-  const selectedEventData = useMemo(
-    () => events.find((event) => event._id === selectedEvent),
-    [events, selectedEvent]
-  );
-
-  const canInvite = user?.permissions?.canInviteAttendees !== false;
-  const canAdd = user?.permissions?.canAddAttendees !== false;
-
-  const statusCounts = useMemo(() => {
-    return attendees.reduce(
-      (accumulator, attendee) => {
-        accumulator[attendee.confirmationStatus] = (accumulator[attendee.confirmationStatus] || 0) + 1;
-        return accumulator;
-      },
-      { confirmed: 0, invited: 0, pending: 0, rejected: 0 }
-    );
-  }, [attendees]);
-
-  const resetForm = () => setForm(defaultForm);
-
-  const loadAttendeeDetails = async (id) => {
     try {
-      const response = await getAttendee(id);
-      setSelectedAttendee(response.data?.data?.attendee || null);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load attendee details');
+      const [attendeesRes, zonesRes] = await Promise.all([
+        getSubAttendees({ ...filters, eventId }),
+        getSubZones({ eventId }),
+      ]);
+      setWorkspace(attendeesRes.data?.data || emptyWorkspace);
+      setZones(zonesRes.data?.data?.zones || []);
+      setLoadError('');
+    } catch (error) {
+      const message = error.response?.data?.message || 'Unable to load attendees for this workspace.';
+      setLoadError(message);
+      setWorkspace(emptyWorkspace);
+      setZones([]);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleAddAttendee = async (event) => {
-    event.preventDefault();
+  useEffect(() => {
+    const handleEventSelect = (e) => {
+      const newId = e.detail;
+      setCurrentEventId(newId);
+      load(newId);
+    };
 
-    if (!selectedEvent) {
-      toast.error('Select an event first');
-      return;
+    window.addEventListener('eams:event-select', handleEventSelect);
+    return () => {
+      window.removeEventListener('eams:event-select', handleEventSelect);
+    };
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [filters.search, filters.category, filters.status, filters.verificationStatus, currentEventId]);
+
+  const zoneFilteredAttendees = useMemo(() => {
+    if (!filters.zone) return workspace.attendees || [];
+    return (workspace.attendees || []).filter((attendee) => (attendee.allowedZones || []).includes(filters.zone));
+  }, [filters.zone, workspace.attendees]);
+
+  const categoryOptions = useMemo(() => {
+    const map = new Map();
+    (workspace.attendees || []).forEach((attendee) => {
+      if (attendee.categoryId && !map.has(attendee.categoryId)) {
+        map.set(attendee.categoryId, attendee.categoryName || attendee.categoryId);
+      }
+    });
+    return Array.from(map.entries());
+  }, [workspace.attendees]);
+
+  const availableCategories = useMemo(() => {
+    if (!workspace.event?.categories) return [];
+    
+    // Sub-organisers can only see categories where they management at least one of the required zones
+    if (user?.role === 'SubOrganiser') {
+      const myZones = (user.responsibilities?.zoneIds || []).map(String);
+      return workspace.event.categories.filter(cat => {
+        const catZones = (cat.allowedZones || []).map(String);
+        // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
+        return catZones.length === 0 || catZones.some(z => myZones.includes(z));
+      });
     }
-    if (!form.categoryId) {
-      toast.error('Select a ticket category');
-      return;
-    }
-    if ((form.notificationChannel === 'sms' || form.notificationChannel === 'both') && !phoneRegex.test(form.phone.trim())) {
-      toast.error('Use Sri Lanka phone format: +947XXXXXXXX');
-      return;
-    }
-    if ((form.notificationChannel === 'email' || form.notificationChannel === 'both') && !form.email.trim()) {
-      toast.error('Email is required when sending email invites');
+    
+    return workspace.event.categories;
+  }, [workspace.event, user]);
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    if (!newAttendee.fullName || !newAttendee.categoryId) {
+      toast.error('Name and category are required');
       return;
     }
 
     setAdding(true);
     try {
       await createAttendee({
-        eventId: selectedEvent,
-        fullName: form.fullName.trim(),
-        nationalId: form.nationalId.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        categoryId: form.categoryId,
-        notificationChannel: form.notificationChannel,
+        ...newAttendee,
+        eventId: workspace.event?._id,
       });
-      toast.success('Attendee added successfully');
-      resetForm();
-      setShowAdd(false);
-      setPage(1);
-      const response = await getAttendees({ eventId: selectedEvent, page: 1, limit: pageSize });
-      setAttendees(response.data?.data?.attendees || []);
-      setTotal(response.data?.data?.total || 0);
-      setPages(response.data?.data?.pages || 1);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to add attendee');
+      toast.success('Attendee created successfully');
+      setAddModal(false);
+      setNewAttendee(initialAttendee);
+      load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to create attendee');
     } finally {
       setAdding(false);
     }
   };
 
-  const handleInvite = async (id) => {
-    try {
-      await inviteAttendee(id, { notificationChannel: 'both' });
-      toast.success('Confirmation invite sent');
-      setAttendees((current) =>
-        current.map((attendee) =>
-          attendee._id === id ? { ...attendee, confirmationStatus: 'invited' } : attendee
-        )
-      );
-      if (selectedAttendee?._id === id) {
-        setSelectedAttendee((current) => (current ? { ...current, confirmationStatus: 'invited' } : current));
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to send invite');
+  const handleMarkAttendance = async (attendee) => {
+    const matchedZone = zones.find((zone) => (attendee.allowedZones || []).includes(zone.id) || (attendee.allowedZones || []).includes(zone.name));
+    if (!matchedZone) {
+      toast.error('This attendee does not match one of your assigned zones.');
+      return;
     }
-  };
 
-  const handleExport = async () => {
-    if (!selectedEvent) return;
-    setExporting(true);
     try {
-      const response = await exportAttendees({
-        eventId: selectedEvent,
-        status: statusFilter || undefined,
-        categoryId: categoryFilter || undefined,
-        search: search || undefined,
-      });
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `sub-organiser-attendees-${selectedEvent}.csv`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      toast.success('Attendee list exported');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Export failed');
-    } finally {
-      setExporting(false);
+      await scanSubEntry({ qrToken: attendee.qrToken, zoneId: matchedZone.id || matchedZone.name });
+      toast.success('Attendance marked.');
+      await load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Unable to mark attendance.');
     }
   };
 
@@ -221,322 +142,167 @@ const SubOrgAttendees = () => {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Attendee Desk</h1>
-            <p className="text-sm text-gray-500">Add attendees, resend invites, search records, and review attendee details for your assigned event.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Attendees</p>
+            <h1 className="mt-2 text-3xl font-bold text-slate-900">{workspace.event?.name || 'Assigned event'}</h1>
+            <p className="mt-2 text-sm text-slate-500">Search and manage attendees only inside your assigned zones.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button variant="outline" onClick={handleExport} loading={exporting}>
-              Export CSV
+          <div className="flex items-center gap-3">
+            <Button onClick={() => setAddModal(true)}>
+              Add Attendee
             </Button>
-            {canAdd && <Button onClick={() => setShowAdd(true)}>Add Attendee</Button>}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Current results</p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{total}</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Confirmed</p>
-            <p className="mt-2 text-3xl font-bold text-green-600">{statusCounts.confirmed || 0}</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Invited</p>
-            <p className="mt-2 text-3xl font-bold text-blue-600">{statusCounts.invited || 0}</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Needs photo review</p>
-            <p className="mt-2 text-3xl font-bold text-amber-600">{attendees.filter((attendee) => attendee.photoVerificationStatus === 'pending' && attendee.photo).length}</p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <select
-              value={selectedEvent}
-              onChange={(event) => setSelectedEvent(event.target.value)}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-            >
-              {events.map((event) => (
-                <option key={event._id} value={event._id}>
-                  {event.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="invited">Invited</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">All categories</option>
-              {(selectedEventData?.categories || []).map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name, email, or NIC"
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm xl:col-span-2"
-            />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Attendee List</h2>
-              <p className="text-sm text-gray-500">Use status indicators to spot pending invites and unresolved photo checks fast.</p>
-            </div>
-            {loading && <p className="text-xs text-gray-400">Refreshing...</p>}
-          </div>
-
-          <Table>
-            <thead>
-              <tr>
-                <Th>Name</Th>
-                <Th>NIC</Th>
-                <Th>Phone</Th>
-                <Th>Category</Th>
-                <Th>Status</Th>
-                <Th>Photo</Th>
-                <Th>Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {attendees.map((attendee) => (
-                <Tr key={attendee._id}>
-                  <Td>
-                    <div>
-                      <p className="font-medium text-gray-900">{attendee.fullName || '-'}</p>
-                      <p className="text-xs text-gray-500">{attendee.email || 'No email provided'}</p>
-                    </div>
-                  </Td>
-                  <Td>{attendee.nationalId || '-'}</Td>
-                  <Td>{attendee.phone || '-'}</Td>
-                  <Td>{attendee.categoryName || '-'}</Td>
-                  <Td>
-                    <Badge color={confirmationColors[attendee.confirmationStatus] || 'gray'}>
-                      {attendee.confirmationStatus}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    {attendee.photo ? (
-                      <Badge color={photoColors[attendee.photoVerificationStatus] || 'gray'}>
-                        {attendee.photoVerificationStatus}
-                      </Badge>
-                    ) : (
-                      <Badge color="gray">no photo</Badge>
-                    )}
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap gap-3 text-xs">
-                      <button onClick={() => loadAttendeeDetails(attendee._id)} className="font-medium text-gray-700 hover:underline">
-                        View
-                      </button>
-                      {canInvite && ['pending', 'invited'].includes(attendee.confirmationStatus) && (
-                        <button onClick={() => handleInvite(attendee._id)} className="font-medium text-blue-600 hover:underline">
-                          Resend Invite
-                        </button>
-                      )}
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
-              {!loading && attendees.length === 0 && (
-                <tr>
-                  <td colSpan="7" className="px-4 py-10 text-center text-sm text-gray-500">
-                    No attendees match the current filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs text-gray-500">Page {page} of {pages}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>
-                Previous
-              </Button>
-              <Button variant="outline" disabled={page >= pages} onClick={() => setPage((current) => Math.min(current + 1, pages))}>
-                Next
-              </Button>
+            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+              Showing {zoneFilteredAttendees.length} of {workspace.total || 0} attendees in scope
             </div>
           </div>
         </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Search name, email, phone" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900" />
+          <select value={filters.zone} onChange={(event) => setFilters((current) => ({ ...current, zone: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <option value="">All assigned zones</option>
+            {zones.map((zone) => <option key={zone.id || zone.name} value={zone.id || zone.name}>{zone.name}</option>)}
+          </select>
+          <select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <option value="">All categories</option>
+            {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <option value="">All statuses</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="pending">Pending</option>
+            <option value="invited">Invited</option>
+            <option value="checked-in">Checked in</option>
+            <option value="not-checked-in">Not checked in</option>
+          </select>
+          <select value={filters.verificationStatus} onChange={(event) => setFilters((current) => ({ ...current, verificationStatus: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <option value="">All verification</option>
+            <option value="pending">Pending</option>
+            <option value="verified">Verified</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+
+        <AttendeeTable attendees={zoneFilteredAttendees} loading={loading} onView={setSelected} onMarkAttendance={handleMarkAttendance} canEdit={false} />
+        {loadError && (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            {loadError}
+          </div>
+        )}
       </div>
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Attendee" size="lg">
-        <form onSubmit={handleAddAttendee} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Modal open={addModal} onClose={() => setAddModal(false)} title="Add manual attendee">
+        <form onSubmit={handleAddSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Full Name *</label>
+            <input
+              required
+              value={newAttendee.fullName}
+              onChange={(e) => setNewAttendee({ ...newAttendee, fullName: e.target.value })}
+              className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
+              placeholder="Attendee full name"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Name *</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
               <input
-                required
-                value={form.fullName}
-                onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Attendee name"
+                type="email"
+                value={newAttendee.email}
+                onChange={(e) => setNewAttendee({ ...newAttendee, email: e.target.value })}
+                className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
+                placeholder="email@example.com"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">NIC</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
               <input
-                value={form.nationalId}
-                onChange={(event) => setForm((current) => ({ ...current, nationalId: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                placeholder="National identity card number"
+                value={newAttendee.phone}
+                onChange={(e) => setNewAttendee({ ...newAttendee, phone: e.target.value })}
+                className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
+                placeholder="+234..."
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
-              <input
-                value={form.phone}
-                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                placeholder="+947XXXXXXXX"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-              <input
-                value={form.email}
-                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Optional unless sending email invite"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Category *</label>
-              <select
-                required
-                value={form.categoryId}
-                onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select category</option>
-                {(selectedEventData?.categories || []).map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Send invite via</label>
-              <select
-                value={form.notificationChannel}
-                onChange={(event) => setForm((current) => ({ ...current, notificationChannel: event.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="sms">SMS</option>
-                <option value="email">Email</option>
-                <option value="both">Email + SMS</option>
-                <option value="none">Do not send now</option>
-              </select>
             </div>
           </div>
-
-          <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
-            Attendees added here are protected by sub-organiser permissions. Only users with the allowed attendee permissions will see and use this section.
-          </div>
-
-          <div className="flex gap-3">
-            <Button type="submit" loading={adding}>Save Attendee</Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                resetForm();
-                setShowAdd(false);
-              }}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
+            <select
+              required
+              value={newAttendee.categoryId}
+              onChange={(e) => setNewAttendee({ ...newAttendee, categoryId: e.target.value })}
+              className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
             >
-              Cancel
+              <option value="">Select a category</option>
+              {availableCategories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            {user?.role === 'SubOrganiser' && availableCategories.length === 0 && (
+              <p className="mt-1 text-[10px] text-red-500 italic">No categories available for your zones.</p>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Notification</label>
+            <select
+              value={newAttendee.notificationChannel}
+              onChange={(e) => setNewAttendee({ ...newAttendee, notificationChannel: e.target.value })}
+              className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
+            >
+              <option value="none">No notification (Pending)</option>
+              <option value="email_sms">Send Invite (Email + SMS)</option>
+              <option value="email">Email Only</option>
+              <option value="sms">SMS Only</option>
+            </select>
+          </div>
+          <div className="pt-4">
+            <Button type="submit" className="w-full" loading={adding}>
+              Create Attendee
             </Button>
           </div>
         </form>
       </Modal>
 
-      <Modal open={!!selectedAttendee} onClose={() => setSelectedAttendee(null)} title="Attendee Details" size="lg">
-        {selectedAttendee && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Attendee details">
+        {selected && (
+          <div className="space-y-4 text-sm text-slate-600">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+              {selected.photo ? (
+                <img
+                  src={selected.photo.startsWith('http') ? selected.photo : `${process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:5000'}${selected.photo.startsWith('/') ? selected.photo : `/${selected.photo}`}`}
+                  alt={selected.fullName || 'Attendee'}
+                  className="h-72 w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-48 items-center justify-center text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  No verification photo uploaded
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Name</p>
+              <p className="mt-1 text-base font-semibold text-slate-900">{selected.fullName || '-'}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-500">Name</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.fullName || '-'}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Category</p>
+                <p className="mt-1">{selected.categoryName || '-'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Category</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.categoryName || '-'}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Confirmation</p>
+                <p className="mt-1">{selected.confirmationStatus || '-'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">NIC</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.nationalId || '-'}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Email</p>
+                <p className="mt-1">{selected.email || '-'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Phone</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.phone || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.email || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Invite status</p>
-                <Badge color={confirmationColors[selectedAttendee.confirmationStatus] || 'gray'}>
-                  {selectedAttendee.confirmationStatus}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Photo status</p>
-                {selectedAttendee.photo ? (
-                  <Badge color={photoColors[selectedAttendee.photoVerificationStatus] || 'gray'}>
-                    {selectedAttendee.photoVerificationStatus}
-                  </Badge>
-                ) : (
-                  <Badge color="gray">no photo</Badge>
-                )}
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Phone</p>
+                <p className="mt-1">{selected.phone || '-'}</p>
               </div>
             </div>
-
-            {selectedAttendee.photo && (
-              <div>
-                <p className="mb-2 text-sm text-gray-500">Uploaded photo</p>
-                <img
-                  src={buildAssetUrl(selectedAttendee.photo)}
-                  alt={selectedAttendee.fullName || 'Attendee'}
-                  className="h-56 w-56 rounded-2xl border border-gray-200 object-cover"
-                />
-              </div>
-            )}
-
             <div>
-              <p className="mb-2 text-sm text-gray-500">Zone access</p>
-              <div className="flex flex-wrap gap-2">
-                {(selectedAttendee.allowedZones || []).length > 0 ? (
-                  selectedAttendee.allowedZones.map((zone) => (
-                    <span key={zone} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                      {zone}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-gray-500">No zones assigned</span>
-                )}
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Allowed zones</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(selected.allowedZones || []).map((zone) => <span key={zone} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{zone}</span>)}
               </div>
             </div>
           </div>

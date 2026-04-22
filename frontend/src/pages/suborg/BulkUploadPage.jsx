@@ -4,32 +4,71 @@ import { bulkUpload, downloadTemplate } from '../../api/attendees';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 const BulkUploadPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState(localStorage.getItem('lastSelectedEventId') || '');
   const [categoryId, setCategoryId] = useState('');
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     getMyEvents().then((response) => {
       const myEvents = response.data?.data?.events || [];
       setEvents(myEvents);
-      if (myEvents.length > 0) {
+      
+      const lastId = localStorage.getItem('lastSelectedEventId');
+      if (lastId && myEvents.some(e => e._id === lastId)) {
+        setSelectedEvent(lastId);
+        const selected = myEvents.find(e => e._id === lastId);
+        setCategoryId(selected?.categories?.[0]?.id || '');
+      } else if (myEvents.length > 0) {
         setSelectedEvent(myEvents[0]._id);
         if (myEvents[0].categories?.length) {
           setCategoryId(myEvents[0].categories[0].id);
         }
       }
     });
+
+    const handleEventSelect = (e) => {
+      const newId = e.detail;
+      setSelectedEvent(newId);
+      // Auto-set category for first available in new event
+      getMyEvents().then(res => {
+        const matching = (res.data?.data?.events || []).find(ev => ev._id === newId);
+        if (matching?.categories?.length) {
+          setCategoryId(matching.categories[0].id);
+        }
+      });
+    };
+
+    window.addEventListener('eams:event-select', handleEventSelect);
+    return () => window.removeEventListener('eams:event-select', handleEventSelect);
   }, []);
 
   const selectedEventData = useMemo(
     () => events.find((event) => event._id === selectedEvent),
     [events, selectedEvent]
   );
+
+  const availableCategories = useMemo(() => {
+    if (!selectedEventData || !selectedEventData.categories) return [];
+    
+    // Sub-organisers can only see categories where they management at least one of the required zones
+    if (user?.role === 'SubOrganiser') {
+      const myZones = (user.responsibilities?.zoneIds || []).map(String);
+      return selectedEventData.categories.filter(cat => {
+        const catZones = (cat.allowedZones || []).map(String);
+        // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
+        return catZones.length === 0 || catZones.some(z => myZones.includes(z));
+      });
+    }
+    
+    return selectedEventData.categories;
+  }, [selectedEventData, user]);
 
   const handleDownload = async () => {
     try {
@@ -101,7 +140,7 @@ const BulkUploadPage = () => {
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Step 2</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Step 2</p>
             <h2 className="mt-2 text-lg font-semibold text-gray-900">Upload completed sheet</h2>
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -113,7 +152,17 @@ const BulkUploadPage = () => {
                     const value = event.target.value;
                     setSelectedEvent(value);
                     const selected = events.find((item) => item._id === value);
-                    setCategoryId(selected?.categories?.[0]?.id || '');
+                    // Find first available category instead of first absolute category
+                    if (selected?.categories) {
+                      const myZones = (user?.responsibilities?.zoneIds || []).map(String);
+                      const available = selected.categories.filter(cat => {
+                        const catZones = (cat.allowedZones || []).map(String);
+                        return catZones.length === 0 || catZones.some(z => myZones.includes(z));
+                      });
+                      setCategoryId(available?.[0]?.id || '');
+                    } else {
+                      setCategoryId('');
+                    }
                   }}
                   className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
                 >
@@ -132,12 +181,16 @@ const BulkUploadPage = () => {
                   onChange={(event) => setCategoryId(event.target.value)}
                   className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
                 >
-                  {(selectedEventData?.categories || []).map((category) => (
+                  <option value="">Select a category</option>
+                  {availableCategories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
                   ))}
                 </select>
+                {user?.role === 'SubOrganiser' && availableCategories.length === 0 && selectedEvent && (
+                  <p className="mt-1 text-[10px] text-red-500 italic">No categories available for your assigned zones.</p>
+                )}
               </div>
             </div>
 
@@ -174,9 +227,9 @@ const BulkUploadPage = () => {
                 <p className="text-sm text-gray-500">Review what was created and which rows still need attention.</p>
               </div>
               <div className="flex gap-3">
-                <div className="rounded-xl bg-green-50 px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-green-600">{result.created || 0}</p>
-                  <p className="text-xs text-green-700">Created</p>
+                <div className="rounded-xl bg-blue-50 px-4 py-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{result.created || 0}</p>
+                  <p className="text-xs text-blue-700">Created</p>
                 </div>
                 <div className="rounded-xl bg-red-50 px-4 py-3 text-center">
                   <p className="text-2xl font-bold text-red-600">{result.errors?.length || 0}</p>
@@ -199,7 +252,7 @@ const BulkUploadPage = () => {
                 ))}
               </div>
             ) : (
-              <div className="mt-5 rounded-xl bg-green-50 p-4 text-sm text-green-800">
+              <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">
                 No row-level errors were reported. Your attendee list was imported cleanly.
               </div>
             )}

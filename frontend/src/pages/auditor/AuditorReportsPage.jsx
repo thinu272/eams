@@ -3,13 +3,14 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getMyEvents } from '../../api/events';
 import { exportAuditReport, getAuditReports } from '../../api/audit';
 import Button from '../../components/ui/Button';
+import Card from '../../components/ui/Card';
 import Stat from '../../components/ui/Stat';
 import { Table, Td, Th, Tr } from '../../components/ui/Table';
 import toast from 'react-hot-toast';
 
 const AuditorReportsPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
+  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [zone, setZone] = useState('');
@@ -27,17 +28,31 @@ const AuditorReportsPage = () => {
 
   useEffect(() => {
     getMyEvents().then((response) => {
-      const myEvents = response.data?.data?.events || [];
-      setEvents(myEvents);
-      if (myEvents.length > 0) setSelectedEvent(myEvents[0]._id);
+      const nextEvents = response.data?.data?.events || [];
+      setEvents(nextEvents);
+      const fallbackEventId = selectedEventId || nextEvents[0]?._id || '';
+      if (fallbackEventId) {
+        setSelectedEventId(fallbackEventId);
+        localStorage.setItem('lastSelectedEventId', fallbackEventId);
+      }
     });
   }, []);
 
   useEffect(() => {
-    if (!selectedEvent) return;
+    const handleEventSelect = (event) => {
+      const nextId = event.detail || '';
+      setSelectedEventId(nextId);
+    };
+
+    window.addEventListener('eams:event-select', handleEventSelect);
+    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
     setLoading(true);
     getAuditReports({
-      eventId: selectedEvent,
+      eventId: selectedEventId,
       from: from || undefined,
       to: to || undefined,
       zone: zone || undefined,
@@ -49,19 +64,25 @@ const AuditorReportsPage = () => {
         setZoneMovementReport(response.data?.data?.zoneMovementReport || []);
       })
       .finally(() => setLoading(false));
-  }, [selectedEvent, from, to, zone, categoryId]);
+  }, [selectedEventId, from, to, zone, categoryId]);
 
-  const selectedEventData = useMemo(
-    () => events.find((event) => event._id === selectedEvent),
-    [events, selectedEvent]
+  const handleEventChange = (nextId) => {
+    setSelectedEventId(nextId);
+    localStorage.setItem('lastSelectedEventId', nextId);
+    window.dispatchEvent(new CustomEvent('eams:event-select', { detail: nextId }));
+  };
+
+  const selectedEvent = useMemo(
+    () => events.find((event) => event._id === selectedEventId),
+    [events, selectedEventId],
   );
 
   const handleExport = async (report) => {
-    if (!selectedEvent) return;
+    if (!selectedEventId) return;
     setExporting(report);
     try {
       const response = await exportAuditReport({
-        eventId: selectedEvent,
+        eventId: selectedEventId,
         report,
         from: from || undefined,
         to: to || undefined,
@@ -86,37 +107,42 @@ const AuditorReportsPage = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Audit Reports</h1>
-            <p className="text-sm text-gray-500">Read-only attendance and zone movement reports with event-level filters.</p>
+        <section className="rounded-[32px] bg-gradient-to-br from-amber-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">Audit Workspace</p>
+              <h1 className="mt-3 text-4xl font-black tracking-tight">Audit Reports</h1>
+              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
+                Read-only attendance and zone movement reporting for the currently selected event. Filters stay aligned with the shared dashboard selection.
+              </p>
+            </div>
+            {loading && <p className="text-sm font-semibold text-slate-300">Refreshing reports...</p>}
           </div>
-          {loading && <p className="text-sm text-gray-400">Refreshing reports...</p>}
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <Card className="rounded-[28px] border-slate-200 bg-white">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <select value={selectedEvent} onChange={(event) => setSelectedEvent(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm">
+            <select value={selectedEventId} onChange={(event) => handleEventChange(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
               {events.map((event) => (
                 <option key={event._id} value={event._id}>{event.name}</option>
               ))}
             </select>
-            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-            <select value={zone} onChange={(event) => setZone(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm">
+            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
+            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
+            <select value={zone} onChange={(event) => setZone(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
               <option value="">All zones</option>
-              {(selectedEventData?.zones || []).map((item) => (
+              {(selectedEvent?.zones || []).map((item) => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </select>
-            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm">
+            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
               <option value="">All categories</option>
-              {(selectedEventData?.categories || []).map((item) => (
+              {(selectedEvent?.categories || []).map((item) => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </select>
           </div>
-        </div>
+        </Card>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Stat label="Total Attendees" value={summary.totalAttendees || 0} color="blue" />
@@ -126,11 +152,11 @@ const AuditorReportsPage = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
+          <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Attendance Report</h2>
-                <p className="text-sm text-gray-500">Category-level attendance and check-in counts.</p>
+                <h2 className="text-xl font-black text-slate-900">Attendance Report</h2>
+                <p className="mt-1 text-sm text-slate-500">Category-level attendance and check-in counts.</p>
               </div>
               <Button variant="outline" onClick={() => handleExport('attendance')} loading={exporting === 'attendance'}>
                 Export CSV
@@ -157,18 +183,18 @@ const AuditorReportsPage = () => {
                 ))}
                 {!loading && attendanceReport.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No attendance rows match the current filters.</td>
+                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">No attendance rows match the current filters.</td>
                   </tr>
                 )}
               </tbody>
             </Table>
-          </div>
+          </Card>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
+          <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Zone Movement Report</h2>
-                <p className="text-sm text-gray-500">Entries, exits, and net movement by zone.</p>
+                <h2 className="text-xl font-black text-slate-900">Zone Movement Report</h2>
+                <p className="mt-1 text-sm text-slate-500">Entries, exits, and net movement by zone.</p>
               </div>
               <Button variant="outline" onClick={() => handleExport('zone_movement')} loading={exporting === 'zone_movement'}>
                 Export CSV
@@ -195,12 +221,12 @@ const AuditorReportsPage = () => {
                 ))}
                 {!loading && zoneMovementReport.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No zone movement rows match the current filters.</td>
+                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">No zone movement rows match the current filters.</td>
                   </tr>
                 )}
               </tbody>
             </Table>
-          </div>
+          </Card>
         </div>
       </div>
     </DashboardLayout>

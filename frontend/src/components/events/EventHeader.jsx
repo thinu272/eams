@@ -2,6 +2,7 @@ import React from 'react';
 import { format } from 'date-fns';
 
 const EventHeader = ({ event }) => {
+  const eventImage = event.coverImage || event.bannerImage || event.branding?.bannerImage || '/placeholder-event.jpg';
   const formatDate = (date) => {
     return format(new Date(date), 'EEEE, MMMM d, yyyy \'at\' h:mm a');
   };
@@ -9,7 +10,7 @@ const EventHeader = ({ event }) => {
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
       <img
-        src={event.coverImage || '/placeholder-event.jpg'}
+        src={eventImage}
         alt={event.name}
         className="w-full h-64 object-cover"
       />

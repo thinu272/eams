@@ -1,51 +1,56 @@
-export const ROLE_ALIASES = {
-  SUPER_ADMIN: ['main_admin', 'super_admin'],
-  ADMIN: ['main_admin', 'super_admin'],
-  MAIN_ADMIN: ['main_admin', 'super_admin'],
-  ORGANISER: ['main_organiser'],
-  MAIN_ORGANISER: ['main_organiser'],
-  SUB_ORGANISER: ['sub_organiser'],
-  STAFF: ['staff', 'volunteer'],
-  VOLUNTEER: ['volunteer'],
-  AUDITOR: ['auditor'],
+export const ROLES = {
+  MAIN_ADMIN: 'MainAdmin',
+  MAIN_ORGANISER: 'MainOrganiser',
+  SUB_ORGANISER: 'SubOrganiser',
+  STAFF: 'Staff',
+  VOLUNTEER: 'Volunteer',
+  AUDITOR: 'Auditor',
+  ATTENDEE: 'Attendee',
 };
 
-const normalizeRoleName = (role) => String(role || '').trim();
+const ROLE_LEVELS = {
+  [ROLES.MAIN_ADMIN]: 100,
+  [ROLES.MAIN_ORGANISER]: 80,
+  [ROLES.SUB_ORGANISER]: 60,
+  [ROLES.STAFF]: 40,
+  [ROLES.VOLUNTEER]: 20,
+  [ROLES.AUDITOR]: 10,
+  [ROLES.ATTENDEE]: 1,
+};
 
-export const expandRoles = (roles = []) => {
-  const values = Array.isArray(roles) ? roles : [roles];
-  const expanded = new Set();
+export const normalizeRole = (role) => {
+  if (!role) return ROLES.ATTENDEE;
+  const r = String(role).trim();
+  
+  const mapping = {
+    'mainadmin': ROLES.MAIN_ADMIN,
+    'super_admin': ROLES.MAIN_ADMIN,
+    'main_admin': ROLES.MAIN_ADMIN,
+    'mainorganiser': ROLES.MAIN_ORGANISER,
+    'main_organiser': ROLES.MAIN_ORGANISER,
+    'suborganiser': ROLES.SUB_ORGANISER,
+    'sub_organiser': ROLES.SUB_ORGANISER,
+    'staff': ROLES.STAFF,
+    'volunteer': ROLES.VOLUNTEER,
+    'auditor': ROLES.AUDITOR,
+    'attendee': ROLES.ATTENDEE,
+    'user': ROLES.ATTENDEE,
+    'buyer': ROLES.ATTENDEE,
+  };
 
-  values.forEach((role) => {
-    const normalized = normalizeRoleName(role);
-    if (!normalized) return;
+  return mapping[r.toLowerCase()] || r;
+};
 
-    const upper = normalized.toUpperCase();
-    if (ROLE_ALIASES[upper]) {
-      ROLE_ALIASES[upper].forEach((mappedRole) => expanded.add(mappedRole));
-      return;
-    }
-
-    expanded.add(normalized.toLowerCase());
-  });
-
-  return Array.from(expanded);
+export const hasRolePower = (userRole, requiredRole) => {
+  const userRoleNorm = normalizeRole(userRole);
+  const reqRoleNorm = normalizeRole(requiredRole);
+  return (ROLE_LEVELS[userRoleNorm] || 0) >= (ROLE_LEVELS[reqRoleNorm] || 0);
 };
 
 export const hasAnyRole = (userRole, allowedRoles = []) => {
-  const expanded = expandRoles(allowedRoles);
-  return expanded.includes(normalizeRoleName(userRole).toLowerCase());
+  const userRoleNorm = normalizeRole(userRole);
+  const allowed = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+  return allowed.map(normalizeRole).some(role => hasRolePower(userRoleNorm, role));
 };
 
-export const getCanonicalRole = (userRole) => {
-  const normalized = normalizeRoleName(userRole).toLowerCase();
-
-  if (normalized === 'main_admin') return 'SUPER_ADMIN';
-  if (normalized === 'main_organiser') return 'ORGANISER';
-  if (normalized === 'sub_organiser') return 'SUB_ORGANISER';
-  if (normalized === 'staff' || normalized === 'volunteer') return 'STAFF';
-  if (normalized === 'auditor') return 'AUDITOR';
-  if (normalized === 'buyer') return 'BUYER';
-
-  return normalized.toUpperCase();
-};
+export const getCanonicalRole = (userRole) => normalizeRole(userRole);

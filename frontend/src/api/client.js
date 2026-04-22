@@ -1,8 +1,12 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+const apiBase =
+  process.env.REACT_APP_API_URL ||
+  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api');
+
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api',
+  baseURL: apiBase,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
@@ -34,7 +38,23 @@ api.interceptors.response.use(
   },
   (error) => {
     const status = error.response?.status;
+    if (!error.response) {
+      toast.error('Backend not reachable. Please start the server.');
+      return Promise.resolve({ data: { success: false, data: {}, message: 'Network error' } });
+    }
     if (status === 401) {
+      if (error.config?.skipAuthRedirect) {
+        return Promise.reject(error);
+      }
+
+      // Don't redirect or clear storage if we're actually on the login page/attempting login
+      if (error.config.url.includes('/auth/login')) {
+         return Promise.reject(error);
+      }
+      if (error.config.url.includes('/auth/me')) {
+        return Promise.reject(error);
+      }
+
       localStorage.removeItem('eams_token');
       localStorage.removeItem('eams_user');
       toast.error('Session expired. Please log in again.');

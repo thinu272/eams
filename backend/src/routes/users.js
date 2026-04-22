@@ -2,224 +2,170 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
-const Event = require('../models/Event');
 const { protect, restrictTo } = require('../middleware/auth');
-const { expandRoles } = require('../utils/rbac');
+const { ROLES, hasRolePower, normalizeRole } = require('../utils/rbac');
+const { notifySubOrganiserInvite } = require('../services/notificationService');
 
-const USER_ROLE_VALUES = ['main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor'];
-const ALLOWED_ROLE_INPUTS = Array.from(
-  new Set([
-    ...USER_ROLE_VALUES,
-    'ORGANISER',
-    'SUB_ORGANISER',
-    'STAFF',
-    'AUDITOR',
-    'VOLUNTEER',
-  ])
-);
-
-const canAccessEvent = async (currentUser, eventId) => {
-  if (!eventId) return false;
-  if (currentUser.role === 'main_admin') return true;
-  return currentUser.assignedEvents?.some((assigned) => assigned.toString() === eventId.toString());
-};
-
-const canManageUser = async (currentUser, targetUser, eventId) => {
-  if (currentUser.role === 'main_admin') return true;
-  if (!eventId) {
-    return targetUser.assignedEvents?.some((assigned) =>
-      currentUser.assignedEvents?.some((own) => own.toString() === assigned.toString())
-    );
-  }
-  return canAccessEvent(currentUser, eventId);
-};
-
-// All routes require auth
+// All routes require authentication
 router.use(protect);
 
-// GET /api/users - list users (admin sees all, organiser sees their event's users)
-router.get('/', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
+/**
+ * GET /api/users
+ * Admins see everyone. Organisers see users within their scope.
+ */
+router.get('/', restrictTo(ROLES.MAIN_ORGANISER), async (req, res, next) => {
   try {
-    const { role, eventId, page = 1, limit = 20 } = req.query;
+    const { role, page = 1, limit = 20 } = req.query;
     let filter = {};
 
-    if (req.user.role === 'main_organiser') {
-      const eventIds = (req.user.assignedEvents || []).map((event) => event.toString());
-      filter.assignedEvents = { $in: eventIds };
+    // MainAdmin (100) can see everything. 
+    // Others are scoped to their creation or assigned events.
+    if (!hasRolePower(req.user.role, ROLES.MAIN_ADMIN)) {
+      filter = {
+        $or: [
+          { createdBy: req.user._id },
+          { assignedEvents: { $in: req.user.assignedEvents || [] } }
+        ]
+      };
     }
+
     if (role) {
-      const expandedRoles = expandRoles([role]).filter((item) => USER_ROLE_VALUES.includes(item));
-      filter.role = expandedRoles.length > 1 ? { $in: expandedRoles } : expandedRoles[0] || role;
-    }
-    if (eventId) {
-      if (req.user.role === 'main_organiser' && !(await canAccessEvent(req.user, eventId))) {
-        return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
-      }
-      filter.assignedEvents = eventId;
+      filter.role = normalizeRole(role);
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [users, total] = await Promise.all([
-      User.find(filter).select('-password').populate('assignedEvents', 'name').skip(skip).limit(parseInt(limit)).sort('-createdAt'),
+      User.find(filter)
+        .select('-password')
+        .populate('assignedEvents', 'name')
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort('-createdAt'),
       User.countDocuments(filter),
     ]);
-    res.json({ success: true, data: { users, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
+
+    res.json({
+      success: true,
+      data: {
+        users,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) { next(err); }
 });
 
-// POST /api/users - create user (admin or organiser creating staff/sub-organiser)
-router.post('/', restrictTo('main_admin', 'main_organiser'), [
-  body('name').notEmpty().withMessage('Name required'),
-  body('email').isEmail().withMessage('Valid email required'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be 8+ characters'),
-  body('role').custom((value) => {
-    if (!ALLOWED_ROLE_INPUTS.includes(String(value || '').trim().toUpperCase()) && !ALLOWED_ROLE_INPUTS.includes(String(value || '').trim().toLowerCase())) {
-      throw new Error('Invalid role');
-    }
-    return true;
-  }),
+/**
+ * POST /api/users
+ * Administrative recruitment of system personnel.
+ */
+router.post('/', restrictTo(ROLES.MAIN_ORGANISER), [
+  body('name').notEmpty().withMessage('Full name required'),
+  body('email').isEmail().withMessage('Valid identity email required'),
+  body('password').isLength({ min: 8 }).withMessage('Security code must be 8+ characters'),
+  body('role').notEmpty().withMessage('Command role must be specified'),
 ], async (req, res, next) => {
   try {
-    console.log('CREATE_USER_REQUEST:', req.body);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('CREATE_USER_VALIDATION_ERRORS:', errors.array());
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    // Only main_admin can create main_organiser
-    if (req.body.role === 'main_organiser' && req.user.role !== 'main_admin') {
-      return res.status(403).json({ success: false, message: 'Only main admin can create organisers.' });
-    }
-    if (req.user.role === 'main_organiser' && !['sub_organiser', 'staff', 'volunteer', 'auditor'].includes(req.body.role)) {
-      return res.status(403).json({ success: false, message: 'You can only create sub-organisers and operational roles.' });
+    const targetRole = normalizeRole(req.body.role);
+
+    // Permission Check: Cannot create a role higher than or equal to your own (except Admins)
+    if (!hasRolePower(req.user.role, ROLES.MAIN_ADMIN)) {
+      if (hasRolePower(targetRole, req.user.role)) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Insufficient clearance to initialize this authority level.' 
+        });
+      }
     }
 
-    // Check for existing user
-    const existingUser = await User.findOne({ email: req.body.email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User with this email already exists.' });
+    // Email conflict check
+    const exists = await User.findOne({ email: req.body.email.toLowerCase() });
+    if (exists) {
+      return res.status(400).json({ success: false, message: 'Identity email already registered in ecosystem.' });
     }
 
     const user = await User.create({
       ...req.body,
+      role: targetRole,
       createdBy: req.user._id,
     });
-    res.status(201).json({ success: true, data: { user } });
-  } catch (err) {
-    console.error('CREATE_USER_ERROR:', err);
-    next(err);
-  }
-});
 
-// GET /api/users/:id
-router.get('/:id', async (req, res, next) => {
-  try {
-    const user = await User.findById(req.params.id).populate('assignedEvents', 'name status');
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    res.json({ success: true, data: { user } });
+    if (targetRole === ROLES.SUB_ORGANISER) {
+      notifySubOrganiserInvite({ user, event: null, phone: user.phone, email: user.email }).catch(console.error);
+    }
+
+    res.status(201).json({ success: true, data: { user } });
   } catch (err) { next(err); }
 });
 
-// PATCH /api/users/:id - update user
-router.patch('/:id', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
+/**
+ * PATCH /api/users/:id
+ * Update user profile or authority grade.
+ */
+router.patch('/:id', async (req, res, next) => {
   try {
-    const { password, role, ...updateData } = req.body;
-    const existingUser = await User.findById(req.params.id);
-    if (!existingUser) return res.status(404).json({ success: false, message: 'User not found.' });
+    const { role, permissions, password, assignedEvent, assignedEvents, ...updateData } = req.body;
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'Identity not found.' });
 
-    if (!(await canManageUser(req.user, existingUser, req.body.eventId))) {
-      return res.status(403).json({ success: false, message: 'You do not have permission to update this user.' });
+    // Authority Check: Only supervisors or admins can modify identities
+    const isSelf = targetUser._id.toString() === req.user._id.toString();
+    const canManage = hasRolePower(req.user.role, ROLES.MAIN_ADMIN) || (hasRolePower(req.user.role, targetUser.role) && !isSelf);
+
+    if (!isSelf && !canManage) {
+      return res.status(403).json({ success: false, message: 'Insufficient clearance to modify this identity.' });
     }
 
-    // Prevent role escalation by non-admin
-    if (role && req.user.role !== 'main_admin') {
-      return res.status(403).json({ success: false, message: 'Only admin can change roles.' });
+    const normalizedIncomingRole = role ? normalizeRole(role) : null;
+
+    // Role Escalation Protection
+    // Non-admins can submit the current role value from the edit form, but they
+    // cannot actually change authority levels.
+    if (
+      normalizedIncomingRole &&
+      normalizedIncomingRole !== normalizeRole(targetUser.role) &&
+      !hasRolePower(req.user.role, ROLES.MAIN_ADMIN)
+    ) {
+      return res.status(403).json({ success: false, message: 'Only System Administrators can re-grade authority levels.' });
     }
-    if (role) updateData.role = role;
+
+    // If updating password
+    if (password) {
+      targetUser.password = password;
+      await targetUser.save();
+    }
+
+    if (normalizedIncomingRole) updateData.role = normalizedIncomingRole;
+    if (permissions) updateData.permissions = permissions;
+    if (assignedEvents !== undefined) {
+      updateData.assignedEvents = Array.isArray(assignedEvents) ? assignedEvents.filter(Boolean) : [];
+    } else if (assignedEvent !== undefined) {
+      updateData.assignedEvents = assignedEvent ? [assignedEvent] : [];
+    }
 
     const user = await User.findByIdAndUpdate(req.params.id, updateData, {
       new: true, runValidators: true,
-    });
+    }).populate('assignedEvents', 'name');
+
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 });
 
-// PATCH /api/users/:id/permissions - update sub-organiser / staff permissions
-router.patch('/:id/permissions', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
+/**
+ * DELETE /api/users/:id
+ * Revoke system access.
+ */
+router.delete('/:id', restrictTo(ROLES.MAIN_ADMIN), async (req, res, next) => {
   try {
-    const { eventId, permissions = {}, assignedZones = [], assignedGates = [] } = req.body;
-    const existingUser = await User.findById(req.params.id);
-    if (!existingUser) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    if (!(await canManageUser(req.user, existingUser, eventId))) {
-      return res.status(403).json({ success: false, message: 'You do not have permission to update this user.' });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      {
-        permissions: {
-          ...existingUser.permissions?.toObject?.(),
-          ...permissions,
-        },
-        assignedZones,
-        assignedGates,
-      },
-      { new: true, runValidators: true }
-    );
-
-    res.json({ success: true, data: { user } });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// PATCH /api/users/:id/assign-event - assign user to event
-router.patch('/:id/assign-event', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
-  try {
-    const { eventId } = req.body;
-    if (req.user.role === 'main_organiser' && !(await canAccessEvent(req.user, eventId))) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
-    }
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { $addToSet: { assignedEvents: eventId } },
-      { new: true }
-    );
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    res.json({ success: true, data: { user } });
-  } catch (err) { next(err); }
-});
-
-// DELETE /api/users/:id/remove-event - remove user from event
-router.patch('/:id/remove-event', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
-  try {
-    const { eventId } = req.body;
-    if (req.user.role === 'main_organiser' && !(await canAccessEvent(req.user, eventId))) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
-    }
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { $pull: { assignedEvents: eventId } },
-      { new: true }
-    );
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    res.json({ success: true, data: { user } });
-  } catch (err) { next(err); }
-});
-
-// PATCH /api/users/:id/toggle-active
-router.patch('/:id/toggle-active', restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (!(await canManageUser(req.user, user))) {
-      return res.status(403).json({ success: false, message: 'You do not have permission to update this user.' });
-    }
-    user.isActive = !user.isActive;
-    await user.save({ validateBeforeSave: false });
-    res.json({ success: true, data: { user } });
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Identity not found.' });
+    res.json({ success: true, message: 'Identity de-commissioned from system.' });
   } catch (err) { next(err); }
 });
 

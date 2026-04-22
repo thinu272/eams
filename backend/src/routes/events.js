@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const Event = require('../models/Event');
@@ -71,11 +72,20 @@ const parseMaybeJson = (value) => {
 const normalizeEventPayload = (body, file) => {
   const payload = { ...body };
 
-  ['venue', 'categories', 'zones', 'settings', 'matchDetails'].forEach((key) => {
+  ['venue', 'categories', 'zones', 'settings', 'matchDetails', 'customFields'].forEach((key) => {
     if (key in payload) {
       payload[key] = parseMaybeJson(payload[key]);
     }
   });
+
+  if (payload.settings) {
+    if (payload.settings.emailTemplates === undefined || payload.settings.emailTemplates === null) {
+      delete payload.settings.emailTemplates;
+    }
+    if (payload.settings.smsTemplates === undefined || payload.settings.smsTemplates === null) {
+      delete payload.settings.smsTemplates;
+    }
+  }
 
   if (payload.mainOrganiser && typeof payload.mainOrganiser === 'object') {
     payload.mainOrganiser = payload.mainOrganiser._id || payload.mainOrganiser.id || payload.mainOrganiser;
@@ -113,7 +123,7 @@ router.get('/', async (req, res, next) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [events, total] = await Promise.all([
       Event.find(filter)
-        .select('name slug description venue startDate eventType categories coverImage')
+        .select('name slug description venue startDate eventType categories coverImage bannerImage branding')
         .sort('startDate')
         .skip(skip)
         .limit(parseInt(limit)),
@@ -126,14 +136,49 @@ router.get('/', async (req, res, next) => {
 // GET /api/events/admin/all - admin sees all events
 router.get('/admin/all', protect, restrictTo('main_admin'), async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, page = 1, limit = 20, search, from, to } = req.query;
     const filter = status ? { status } : {};
+    if (search) {
+      filter.name = { $regex: search, $options: 'i' };
+    }
+    if (from || to) {
+      const dateFilter = {};
+      if (from) {
+        const fromDate = new Date(from);
+        if (!Number.isNaN(fromDate.getTime())) dateFilter.$gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to);
+        if (!Number.isNaN(toDate.getTime())) {
+          toDate.setHours(23, 59, 59, 999);
+          dateFilter.$lte = toDate;
+        }
+      }
+      if (Object.keys(dateFilter).length) {
+        filter.startDate = dateFilter;
+      }
+    }
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [events, total] = await Promise.all([
       Event.find(filter).populate('mainOrganiser', 'name email').sort('-createdAt').skip(skip).limit(parseInt(limit)),
       Event.countDocuments(filter),
     ]);
-    res.json({ success: true, data: { events, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
+    const Attendee = require('../models/Attendee');
+    const eventIds = events.map((event) => event._id);
+    const attendeeCounts = await Attendee.aggregate([
+      { $match: { event: { $in: eventIds } } },
+      { $group: { _id: '$event', count: { $sum: 1 } } },
+    ]);
+    const countMap = attendeeCounts.reduce((acc, item) => {
+      acc[item._id.toString()] = item.count;
+      return acc;
+    }, {});
+    const eventsWithCounts = events.map((event) => ({
+      ...event.toObject(),
+      totalAttendees: countMap[event._id.toString()] || 0,
+      ticketCategoryCount: event.categories?.length || 0,
+    }));
+    res.json({ success: true, data: { events: eventsWithCounts, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
   } catch (err) { next(err); }
 });
 
@@ -349,6 +394,58 @@ router.get('/:slug', async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
     res.json({ success: true, data: { event } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:slug/validate-code
+router.post('/:slug/validate-code', async (req, res, next) => {
+  try {
+    const { categoryId, accessCode } = req.body;
+    if (!categoryId || !accessCode) {
+      return res.status(400).json({ success: false, message: 'Category ID and Access Code are required.' });
+    }
+
+    const event = await Event.findOne({
+      $or: [{ slug: req.params.slug }, { _id: req.params.slug.match(/^[a-f\d]{24}$/i) ? req.params.slug : null }],
+    });
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found.' });
+    }
+
+    const category = event.categories.find(c => String(c.id) === String(categoryId));
+    if (!category) {
+      return res.status(404).json({ success: false, message: 'Ticket category not found.' });
+    }
+
+    if (!category.isPrivate || !category.accessCodeHash) {
+      return res.status(400).json({ success: false, message: 'This ticket category is not private.' });
+    }
+
+    // Check usage limits (if applicable)
+    if (category.maxUsage && category.usageCount >= category.maxUsage) {
+      return res.status(403).json({ success: false, message: 'This access code has reached its maximum usage limit.' });
+    }
+
+    // Check overall capacity
+    if (category.sold >= category.capacity) {
+      return res.status(403).json({ success: false, message: 'This ticket category is sold out.' });
+    }
+
+    // Verify code
+    const isMatch = await bcrypt.compare(accessCode, category.accessCodeHash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid access code.' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Access code validated successfully.',
+      data: {
+        categoryId,
+        unlocked: true
+      }
+    });
   } catch (err) { next(err); }
 });
 

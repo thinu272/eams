@@ -24,6 +24,7 @@ const ConfirmOrderPage = () => {
   const [assignForm, setAssignForm] = useState({
     fullName: '',
     email: '',
+    phone: '',
     dateOfBirth: '',
     nationalId: '',
     passportNumber: '',
@@ -73,8 +74,9 @@ const ConfirmOrderPage = () => {
   const handleAssignMyself = (ticketId) => {
     setAssignModal({ open: true, ticketId });
     setAssignForm({
-      fullName: '',
-      email: '',
+      fullName: order?.buyerName || '',
+      email: order?.buyerEmail || '',
+      phone: order?.buyerPhone || '',
       dateOfBirth: '',
       nationalId: '',
       passportNumber: '',
@@ -92,12 +94,19 @@ const ConfirmOrderPage = () => {
     try {
       let data;
       
+      if (assignForm.phone && !/^\+?[0-9]{9,15}$/.test(assignForm.phone.trim())) {
+        setAssignErrors({ phone: 'Phone number is invalid' });
+        setAssigning(a => ({...a, [assignModal.ticketId]: false}));
+        return;
+      }
+
       if (assignForm.photo) {
         // Use FormData for file upload
         data = new FormData();
         data.append('ticketId', assignModal.ticketId);
         data.append('fullName', assignForm.fullName);
         data.append('email', assignForm.email);
+        data.append('phone', assignForm.phone);
         data.append('dateOfBirth', assignForm.dateOfBirth);
         data.append('nationalId', assignForm.nationalId);
         data.append('passportNumber', assignForm.passportNumber);
@@ -108,6 +117,7 @@ const ConfirmOrderPage = () => {
           ticketId: assignModal.ticketId,
           fullName: assignForm.fullName,
           email: assignForm.email,
+          phone: assignForm.phone,
           dateOfBirth: assignForm.dateOfBirth,
           nationalId: assignForm.nationalId,
           passportNumber: assignForm.passportNumber
@@ -426,6 +436,15 @@ const ConfirmOrderPage = () => {
             error={assignErrors.email}
             placeholder="Enter your email address"
             required
+          />
+
+          <Input
+            label="Phone Number"
+            type="tel"
+            value={assignForm.phone}
+            onChange={(e) => setAssignForm(f => ({...f, phone: e.target.value}))}
+            error={assignErrors.phone}
+            placeholder="+947XXXXXXXX"
           />
 
           <Input

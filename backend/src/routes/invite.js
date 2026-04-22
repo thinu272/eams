@@ -129,7 +129,7 @@ router.post('/confirm', upload.single('photo'), [
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('nicPassport').notEmpty().withMessage('NIC / Passport number is required'),
   body('dateOfBirth').notEmpty().isISO8601().withMessage('Valid date of birth is required'),
-  body('phone').notEmpty().matches(/^\+947\d{8}$/).withMessage('Phone number must be in +947XXXXXXXX format'),
+  body('phone').notEmpty().matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);

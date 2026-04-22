@@ -1,301 +1,188 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getMyEvents } from '../../api/events';
-import { getAttendees, verifyPhoto, rejectPhoto } from '../../api/attendees';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
+import { getPendingPhotos, verifyPhoto } from '../../api/photoVerification';
+import PhotoReviewModal from '../../components/photo/PhotoReviewModal';
 
-const photoColors = {
-  verified: 'green',
-  pending: 'yellow',
-  rejected: 'red',
-};
-
-const buildAssetUrl = (photoPath) => {
-  if (!photoPath) return '';
-  if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
-  const base = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
-  return `${base}/${photoPath}`;
-};
+const REASONS = [
+  'Photo is blurry or low quality',
+  'Face not clearly visible',
+  'Photo does not match the person / ID',
+  'Wearing sunglasses or hat',
+  'Other (please specify)',
+];
 
 const PhotoVerifyPage = () => {
-  const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
   const [attendees, setAttendees] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedAttendee, setSelectedAttendee] = useState(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filterEvent, setFilterEvent] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showReject, setShowReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState(REASONS[0]);
+  const [customReason, setCustomReason] = useState('');
+
+  const load = (eventId = filterEvent) => {
+    setLoading(true);
+    getPendingPhotos(eventId ? { eventId } : undefined)
+      .then((res) => setAttendees(res.data?.data?.attendees || []))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    getMyEvents().then((response) => {
-      const myEvents = response.data?.data?.events || [];
-      setEvents(myEvents);
-      if (myEvents.length > 0) {
-        setSelectedEvent(myEvents[0]._id);
+    load();
+
+    const handleEventSelect = (e) => {
+      const newId = e.detail;
+      setFilterEvent(newId);
+      load(newId);
+    };
+
+    window.addEventListener('eams:event-select', handleEventSelect);
+    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+  }, [filterEvent]);
+
+  const events = useMemo(() => {
+    const map = new Map();
+    attendees.forEach((a) => {
+      if (a.event?._id && !map.has(a.event._id)) {
+        map.set(a.event._id, a.event);
       }
     });
-  }, []);
+    return Array.from(map.values());
+  }, [attendees]);
 
-  useEffect(() => {
-    if (!selectedEvent) return;
+  const handleVerify = async (ids) => {
+    try {
+      await Promise.all(ids.map((id) => verifyPhoto({ attendeeId: id, status: 'verified' })));
+      toast.success('Photos verified');
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Verification failed');
+    }
+  };
 
-    setLoading(true);
-    getAttendees({ eventId: selectedEvent, limit: 100 })
-      .then((response) => {
-        const withPhotos = (response.data?.data?.attendees || []).filter((attendee) => attendee.photo);
-        setAttendees(withPhotos);
-      })
-      .finally(() => setLoading(false));
-  }, [selectedEvent]);
-
-  const pending = useMemo(
-    () => attendees.filter((attendee) => attendee.photoVerificationStatus === 'pending'),
-    [attendees]
-  );
-
-  const reviewed = useMemo(
-    () => attendees.filter((attendee) => attendee.photoVerificationStatus !== 'pending'),
-    [attendees]
-  );
-
-  const updatePhotoStatus = async (status) => {
-    if (!selectedAttendee) return;
-    if (status === 'rejected' && !rejectionReason.trim()) {
-      toast.error('Add a rejection reason before rejecting the photo');
+  const handleReject = async () => {
+    if (!selected) return;
+    const reason = rejectReason === 'Other (please specify)' ? customReason : rejectReason;
+    if (!reason) {
+      toast.error('Please provide a reason');
       return;
     }
-
-    setSubmitting(true);
     try {
-      if (status === 'rejected') {
-        await rejectPhoto({
-          attendeeId: selectedAttendee._id,
-          reason: rejectionReason.trim(),
-        });
-        toast.success('Photo rejected and resubmit notification sent');
-      } else {
-        await verifyPhoto(selectedAttendee._id, {
-          status,
-          rejectionReason: status === 'rejected' ? rejectionReason.trim() : undefined,
-        });
-        toast.success(`Photo ${status}`);
-      }
-      setAttendees((current) =>
-        current.map((attendee) =>
-          attendee._id === selectedAttendee._id
-            ? {
-                ...attendee,
-                photoVerificationStatus: status,
-                photoRejectionReason: status === 'rejected' ? rejectionReason.trim() : '',
-              }
-            : attendee
-        )
-      );
-      setSelectedAttendee(null);
-      setRejectionReason('');
+      await verifyPhoto({ attendeeId: selected._id, status: 'rejected', reason });
+      toast.success('Photo rejected');
+      setShowReject(false);
+      setSelected(null);
+      load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Photo update failed');
-    } finally {
-      setSubmitting(false);
+      toast.error(err.response?.data?.message || 'Rejection failed');
     }
   };
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Photo Verification</h1>
-            <p className="text-sm text-gray-500">Inspect uploaded attendee photos, preview them at full size, and mark each one as verified or rejected.</p>
+            <h1 className="text-2xl font-bold text-slate-900">Photo Verification</h1>
+            <p className="text-sm text-slate-500">Review pending attendee photos and approve or reject.</p>
           </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => handleVerify(selectedIds)} disabled={selectedIds.length === 0}>Verify Selected</Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
           <select
-            value={selectedEvent}
-            onChange={(event) => setSelectedEvent(event.target.value)}
-            className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
+            value={filterEvent}
+            onChange={(e) => setFilterEvent(e.target.value)}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm"
           >
+            <option value="">All Events</option>
             {events.map((event) => (
-              <option key={event._id} value={event._id}>
-                {event.name}
-              </option>
+              <option key={event._id} value={event._id}>{event.name}</option>
             ))}
           </select>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Photos uploaded</p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{attendees.length}</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Pending review</p>
-            <p className="mt-2 text-3xl font-bold text-amber-600">{pending.length}</p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-sm text-gray-500">Reviewed</p>
-            <p className="mt-2 text-3xl font-bold text-green-600">{reviewed.length}</p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Pending Reviews</h2>
-              <p className="text-sm text-gray-500">Open any card to inspect the uploaded image and complete verification.</p>
-            </div>
-            {loading && <p className="text-xs text-gray-400">Refreshing...</p>}
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {pending.map((attendee) => (
-              <button
-                key={attendee._id}
-                type="button"
-                onClick={() => {
-                  setSelectedAttendee(attendee);
-                  setRejectionReason(attendee.photoRejectionReason || '');
-                }}
-                className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 text-left transition-colors hover:bg-amber-100"
-              >
-                <img
-                  src={buildAssetUrl(attendee.photo)}
-                  alt={attendee.fullName || 'Attendee'}
-                  className="h-56 w-full object-cover"
-                />
-                <div className="space-y-2 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-gray-900">{attendee.fullName || 'Unnamed attendee'}</p>
-                      <p className="text-sm text-gray-500">{attendee.categoryName || 'No category'}</p>
-                    </div>
-                    <Badge color="yellow">pending</Badge>
-                  </div>
-                  <p className="text-xs text-gray-500">{attendee.nationalId || attendee.phone || attendee.email || 'No identity detail yet'}</p>
-                </div>
-              </button>
-            ))}
-            {!loading && pending.length === 0 && (
-              <div className="col-span-full rounded-2xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
-                No photos are waiting for review right now.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Reviewed Photos</h2>
-            <p className="text-sm text-gray-500">A quick history of recent verification decisions.</p>
-          </div>
-
-          <div className="space-y-3">
-            {reviewed.slice(0, 8).map((attendee) => (
-              <div key={attendee._id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={buildAssetUrl(attendee.photo)}
-                    alt={attendee.fullName || 'Attendee'}
-                    className="h-14 w-14 rounded-xl object-cover"
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {attendees.map((attendee) => (
+            <div key={attendee._id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-xs text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(attendee._id)}
+                    onChange={(e) => {
+                      setSelectedIds((prev) => e.target.checked
+                        ? [...prev, attendee._id]
+                        : prev.filter((id) => id !== attendee._id)
+                      );
+                    }}
                   />
-                  <div>
-                    <p className="font-medium text-gray-900">{attendee.fullName || 'Unnamed attendee'}</p>
-                    <p className="text-sm text-gray-500">{attendee.categoryName || 'No category'}</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge color={photoColors[attendee.photoVerificationStatus] || 'gray'}>
-                    {attendee.photoVerificationStatus}
-                  </Badge>
-                  {attendee.photoVerificationStatus === 'rejected' && attendee.photoRejectionReason && (
-                    <span className="max-w-sm text-sm text-red-600">{attendee.photoRejectionReason}</span>
-                  )}
-                </div>
+                  Select
+                </label>
+                <span className="text-[10px] uppercase tracking-widest text-amber-600">Pending</span>
               </div>
-            ))}
-            {!loading && reviewed.length === 0 && (
-              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
-                Reviewed items will appear here after you process pending photos.
+              <div className="mt-3 h-40 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden">
+                {attendee.photo ? (
+                  <img src={attendee.photo} alt="Attendee" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-slate-400">No photo</div>
+                )}
               </div>
-            )}
-          </div>
+              <div className="mt-3">
+                <p className="font-semibold text-slate-900">{attendee.fullName || attendee.email}</p>
+                <p className="text-xs text-slate-500">{attendee.event?.name || '-'}</p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button size="sm" onClick={() => { setSelected(attendee); }}>Review</Button>
+              </div>
+            </div>
+          ))}
+          {!loading && attendees.length === 0 && (
+            <div className="col-span-full rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+              No pending photos.
+            </div>
+          )}
         </div>
       </div>
 
-      <Modal
-        open={!!selectedAttendee}
-        onClose={() => {
-          setSelectedAttendee(null);
-          setRejectionReason('');
-        }}
-        title="Photo Review"
-        size="xl"
-      >
-        {selectedAttendee && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div>
-              <img
-                src={buildAssetUrl(selectedAttendee.photo)}
-                alt={selectedAttendee.fullName || 'Attendee'}
-                className="w-full rounded-2xl border border-gray-200 object-cover"
-              />
-            </div>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-500">Name</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.fullName || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Category</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.categoryName || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">NIC</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.nationalId || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Contact</p>
-                <p className="font-medium text-gray-900">{selectedAttendee.phone || selectedAttendee.email || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Current status</p>
-                <Badge color={photoColors[selectedAttendee.photoVerificationStatus] || 'gray'}>
-                  {selectedAttendee.photoVerificationStatus}
-                </Badge>
-              </div>
+      <PhotoReviewModal
+        open={!!selected}
+        attendee={selected}
+        onClose={() => setSelected(null)}
+        onVerify={() => selected && handleVerify([selected._id])}
+        onReject={() => setShowReject(true)}
+      />
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Rejection reason</label>
-                <textarea
-                  value={rejectionReason}
-                  onChange={(event) => setRejectionReason(event.target.value)}
-                  rows={4}
-                  placeholder="Explain why this photo should be resubmitted"
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={() => updatePhotoStatus('verified')} loading={submitting}>
-                  Mark Verified
-                </Button>
-                <Button variant="danger" onClick={() => updatePhotoStatus('rejected')} loading={submitting}>
-                  Mark Rejected
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedAttendee(null);
-                    setRejectionReason('');
-                  }}
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
+      <Modal open={showReject} onClose={() => setShowReject(false)} title="Reject Photo">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {REASONS.map((r) => (
+              <label key={r} className="flex items-center gap-2 text-sm">
+                <input type="radio" name="reason" checked={rejectReason === r} onChange={() => setRejectReason(r)} />
+                {r}
+              </label>
+            ))}
           </div>
-        )}
+          {rejectReason === 'Other (please specify)' && (
+            <input
+              className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"
+              placeholder="Enter custom reason"
+              value={customReason}
+              onChange={(e) => setCustomReason(e.target.value)}
+            />
+          )}
+          <div className="flex gap-3">
+            <Button onClick={handleReject} className="bg-red-600 hover:bg-red-500">Submit Rejection</Button>
+            <Button variant="outline" onClick={() => setShowReject(false)}>Cancel</Button>
+          </div>
+        </div>
       </Modal>
     </DashboardLayout>
   );
