@@ -1,80 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { getMyEvents } from '../../api/events';
-import { getAttendees } from '../../api/attendees';
-import { getEntryStats } from '../../api/entry';
-import DashboardLayout from '../../components/layout/DashboardLayout';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import Stat from '../../components/ui/Stat';
-
-const COLORS = ['#2563EB', '#16A34A', '#D97706', '#7C3AED', '#DC2626'];
+import React, { useEffect, useState } from 'react';
+import OrganiserLayout from '../../layouts/OrganiserLayout';
+import { getOrganiserZonesReport, exportOrganiserEventData, getOrganiserEvent } from '../../api/organiser';
+import Button from '../../components/ui/Button';
 
 const ReportsPage = () => {
-  const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
-  const [categoryData, setCategoryData] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [totalAttendees, setTotalAttendees] = useState(0);
-
-  useEffect(() => { getMyEvents().then(r => { const evs = r.data?.data?.events || []; setEvents(evs); if (evs.length) setSelectedEvent(evs[0]._id); }); }, []);
+  const [zones, setZones] = useState([]);
+  const [event, setEvent] = useState(null);
 
   useEffect(() => {
-    if (!selectedEvent) return;
-    const ev = (events || []).find(e => e._id === selectedEvent);
-    if (!ev) return;
-    Promise.all([getAttendees({ eventId: selectedEvent, limit: 1 }), getEntryStats(selectedEvent)])
-      .then(([ar, sr]) => {
-        setTotalAttendees(ar.data.data.total);
-        setStats(sr.data.data);
-        const catData = (ev.categories || []).map(c => ({ name: c.name, capacity: c.capacity, sold: c.sold || 0 }));
-        setCategoryData(catData);
-      });
-  }, [selectedEvent, events]);
+    getOrganiserEvent().then((res) => {
+      const ev = res.data?.data?.event;
+      setEvent(ev);
+      if (ev?._id) {
+        getOrganiserZonesReport(ev._id).then((r) => setZones(r.data?.data?.zoneOccupancy || []));
+      }
+    });
+  }, []);
+
+  const handleExport = async (type) => {
+    if (!event?._id) return;
+    const response = await exportOrganiserEventData(event._id, { type });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${type}-${event._id}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   return (
-    <DashboardLayout>
-      <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-bold text-gray-900">Reports</h1></div>
-        <select value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-          {events.map(e => <option key={e._id} value={e._id}>{e.name}</option>)}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Stat label="Total Attendees" value={totalAttendees} color="blue"/>
-        <Stat label="Checked In" value={stats?.checkedIn || 0} color="green"/>
-        <Stat label="Access Denied" value={stats?.denied || 0} color="red"/>
-        <Stat label="Active Zones" value={stats?.byZone?.length || 0} color="purple"/>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Tickets: Sold vs Capacity</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={categoryData}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }}/>
-              <YAxis tick={{ fontSize: 11 }}/>
-              <Tooltip/>
-              <Bar dataKey="capacity" fill="#E5E7EB" name="Capacity" radius={[4,4,0,0]}/>
-              <Bar dataKey="sold" fill="#2563EB" name="Sold" radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
+    <OrganiserLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
+            <p className="text-sm text-slate-500">Zone-wise attendance and exports.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => handleExport('attendees')}>Export Attendees</Button>
+            <Button variant="outline" onClick={() => handleExport('logs')}>Export Logs</Button>
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Entry by Zone</h3>
-          {stats?.byZone?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={stats.byZone} dataKey="count" nameKey="zoneName" cx="50%" cy="50%" outerRadius={80} label>
-                  {stats.byZone.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
-                </Pie>
-                <Tooltip/><Legend/>
-              </PieChart>
-            </ResponsiveContainer>
-          ) : <div className="flex items-center justify-center h-40 text-gray-400 text-sm">No zone data yet</div>}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Zone-wise Attendance</h2>
+          <div className="mt-4 space-y-3">
+            {zones.map((z) => (
+              <div key={z.zoneName} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <span>{z.zoneName}</span>
+                <span className="font-semibold text-slate-900">{z.occupancy}</span>
+              </div>
+            ))}
+            {zones.length === 0 && <div className="text-sm text-slate-400">No zone data yet.</div>}
+          </div>
         </div>
       </div>
-    </DashboardLayout>
+    </OrganiserLayout>
   );
 };
 

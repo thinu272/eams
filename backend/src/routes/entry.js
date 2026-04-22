@@ -5,6 +5,7 @@ const Attendee = require('../models/Attendee');
 const mongoose = require('mongoose');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
+const { normalizeRole, ROLES } = require('../utils/rbac');
 
 const normalizeGate = (value) => (value || '').trim();
 const parseScannedToken = (value) => {
@@ -21,13 +22,13 @@ const parseScannedToken = (value) => {
 
 const userHasEventAccess = (user, eventId) => {
   if (!user || !eventId) return false;
-  if (user.role === 'main_admin') return true;
+  if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) return true;
 
   return (user.assignedEvents || []).some((assignedEvent) => assignedEvent.toString() === eventId.toString());
 };
 
 const userHasGateAccess = (user, gateName) => {
-  if (['main_admin', 'main_organiser', 'sub_organiser'].includes(user.role)) return true;
+  if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(normalizeRole(user.role))) return true;
 
   const assignedGates = (user.assignedGates || []).map((gate) => normalizeGate(gate)).filter(Boolean);
   if (!assignedGates.length) return true;
@@ -154,7 +155,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, reason: 'NOT_CONFIRMED', message: 'Identity not confirmed.', data: { log } });
     }
 
-    if (attendee.checkedIn) {
+    if (action === 'check_in' && attendee.checkedIn) {
       const log = await EntryLog.create(buildLogPayload({
         attendee,
         gateId: resolvedGate,
@@ -180,6 +181,32 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(409).json({ success: false, reason: 'ALREADY_CHECKED_IN', message: 'Attendee has already checked in.', data: { log, attendee } });
     }
 
+    if (action === 'check_out' && !attendee.checkedIn) {
+      const log = await EntryLog.create(buildLogPayload({
+        attendee,
+        gateId: resolvedGate,
+        gateName: resolvedGate,
+        zoneId,
+        zoneName,
+        action: 'denied',
+        method,
+        deviceId,
+        accessGranted: false,
+        denialReason: 'Not currently checked in',
+        processedBy: req.user._id,
+      }));
+      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+        source: 'entry',
+        eventId: attendee.event._id,
+        name: attendee.fullName,
+        action: 'DENIED EXIT',
+        zoneName: zoneName || resolvedGate || 'Main Entry',
+        timestamp: log.timestamp,
+        accessGranted: false,
+      });
+      return res.status(409).json({ success: false, reason: 'NOT_CHECKED_IN', message: 'Attendee is not currently checked in.', data: { log, attendee } });
+    }
+
     let accessGranted = true;
     let denialReason = null;
     if (zoneId && action !== 'check_in') {
@@ -192,6 +219,10 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     if (action === 'check_in' && accessGranted) {
       attendee.checkedIn = true;
       attendee.checkedInAt = new Date();
+    }
+
+    if (action === 'check_out' && accessGranted) {
+      attendee.checkedIn = false;
     }
 
     if (action === 'check_in' && accessGranted && !attendee.wristbandId) {
@@ -266,7 +297,7 @@ router.get('/logs', protect, async (req, res, next) => {
     if (zoneId) filter.zoneId = zoneId;
     if (action) filter.action = action;
 
-    if (['staff', 'volunteer'].includes(req.user.role) && (req.user.assignedGates || []).length) {
+    if ([ROLES.STAFF, ROLES.VOLUNTEER].includes(normalizeRole(req.user.role)) && (req.user.assignedGates || []).length) {
       const assignedGates = req.user.assignedGates.map((gate) => normalizeGate(gate)).filter(Boolean);
       if (typeof filter.gateId === 'string') {
         if (!assignedGates.includes(normalizeGate(filter.gateId))) {
@@ -308,7 +339,7 @@ router.get('/stats', protect, async (req, res, next) => {
       gateFilter.gateId = normalizeGate(gateId);
     }
 
-    if (['staff', 'volunteer'].includes(req.user.role) && (req.user.assignedGates || []).length) {
+    if ([ROLES.STAFF, ROLES.VOLUNTEER].includes(normalizeRole(req.user.role)) && (req.user.assignedGates || []).length) {
       const assignedGates = req.user.assignedGates.map((gate) => normalizeGate(gate)).filter(Boolean);
       if (gateFilter.gateId && !assignedGates.includes(gateFilter.gateId)) {
         return res.json({
@@ -419,6 +450,168 @@ router.get('/attendee/:qrToken', protect, async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
     res.json({ success: true, data: { attendee } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/entry/lookup?q= - manual attendee lookup (alias for /search with looser params)
+router.get('/lookup', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { eventId, q, limit = 10 } = req.query;
+    if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
+    if (!q?.trim()) return res.json({ success: true, data: { attendees: [] } });
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+    if (!userHasEventAccess(req.user, eventId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+    const query = q.trim();
+    const attendees = await Attendee.find({
+      event: eventId,
+      isActive: true,
+      $or: [
+        { fullName: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
+        { nationalId: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+      ],
+    })
+      .select('fullName phone email qrToken categoryName confirmationStatus checkedIn photo allowedZones notes wristbandId')
+      .sort({ checkedIn: 1, fullName: 1 })
+      .limit(Math.min(parseInt(limit, 10) || 10, 20));
+    res.json({ success: true, data: { attendees } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/entry/checkin - explicit check-in with optional wristband issuance
+router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { attendeeId, gateId, gateName, wristbandId, deviceId, method = 'manual' } = req.body;
+    const io = req.app.get('io');
+
+    if (!attendeeId) return res.status(400).json({ success: false, message: 'attendeeId required.' });
+
+    const attendee = await Attendee.findById(attendeeId).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const resolvedGate = normalizeGate(gateName || gateId || 'Main Gate');
+
+    // Issue wristband if requested and not already issued
+    if (wristbandId && !attendee.wristbandId) {
+      attendee.wristbandId = wristbandId;
+      attendee.wristbandIssuedAt = new Date();
+      attendee.wristbandIssuedBy = req.user._id;
+    } else if (!attendee.wristbandId) {
+      // Auto-generate wristband ID
+      attendee.wristbandId = `WB-${Date.now()}`;
+      attendee.wristbandIssuedAt = new Date();
+      attendee.wristbandIssuedBy = req.user._id;
+    }
+
+    if (!attendee.checkedIn) {
+      attendee.checkedIn = true;
+      attendee.checkedInAt = new Date();
+    }
+    await attendee.save();
+
+    const logEntry = await EntryLog.create(buildLogPayload({
+      attendee,
+      gateId: resolvedGate,
+      gateName: resolvedGate,
+      zoneId: null,
+      zoneName: null,
+      action: 'check_in',
+      method,
+      deviceId,
+      accessGranted: true,
+      denialReason: null,
+      processedBy: req.user._id,
+    }));
+
+    emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+      source: 'entry',
+      eventId: attendee.event._id,
+      name: attendee.fullName,
+      action: 'CHECK-IN',
+      zoneName: resolvedGate,
+      timestamp: logEntry.timestamp,
+      accessGranted: true,
+    });
+
+    res.json({
+      success: true,
+      message: 'Checked in and wristband issued.',
+      data: {
+        wristbandId: attendee.wristbandId,
+        wristbandIssuedAt: attendee.wristbandIssuedAt,
+        checkedInAt: attendee.checkedInAt,
+        log: logEntry,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/entry/checkout - explicit manual checkout
+router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { attendeeId, gateId, gateName, deviceId, method = 'manual' } = req.body;
+    const io = req.app.get('io');
+
+    if (!attendeeId) return res.status(400).json({ success: false, message: 'attendeeId required.' });
+
+    const attendee = await Attendee.findById(attendeeId).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const resolvedGate = normalizeGate(gateName || gateId || 'Main Gate');
+    if (!userHasGateAccess(req.user, resolvedGate)) {
+      return res.status(403).json({ success: false, message: `You are not assigned to ${resolvedGate}.` });
+    }
+
+    if (!attendee.checkedIn) {
+      return res.status(409).json({ success: false, message: 'Attendee is not currently checked in.' });
+    }
+
+    attendee.checkedIn = false;
+    await attendee.save();
+
+    const logEntry = await EntryLog.create(buildLogPayload({
+      attendee,
+      gateId: resolvedGate,
+      gateName: resolvedGate,
+      zoneId: null,
+      zoneName: null,
+      action: 'check_out',
+      method,
+      deviceId,
+      accessGranted: true,
+      denialReason: null,
+      processedBy: req.user._id,
+    }));
+
+    emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+      source: 'entry',
+      eventId: attendee.event._id,
+      name: attendee.fullName,
+      action: 'CHECK-OUT',
+      zoneName: resolvedGate,
+      timestamp: logEntry.timestamp,
+      accessGranted: true,
+    });
+
+    res.json({
+      success: true,
+      message: 'Checked out successfully.',
+      data: {
+        checkedIn: attendee.checkedIn,
+        log: logEntry,
+      },
+    });
   } catch (err) { next(err); }
 });
 

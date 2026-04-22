@@ -1,0 +1,309 @@
+import React, { useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import Button from '../ui/Button';
+
+const emptyZone = () => ({ id: `${Date.now()}-${Math.random()}`, name: '', description: '', capacity: 0 });
+const emptyCategory = () => ({
+  id: `${Date.now()}-${Math.random()}`,
+  name: '',
+  description: '',
+  price: 0,
+  capacity: 0,
+  allowedZones: [],
+});
+const emptyCustomField = () => ({ name: '', type: 'text', required: false, options: [] });
+
+const tabs = ['Basic Info', 'Ticket Categories', 'Zones', 'Advanced Settings'];
+
+const EventForm = ({ initialData, onSubmit, loading }) => {
+  const [tab, setTab] = useState('Basic Info');
+  const [form, setForm] = useState({
+    name: initialData?.name || '',
+    slug: initialData?.slug || '',
+    description: initialData?.description || '',
+    eventType: initialData?.eventType || 'cricket',
+    startDate: initialData?.startDate ? new Date(initialData.startDate).toISOString().slice(0, 16) : '',
+    endDate: initialData?.endDate ? new Date(initialData.endDate).toISOString().slice(0, 16) : '',
+    venueName: initialData?.venue?.name || '',
+    venueAddress: initialData?.venue?.address || '',
+    venueCity: initialData?.venue?.city || '',
+    venueCountry: initialData?.venue?.country || '',
+    venueMapUrl: initialData?.venue?.mapUrl || '',
+    publish: initialData?.status === 'published',
+  });
+  const [coverImageFile, setCoverImageFile] = useState(null);
+  const [zones, setZones] = useState(initialData?.zones?.length ? initialData.zones : [emptyZone()]);
+  const [categories, setCategories] = useState(initialData?.categories?.length ? initialData.categories : [emptyCategory()]);
+  const [customFields, setCustomFields] = useState(initialData?.customFields?.length ? initialData.customFields : []);
+  const [settings, setSettings] = useState({
+    requirePhotoVerification: initialData?.settings?.requirePhotoVerification ?? true,
+    allowSelfConfirmation: initialData?.settings?.allowSelfConfirmation ?? true,
+    confirmationDeadlineHours: initialData?.settings?.confirmationDeadlineHours ?? 48,
+    maxTicketsPerOrder: initialData?.settings?.maxTicketsPerOrder ?? 10,
+    rfidEnabled: initialData?.settings?.rfidEnabled ?? true,
+  });
+
+  const zoneOptions = useMemo(() => zones.filter((z) => z.name.trim().length > 0), [zones]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const cleanedCategories = categories
+      .filter((cat) => cat.name && cat.name.trim().length > 0)
+      .map((cat) => ({
+        ...cat,
+        capacity: Number(cat.capacity) || 0,
+        price: Number(cat.price) || 0,
+      }));
+    const invalidCategory = cleanedCategories.find((cat) => cat.capacity < 1);
+    if (invalidCategory) {
+      toast.error('Ticket category capacity must be at least 1.');
+      return;
+    }
+    const cleanedZones = zones.filter((zone) => zone.name && zone.name.trim().length > 0);
+
+    const payload = {
+      name: form.name,
+      slug: form.slug || undefined,
+      description: form.description,
+      eventType: form.eventType,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      venue: {
+        name: form.venueName,
+        address: form.venueAddress,
+        city: form.venueCity,
+        country: form.venueCountry,
+        mapUrl: form.venueMapUrl,
+      },
+      categories: cleanedCategories,
+      zones: cleanedZones,
+      customFields,
+      settings,
+      status: form.publish ? 'published' : 'draft',
+    };
+    onSubmit(payload, coverImageFile);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="flex flex-wrap gap-3 border-b border-slate-200 pb-3">
+        {tabs.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setTab(item)}
+            className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-widest ${
+              tab === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'Basic Info' && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <label className="text-xs font-semibold text-slate-500">Event Name *</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Slug</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.slug} onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Venue Name *</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" required value={form.venueName} onChange={(e) => setForm((f) => ({ ...f, venueName: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Event Category</label>
+            <select className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.eventType} onChange={(e) => setForm((f) => ({ ...f, eventType: e.target.value }))}>
+              <option value="cricket">Cricket</option>
+              <option value="concert">Concert</option>
+              <option value="conference">Conference</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-xs font-semibold text-slate-500">Description</label>
+            <textarea className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" rows="4" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Start Date & Time *</label>
+            <input type="datetime-local" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" required value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">End Date & Time *</label>
+            <input type="datetime-local" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" required value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Venue Address</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.venueAddress} onChange={(e) => setForm((f) => ({ ...f, venueAddress: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">City</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.venueCity} onChange={(e) => setForm((f) => ({ ...f, venueCity: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Country</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.venueCountry} onChange={(e) => setForm((f) => ({ ...f, venueCountry: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Venue Map (image URL placeholder)</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.venueMapUrl} onChange={(e) => setForm((f) => ({ ...f, venueMapUrl: e.target.value }))} />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-xs font-semibold text-slate-500">Cover Image (optional)</label>
+            <input type="file" accept="image/*" onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+          </div>
+          <div className="flex items-center gap-3 lg:col-span-2">
+            <input type="checkbox" checked={form.publish} onChange={(e) => setForm((f) => ({ ...f, publish: e.target.checked }))} />
+            <span className="text-sm font-semibold text-slate-600">Publish immediately</span>
+          </div>
+        </div>
+      )}
+
+      {tab === 'Ticket Categories' && (
+        <div className="space-y-4">
+          {categories.map((cat, index) => (
+            <div key={cat.id} className="rounded-2xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold text-slate-900">Category {index + 1}</p>
+                {categories.length > 1 && (
+                  <button type="button" className="text-xs text-rose-600" onClick={() => setCategories((prev) => prev.filter((c) => c.id !== cat.id))}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Name (VIP, General)" value={cat.name} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, name: e.target.value } : c))} />
+                <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Price" value={cat.price} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, price: Number(e.target.value) } : c))} />
+                <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Capacity" value={cat.capacity} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, capacity: Number(e.target.value) } : c))} />
+                <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Description" value={cat.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, description: e.target.value } : c))} />
+              </div>
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-slate-500 mb-2">Allowed Zones</p>
+                <div className="flex flex-wrap gap-2">
+                  {zoneOptions.map((zone) => (
+                    <label key={zone.id} className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={cat.allowedZones.includes(zone.id)}
+                        onChange={(e) => {
+                          const nextZones = e.target.checked
+                            ? [...cat.allowedZones, zone.id]
+                            : cat.allowedZones.filter((z) => z !== zone.id);
+                          setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, allowedZones: nextZones } : c));
+                        }}
+                      />
+                      {zone.name}
+                    </label>
+                  ))}
+                  {zoneOptions.length === 0 && <p className="text-xs text-slate-400">Add zones first to assign access.</p>}
+                </div>
+              </div>
+            </div>
+          ))}
+          <Button type="button" variant="outline" onClick={() => setCategories((prev) => [...prev, emptyCategory()])}>Add Category</Button>
+        </div>
+      )}
+
+      {tab === 'Zones' && (
+        <div className="space-y-4">
+          {zones.map((zone, index) => (
+            <div key={zone.id} className="rounded-2xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold text-slate-900">Zone {index + 1}</p>
+                {zones.length > 1 && (
+                  <button type="button" className="text-xs text-rose-600" onClick={() => setZones((prev) => prev.filter((z) => z.id !== zone.id))}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Zone name" value={zone.name} onChange={(e) => setZones((prev) => prev.map((z) => z.id === zone.id ? { ...z, name: e.target.value } : z))} />
+                <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Capacity" value={zone.capacity} onChange={(e) => setZones((prev) => prev.map((z) => z.id === zone.id ? { ...z, capacity: Number(e.target.value) } : z))} />
+                <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Description" value={zone.description} onChange={(e) => setZones((prev) => prev.map((z) => z.id === zone.id ? { ...z, description: e.target.value } : z))} />
+              </div>
+            </div>
+          ))}
+          <Button type="button" variant="outline" onClick={() => setZones((prev) => [...prev, emptyZone()])}>Add Zone</Button>
+        </div>
+      )}
+
+      {tab === 'Advanced Settings' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <label className="flex items-center gap-3 text-sm font-semibold text-slate-600">
+              <input type="checkbox" checked={settings.requirePhotoVerification} onChange={(e) => setSettings((s) => ({ ...s, requirePhotoVerification: e.target.checked }))} />
+              Require Photo Verification
+            </label>
+            <label className="flex items-center gap-3 text-sm font-semibold text-slate-600">
+              <input type="checkbox" checked={settings.allowSelfConfirmation} onChange={(e) => setSettings((s) => ({ ...s, allowSelfConfirmation: e.target.checked }))} />
+              Allow Self Confirmation
+            </label>
+            <label className="text-sm font-semibold text-slate-600">
+              Confirmation Deadline (hours)
+              <input type="number" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={settings.confirmationDeadlineHours} onChange={(e) => setSettings((s) => ({ ...s, confirmationDeadlineHours: Number(e.target.value) }))} />
+            </label>
+            <label className="text-sm font-semibold text-slate-600">
+              Max Tickets Per Order
+              <input type="number" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={settings.maxTicketsPerOrder} onChange={(e) => setSettings((s) => ({ ...s, maxTicketsPerOrder: Number(e.target.value) }))} />
+            </label>
+            <label className="flex items-center gap-3 text-sm font-semibold text-slate-600">
+              <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings((s) => ({ ...s, rfidEnabled: e.target.checked }))} />
+              RFID Enabled
+            </label>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900">Custom Attendee Fields</h3>
+              <Button type="button" variant="outline" onClick={() => setCustomFields((prev) => [...prev, emptyCustomField()])}>Add Field</Button>
+            </div>
+            <div className="space-y-3">
+              {customFields.map((field, idx) => (
+                <div key={`${field.name}-${idx}`} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+                    <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Field name" value={field.name} onChange={(e) => setCustomFields((prev) => prev.map((f, i) => i === idx ? { ...f, name: e.target.value } : f))} />
+                    <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={field.type} onChange={(e) => setCustomFields((prev) => prev.map((f, i) => i === idx ? { ...f, type: e.target.value } : f))}>
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="date">Date</option>
+                      <option value="select">Select</option>
+                    </select>
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input type="checkbox" checked={field.required} onChange={(e) => setCustomFields((prev) => prev.map((f, i) => i === idx ? { ...f, required: e.target.checked } : f))} />
+                      Required
+                    </label>
+                    <button type="button" className="text-xs text-rose-600 justify-self-end" onClick={() => setCustomFields((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
+                  </div>
+                  {field.type === 'select' && (
+                    <input
+                      className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Options (comma separated)"
+                      value={field.options?.join(', ') || ''}
+                      onChange={(e) => setCustomFields((prev) => prev.map((f, i) => i === idx ? { ...f, options: e.target.value.split(',').map((o) => o.trim()).filter(Boolean) } : f))}
+                    />
+                  )}
+                </div>
+              ))}
+              {customFields.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  Add custom fields to capture extra attendee data.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-3 pt-4">
+        <Button type="submit" loading={loading} className="bg-blue-600 hover:bg-blue-500">Save Event</Button>
+        <Button type="button" variant="outline" onClick={() => setTab('Basic Info')}>Back to Top</Button>
+      </div>
+    </form>
+  );
+};
+
+export default EventForm;

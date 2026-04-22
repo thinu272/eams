@@ -25,8 +25,8 @@ const statusStyle = {
     badge: 'bg-slate-800 border-slate-700 text-slate-200',
   },
   success: {
-    wrapper: 'bg-green-600 text-white',
-    accent: 'bg-green-500/30 text-green-50',
+    wrapper: 'bg-blue-600 text-white',
+    accent: 'bg-blue-500/30 text-blue-50',
     badge: 'bg-white/15 border-white/20 text-white',
   },
   error: {
@@ -122,6 +122,7 @@ const ZoneScannerPage = () => {
     try {
       const payload = {
         zone: activeZone,
+        eventId: selectedEvent,
       };
 
       if (scanMode === 'rfid') {
@@ -268,7 +269,7 @@ const ZoneScannerPage = () => {
                   <button
                     type="button"
                     onClick={() => setShowCamera((value) => !value)}
-                    className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"
+                    className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700"
                   >
                     {showCamera ? 'Close Camera Scanner' : 'Open Camera Scanner'}
                   </button>
@@ -312,7 +313,7 @@ const ZoneScannerPage = () => {
                         <p className="font-semibold text-slate-900">{log.attendeeId?.fullName || log.attendeeSnapshot?.fullName || 'Unknown attendee'}</p>
                         <p className="text-xs text-slate-500">{log.attendeeId?.categoryName || log.attendeeSnapshot?.categoryName || 'Unknown category'}</p>
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${log.accessGranted ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${log.accessGranted ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
                         {log.accessGranted ? log.action : log.denialReason}
                       </span>
                     </div>

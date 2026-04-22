@@ -5,6 +5,7 @@ const Event = require('../models/Event');
 const ZoneLog = require('../models/ZoneLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
+const { normalizeRole, ROLES } = require('../utils/rbac');
 
 const DUPLICATE_SCAN_WINDOW_MS = 5000;
 
@@ -32,16 +33,25 @@ const userHasEventAccess = async (user, event) => {
   return event.createdBy?.toString() === user._id.toString();
 };
 
-const userHasZoneAccess = (user, zoneName) => {
-  if (!zoneName) return false;
-  if (['main_admin', 'main_organiser', 'sub_organiser'].includes(user.role)) return true;
-  if (!['staff', 'volunteer'].includes(user.role)) return false;
+const userHasZoneAccess = (user, zoneName, zoneId) => {
+  if (!zoneName && !zoneId) return false;
+  const role = normalizeRole(user?.role);
+  if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(role)) return true;
+  if (![ROLES.STAFF, ROLES.VOLUNTEER].includes(role)) return false;
 
-  const assignedZones = (user.assignedZones || []).filter(Boolean);
+  const assignedZones = [
+    ...(user.assignedZones || []).map(String),
+    ...(user.responsibilities?.zoneIds || []).map(String),
+  ].filter(Boolean);
   if (!assignedZones.length) return true;
 
-  return assignedZones.includes(zoneName);
+  return assignedZones.includes(String(zoneName)) || assignedZones.includes(String(zoneId));
 };
+
+const getUserAssignedZones = (user) => Array.from(new Set([
+  ...((user?.assignedZones || []).map(String)),
+  ...((user?.responsibilities?.zoneIds || []).map(String)),
+])).filter(Boolean);
 
 const buildDeniedResponse = async ({
   attendee,
@@ -106,6 +116,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
   try {
     const io = req.app.get('io');
     const requestedZone = normalizeZoneName(req.body.zone);
+    const requestedEventId = String(req.body.eventId || '').trim();
     const qrToken = req.body.qrToken?.trim();
     const rfidId = req.body.rfidId?.trim();
 
@@ -135,6 +146,18 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     }
 
     const event = attendee.event;
+    if (requestedEventId && event?._id?.toString() !== requestedEventId) {
+      return res.status(404).json({
+        success: false,
+        reason: 'EVENT_MISMATCH',
+        message: 'Attendee does not belong to the selected event.',
+        data: {
+          action: 'ENTRY',
+          zoneName: requestedZone,
+          attendee: null,
+        },
+      });
+    }
     const hasEventAccess = await userHasEventAccess(req.user, event);
     if (!hasEventAccess) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
@@ -142,7 +165,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
 
     const { zoneId, zoneName } = resolveZone(event, requestedZone);
 
-    if (!userHasZoneAccess(req.user, zoneName)) {
+    if (!userHasZoneAccess(req.user, zoneName, zoneId)) {
       return res.status(403).json({ success: false, message: `You are not assigned to scan ${zoneName}.` });
     }
 
@@ -266,7 +289,7 @@ router.get('/logs', protect, restrictTo('main_admin', 'main_organiser', 'sub_org
       return res.status(400).json({ success: false, message: 'eventId is required.' });
     }
 
-    const event = await Event.findById(eventId).select('createdBy');
+    const event = await Event.findById(eventId).select('createdBy zones');
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
@@ -282,13 +305,25 @@ router.get('/logs', protect, restrictTo('main_admin', 'main_organiser', 'sub_org
       filter.zoneName = resolvedZone.zoneName;
     }
 
-    if (['staff', 'volunteer'].includes(req.user.role) && (req.user.assignedZones || []).length) {
+    const userAssignedZones = getUserAssignedZones(req.user);
+    if ([ROLES.STAFF, ROLES.VOLUNTEER].includes(normalizeRole(req.user.role)) && userAssignedZones.length) {
       if (typeof filter.zoneName === 'string') {
-        if (!req.user.assignedZones.includes(filter.zoneName)) {
+        const resolvedFilterZone = resolveZone(event, filter.zoneName);
+        const canAccessRequestedZone =
+          userAssignedZones.includes(String(filter.zoneName)) ||
+          userAssignedZones.includes(String(resolvedFilterZone.zoneName)) ||
+          userAssignedZones.includes(String(resolvedFilterZone.zoneId));
+
+        if (!canAccessRequestedZone) {
           return res.json({ success: true, data: { logs: [] } });
         }
+
+        filter.zoneName = resolvedFilterZone.zoneName;
       } else {
-        filter.zoneName = { $in: req.user.assignedZones };
+        const allowedZoneNames = userAssignedZones
+          .map((zone) => resolveZone(event, zone).zoneName)
+          .filter(Boolean);
+        filter.zoneName = { $in: Array.from(new Set(allowedZoneNames)) };
       }
     }
 

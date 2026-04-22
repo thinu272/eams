@@ -228,4 +228,141 @@ router.get('/logs', async (req, res, next) => {
   }
 });
 
+// GET /api/dashboard/timeline  — check-ins per hour for today
+router.get('/timeline', async (req, res, next) => {
+  try {
+    const { eventId } = req.query;
+    const accessibleEventIds = await getAccessibleEventIds(req.user, eventId);
+    if (!accessibleEventIds.length) {
+      return res.status(403).json({ success: false, message: 'No access.' });
+    }
+    const eventMatch = buildEventMatch(accessibleEventIds);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const timeline = await EntryLog.aggregate([
+      { $match: { event: eventMatch, action: 'check_in', accessGranted: true, timestamp: { $gte: todayStart } } },
+      { $group: {
+          _id: { $hour: '$timestamp' },
+          count: { $sum: 1 },
+      }},
+      { $sort: { '_id': 1 } },
+      { $project: { _id: 0, hour: '$_id', count: 1, label: { $concat: [{ $toString: '$_id' }, ':00'] } } },
+    ]);
+
+    // Fill in missing hours with 0
+    const currentHour = new Date().getHours();
+    const filled = [];
+    for (let h = 0; h <= currentHour; h++) {
+      const match = timeline.find(t => t.hour === h);
+      filled.push({ hour: h, label: `${String(h).padStart(2,'0')}:00`, count: match?.count || 0 });
+    }
+
+    res.json({ success: true, data: { timeline: filled } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/dashboard/denied  — denied access entries with pagination
+router.get('/denied', async (req, res, next) => {
+  try {
+    const { eventId, page = 1, limit = 20, from, to } = req.query;
+    const accessibleEventIds = await getAccessibleEventIds(req.user, eventId);
+    if (!accessibleEventIds.length) {
+      return res.status(403).json({ success: false, message: 'No access.' });
+    }
+    const eventMatch = buildEventMatch(accessibleEventIds);
+    const filter = { event: eventMatch, accessGranted: false };
+    if (from || to) {
+      filter.timestamp = {};
+      if (from) filter.timestamp.$gte = new Date(from);
+      if (to)   filter.timestamp.$lte = new Date(to);
+    }
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const [logs, total] = await Promise.all([
+      EntryLog.find(filter)
+        .populate('attendee', 'fullName categoryName photo')
+        .populate('processedBy', 'name')
+        .sort('-timestamp')
+        .skip(skip)
+        .limit(parseInt(limit, 10)),
+      EntryLog.countDocuments(filter),
+    ]);
+    res.json({ success: true, data: { logs, total, pages: Math.ceil(total / parseInt(limit, 10)) } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/dashboard/export  — Excel/CSV export
+router.get('/export', async (req, res, next) => {
+  try {
+    const XLSX = require('xlsx');
+    const Attendee = require('../models/Attendee');
+    const { eventId, report = 'attendees', format: fmt = 'csv', from, to, zone } = req.query;
+    const accessibleEventIds = await getAccessibleEventIds(req.user, eventId);
+    if (!accessibleEventIds.length) {
+      return res.status(403).json({ success: false, message: 'No access.' });
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    if (report === 'attendees') {
+      const filter = { event: { $in: accessibleEventIds } };
+      const rows = await Attendee.find(filter)
+        .select('fullName email phone categoryName confirmationStatus photoVerificationStatus checkedIn checkedInAt wristbandId createdAt')
+        .lean();
+      const headers = ['Full Name','Email','Phone','Category','Confirmation','Photo Status','Checked In','Check-in Time','Wristband ID','Added At'];
+      const data = rows.map(r => [
+        r.fullName, r.email, r.phone, r.categoryName, r.confirmationStatus,
+        r.photoVerificationStatus, r.checkedIn ? 'Yes' : 'No',
+        r.checkedInAt ? new Date(r.checkedInAt).toISOString() : '',
+        r.wristbandId || '',
+        r.createdAt ? new Date(r.createdAt).toISOString() : '',
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      ws['!cols'] = headers.map(() => ({ wch: 22 }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Attendees');
+
+    } else if (report === 'entry_logs') {
+      const filter = { event: { $in: accessibleEventIds.map(id => toObjectId(id)) } };
+      if (from || to) { filter.timestamp = {}; if (from) filter.timestamp.$gte = new Date(from); if (to) filter.timestamp.$lte = new Date(to); }
+      if (zone) filter.$or = [{ zoneName: zone }, { gateId: zone }];
+      const logs = await EntryLog.find(filter).populate('attendee', 'fullName categoryName').sort('-timestamp').lean();
+      const headers = ['Timestamp','Attendee','Category','Gate','Zone','Action','Method','Access','Denial Reason'];
+      const data = logs.map(l => [
+        new Date(l.timestamp).toISOString(),
+        l.attendee?.fullName || l.snapshot?.fullName || '-',
+        l.attendee?.categoryName || l.snapshot?.categoryName || '-',
+        l.gateName || l.gateId || '-', l.zoneName || '-',
+        l.action, l.method, l.accessGranted ? 'Granted' : 'Denied', l.denialReason || '-',
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      ws['!cols'] = headers.map(() => ({ wch: 20 }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Entry Logs');
+
+    } else if (report === 'denied') {
+      const filter = { event: { $in: accessibleEventIds.map(id => toObjectId(id)) }, accessGranted: false };
+      if (from || to) { filter.timestamp = {}; if (from) filter.timestamp.$gte = new Date(from); if (to) filter.timestamp.$lte = new Date(to); }
+      const logs = await EntryLog.find(filter).populate('attendee', 'fullName categoryName').sort('-timestamp').lean();
+      const headers = ['Timestamp','Attendee','Category','Gate','Action','Denial Reason','Processed By'];
+      const data = logs.map(l => [
+        new Date(l.timestamp).toISOString(),
+        l.attendee?.fullName || l.snapshot?.fullName || '-',
+        l.attendee?.categoryName || l.snapshot?.categoryName || '-',
+        l.gateName || l.gateId || '-', l.action, l.denialReason || '-',
+        l.processedBy?.name || '-',
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      ws['!cols'] = headers.map(() => ({ wch: 22 }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Denied Access');
+    }
+
+    const isExcel = fmt === 'xlsx';
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: isExcel ? 'xlsx' : 'csv' });
+    const ext = isExcel ? 'xlsx' : 'csv';
+    const mime = isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+    res.setHeader('Content-Disposition', `attachment; filename="${report}-export.${ext}"`);
+    res.setHeader('Content-Type', mime);
+    return res.send(buffer);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

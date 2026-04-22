@@ -65,12 +65,14 @@ const attendeeSchema = new mongoose.Schema({
   // Photo verification
   photoVerificationStatus: {
     type: String,
-    enum: ['pending', 'verified', 'rejected'],
+    enum: ['pending', 'verified', 'rejected', 'Pending', 'Verified', 'Rejected'],
     default: 'pending',
   },
   photoVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   photoVerifiedAt: { type: Date },
   photoRejectionReason: { type: String },
+  verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  verifiedAt: { type: Date },
   faceDescriptor: { type: [Number], default: [] },
   photoValidationMetrics: {
     faceCount: { type: Number, default: 0 },
@@ -100,6 +102,7 @@ const attendeeSchema = new mongoose.Schema({
   // Email tracking
   inviteEmailSent: { type: Boolean, default: false },
   confirmationEmailSent: { type: Boolean, default: false },
+  confirmationSentAt: { type: Date },
 
   notes: { type: String },
   checkedIn: { type: Boolean, default: false },

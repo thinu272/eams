@@ -359,7 +359,7 @@ const VerificationDashboard = () => {
       </div>
 
       {/* Photo Preview Modal */}
-      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)}>
+      <Modal open={showPreviewModal} onClose={() => setShowPreviewModal(false)}>
         {selectedAttendee && (
           <div className="max-w-2xl">
             <h2 className="text-2xl font-bold mb-4">{selectedAttendee.fullName}</h2>
@@ -412,7 +412,7 @@ const VerificationDashboard = () => {
       </Modal>
 
       {/* Reject Reason Modal */}
-      <Modal isOpen={showRejectModal} onClose={() => setShowRejectModal(false)}>
+      <Modal open={showRejectModal} onClose={() => setShowRejectModal(false)}>
         <div className="max-w-md">
           <h2 className="text-2xl font-bold mb-4">Reject Photo</h2>
           <form onSubmit={handleRejectSubmit}>

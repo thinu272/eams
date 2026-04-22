@@ -1,281 +1,162 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { getMyEvents } from '../../api/events';
-import { getAttendees } from '../../api/attendees';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import Stat from '../../components/ui/Stat';
-import Badge from '../../components/ui/Badge';
-import {
-  ArrowUpTrayIcon,
-  CameraIcon,
-  CheckBadgeIcon,
-  EnvelopeIcon,
-  UserPlusIcon,
-  UsersIcon,
-} from '@heroicons/react/24/solid';
+import { getSubDashboard } from '../../api/sub';
+import toast from 'react-hot-toast';
 
-const actionCards = [
-  {
-    to: '/suborg/attendees',
-    label: 'Add Attendees',
-    description: 'Register attendees one by one and send invites.',
-    icon: UserPlusIcon,
-    containerClass: 'bg-blue-50 hover:bg-blue-100 border-blue-200',
-    iconClass: 'bg-blue-100 text-blue-700',
-  },
-  {
-    to: '/suborg/upload',
-    label: 'Bulk Upload',
-    description: 'Import attendee lists from Excel files.',
-    icon: ArrowUpTrayIcon,
-    containerClass: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
-    iconClass: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    to: '/suborg/verify',
-    label: 'Photo Verification',
-    description: 'Review uploaded identity photos quickly.',
-    icon: CameraIcon,
-    containerClass: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
-    iconClass: 'bg-amber-100 text-amber-700',
-  },
+const metricCards = [
+  { key: 'totalAttendees', label: 'Attendees in scope', accent: 'text-slate-900' },
+  { key: 'checkedInCount', label: 'Checked in', accent: 'text-emerald-600' },
+  { key: 'pendingVerifications', label: 'Pending verification', accent: 'text-amber-600' },
+  { key: 'zoneCount', label: 'Assigned zones', accent: 'text-sky-600' },
 ];
 
-const confirmationColors = {
-  confirmed: 'green',
-  invited: 'blue',
-  pending: 'yellow',
-  rejected: 'red',
-};
-
-const photoColors = {
-  verified: 'green',
-  pending: 'yellow',
-  rejected: 'red',
-};
+const formatTime = (value) => new Date(value).toLocaleString();
 
 const SubOrgDashboard = () => {
-  const { user } = useAuth();
-  const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
-  const [attendees, setAttendees] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
 
-  useEffect(() => {
-    getMyEvents().then((response) => {
-      const myEvents = response.data?.data?.events || [];
-      setEvents(myEvents);
-      if (myEvents.length > 0) {
-        setSelectedEvent(myEvents[0]._id);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selectedEvent) return;
-
+  const load = (eventId) => {
     setLoading(true);
-    getAttendees({ eventId: selectedEvent, limit: 100 })
+    getSubDashboard({ eventId })
       .then((response) => {
-        setAttendees(response.data?.data?.attendees || []);
+        setData(response.data?.data || null);
+        setLoadError('');
       })
-      .finally(() => setLoading(false));
-  }, [selectedEvent]);
+      .catch((error) => {
+        const message = error.response?.data?.message || 'Unable to load sub-organiser workspace.';
+        setLoadError(message);
+        toast.error(message);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
 
-  const selectedEventData = useMemo(
-    () => events.find((event) => event._id === selectedEvent),
-    [events, selectedEvent]
-  );
+  useEffect(() => {
+    load(currentEventId);
 
-  const stats = useMemo(() => {
-    const total = attendees.length;
-    const confirmed = attendees.filter((attendee) => attendee.confirmationStatus === 'confirmed').length;
-    const invited = attendees.filter((attendee) => attendee.confirmationStatus === 'invited').length;
-    const pendingPhotos = attendees.filter(
-      (attendee) => attendee.photo && attendee.photoVerificationStatus === 'pending'
-    ).length;
+    const handleEventSelect = (e) => {
+      const newId = e.detail;
+      setCurrentEventId(newId);
+      load(newId);
+    };
 
-    return { total, confirmed, invited, pendingPhotos };
-  }, [attendees]);
-
-  const actionQueue = useMemo(() => {
-    return attendees
-      .filter(
-        (attendee) =>
-          attendee.confirmationStatus !== 'confirmed' ||
-          (attendee.photo && attendee.photoVerificationStatus === 'pending')
-      )
-      .slice(0, 5);
-  }, [attendees]);
+    window.addEventListener('eams:event-select', handleEventSelect);
+    return () => {
+      window.removeEventListener('eams:event-select', handleEventSelect);
+    };
+  }, []);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sub-Organiser Dashboard</h1>
-            <p className="text-sm text-gray-500">Manage attendee intake, bulk imports, invites, and photo review for your assigned events.</p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
-              Signed in as <span className="font-semibold text-gray-900">{user?.name || 'Sub Organiser'}</span>
-            </div>
-            <select
-              value={selectedEvent}
-              onChange={(event) => setSelectedEvent(event.target.value)}
-              className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
-            >
-              {events.map((event) => (
-                <option key={event._id} value={event._id}>
-                  {event.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 via-cyan-50 to-white p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Assigned Event</p>
-              <h2 className="text-2xl font-bold text-gray-900">{selectedEventData?.name || 'Select an event'}</h2>
-              <p className="max-w-2xl text-sm text-gray-600">
-                Keep attendee data moving smoothly from upload to invite to photo verification. The sections below only appear for your permitted role and assigned events.
+        <div className="rounded-[28px] bg-gradient-to-br from-slate-950 via-slate-900 to-sky-900 p-6 text-white shadow-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-sky-200">Sub Organiser workspace</p>
+          <div className="mt-3">
+            <div>
+              <h1 className="text-3xl font-bold">{data?.event?.name || 'Assigned event'}</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-200">
+                Keep your zone operations fast and clear. This workspace only shows the zones and attendees assigned to you.
               </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:min-w-[280px]">
-              <div className="rounded-xl bg-white/90 p-4 shadow-sm ring-1 ring-blue-100">
-                <p className="text-xs text-gray-500">Categories</p>
-                <p className="mt-1 text-xl font-bold text-gray-900">{selectedEventData?.categories?.length || 0}</p>
-              </div>
-              <div className="rounded-xl bg-white/90 p-4 shadow-sm ring-1 ring-blue-100">
-                <p className="text-xs text-gray-500">Zones</p>
-                <p className="mt-1 text-xl font-bold text-gray-900">{selectedEventData?.zones?.length || 0}</p>
-              </div>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Assigned Events" value={events.length} color="blue" icon={<UsersIcon className="h-5 w-5" />} />
-          <Stat label="Attendees Loaded" value={stats.total} color="green" icon={<UsersIcon className="h-5 w-5" />} />
-          <Stat label="Invites / Confirmed" value={`${stats.invited}/${stats.confirmed}`} color="purple" icon={<EnvelopeIcon className="h-5 w-5" />} />
-          <Stat label="Photos Pending" value={stats.pendingPhotos} color="orange" icon={<CheckBadgeIcon className="h-5 w-5" />} />
+          {metricCards.map((card) => (
+            <div key={card.key} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-slate-500">{card.label}</p>
+              <p className={`mt-3 text-3xl font-bold ${card.accent}`}>
+                {loading ? '-' : data?.metrics?.[card.key] || 0}
+              </p>
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Operational Shortcuts</h3>
-                  <p className="text-sm text-gray-500">Jump straight into the core workflows for attendee operations.</p>
-                </div>
-                {loading && <p className="text-xs text-gray-400">Refreshing event data...</p>}
+        {loadError && (
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            {loadError}
+          </div>
+        )}
+
+        <div className="grid gap-6 xl:grid-cols-[1.25fr,0.95fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Assigned zones</h2>
+                <p className="mt-1 text-sm text-slate-500">Capacity and operational visibility for your current scope.</p>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {actionCards.map((card) => {
-                  const Icon = card.icon;
-                  return (
-                    <Link
-                      key={card.to}
-                      to={card.to}
-                      className={`rounded-2xl border p-5 transition-colors ${card.containerClass}`}
-                    >
-                      <div className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${card.iconClass}`}>
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <h4 className="text-sm font-semibold text-gray-900">{card.label}</h4>
-                      <p className="mt-2 text-sm text-gray-600">{card.description}</p>
-                    </Link>
-                  );
-                })}
-              </div>
+              <Link to="/suborg/zones" className="text-sm font-semibold text-sky-700">Open zone workspace</Link>
             </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="mb-4 flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Action Queue</h3>
-                  <p className="text-sm text-gray-500">Attendees who still need confirmation follow-up or photo review.</p>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {(data?.zones || []).map((zone) => (
+                <div key={zone.id || zone.name} className="rounded-2xl bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-slate-900">{zone.name}</h3>
+                    <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">cap {zone.capacity || 0}</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-500">Use entry and zone scans here only. Other event areas stay hidden.</p>
                 </div>
-                <Link to="/suborg/attendees" className="text-sm font-medium text-blue-600 hover:underline">
-                  Open attendee desk
-                </Link>
-              </div>
-
-              <div className="space-y-3">
-                {actionQueue.map((attendee) => (
-                  <div key={attendee._id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900">{attendee.fullName || 'Unnamed attendee'}</p>
-                      <p className="text-sm text-gray-500">{attendee.email || attendee.phone || attendee.categoryName || 'No contact details yet'}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge color={confirmationColors[attendee.confirmationStatus] || 'gray'}>
-                        {attendee.confirmationStatus}
-                      </Badge>
-                      {attendee.photo && (
-                        <Badge color={photoColors[attendee.photoVerificationStatus] || 'gray'}>
-                          photo {attendee.photoVerificationStatus}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {!loading && actionQueue.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
-                    Everyone in this sample set looks up to date. New uploads and confirmations will appear here as work comes in.
-                  </div>
-                )}
-              </div>
+              ))}
+              {!loading && (data?.zones || []).length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500 md:col-span-2">
+                  No zones assigned yet. Ask the main organiser to assign at least one zone.
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 className="text-lg font-semibold text-gray-900">Current Snapshot</h3>
-            <p className="mt-1 text-sm text-gray-500">A quick read on where attendee processing stands for the selected event.</p>
+          {/* Managed Categories Section */}
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600 font-bold">Your Managed Categories</h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {data?.categories?.map((cat) => (
+                <span 
+                  key={cat.id} 
+                  className="inline-flex items-center rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-700/10"
+                >
+                  {cat.name}
+                </span>
+              ))}
+              {(!data?.categories || data.categories.length === 0) && (
+                <p className="text-xs italic text-slate-400">No specific categories assigned.</p>
+              )}
+            </div>
+            <p className="mt-4 text-[10px] italic text-slate-400">
+              You can only view and manage attendees belonging to these categories.
+            </p>
+          </div>
 
-            <div className="mt-5 space-y-4">
-              <div className="rounded-xl bg-gray-50 p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Confirmed attendees</span>
-                  <span className="text-sm font-semibold text-gray-900">{stats.confirmed}</span>
-                </div>
-                <div className="h-2 rounded-full bg-gray-200">
-                  <div
-                    className="h-2 rounded-full bg-green-500"
-                    style={{ width: `${stats.total ? (stats.confirmed / stats.total) * 100 : 0}%` }}
-                  />
-                </div>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Last 5 actions</h2>
+                <p className="mt-1 text-sm text-slate-500">Recent entry and zone activity inside your assignment.</p>
               </div>
-
-              <div className="rounded-xl bg-gray-50 p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Invite follow-ups</span>
-                  <span className="text-sm font-semibold text-gray-900">{stats.invited}</span>
+              <Link to="/suborg/logs" className="text-sm font-semibold text-sky-700">View all</Link>
+            </div>
+            <div className="mt-5 space-y-3">
+              {(data?.activity || []).map((item) => (
+                <div key={item.id} className="rounded-2xl border border-slate-100 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{item.action}</p>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{item.attendeeName} - {item.zoneName}</p>
+                  <p className="mt-1 text-xs text-slate-400">{item.actorName} - {formatTime(item.timestamp)}</p>
                 </div>
-                <div className="h-2 rounded-full bg-gray-200">
-                  <div
-                    className="h-2 rounded-full bg-blue-500"
-                    style={{ width: `${stats.total ? (stats.invited / stats.total) * 100 : 0}%` }}
-                  />
+              ))}
+              {!loading && (data?.activity || []).length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  No actions recorded yet.
                 </div>
-              </div>
-
-              <div className="rounded-xl bg-gray-50 p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Pending photo review</span>
-                  <span className="text-sm font-semibold text-gray-900">{stats.pendingPhotos}</span>
-                </div>
-                <div className="h-2 rounded-full bg-gray-200">
-                  <div
-                    className="h-2 rounded-full bg-amber-500"
-                    style={{ width: `${stats.total ? (stats.pendingPhotos / stats.total) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 
 const EventCard = ({ event, onViewDetails }) => {
+  const eventImage = event.coverImage || event.bannerImage || event.branding?.bannerImage || '/placeholder-event.jpg';
   const startingPrice = event.categories?.length > 0
     ? Math.min(...event.categories.map(cat => cat.price))
     : 0;
@@ -16,7 +17,7 @@ const EventCard = ({ event, onViewDetails }) => {
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
       <img
-        src={event.coverImage || '/placeholder-event.jpg'}
+        src={eventImage}
         alt={event.name}
         className="w-full h-48 object-cover"
       />

@@ -30,6 +30,7 @@ router.post('/assign', upload.single('photo'), [
   body('ticketId').notEmpty().withMessage('Ticket ID is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('email').isEmail().withMessage('Valid email is required'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
   body('dateOfBirth').optional().isISO8601().withMessage('Valid date of birth required'),
   body('nationalId').optional(),
   body('passportNumber').optional(),
@@ -45,7 +46,7 @@ router.post('/assign', upload.single('photo'), [
       });
     }
 
-    const { ticketId, fullName, email, dateOfBirth, nationalId, passportNumber } = req.body;
+    const { ticketId, fullName, email, phone, dateOfBirth, nationalId, passportNumber } = req.body;
 
     // Find ticket
     const ticket = await Ticket.findById(ticketId).populate('order').populate('event');
@@ -68,6 +69,7 @@ router.post('/assign', upload.single('photo'), [
     const attendee = new Attendee({
       fullName,
       email,
+      phone,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       nationalId,
       passportNumber,
@@ -162,7 +164,7 @@ router.post('/assign', upload.single('photo'), [
 router.post('/invite', [
   body('ticketId').notEmpty().withMessage('Ticket ID is required'),
   body('email').isEmail().withMessage('Valid email is required'),
-  body('phone').optional({ checkFalsy: true }).matches(/^\+947\d{8}$/).withMessage('Phone number must be in +947XXXXXXXX format'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
   body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
 ], async (req, res) => {
   try {
@@ -198,6 +200,7 @@ router.post('/invite', [
     // Create attendee
     const attendee = new Attendee({
       email,
+      phone,
       order: ticket.order._id,
       event: ticket.event._id,
       ticket: ticket._id,
@@ -250,6 +253,178 @@ router.post('/invite', [
       success: false,
       message: 'Internal server error'
     });
+  }
+});
+
+// POST /api/tickets/:id/attendee - Assign attendee details directly to a slot
+router.post('/:id/attendee', upload.single('photo'), [
+  body('fullName').notEmpty().withMessage('Full name is required'),
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
+  body('dateOfBirth').optional({ checkFalsy: true }).isISO8601().withMessage('Valid date of birth required'),
+  body('nationalId').optional(),
+  body('passportNumber').optional(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
+    const ticketId = req.params.id;
+    const { fullName, email, phone, dateOfBirth, nationalId, passportNumber } = req.body;
+    const ticket = await Ticket.findById(ticketId).populate('order').populate('event');
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    if (ticket.status !== 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Ticket is already assigned or invited',
+      });
+    }
+
+    const attendee = new Attendee({
+      fullName,
+      email,
+      phone,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+      nationalId,
+      passportNumber,
+      photo: req.file ? `uploads/${req.file.filename}` : undefined,
+      order: ticket.order._id,
+      event: ticket.event._id,
+      ticket: ticket._id,
+      categoryId: ticket.categoryId,
+      categoryName: ticket.categoryName,
+      allowedZones: ticket.allowedZones || [],
+      confirmationToken: uuidv4(),
+      qrToken: uuidv4(),
+      confirmationStatus: 'confirmed',
+      confirmedAt: new Date(),
+      confirmedBy: 'self',
+      addedVia: 'self_purchase',
+    });
+
+    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+    await attendee.save();
+
+    ticket.attendee = attendee._id;
+    ticket.status = 'ASSIGNED';
+    await ticket.save();
+
+    await notifyFinalTicket({
+      attendee,
+      event: ticket.event,
+      phone: attendee.phone,
+      notificationChannel: 'both',
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        attendee,
+        ticket: {
+          _id: ticket._id,
+          status: ticket.status,
+          categoryName: ticket.categoryName,
+          ticketNumber: ticket.ticketNumber,
+        },
+      },
+      message: 'Attendee details saved successfully',
+    });
+  } catch (error) {
+    console.error('Ticket attendee assignment error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// POST /api/tickets/:id/invite - Send invite link for a slot
+router.post('/:id/invite', [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
+  body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
+    const ticketId = req.params.id;
+    const { email, phone, notificationChannel } = req.body;
+    const ticket = await Ticket.findById(ticketId).populate('order').populate('event');
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    if (ticket.status !== 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Ticket is already assigned or invited',
+      });
+    }
+
+    const attendee = new Attendee({
+      email,
+      phone,
+      order: ticket.order._id,
+      event: ticket.event._id,
+      ticket: ticket._id,
+      categoryId: ticket.categoryId,
+      categoryName: ticket.categoryName,
+      allowedZones: ticket.allowedZones || [],
+      confirmationToken: uuidv4(),
+      qrToken: uuidv4(),
+      confirmationStatus: 'invited',
+      addedVia: 'invite',
+    });
+
+    await attendee.save();
+
+    ticket.attendee = attendee._id;
+    ticket.inviteEmail = email;
+    ticket.inviteToken = attendee.confirmationToken;
+    ticket.status = 'INVITED';
+    ticket.inviteSentAt = new Date();
+    ticket.inviteExpiresAt = new Date(Date.now() + (parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72', 10) * 60 * 60 * 1000));
+    ticket.inviteStatus = 'PENDING';
+    await ticket.save();
+
+    await notifyInvite({
+      attendee,
+      event: ticket.event,
+      phone: phone || attendee.phone,
+      email,
+      notificationChannel: notificationChannel || 'email',
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        ticket: {
+          _id: ticket._id,
+          status: ticket.status,
+          inviteEmail: ticket.inviteEmail,
+          inviteToken: ticket.inviteToken,
+        },
+      },
+      message: 'Invite sent successfully',
+    });
+  } catch (error) {
+    console.error('Ticket invite by id error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

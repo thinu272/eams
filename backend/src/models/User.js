@@ -1,24 +1,27 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+/**
+ * Normalizes input roles to match the EAMS standard hierarchy.
+ */
 const normalizeRoleForStorage = (role) => {
   const normalized = String(role || '').trim().toUpperCase();
 
-  if (normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'MAIN_ADMIN') return 'main_admin';
-  if (normalized === 'ORGANISER' || normalized === 'MAIN_ORGANISER') return 'main_organiser';
-  if (normalized === 'SUB_ORGANISER') return 'sub_organiser';
-  if (normalized === 'STAFF') return 'staff';
-  if (normalized === 'VOLUNTEER') return 'volunteer';
-  if (normalized === 'AUDITOR') return 'auditor';
-  if (normalized === 'BUYER') return 'buyer';
+  if (normalized === 'MAINADMIN' || normalized === 'ADMIN' || normalized === 'MAIN_ADMIN') return 'MainAdmin';
+  if (normalized === 'MAINORGANISER' || normalized === 'ORGANISER' || normalized === 'MAIN_ORGANISER') return 'MainOrganiser';
+  if (normalized === 'SUBORGANISER' || normalized === 'SUB_ORGANISER') return 'SubOrganiser';
+  if (normalized === 'STAFF') return 'Staff';
+  if (normalized === 'VOLUNTEER') return 'Volunteer';
+  if (normalized === 'AUDITOR') return 'Auditor';
+  if (normalized === 'ATTENDEE' || normalized === 'USER' || normalized === 'BUYER') return 'Attendee';
 
-  return String(role || '').trim().toLowerCase();
+  return String(role || '').trim();
 };
 
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Name is required'],
+    required: [true, 'Full name is required'],
     trim: true,
     maxlength: [100, 'Name cannot exceed 100 characters'],
   },
@@ -38,35 +41,46 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor', 'buyer'],
+    enum: ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee'],
     required: true,
     set: normalizeRoleForStorage,
   },
-  phone: { type: String, trim: true },
-  profilePhoto: { type: String },
-  isActive: { type: Boolean, default: true },
-
-  // Event assignments (for non-admin roles)
-  assignedEvents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Event' }],
-
-  // Permissions (for sub_organiser - set by main_organiser)
-  permissions: {
-    canAddAttendees: { type: Boolean, default: true },
-    canBulkUpload: { type: Boolean, default: true },
-    canVerifyPhotos: { type: Boolean, default: true },
-    canInviteAttendees: { type: Boolean, default: true },
-    canViewReports: { type: Boolean, default: false },
-    canManageStaff: { type: Boolean, default: false },
+  phone: { 
+    type: String, 
+    required: [true, 'Phone number is required for SMS notifications'],
+    trim: true 
+  },
+  status: {
+    type: String,
+    enum: ['Active', 'Inactive'],
+    default: 'Active',
   },
 
-  // For staff/volunteer - which entry points / zones they manage
-  assignedZones: [{ type: String }],
+  // Scoped Event Assignments
+  assignedEvents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Event' }],
   assignedGates: [{ type: String }],
+  assignedZones: [{ type: String }],
 
+  // Granular Permissions (JSON Object as requested)
+  permissions: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  customRole: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Role',
+  },
+  responsibilities: {
+    zoneIds: [{ type: String }],
+    verificationAccess: { type: Boolean, default: false },
+    entryAccess: { type: Boolean, default: false },
+  },
+
+  profilePhoto: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   lastLogin: { type: Date },
 
-  // Password reset
+  // Password reset fields
   passwordResetToken: { type: String, select: false },
   passwordResetExpires: { type: Date, select: false },
 }, {

@@ -1,11 +1,13 @@
 import React from 'react';
 import Sidebar from './Sidebar';
+import Topbar from './Topbar';
 
 const DashboardLayout = ({ children }) => (
-  <div className="flex min-h-screen bg-gray-50">
+  <div className="flex min-h-screen bg-slate-50">
     <Sidebar />
     <main className="flex-1 overflow-auto">
-      <div className="max-w-7xl mx-auto p-6">{children}</div>
+      <Topbar />
+      <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
     </main>
   </div>
 );

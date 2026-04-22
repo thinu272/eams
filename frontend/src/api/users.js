@@ -6,3 +6,4 @@ export const updateUser = (id, data) => api.patch(`/users/${id}`, data);
 export const updateUserPermissions = (id, data) => api.patch(`/users/${id}/permissions`, data);
 export const assignUserToEvent = (id, eventId) => api.patch(`/users/${id}/assign-event`, { eventId });
 export const toggleUserActive = (id) => api.patch(`/users/${id}/toggle-active`);
+export const deleteUser = (id) => api.delete(`/users/${id}`);

@@ -26,10 +26,10 @@ router.post('/login', [
     const { email, password } = req.body;
     const user = await User.findOne({ email }).select('+password');
     if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
-    if (!user.isActive) {
-      return res.status(401).json({ success: false, message: 'Account deactivated. Contact admin.' });
+    if (user.status !== 'Active') {
+      return res.status(401).json({ success: false, message: 'Account suspended/inactive. Contact admin.' });
     }
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
@@ -39,21 +39,23 @@ router.post('/login', [
 
 // POST /api/auth/register
 router.post('/register', [
-  body('name').notEmpty().withMessage('Name required'),
+  body('name').notEmpty().withMessage('Full name required'),
   body('email').isEmail().withMessage('Valid email required'),
+  body('phone').notEmpty().withMessage('Phone number required for SMS security'),
   body('password').isLength({ min: 8 }).withMessage('Password must be 8+ characters'),
+  body('role').equals('Attendee').withMessage('Registration restricted to standard users only'),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
-    const { name, email, password } = req.body;
+    const { name, email, phone, password, role } = req.body;
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already registered.' });
+      return res.status(400).json({ success: false, message: 'Email collision detected. Try another.' });
     }
-    const user = await User.create({ name, email, password, role: 'buyer', isActive: true });
+    const user = await User.create({ name, email, phone, password, role, status: 'Active' });
     sendToken(user, 201, res);
   } catch (err) { next(err); }
 });

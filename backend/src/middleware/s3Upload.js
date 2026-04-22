@@ -34,6 +34,30 @@ const upload = multer({
   },
 });
 
+// Specialized filter for Excel/CSV bulk uploads
+const excelFileFilter = (req, file, cb) => {
+  const allowed = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'application/vnd.ms-excel', // .xls
+    'text/csv',
+    'application/octet-stream' // fallback for some browsers
+  ];
+
+  if (!allowed.includes(file.mimetype) && !file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+    return cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
+  }
+
+  cb(null, true);
+};
+
+const excelUpload = multer({
+  storage,
+  fileFilter: excelFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB for larger sheets
+  },
+});
+
 /**
  * Middleware to handle S3 upload after multer processing
  * Attaches s3Data to req for use in route handlers
@@ -78,5 +102,6 @@ const handleS3Upload = (category = 'attendee-photos') => {
 
 module.exports = {
   upload,
+  excelUpload,
   handleS3Upload,
 };

@@ -1,40 +1,4 @@
-import axios from 'axios';
-import toast from 'react-hot-toast';
-
-const api = axios.create({ baseURL: '/api', timeout: 15000 });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('eams_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-api.interceptors.response.use(
-  (res) => {
-    if (res?.data && typeof res.data === 'object' && !('data' in res.data)) {
-      res.data.data = {};
-    }
-    return res;
-  },
-  (err) => {
-    const status = err.response?.status;
-    if (status === 401) {
-      localStorage.removeItem('eams_token');
-      toast.error('Session expired. Please log in again.');
-      window.location.href = '/login';
-      return Promise.reject(err);
-    }
-    if (status === 403) {
-      if (err.response?.data && typeof err.response.data === 'object' && !('data' in err.response.data)) {
-        err.response.data.data = {};
-      }
-      toast.error(err.response?.data?.message || 'Access denied (403).');
-      // Avoid leaving user stuck with an unhandled runtime error
-      return Promise.resolve(err.response);
-    }
-    return Promise.reject(err);
-  }
-);
+import api from './client';
 
 export default api;
 export const authAPI = {

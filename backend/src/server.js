@@ -21,7 +21,7 @@ const User = require("./models/User"); // Create this model (name, email, passwo
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5000'],
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5000', 'http://127.0.0.1:5000'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
   credentials: true,
 }));
@@ -73,17 +73,22 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/events', require('./routes/events'));
 app.use('/api/orders', require('./routes/orders'));
+app.use('/api/confirm', require('./routes/confirm'));
 app.use('/api/attendees', require('./routes/attendees'));
 app.use('/api/verification', require('./routes/verification'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/invite', require('./routes/invite'));
 app.use('/api/entry', require('./routes/entry'));
 app.use('/api/zone', require('./routes/zone'));
-app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/dashboard', require('./routes/dashboard')); 
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/super-admin', require('./routes/superAdmin'));
 app.use('/api/user', require('./routes/userPortal'));
 app.use('/api/short-links', require('./routes/shortLinks'));
+app.use('/api/organiser', require('./routes/organiser'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/buyer', require('./routes/buyerRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // --- DATABASE CONNECTION ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";

@@ -1,62 +1,85 @@
-import React, { useState, useEffect } from 'react';
-import { getMyEvents } from '../../api/events';
-import { getEntryLogs, getEntryStats } from '../../api/entry';
-import DashboardLayout from '../../components/layout/DashboardLayout';
-import Badge from '../../components/ui/Badge';
-import Stat from '../../components/ui/Stat';
-import { Table, Th, Td, Tr } from '../../components/ui/Table';
-import { format } from 'date-fns';
-
-const actionColors = { check_in: 'green', check_out: 'blue', zone_entry: 'purple', zone_exit: 'gray', denied: 'red' };
+import React, { useEffect, useState } from 'react';
+import OrganiserLayout from '../../layouts/OrganiserLayout';
+import { getOrganiserEntryLogs } from '../../api/organiser';
+import Button from '../../components/ui/Button';
 
 const EntryLogsPage = () => {
-  const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
   const [logs, setLogs] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ zone: '', action: '', from: '', to: '' });
+  const [live, setLive] = useState(true);
 
-  useEffect(() => { getMyEvents().then(r => { const evs = r.data.data.events; setEvents(evs); if (evs.length) setSelectedEvent(evs[0]._id); }); }, []);
+  const load = () => {
+    setLoading(true);
+    getOrganiserEntryLogs({ limit: 50, ...filters })
+      .then((res) => setLogs(res.data?.data?.logs || []))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    if (!selectedEvent) return;
-    Promise.all([getEntryLogs({ eventId: selectedEvent, limit: 50 }), getEntryStats(selectedEvent)])
-      .then(([lr, sr]) => { setLogs(lr.data.data.logs); setStats(sr.data.data); });
-  }, [selectedEvent]);
+    load();
+    const interval = setInterval(() => {
+      if (live) load();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [filters, live]);
 
   return (
-    <DashboardLayout>
-      <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-bold text-gray-900">Entry Logs</h1><p className="text-gray-500 text-sm">Real-time access events</p></div>
-        <select value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-          {events.map(e => <option key={e._id} value={e._id}>{e.name}</option>)}
-        </select>
-      </div>
-
-      {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Stat label="Checked In" value={stats.checkedIn || 0} color="green"/>
-          <Stat label="Access Denied" value={stats.denied || 0} color="red"/>
-          <Stat label="Active Zones" value={stats.byZone?.length || 0} color="blue"/>
-          <Stat label="Categories" value={stats.byCategory?.length || 0} color="purple"/>
+    <OrganiserLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Entry Logs</h1>
+            <p className="text-sm text-slate-500">Live check-in / check-out activity.</p>
+          </div>
+          <Button variant="outline" onClick={load}>Refresh</Button>
         </div>
-      )}
 
-      <Table>
-        <thead><tr><Th>Attendee</Th><Th>Action</Th><Th>Gate / Zone</Th><Th>Method</Th><Th>Access</Th><Th>Time</Th></tr></thead>
-        <tbody>
-          {logs.map(log => (
-            <Tr key={log._id}>
-              <Td><p className="font-medium">{log.attendee?.fullName}</p><p className="text-xs text-gray-400">{log.attendee?.categoryName}</p></Td>
-              <Td><Badge color={actionColors[log.action]}>{log.action.replace('_', ' ')}</Badge></Td>
-              <Td><p>{log.gateName || log.gateId}</p>{log.zoneName && <p className="text-xs text-gray-400">{log.zoneName}</p>}</Td>
-              <Td><span className="text-xs uppercase bg-gray-100 px-2 py-0.5 rounded">{log.method}</span></Td>
-              <Td><Badge color={log.accessGranted ? 'green' : 'red'}>{log.accessGranted ? 'Granted' : 'Denied'}</Badge></Td>
-              <Td className="text-xs text-gray-500">{format(new Date(log.timestamp), 'MMM d, HH:mm:ss')}</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
-    </DashboardLayout>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Zone" value={filters.zone} onChange={(e) => setFilters((f) => ({ ...f, zone: e.target.value }))} />
+          <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={filters.action} onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}>
+            <option value="">All Actions</option>
+            <option value="check_in">Check-in</option>
+            <option value="check_out">Check-out</option>
+            <option value="denied">Denied</option>
+          </select>
+          <input type="date" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} />
+          <input type="date" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
+          Live Mode
+        </label>
+
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left">Time</th>
+                <th className="px-4 py-3 text-left">Attendee</th>
+                <th className="px-4 py-3 text-left">Action</th>
+                <th className="px-4 py-3 text-left">Gate/Zone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log._id} className="border-t">
+                  <td className="px-4 py-3">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}</td>
+                  <td className="px-4 py-3">{log.attendee?.fullName || '-'}</td>
+                  <td className="px-4 py-3">{log.action}</td>
+                  <td className="px-4 py-3">{log.gateName || log.zoneName || '-'}</td>
+                </tr>
+              ))}
+              {!loading && logs.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="px-4 py-8 text-center text-slate-400">No logs yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </OrganiserLayout>
   );
 };
 

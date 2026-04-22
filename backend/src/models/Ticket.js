@@ -13,13 +13,14 @@ const ticketSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ['PENDING', 'ASSIGNED', 'INVITED', 'CONFIRMED', 'CANCELLED'],
+    enum: ['PENDING', 'PENDING_VERIFICATION', 'ASSIGNED', 'INVITED', 'CONFIRMED', 'CANCELLED'],
     default: 'PENDING',
   },
 
-  // Invite tracking (when buyer delegates to someone else)
+  // Invite tracking
   inviteEmail: { type: String },
-  inviteToken: { type: String },
+  invitePhone: { type: String },
+  inviteToken: { type: String, default: () => require('uuid').v4() },
   inviteStatus: {
     type: String,
     enum: ['PENDING', 'ACCEPTED', 'DECLINED'],

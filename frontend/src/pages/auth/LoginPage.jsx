@@ -1,80 +1,228 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getCanonicalRole } from '../../utils/rbac';
 import toast from 'react-hot-toast';
+import { getDashboardPathForRole } from '../../config/roleNavigation';
+import { 
+  LockClosedIcon, 
+  EnvelopeIcon, 
+  EyeIcon, 
+  EyeSlashIcon,
+  ChevronRightIcon,
+  BoltIcon
+} from '@heroicons/react/24/outline';
 
-const DASHBOARD = {
-  SUPER_ADMIN: '/admin/dashboard',
-  ORGANISER: '/organiser/dashboard',
-  SUB_ORGANISER: '/suborg/dashboard',
-  STAFF: '/entry',
-  AUDITOR: '/auditor/dashboard',
-  BUYER: '/dashboard',
-};
 
 const LoginPage = () => {
-  const { login } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (user?.role) {
+      navigate(getDashboardPathForRole(user.role), { replace: true });
+    }
+  }, [user, navigate]);
+
+  const getLoginErrorMessage = (error) => {
+    if (error.response?.data?.message) return error.response.data.message;
+    if (Array.isArray(error.response?.data?.errors) && error.response.data.errors.length > 0) {
+      return error.response.data.errors[0]?.msg || 'Unable to sign in.';
+    }
+    if (!error.response) return 'Unable to reach the server. Please try again.';
+    return 'Unable to sign in right now.';
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const user = await login(form.email, form.password);
-      toast.success(`Welcome, ${user.name}!`);
-      navigate(DASHBOARD[getCanonicalRole(user.role)] || '/');
+      toast.success(`Access Granted — Welcome, ${user.name}`);
+      navigate(getDashboardPathForRole(user.role));
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
-    } finally { setLoading(false); }
+      toast.error(getLoginErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-3">
-            <span className="text-white text-xl font-bold">E</span>
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-sans selection:bg-blue-500/30 flex items-center justify-center p-6 sm:p-12">
+      {/* Premium Daylight Stadium Background */}
+      <div 
+        className="absolute inset-0 z-0"
+        style={{
+          backgroundImage: `url('file:///C:/Users/ThinuUpadya/.gemini/antigravity/brain/4a4596d3-dfa6-4d5a-b2e0-389bc5da345c/stadium_light_bg_1775555602851.png')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'brightness(0.95) contrast(1.05)',
+        }}
+      >
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-white/80" />
+      </div>
+
+      {/* Soft Daylight Glows */}
+      <div className="absolute top-0 right-1/4 h-[600px] w-[600px] rounded-full bg-blue-500/5 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 h-[600px] w-[600px] rounded-full bg-sky-500/5 blur-[120px] pointer-events-none" />
+
+      <div className="relative z-10 w-full max-w-[480px] animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
+        {/* Branding Section */}
+        <div className="mb-10 text-center">
+          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-blue-500/10 mb-6 border border-blue-500/20 shadow-sm backdrop-blur-md">
+             <BoltIcon className="h-8 w-8 text-blue-600" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">EAMS Sign In</h1>
-          <p className="text-gray-500 text-sm mt-1">Event Access Management System</p>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input type="email" required value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com"/>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input type="password" required value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••"/>
-          </div>
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>}
-            Sign In
-          </button>
-        </form>
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-blue-600 hover:text-blue-700 font-medium">
-              Sign Up
-            </Link>
+          <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 mb-2">
+             Secure <span className="text-blue-600">Gateway</span>
+          </h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
+            Precision Access Management
           </p>
         </div>
-        <div className="mt-6 pt-6 border-t border-gray-100 text-xs text-gray-400 space-y-1">
-          <p className="font-medium text-gray-500 mb-2">Demo accounts:</p>
-          <p>Admin: admin@eams.com / Admin@123456</p>
-          <p>Organiser: organiser@eams.com / Organiser@123</p>
-          <p>Sub-org: suborg@eams.com / SubOrg@123</p>
-          <p>Staff: staff@eams.com / Staff@123</p>
-          <p>Auditor: jp@gmail.com / 123456789</p>
-          <p>User: ks@gmail.com / 123456789</p>
+
+        {/* Login Card (Light Glass) */}
+        <div className="group relative rounded-[2.5rem] border border-white/60 bg-white/80 p-10 backdrop-blur-2xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)]">
+          <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+          
+          <form onSubmit={handleSubmit} className="space-y-7">
+            {/* Identity Email */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Verification Email</label>
+              <div className="relative group/field">
+                <EnvelopeIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={e => setForm(f => ({...f, email: e.target.value}))}
+                  placeholder="identity@stadium.eams"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                />
+              </div>
+            </div>
+
+            {/* Access Key */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Key</label>
+                 <Link to="/forgot-password" core="true" className="text-[10px] font-bold text-blue-600 hover:text-blue-500 transition-colors uppercase tracking-[0.2em] underline-offset-4 hover:underline">
+                   Lost Key?
+                 </Link>
+              </div>
+              <div className="relative group/field">
+                <LockClosedIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={form.password}
+                  onChange={e => setForm(f => ({...f, password: e.target.value}))}
+                  placeholder="••••••••••••"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-14 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
+                >
+                  {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full overflow-hidden rounded-2xl bg-blue-600 py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(37,99,235,0.3)] transition-all duration-300 hover:bg-blue-500 hover:shadow-[0_15px_30px_-5px_rgba(37,99,235,0.4)] disabled:opacity-50 active:scale-[0.98]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer" />
+              
+              {loading ? (
+                <span className="flex items-center justify-center gap-3">
+                  <div className="h-4 w-4 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+                  Authenticating...
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  Initiate Secure Access
+                  <ChevronRightIcon className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
+                </span>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-10 flex items-center gap-5">
+             <div className="h-[1px] flex-1 bg-slate-200" />
+             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Operations</span>
+             <div className="h-[1px] flex-1 bg-slate-200" />
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-4 text-center">
+            <Link to="/signup" className="group p-5 rounded-2xl border border-slate-100 bg-slate-50/50 transition-all hover:bg-white hover:border-blue-500/20 hover:shadow-md">
+               <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Recruit Attendee</span>
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Join the high-fidelity ecosystem</span>
+            </Link>
+            
+            <Link to="/" className="group p-5 rounded-2xl border border-slate-100 bg-slate-50/50 transition-all hover:bg-white hover:border-amber-500/20 hover:shadow-md">
+               <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-amber-600 mb-1">Public Terminal</span>
+               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Access as unregistered guest</span>
+            </Link>
+          </div>
+
+          {/* Quick Access Lab Dropdown */}
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <details className="group/details">
+              <summary className="flex items-center justify-center gap-2 cursor-pointer list-none text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 hover:text-blue-600 transition-colors">
+                <span className="bg-blue-500/10 px-2 py-0.5 rounded text-blue-600">Lab Access</span>
+                View System Credentials
+              </summary>
+              <div className="mt-4 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-2">
+                {[
+                  { r: 'Admin', e: 'admin@stadium.eams', p: 'Admin@Matrix.Reset' },
+                  { r: 'Organiser', e: 'organiser@stadium.eams', p: 'Organiser@Matrix.Reset' },
+                  { r: 'Sub-Org', e: 'suborg@stadium.eams', p: 'SubOrg@Matrix.Reset' },
+                  { r: 'Staff', e: 'staff@stadium.eams', p: 'Staff@Matrix.Reset' },
+                  { r: 'Auditor', e: 'auditor@stadium.eams', p: 'Auditor@Matrix.Reset' },
+                  { r: 'Attendee', e: 'attendee@stadium.eams', p: 'Attendee@Matrix.Reset' },
+                ].map((item, idx) => (
+                  <div key={idx} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100 text-[9px] font-bold tracking-wider">
+                    <span className="text-blue-600 uppercase mb-1">{item.r} Identity</span>
+                    <div className="flex justify-between text-slate-600">
+                       <span>{item.e}</span>
+                       <span className="text-slate-300">/</span>
+                       <span>{item.p}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
         </div>
-        <div className="mt-4 text-center">
-          <Link to="/" className="text-sm text-blue-600 hover:underline">← Back to events</Link>
+
+        {/* Footer Status */}
+         <div className="mt-12 text-center">
+          <div className="inline-flex items-center gap-4 bg-white/60 px-6 py-2.5 rounded-full border border-white shadow-sm backdrop-blur-md">
+             <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
+               Network Status: <span className="text-blue-600/80">Secured</span>
+             </p>
+          </div>
         </div>
+      </div>
+
+      {/* Modern Branding Bar */}
+      <div className="absolute bottom-10 inset-x-12 hidden lg:flex items-center justify-between pointer-events-none">
+        <div className="flex items-center gap-3">
+           <div className="h-0.5 w-12 bg-blue-500 rounded-full shadow-sm" />
+           <span className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
+             Elite Registry Protocol
+           </span>
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
+           © 2026 EAMS High Fidelity System
+        </span>
       </div>
     </div>
   );

@@ -5,9 +5,14 @@ export const createOrder = (data) => api.post('/orders', data);
 
 // Get order by confirmation token
 export const getOrderByToken = (token) => api.get(`/orders/confirm/${token}`);
+export const getBuyerOrderByToken = (token) => api.get(`/orders/${token}`);
 
 // Finalize order after all tickets are assigned
 export const finalizeOrder = (orderId) => api.post(`/orders/finalize/${orderId}`);
+
+// Buyer confirmation portal slot actions
+export const saveTicketAttendee = (ticketId, data) => api.post(`/tickets/${ticketId}/attendee`, data);
+export const sendTicketInvite = (ticketId, data) => api.post(`/tickets/${ticketId}/invite`, data);
 
 // Sample request/response examples:
 /*
