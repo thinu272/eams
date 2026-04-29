@@ -16,6 +16,7 @@ const ResubmitPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [modelLoadFailed, setModelLoadFailed] = useState(false);
   const [faceAnalysis, setFaceAnalysis] = useState(null);
   const [allowOverride, setAllowOverride] = useState(false);
   const [faceMatchThreshold, setFaceMatchThreshold] = useState(0.5);
@@ -60,16 +61,36 @@ const ResubmitPage = () => {
         const faceapiLib = window.faceapi;
         if (!faceapiLib) throw new Error('faceapi not available');
 
-        const modelPath = '/models';
-        await faceapiLib.nets.ssdMobilenetv1.loadFromUri(modelPath);
-        await faceapiLib.nets.faceLandmark68Net.loadFromUri(modelPath);
-        await faceapiLib.nets.faceRecognitionNet.loadFromUri(modelPath);
-        await faceapiLib.nets.faceExpressionNet.loadFromUri(modelPath);
+        const modelPaths = [
+          '/models',
+          'https://justadudewhohacks.github.io/face-api.js/models',
+        ];
+
+        let loaded = false;
+        let lastError = null;
+
+        for (const modelPath of modelPaths) {
+          try {
+            await faceapiLib.nets.ssdMobilenetv1.loadFromUri(modelPath);
+            await faceapiLib.nets.faceLandmark68Net.loadFromUri(modelPath);
+            await faceapiLib.nets.faceRecognitionNet.loadFromUri(modelPath);
+            await faceapiLib.nets.faceExpressionNet.loadFromUri(modelPath);
+            loaded = true;
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        if (!loaded) {
+          throw lastError || new Error('Unable to load face-api models');
+        }
 
         setModelsLoaded(true);
       } catch (err) {
         console.error('Failed to load face-api models', err);
-        toast.error('Could not initialize face detection models. Try again later.');
+        setModelLoadFailed(true);
+        toast.error('Face matching is temporarily unavailable. You can still resubmit your photo.');
       }
     };
 
@@ -169,7 +190,19 @@ const ResubmitPage = () => {
 
   const analyzePhoto = async (file) => {
     if (!modelsLoaded) {
-      return { errors: ['Face detection models are not loaded yet.'] };
+      return {
+        faceCount: 0,
+        confidence: 0,
+        boundingBox: null,
+        brightness: 0,
+        sharpness: 0,
+        descriptor: [],
+        matchDistance: null,
+        matchSimilarity: null,
+        matchThreshold: faceMatchThreshold,
+        errors: [],
+        skipped: true,
+      };
     }
 
     const img = await new Promise((resolve, reject) => {
@@ -331,7 +364,7 @@ const ResubmitPage = () => {
       toast.error('Please fix photo validation errors or enable override');
       return;
     }
-    if (!faceAnalysis?.descriptor?.length) {
+    if (modelsLoaded && attendee?.faceDescriptor?.length > 0 && !faceAnalysis?.descriptor?.length) {
       toast.error('Unable to compute face descriptor; please try another photo');
       return;
     }
@@ -350,6 +383,7 @@ const ResubmitPage = () => {
       formData.append('threshold', String(faceMatchThreshold));
       formData.append('faceMatchDistance', String(faceAnalysis?.matchDistance ?? 0));
       formData.append('faceMatchSimilarity', String(faceAnalysis?.matchSimilarity ?? 0));
+      formData.append('skipFaceMatch', String(!modelsLoaded || modelLoadFailed));
       await resubmitPhoto(formData);
       toast.success('Photo resubmitted for review');
       navigate('/');
@@ -407,6 +441,11 @@ const ResubmitPage = () => {
             <li>• File size: 50KB - 5MB</li>
             <li>• Format: JPG or PNG</li>
           </ul>
+          {modelLoadFailed && (
+            <p className="mt-3 text-sm text-amber-700">
+              Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.
+            </p>
+          )}
         </div>
 
         <div className="mb-6">

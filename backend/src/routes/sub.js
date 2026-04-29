@@ -13,7 +13,7 @@ const crypto = require('crypto');
 
 const router = express.Router();
 
-const SUB_ALLOWED_ROLES = [ROLES.SUB_ORGANISER, ROLES.MAIN_ORGANISER, ROLES.MAIN_ADMIN];
+const SUB_ALLOWED_ROLES = [ROLES.SUB_ORGANISER, ROLES.MAIN_ORGANISER, ROLES.MAIN_ADMIN, ROLES.STAFF];
 const ENTRY_LIKE_ZONE = /entry|gate/i;
 
 const parseToken = (value) => {
@@ -160,10 +160,12 @@ const resolveScopedEvent = async (user, explicitEventId) => {
 const buildScopedAttendeeFilter = (eventId, scopeZoneKeys) => {
   const filter = { event: eventId, isActive: true };
 
-  if (scopeZoneKeys.length) {
-    filter.allowedZones = { $in: scopeZoneKeys };
-  } else {
-    filter._id = { $exists: false };
+  if (scopeZoneKeys && scopeZoneKeys.length > 0) {
+    filter.$or = [
+      { allowedZones: { $in: scopeZoneKeys } },
+      { allowedZones: { $size: 0 } },
+      { allowedZones: { $exists: false } }
+    ];
   }
 
   return filter;
@@ -474,8 +476,12 @@ router.post('/verify', async (req, res, next) => {
     if (error) return res.status(403).json({ success: false, message: error });
 
     const scopeZoneKeys = getScopeZoneKeys(event, getAssignedZoneIds(req.user, event));
-    if (!attendee.allowedZones?.some((zone) => scopeZoneKeys.includes(zone))) {
-      return res.status(403).json({ success: false, message: 'Attendee is outside your assigned zones.' });
+    if (scopeZoneKeys.length > 0) {
+      const attendeeZones = attendee.allowedZones || [];
+      const hasOverlap = attendeeZones.length === 0 || attendeeZones.some((zone) => scopeZoneKeys.includes(zone));
+      if (!hasOverlap) {
+        return res.status(403).json({ success: false, message: 'Attendee is outside your assigned zones.' });
+      }
     }
 
     attendee.photoVerificationStatus = normalizedStatus;
@@ -496,12 +502,21 @@ router.post('/verify', async (req, res, next) => {
         reason: attendee.photoRejectionReason,
       });
     } else {
-      await notifyStatusChange({
-        attendee,
-        event: attendee.event,
-        status: 'Photo Verified',
-        message: 'Your photo has been verified successfully.',
-      });
+      const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+      const Ticket = require('../models/Ticket');
+      const orderTickets = await Ticket.find({ order: attendee.order }).populate('attendee');
+      const allVerified = orderTickets.length > 0 && orderTickets.every(t => t.attendee && t.attendee.photoVerificationStatus === 'verified');
+      
+      if (allVerified) {
+         await processOrderFinalConfirmation({ orderId: attendee.order });
+      } else {
+        await notifyStatusChange({
+          attendee,
+          event: attendee.event,
+          status: 'Photo Verified',
+          message: 'Your photo has been verified. Waiting for other attendees in your order to be verified before tickets are issued.',
+        });
+      }
     }
 
     res.json({ success: true, data: { attendee }, message: `Photo ${normalizedStatus}.` });
@@ -696,6 +711,9 @@ router.post('/scan-zone', async (req, res, next) => {
 
 router.post('/tickets', async (req, res, next) => {
   try {
+    if (normalizeRole(req.user.role) === ROLES.STAFF) {
+      return res.status(403).json({ success: false, message: 'Staff are not authorized to create tickets.' });
+    }
     const { 
       eventId, 
       name, 
@@ -775,6 +793,9 @@ router.post('/tickets', async (req, res, next) => {
 
 router.patch('/tickets/:categoryId/regenerate', async (req, res, next) => {
   try {
+    if (normalizeRole(req.user.role) === ROLES.STAFF) {
+      return res.status(403).json({ success: false, message: 'Staff are not authorized to modify tickets.' });
+    }
     const { eventId } = req.body;
     const { categoryId } = req.params;
 

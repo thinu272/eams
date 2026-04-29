@@ -15,3 +15,5 @@ export const assignOrganiser = (eventId, organiserId) => api.patch(`/events/${ev
 export const getEventDashboard = (eventId) => api.get(`/events/${eventId}/dashboard`);
 export const validateEventAccessCode = (slug, payload) =>
   api.post(`/events/${slug}/validate-code`, payload, { skipAuthRedirect: true });
+
+export const getPublicConfig = () => api.get('/events/config/public', { skipAuthRedirect: true });

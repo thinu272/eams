@@ -20,11 +20,27 @@ const parseScannedToken = (value) => {
   }
 };
 
-const userHasEventAccess = (user, eventId) => {
+const Event = require('../models/Event');
+
+const userHasEventAccess = async (user, eventId) => {
   if (!user || !eventId) return false;
   if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) return true;
 
-  return (user.assignedEvents || []).some((assignedEvent) => assignedEvent.toString() === eventId.toString());
+  if ((user.assignedEvents || []).some((assignedEvent) => assignedEvent.toString() === eventId.toString())) {
+    return true;
+  }
+
+  try {
+    const event = await Event.findById(eventId).select('createdBy mainOrganiser');
+    if (event) {
+      if (event.createdBy && event.createdBy.toString() === user._id.toString()) return true;
+      if (event.mainOrganiser && event.mainOrganiser.toString() === user._id.toString()) return true;
+    }
+  } catch (err) {
+    return false;
+  }
+
+  return false;
 };
 
 const userHasGateAccess = (user, gateName) => {
@@ -83,14 +99,20 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     if (qrToken) {
       attendee = await Attendee.findOne({ qrToken: parseScannedToken(qrToken) }).populate('event');
     } else if (rfidId) {
-      attendee = await Attendee.findOne({ wristbandId: rfidId.trim() }).populate('event');
+      // Check both wristbandId (assigned during check-in) and rfidTag (pre-assigned)
+      attendee = await Attendee.findOne({ 
+        $or: [
+          { rfidTag: rfidId.trim() },
+          { wristbandId: rfidId.trim() }
+        ]
+      }).populate('event');
     }
 
     if (!attendee) {
       return res.status(404).json({ success: false, reason: 'NOT_FOUND', message: 'Attendee not found. Invalid QR or RFID.' });
     }
 
-    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, reason: 'EVENT_ACCESS_DENIED', message: 'You do not have access to this event.' });
     }
 
@@ -127,6 +149,31 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         accessGranted: false,
       });
       return res.status(403).json({ success: false, reason: 'DEACTIVATED', message: 'Attendee is deactivated.', data: { log } });
+    }
+
+    // --- DATE VALIDATION ---
+    const now = new Date();
+    const eventStart = new Date(attendee.event.startDate);
+    const eventEnd = attendee.event.endDate ? new Date(attendee.event.endDate) : new Date(eventStart.getTime() + (24 * 60 * 60 * 1000));
+    
+    // Buffer: Allow check-in 2 hours early
+    const earlyBuffer = 2 * 60 * 60 * 1000;
+    const lateBuffer = 1 * 60 * 60 * 1000; // Allow checkout 1 hour late
+
+    if (now < (eventStart.getTime() - earlyBuffer)) {
+      return res.status(403).json({ 
+        success: false, 
+        reason: 'EVENT_NOT_STARTED', 
+        message: `Event has not started yet. Starts at ${eventStart.toLocaleString()}.` 
+      });
+    }
+
+    if (now > (eventEnd.getTime() + lateBuffer)) {
+      return res.status(403).json({ 
+        success: false, 
+        reason: 'EVENT_EXPIRED', 
+        message: `Event has ended. Closed at ${eventEnd.toLocaleString()}.` 
+      });
     }
 
     if (attendee.confirmationStatus !== 'confirmed' || !attendee.isConfirmed) {
@@ -288,7 +335,7 @@ router.get('/logs', protect, async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
-    if (!userHasEventAccess(req.user, eventId)) {
+    if (!(await userHasEventAccess(req.user, eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
@@ -330,7 +377,7 @@ router.get('/stats', protect, async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
-    if (!userHasEventAccess(req.user, eventId)) {
+    if (!(await userHasEventAccess(req.user, eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
@@ -419,7 +466,7 @@ router.get('/search', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
-    if (!userHasEventAccess(req.user, eventId)) {
+    if (!(await userHasEventAccess(req.user, eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
@@ -430,6 +477,8 @@ router.get('/search', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
       $or: [
         { fullName: { $regex: query, $options: 'i' } },
         { phone: { $regex: query, $options: 'i' } },
+        { nationalId: { $regex: query, $options: 'i' } },
+        { passportNumber: { $regex: query, $options: 'i' } },
       ],
     })
       .select('fullName phone qrToken categoryName confirmationStatus checkedIn photo')
@@ -446,7 +495,7 @@ router.get('/attendee/:qrToken', protect, async (req, res, next) => {
     const attendee = await Attendee.findOne({ qrToken: req.params.qrToken })
       .populate('event', 'name venue startDate zones categories');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
-    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
     res.json({ success: true, data: { attendee } });
@@ -462,7 +511,7 @@ router.get('/lookup', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
-    if (!userHasEventAccess(req.user, eventId)) {
+    if (!(await userHasEventAccess(req.user, eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
     const query = q.trim();
@@ -473,6 +522,7 @@ router.get('/lookup', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
         { fullName: { $regex: query, $options: 'i' } },
         { phone: { $regex: query, $options: 'i' } },
         { nationalId: { $regex: query, $options: 'i' } },
+        { passportNumber: { $regex: query, $options: 'i' } },
         { email: { $regex: query, $options: 'i' } },
       ],
     })
@@ -493,7 +543,7 @@ router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub
 
     const attendee = await Attendee.findById(attendeeId).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
-    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
@@ -564,7 +614,7 @@ router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'su
 
     const attendee = await Attendee.findById(attendeeId).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
-    if (!userHasEventAccess(req.user, attendee.event?._id || attendee.event)) {
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 

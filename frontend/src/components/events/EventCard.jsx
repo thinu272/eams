@@ -26,7 +26,7 @@ const EventCard = ({ event, onViewDetails }) => {
         <p className="text-gray-600 text-sm mb-2">{formatDate(event.startDate)}</p>
         <p className="text-gray-600 text-sm mb-2">{event.venue?.name}</p>
         <p className="text-gray-600 text-sm mb-4">
-          Starting from LKR {startingPrice.toLocaleString()}
+          Starting from {event.settings?.currency || 'LKR'} {startingPrice.toLocaleString()}
         </p>
         <button
           onClick={() => onViewDetails(event.slug || event._id)}

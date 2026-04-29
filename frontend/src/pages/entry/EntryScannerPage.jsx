@@ -404,9 +404,11 @@ const EntryScannerPage = () => {
       {/* Header */}
       <div className="flex h-16 items-center justify-between border-b border-gray-800 bg-gray-900/80 px-6 backdrop-blur-sm">
         <div className="flex items-center gap-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white"><BoltIcon className="h-5 w-5" /></div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-main text-white">
+            <img src="/logo.png" alt="Logo" className="h-5 w-5 object-contain" onError={(e) => e.target.style.display='none'} />
+          </div>
           <div>
-            <p className="text-sm font-black tracking-tight">EAMS Entry Gate</p>
+            <p className="text-sm font-black tracking-tight">ENTRYNEX Entry Gate</p>
             <p className="text-xs text-gray-500">{selectedEventData?.name || 'Loading…'} · {gateId}</p>
           </div>
         </div>
@@ -494,7 +496,7 @@ const EntryScannerPage = () => {
             {mode === 'camera' && (
               <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6">
                 <div className="w-full max-w-lg">
-                  <div className="rounded-2xl overflow-hidden border-2 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)]">
+                  <div className="rounded-2xl overflow-hidden border-2 border-brand-main shadow-[0_0_40px_rgba(38,132,255,0.3)]">
                     <QRScannerComponent
                       onScanSuccess={(text) => handleScanToken(text, 'qr')}
                       onScanError={() => {}}
@@ -529,16 +531,16 @@ const EntryScannerPage = () => {
                       ref={inputRef}
                       value={scanInput}
                       onChange={(e) => setScanInput(e.target.value)}
-                      placeholder="Paste QR token here…"
-                      className="w-full rounded-2xl border border-gray-700 bg-gray-800 px-6 py-5 text-xl font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      placeholder="Paste QR token here..."
+                      className="w-full rounded-2xl border border-gray-700 bg-gray-800 px-6 py-5 text-xl font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-main text-center"
                       autoFocus
                     />
                     <button
                       type="submit"
                       disabled={!scanInput.trim() || scanning}
-                      className="w-full rounded-2xl bg-blue-600 py-5 text-xl font-black text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="w-full rounded-2xl bg-brand-main py-5 text-xl font-black text-white hover:bg-brand-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
-                      {scanning ? '⏳ Processing…' : <><CheckCircleIcon className="h-6 w-6 inline mr-2" /> Process Scan</>}
+                      {scanning ? '⏳ Processing...' : <><CheckCircleIcon className="h-6 w-6 inline mr-2" /> Process Scan</>}
                     </button>
                   </form>
                 </div>

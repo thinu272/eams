@@ -12,6 +12,8 @@ const ZoneLog = require('../models/ZoneLog');
 const Notification = require('../models/Notification');
 const SystemConfig = require('../models/SystemConfig');
 const { protect, checkRole } = require('../middleware/auth');
+const crypto = require('crypto');
+const notificationService = require('../services/notificationService');
 
 const router = express.Router();
 const USER_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee'];
@@ -128,6 +130,8 @@ const serializeSettings = (config) => ({
     darkModeDefault: config.theme?.defaultMode === 'dark',
     balancedSecurity: config.security?.mode === 'balanced',
   },
+  currency: config.currency || 'LKR',
+  maintenanceMode: !!config.maintenanceMode,
 });
 
 router.use(protect, checkRole('SUPER_ADMIN'));
@@ -135,14 +139,16 @@ router.use(protect, checkRole('SUPER_ADMIN'));
 const getOverviewData = async () => {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
-  const [totalEvents, totalUsers, totalTicketsSold, revenueRows, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs] = await Promise.all([
+  const [totalEvents, totalUsers, totalTicketsSold, revenueRows, verifiedAttendees, totalAttendees, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs] = await Promise.all([
     Event.countDocuments(),
     User.countDocuments(),
     Ticket.countDocuments({ status: { $ne: 'CANCELLED' } }),
-    Order.aggregate([{ $match: { status: { $ne: 'CANCELLED' } } }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }]),
+    Order.aggregate([{ $match: { paymentStatus: 'success' } }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }]),
+    Attendee.countDocuments({ isActive: true, photoVerificationStatus: 'verified' }),
+    Attendee.countDocuments({ isActive: true }),
     Event.countDocuments({ $or: [{ status: 'ongoing' }, { startDate: { $lte: now }, endDate: { $gte: now } }] }),
     Order.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo }, status: { $ne: 'CANCELLED' } } },
+      { $match: { createdAt: { $gte: thirtyDaysAgo }, paymentStatus: 'success' } },
       { $group: { _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' }, d: { $dayOfMonth: '$createdAt' } }, ticketsSold: { $sum: { $sum: '$tickets.quantity' } }, revenue: { $sum: '$totalAmount' } } },
       { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
     ]),
@@ -150,6 +156,10 @@ const getOverviewData = async () => {
     ZoneLog.find({}).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(5).lean(),
     RequestLog.find({}).populate('userId', 'name role').sort({ createdAt: -1 }).limit(5).lean(),
   ]);
+
+  const totalRevenue = revenueRows[0]?.totalRevenue || 0;
+  const verificationRate = totalAttendees > 0 ? ((verifiedAttendees / totalAttendees) * 100).toFixed(1) : 0;
+  const avgTicketPrice = totalTicketsSold > 0 ? (totalRevenue / totalTicketsSold).toFixed(2) : 0;
 
   const activity = [
     ...entryLogs.map((item) => ({
@@ -164,7 +174,15 @@ const getOverviewData = async () => {
   ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10);
 
   return {
-    metrics: { totalEvents, totalUsers, totalTicketsSold, totalRevenue: revenueRows[0]?.totalRevenue || 0, activeEvents },
+    metrics: { 
+      totalEvents, 
+      totalUsers, 
+      totalTicketsSold, 
+      totalRevenue, 
+      activeEvents,
+      verificationRate,
+      avgTicketPrice
+    },
     ticketSalesOverTime: ticketSalesOverTime.map((row) => ({ label: `${row._id.y}-${String(row._id.m).padStart(2, '0')}-${String(row._id.d).padStart(2, '0')}`, ticketsSold: row.ticketsSold, revenue: row.revenue })),
     activity,
   };
@@ -409,7 +427,20 @@ router.delete('/events/:id', async (req, res, next) => {
 
 router.post('/organisers', async (req, res, next) => {
   try {
-    const organiser = await User.create({ ...req.body, role: req.body.role || 'MainOrganiser', createdBy: req.user._id });
+    const payload = { ...req.body, role: req.body.role || 'MainOrganiser', createdBy: req.user._id };
+    
+    let tempPassword = payload.password;
+    if (!tempPassword) {
+      tempPassword = crypto.randomBytes(8).toString('hex');
+      payload.password = tempPassword;
+    }
+    payload.isTempPassword = true;
+    payload.isVerified = true;
+
+    const organiser = await User.create(payload);
+    
+    await notificationService.notifyUserCredentials(organiser, tempPassword);
+
     const hydrated = await User.findById(organiser._id).populate('assignedEvents', 'name');
     res.status(201).json({ success: true, data: { organiser: serializeOrganiser(hydrated) } });
   } catch (error) {
@@ -446,7 +477,20 @@ router.delete('/organisers/:id', async (req, res, next) => {
 
 router.post('/users', async (req, res, next) => {
   try {
-    const user = await User.create({ ...req.body, createdBy: req.user._id });
+    const payload = { ...req.body, createdBy: req.user._id };
+    
+    let tempPassword = payload.password;
+    if (!tempPassword) {
+      tempPassword = crypto.randomBytes(8).toString('hex');
+      payload.password = tempPassword;
+    }
+    payload.isTempPassword = true;
+    payload.isVerified = true;
+
+    const user = await User.create(payload);
+
+    await notificationService.notifyUserCredentials(user, tempPassword);
+
     const hydrated = await User.findById(user._id).populate('assignedEvents', 'name');
     res.status(201).json({ success: true, data: { user: serializeUser(hydrated) } });
   } catch (error) {
@@ -548,6 +592,8 @@ router.patch('/settings', async (req, res, next) => {
           'security.requirePhotoVerification': Boolean(req.body.featureToggles?.requirePhotoVerification),
           'security.mode': req.body.featureToggles?.balancedSecurity ? 'balanced' : 'strict',
           'theme.defaultMode': req.body.featureToggles?.darkModeDefault ? 'dark' : 'light',
+          'currency': req.body.currency || 'LKR',
+          'maintenanceMode': !!req.body.maintenanceMode,
         },
       },
       { new: true, upsert: true },

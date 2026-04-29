@@ -4,8 +4,10 @@ const { body, validationResult } = require('express-validator');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
-const { notifyFinalTicket } = require('../services/notificationService');
+const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { resolveConfirmedTicketStatus, requiresPhotoVerification } = require('../services/ticketDeliveryService');
+const { validatePhoto } = require('../services/photoValidationService');
 
 const getInviteExpiryDate = (ticket) => {
   if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
@@ -142,15 +144,39 @@ router.post(
       }
 
       if (req.s3Data) {
+        const aiResults = await validatePhoto(req.file.buffer, ticket.event);
         attendee.photo = req.s3Data.url;
         attendee.photoS3Key = req.s3Data.key;
         attendee.photoUploadedAt = new Date();
+        attendee.photoHash = aiResults.hash;
+        attendee.photoValidationMetrics = {
+          ...attendee.photoValidationMetrics,
+          faceCount: aiResults.metrics.faceCount,
+          faceConfidence: aiResults.metrics.faceConfidence,
+          sharpness: aiResults.metrics.sharpness,
+          brightness: aiResults.metrics.brightness,
+        };
+        if (!aiResults.isValid) {
+          attendee.photoVerificationStatus = 'rejected';
+          attendee.photoRejectionReason = `AI Auto-Reject: ${aiResults.reason}`;
+        }
+      }
+
+      let incomingDescriptor = [];
+      try {
+        incomingDescriptor = req.body.faceDescriptor ? JSON.parse(req.body.faceDescriptor) : [];
+      } catch (err) {
+        incomingDescriptor = [];
+      }
+      if (Array.isArray(incomingDescriptor) && incomingDescriptor.every((v) => typeof v === 'number')) {
+        attendee.faceDescriptor = incomingDescriptor;
       }
 
       await attendee.save();
 
       ticket.attendee = attendee._id;
-      ticket.status = 'PENDING_VERIFICATION';
+      const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
+      ticket.status = requiresPhotoVerification(ticket.event) ? 'PENDING_VERIFICATION' : nextTicketStatus;
       ticket.inviteStatus = 'ACCEPTED';
       ticket.inviteRespondedAt = ticket.inviteRespondedAt || new Date();
       ticket.inviteUsedAt = new Date();
@@ -161,7 +187,24 @@ router.post(
         const orderTickets = await Ticket.find({ order: orderId });
         const allSlotsSubmitted = orderTickets.length > 0 && orderTickets.every((t) => isTicketSlotConfirmed(t.status));
 
+        if (requiresPhotoVerification(ticket.event)) {
+          await notifyBuyerTicketProgress({
+            order: ticket.order,
+            attendee,
+            event: ticket.event,
+            ticket,
+            stage: 'pending_verification',
+          });
+        }
+
+        const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+        await processOrderFinalConfirmation({ orderId }).catch((err) => console.error('FINAL CONFIRMATION ERROR:', err));
+
         if (allSlotsSubmitted) {
+          await Order.findByIdAndUpdate(orderId, { allAssigned: true });
+        }
+
+        if (false) {
           const allAttendees = await Attendee.find({ order: orderId });
           const event = ticket.event;
           await Promise.all(

@@ -6,7 +6,8 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
-const { notifyInvite } = require('../services/notificationService');
+const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -159,13 +160,7 @@ const assignSelfToTicket = async (req, res, next) => {
       attendee.photoUploadedAt = new Date();
     }
 
-    const qrPayload = {
-      attendeeToken: attendee.qrToken,
-      ticketNumber: ticket.ticketNumber,
-      eventToken: ticket.event?._id?.toString?.() || '',
-      generatedAt: new Date().toISOString(),
-    };
-    attendee.qrCode = await QRCode.toDataURL(JSON.stringify(qrPayload));
+    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
     attendee.confirmationStatus = 'confirmed';
     attendee.isConfirmed = true;
     attendee.confirmedAt = new Date();
@@ -173,7 +168,7 @@ const assignSelfToTicket = async (req, res, next) => {
 
     await attendee.save();
     ticket.attendee = attendee._id;
-    ticket.status = 'CONFIRMED';
+    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     await ticket.save();
 
     // Update order confirmation status
@@ -181,6 +176,23 @@ const assignSelfToTicket = async (req, res, next) => {
     const confirmedCount = tickets.filter((t) => t.status === 'CONFIRMED').length;
     const confirmationStatus = confirmedCount === tickets.length ? 'complete' : 'partial';
     await Order.findByIdAndUpdate(ticket.order._id, { confirmationStatus });
+
+    if (requiresPhotoVerification(ticket.event)) {
+      await notifyBuyerTicketProgress({
+        order: ticket.order,
+        attendee,
+        event: ticket.event,
+        ticket,
+        stage: 'pending_verification',
+      });
+    } else {
+      await notifyFinalTicket({
+        attendee,
+        event: ticket.event,
+        phone: attendee.phone,
+        notificationChannel: 'email',
+      });
+    }
 
     res.json({ success: true, data: { attendee }, message: 'Details submitted successfully.' });
   } catch (err) { next(err); }
@@ -233,6 +245,14 @@ const inviteForTicket = async (req, res, next) => {
       phone,
       email,
       notificationChannel: notificationChannel || 'email',
+    });
+
+    await notifyBuyerTicketProgress({
+      order: ticket.order,
+      attendee,
+      event: ticket.event,
+      ticket,
+      stage: 'invited',
     });
 
     res.json({ success: true, message: 'Invite sent successfully.' });
@@ -368,6 +388,14 @@ module.exports = {
         notificationChannel: notificationChannel || 'email',
       });
 
+      await notifyBuyerTicketProgress({
+        order: ticket.order,
+        attendee,
+        event: ticket.event,
+        ticket,
+        stage: 'invited',
+      });
+
       res.json({ success: true, data: { attendee }, message: 'Invite sent successfully.' });
     } catch (err) {
       next(err);
@@ -445,6 +473,14 @@ module.exports = {
         phone: attendee.phone,
         email: attendee.email,
         notificationChannel: req.body.notificationChannel || 'email',
+      });
+
+      await notifyBuyerTicketProgress({
+        order: ticket.order,
+        attendee,
+        event: ticket.event,
+        ticket,
+        stage: 'invited',
       });
 
       res.json({ success: true, message: 'Invite resent successfully.' });
@@ -543,6 +579,14 @@ module.exports = {
           phone: attendee.phone,
           email: attendee.email,
           notificationChannel: notificationChannel || 'email',
+        });
+
+        await notifyBuyerTicketProgress({
+          order,
+          attendee,
+          event: ticket.event,
+          ticket,
+          stage: 'invited',
         });
 
         results.push({ ticketId: ticket._id, attendeeId: attendee._id, email: attendee.email });

@@ -2,7 +2,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 
 const clearDB = async () => {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/eams');
+  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/entrynex');
   console.log('MongoDB connected for clearing data...');
 
   const collections = Object.keys(mongoose.connection.collections);

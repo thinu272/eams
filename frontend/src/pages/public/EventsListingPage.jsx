@@ -1,20 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  CalendarDaysIcon,
-  MapPinIcon,
-  MagnifyingGlassIcon,
-} from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvents } from '../../api/events';
-import Badge from '../../components/ui/Badge';
-
-const buildAssetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-  return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
-};
+import { io } from 'socket.io-client';
+import PublicEventCard from '../../components/events/PublicEventCard';
 
 const EventsListingPage = () => {
   const [events, setEvents] = useState([]);
@@ -58,6 +47,19 @@ const EventsListingPage = () => {
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [filters]);
+
+  useEffect(() => {
+    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    
+    socket.on('event_update', (data) => {
+      console.log('Listing update received:', data);
+      fetchEvents();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   const updateFilter = (name, value) => {
     setFilters((current) => ({ ...current, [name]: value }));
@@ -162,70 +164,10 @@ const EventsListingPage = () => {
               <button onClick={clearFilters} className="mt-6 text-blue-600 font-bold hover:text-blue-700">Clear all filters</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {events.map((event) => {
-                const categories = event.categories || [];
-                const minPrice = categories.length > 0 ? Math.min(...categories.map(c => c.price)) : 0;
-                const themeColor = event.branding?.themeColor || '#2563EB';
-                const eventImage = event.branding?.bannerImage || event.coverImage || event.bannerImage;
-                
-                return (
-                  <Link
-                    key={event._id}
-                    to={`/events/${event.slug || event._id}`}
-                    className="group bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-blue-900/10 transition-all duration-300"
-                    style={{ '--hover-border': themeColor }}
-                  >
-                    <div className="relative h-48 bg-slate-100 overflow-hidden">
-                       {eventImage ? (
-                          <img
-                            src={buildAssetUrl(eventImage)}
-                            alt={event.name}
-                            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center bg-slate-800 text-slate-400 text-5xl uppercase font-black">
-                            {event.name.substring(0,2)}
-                          </div>
-                        )}
-                         <div className="absolute top-4 left-4">
-                          <Badge color="sky" className="border-none font-bold uppercase tracking-widest text-[10px] shadow-lg text-white" style={{ backgroundColor: themeColor }}>
-                            {event.eventType || 'Cricket Match'}
-                          </Badge>
-                        </div>
-                    </div>
-                    
-                    <div className="p-6">
-                       <h3 className="font-black text-xl text-slate-900 leading-tight mb-4 transition-colors line-clamp-2" style={{ '--hover-text': themeColor }}>
-                        {event.name}
-                      </h3>
-                      
-                      <div className="space-y-3 mb-6">
-                         <div className="flex items-start gap-3 text-slate-600 text-sm font-medium">
-                          <CalendarDaysIcon className="h-5 w-5 flex-shrink-0" style={{ color: themeColor }} />
-                          <span className="leading-tight">{event.startDate ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}</span>
-                        </div>
-                         <div className="flex items-start gap-3 text-slate-600 text-sm font-medium">
-                          <MapPinIcon className="h-5 w-5 flex-shrink-0" style={{ color: themeColor }} />
-                          <span className="leading-tight line-clamp-2">{event.venue?.name || 'TBD'}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="pt-5 border-t border-slate-100 flex items-center justify-between">
-                         <div>
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400 block mb-0.5">Tickets From</span>
-                            <span className="font-black text-lg text-slate-900">
-                              {minPrice > 0 ? `LKR ${minPrice.toLocaleString()}` : minPrice === 0 && categories.length > 0 ? 'Free' : 'TBA'}
-                            </span>
-                         </div>
-                          <span className="text-white text-sm font-bold py-2.5 px-5 rounded-xl transition-colors" style={{ backgroundColor: themeColor }}>
-                           Details
-                         </span>
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {events.map((event) => (
+                <PublicEventCard key={event._id} event={event} />
+              ))}
             </div>
           )}
 

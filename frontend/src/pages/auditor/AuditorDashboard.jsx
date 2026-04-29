@@ -50,13 +50,14 @@ const AuditorDashboard = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const fallbackEventId = selectedEventId || nextEvents[0]?._id || '';
+      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
+      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
       }
     });
-  }, []);
+  }, [selectedEventId]);
 
   useEffect(() => {
     const handleEventSelect = (event) => {
@@ -64,8 +65,8 @@ const AuditorDashboard = () => {
       setSelectedEventId(nextId);
     };
 
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
@@ -78,7 +79,7 @@ const AuditorDashboard = () => {
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('eams:event-select', { detail: nextId }));
+    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
   };
 
   const selectedEvent = useMemo(

@@ -18,6 +18,13 @@ const CheckoutPage = () => {
     email: user?.email || '',
     phone: user?.phone || '',
   });
+  const [paymentMethod, setPaymentMethod] = useState(() => {
+    const methods = event.settings?.paymentMethods;
+    if (methods?.card ?? true) return 'card';
+    if (methods?.bank_transfer ?? true) return 'bank_transfer';
+    if (methods?.cash ?? true) return 'cash';
+    return 'card';
+  });
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -63,9 +70,9 @@ const CheckoutPage = () => {
   const formatCurrency = (value) =>
     value === 0
       ? 'Complimentary'
-      : new Intl.NumberFormat('en-LK', {
+      : new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: 'LKR',
+          currency: event.settings?.currency || 'LKR',
           maximumFractionDigits: 0,
         }).format(value);
 
@@ -103,14 +110,37 @@ const CheckoutPage = () => {
         buyerEmail: buyerDetails.email,
         buyerPhone: buyerDetails.phone,
         tickets,
+        paymentMethod,
       };
 
       const response = await createOrder(orderData);
 
       if (response.data.success) {
-        toast.success('Order created successfully!');
-        const confirmationToken = response.data.data.confirmationToken;
-        navigate(`/order/${confirmationToken}/confirm`);
+        // If it's a card payment, use PayHere integration
+        if (paymentMethod === 'card' && response.data.data.paymentData) {
+          toast.success('Redirecting to secure payment gateway...');
+          
+          // Create and submit a hidden form to PayHere
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = process.env.REACT_APP_PAYHERE_URL || 'https://sandbox.payhere.lk/pay/checkout'; // Use sandbox by default
+          
+          Object.entries(response.data.data.paymentData).forEach(([key, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+          });
+          
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          // For Cash or Bank Transfer, just go to confirmation
+          toast.success('Order created successfully!');
+          const confirmationToken = response.data.data.confirmationToken;
+          navigate(`/order/${confirmationToken}/confirm`);
+        }
       } else {
         toast.error(response.data.message || 'Failed to create order');
       }
@@ -120,6 +150,12 @@ const CheckoutPage = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const enabledMethods = {
+    card: event.settings?.paymentMethods?.card ?? true,
+    bank_transfer: event.settings?.paymentMethods?.bank_transfer ?? true,
+    cash: event.settings?.paymentMethods?.cash ?? true,
   };
 
   return (
@@ -215,7 +251,7 @@ const CheckoutPage = () => {
                 </div>
               </div>
 
-              {/* Payment Info Placeholder */}
+              {/* Payment Methods */}
               <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
                 <div className="bg-slate-900 px-8 py-6">
                    <h2 className="flex items-center gap-3 text-xl font-black uppercase tracking-wide text-white">
@@ -223,21 +259,82 @@ const CheckoutPage = () => {
                       Payment Method
                    </h2>
                 </div>
-                <div className="p-8">
-                   <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-6">
-                      <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black text-slate-400">
-                               PAY
-                            </div>
-                            <div>
-                               <p className="font-black text-slate-900">Standard Checkout</p>
-                               <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
-                            </div>
-                         </div>
-                         <div className="h-6 w-6 rounded-full border-4 bg-white ring-4" style={{ borderColor: themeColor, ringColor: `${themeColor}1A` }} />
-                      </div>
-                   </div>
+                <div className="p-8 space-y-4">
+                   {/* Option 1: Card */}
+                   {enabledMethods.card && (
+                     <div 
+                        onClick={() => setPaymentMethod('card')}
+                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                          paymentMethod === 'card' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                        }`}
+                     >
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-4">
+                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                 <CreditCardIcon className="h-6 w-6" />
+                              </div>
+                              <div>
+                                 <p className="font-black text-slate-900">Standard Checkout</p>
+                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
+                              </div>
+                           </div>
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                             paymentMethod === 'card' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
+                           }`} />
+                        </div>
+                     </div>
+                   )}
+
+                   {/* Option 2: Bank Transfer */}
+                   {enabledMethods.bank_transfer && (
+                     <div 
+                        onClick={() => setPaymentMethod('bank_transfer')}
+                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                          paymentMethod === 'bank_transfer' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                        }`}
+                     >
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-4">
+                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'bank_transfer' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                 <WalletIcon className="h-6 w-6" />
+                              </div>
+                              <div>
+                                 <p className="font-black text-slate-900">Direct Bank Transfer</p>
+                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Manual Verification</p>
+                              </div>
+                           </div>
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                             paymentMethod === 'bank_transfer' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
+                           }`} />
+                        </div>
+                     </div>
+                   )}
+
+                   {/* Option 3: Cash */}
+                   {enabledMethods.cash && (
+                     <div 
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                          paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                        }`}
+                     >
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-4">
+                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'cash' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                 <ShieldCheckIcon className="h-6 w-6" />
+                              </div>
+                              <div>
+                                 <p className="font-black text-slate-900">Cash at Entrance</p>
+                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Pay on Event Day</p>
+                              </div>
+                           </div>
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                             paymentMethod === 'cash' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
+                           }`} />
+                        </div>
+                     </div>
+                   )}
+
                    <div className="mt-8 flex items-center gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-200">
                       < ShieldCheckIcon className="h-5 w-5 text-amber-600" />
                       <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">

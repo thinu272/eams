@@ -69,8 +69,8 @@ const SubOrgTeam = () => {
       loadData(newId);
     };
 
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {

@@ -14,6 +14,10 @@ const orderSchema = new mongoose.Schema({
     ref: 'Event',
     required: true,
   },
+  buyerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
   buyerName: {
     type: String,
     required: true,
@@ -28,6 +32,11 @@ const orderSchema = new mongoose.Schema({
   buyerPhone: {
     type: String,
     trim: true,
+  },
+  notificationChannel: {
+    type: String,
+    enum: ['email', 'sms', 'both'],
+    default: 'email',
   },
   tickets: [{
     categoryName: {
@@ -52,8 +61,17 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'CONFIRMED', 'CANCELLED'],
+    enum: ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED'],
     default: 'PENDING',
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'success', 'failed'],
+    default: 'pending',
+  },
+  paymentDetails: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
   },
   confirmationToken: {
     type: String,

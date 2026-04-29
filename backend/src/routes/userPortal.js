@@ -8,6 +8,8 @@ const { protect, checkRole } = require('../middleware/auth');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3 } = require('../services/s3Service');
 const QRCode = require('qrcode');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
+const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -380,7 +382,7 @@ router.get('/confirm/:token', async (req, res, next) => {
 // POST /api/user/confirm/:token - submit confirmation (scoped)
 router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
   try {
-    const attendee = await Attendee.findOne({ confirmationToken: req.params.token });
+    const attendee = await Attendee.findOne({ confirmationToken: req.params.token }).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
     if (!(await isUserAllowedToManageAttendee({ user: req.user, attendee }))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this confirmation link.' });
@@ -417,7 +419,26 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
     attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
 
     await attendee.save();
-    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
+    const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: attendee.event });
+    const ticket = await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: nextTicketStatus }, { new: true });
+
+    if (!requiresPhotoVerification(attendee.event)) {
+      await notifyFinalTicket({
+        attendee,
+        event: attendee.event,
+        phone: attendee.phone,
+        notificationChannel: 'email',
+      }).catch(console.error);
+    } else {
+      const order = attendee.order ? await Order.findById(attendee.order) : null;
+      await notifyBuyerTicketProgress({
+        order,
+        attendee,
+        event: attendee.event,
+        ticket,
+        stage: 'pending_verification',
+      });
+    }
 
     res.json({ success: true, data: { attendee }, message: 'Identity confirmed successfully.' });
   } catch (err) {

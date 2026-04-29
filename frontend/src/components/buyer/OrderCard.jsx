@@ -29,7 +29,7 @@ const OrderCard = ({ order }) => {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-900">LKR {Number(order.totalAmount || 0).toLocaleString()}</p>
+        <p className="text-sm font-semibold text-slate-900">{order.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}</p>
         <Link to={`/buyer/orders/${order._id}`} className="text-sm font-semibold text-blue-600 hover:text-blue-700">
           Manage Confirmation →
         </Link>

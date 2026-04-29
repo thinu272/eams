@@ -15,6 +15,7 @@ const parseScannedValue = (value) => {
 
 const ScannerComponent = ({ title, description, zones, activeZone, onZoneChange, onSubmit, submitting, result }) => {
   const [scanMode, setScanMode] = useState('qr');
+  const [action, setAction] = useState('ENTRY');
   const [manualValue, setManualValue] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const inputRef = useRef(null);
@@ -22,7 +23,7 @@ const ScannerComponent = ({ title, description, zones, activeZone, onZoneChange,
   const submitValue = async (value) => {
     const nextValue = parseScannedValue(value);
     if (!nextValue) return;
-    await onSubmit({ value: nextValue, mode: scanMode, zoneId: activeZone });
+    await onSubmit({ value: nextValue, mode: scanMode, zoneId: activeZone, action });
     setManualValue('');
     inputRef.current?.focus();
   };
@@ -45,6 +46,18 @@ const ScannerComponent = ({ title, description, zones, activeZone, onZoneChange,
                 <option key={zone.id || zone.name} value={zone.id || zone.name}>{zone.name}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Scan Action</label>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <button type="button" onClick={() => setAction('ENTRY')} className={`rounded-2xl px-4 py-3 text-sm font-semibold ${action === 'ENTRY' ? 'bg-sky-600 text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
+                Entry Scan
+              </button>
+              <button type="button" onClick={() => setAction('EXIT')} className={`rounded-2xl px-4 py-3 text-sm font-semibold ${action === 'EXIT' ? 'bg-sky-600 text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
+                Exit Scan
+              </button>
+            </div>
           </div>
 
           <div>

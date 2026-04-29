@@ -49,11 +49,8 @@ const SignupPage = () => {
         role: form.role
       });
 
-      toast.success('Registration complete — Authority initialized');
-      
-      // Auto login after signup
-      const nextUser = await login(form.email, form.password);
-      navigate(getDashboardPathForRole(nextUser.role));
+      toast.success('Registration successful. Please check your email to verify your account.');
+      navigate('/login');
     } catch (err) {
       const message = err.response?.data?.message || 'Authorization matrix conflict';
       toast.error(message);
@@ -68,7 +65,7 @@ const SignupPage = () => {
       <div 
         className="absolute inset-0 z-0"
         style={{
-          backgroundImage: `url('file:///C:/Users/ThinuUpadya/.gemini/antigravity/brain/4a4596d3-dfa6-4d5a-b2e0-389bc5da345c/stadium_light_bg_1775555602851.png')`,
+          backgroundImage: `url('https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=2805&auto=format&fit=crop')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'brightness(0.9) contrast(1.05)',
@@ -81,11 +78,11 @@ const SignupPage = () => {
       <div className="relative z-10 w-full max-w-[540px] animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
         {/* Branding Section */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-blue-500/10 mb-6 border border-blue-500/20 shadow-sm backdrop-blur-md">
-             <UserPlusIcon className="h-8 w-8 text-blue-600" />
+          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-brand-main/10 mb-6 border border-brand-main/20 shadow-sm backdrop-blur-md">
+             <img src="/logo.png" alt="Logo" className="h-10 w-10 object-contain" onError={(e) => e.target.style.display='none'} />
           </div>
           <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-             Elite <span className="text-blue-600">Recruitment</span>
+             Elite <span className="text-brand-main">Recruitment</span>
           </h1>
           <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
             Initialize System Authority
@@ -183,7 +180,7 @@ const SignupPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full overflow-hidden rounded-2xl bg-blue-600 py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(37,99,235,0.3)] transition-all duration-300 hover:bg-blue-500 hover:shadow-[0_15px_30px_-5px_rgba(37,99,235,0.4)] disabled:opacity-50 active:scale-[0.98]"
+              className="group relative w-full overflow-hidden rounded-2xl bg-brand-dark py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(10,17,40,0.3)] transition-all duration-300 hover:bg-brand-main hover:shadow-[0_15px_30px_-5px_rgba(38,132,255,0.4)] disabled:opacity-50 active:scale-[0.98]"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer" />
               
@@ -203,7 +200,7 @@ const SignupPage = () => {
 
           <p className="mt-8 text-center text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
             Already cleared?{' '}
-            <Link to="/login" className="text-blue-600 hover:text-blue-500 transition-colors font-black">
+            <Link to="/login" className="text-brand-main hover:text-brand-accent transition-colors font-black">
               Access Portal
             </Link>
           </p>
@@ -211,7 +208,7 @@ const SignupPage = () => {
 
         {/* Footer */}
         <div className="mt-10 text-center opacity-30">
-           <span className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500 italic">EAMS Elite Network Authorized Personnel Only</span>
+           <span className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500 italic">ENTRYNEX Elite Network Authorized Personnel Only</span>
         </div>
       </div>
     </div>

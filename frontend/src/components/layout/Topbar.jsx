@@ -77,13 +77,13 @@ const Topbar = () => {
 
   const handleSearchChange = (value) => {
     setSearch(value);
-    window.dispatchEvent(new CustomEvent('eams:search', { detail: value }));
+    window.dispatchEvent(new CustomEvent('entrynex:search', { detail: value }));
   };
 
   const handleEventChange = (value) => {
     setSelectedEventId(value);
     localStorage.setItem('lastSelectedEventId', value);
-    window.dispatchEvent(new CustomEvent('eams:event-select', { detail: value }));
+    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: value }));
   };
 
   const handleLogout = () => {
@@ -197,8 +197,8 @@ const Topbar = () => {
             </button>
             {profileOpen && (
               <div className="absolute right-0 mt-3 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                <button onClick={() => navigate(isOrganiserWorkspace ? '/organiser/dashboard?section=settings' : isStaffWorkspace ? '/staff/scan' : '/admin/dashboard?section=settings')} className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-                  Open settings
+                <button onClick={() => navigate(isOrganiserWorkspace ? '/organiser/dashboard?section=settings' : isStaffWorkspace ? '/dashboard' : '/admin/dashboard?section=settings')} className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                  Open dashboard
                 </button>
                 <button onClick={handleLogout} className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-rose-500 hover:bg-rose-500/10">
                   Sign out

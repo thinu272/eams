@@ -16,6 +16,11 @@ const QRCodeDisplay = ({ value, size = 200, className = '' }) => {
     try {
       setError(null);
       
+      if (text.startsWith('data:image')) {
+        setQrCodeUrl(text);
+        return;
+      }
+
       // Generate QR Code as data URL
       const qrDataUrl = await QRCode.toDataURL(text, {
         width: size,

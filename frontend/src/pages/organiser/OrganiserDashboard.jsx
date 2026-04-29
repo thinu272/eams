@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { formatDistanceToNow } from 'date-fns';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -49,7 +49,7 @@ const statusColor = {
 };
 
 const emptyAttendee = { fullName: '', email: '', phone: '', nationalId: '', categoryId: '', notes: '' };
-const emptyCategory = { name: '', description: '', price: 0, capacity: 0, allowedZones: [] };
+const emptyCategory = { name: '', description: '', price: 0, capacity: 0, allowedZones: [], benefits: [] };
 const emptySubOrg = { 
   name: '', 
   email: '', 
@@ -71,6 +71,7 @@ const emptySubOrg = {
 };
 const emptyZone = { name: '', description: '', capacity: 0, color: '#0F766E' };
 
+const COLORS = ['#0F766E', '#14B8A6', '#2DD4BF', '#99F6E4', '#CCFBF1'];
 const downloadBlob = (blob, fileName) => {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -100,6 +101,9 @@ const OrganiserDashboard = () => {
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [settingsForm, setSettingsForm] = useState(null);
   const [customizationForm, setCustomizationForm] = useState(null);
+  const [coverImageFile, setCoverImageFile] = useState(null);
+  const [logoImageFile, setLogoImageFile] = useState(null);
+  const [bannerImageFile, setBannerImageFile] = useState(null);
 
   const activeSection = params.get('section') || 'overview';
 
@@ -133,16 +137,23 @@ const OrganiserDashboard = () => {
             country: nextData?.event?.venue?.country || '',
             mapUrl: nextData?.event?.venue?.mapUrl || '',
           },
+          currency: nextData?.settings?.currency || 'LKR',
         },
         branding: {
           themeColor: nextData?.event?.branding?.themeColor || '#2563EB',
           logoImage: nextData?.event?.branding?.logoImage || nextData?.event?.logoImage || '',
           bannerImage: nextData?.event?.branding?.bannerImage || nextData?.event?.bannerImage || '',
+          coverImage: nextData?.event?.coverImage || '',
         },
         confirmationFlow: {
           inviteSystemEnabled: nextData?.settings?.inviteSystemEnabled ?? true,
           manualApprovalEnabled: nextData?.settings?.manualApprovalEnabled ?? false,
           autoConfirmEnabled: nextData?.settings?.autoConfirmEnabled ?? false,
+        },
+        paymentMethods: {
+          card: nextData?.settings?.paymentMethods?.card ?? true,
+          bank_transfer: nextData?.settings?.paymentMethods?.bank_transfer ?? true,
+          cash: nextData?.settings?.paymentMethods?.cash ?? true,
         },
         accessRules: {
           whoCanEnter: (nextData?.settings?.accessRules?.whoCanEnter || []).join(', '),
@@ -150,6 +161,7 @@ const OrganiserDashboard = () => {
           entryWindowEnd: nextData?.settings?.accessRules?.entryWindowEnd || '',
           restrictedZones: (nextData?.settings?.accessRules?.restrictedZones || []).join(', '),
         },
+        status: nextData?.event?.status || 'draft',
       });
       const zoneMap = {};
       (nextData?.event?.zones || []).forEach((zone) => {
@@ -198,11 +210,11 @@ const OrganiserDashboard = () => {
       localStorage.setItem('lastSelectedEventId', nextEventId);
     };
 
-    window.addEventListener('eams:search', onSearch);
-    window.addEventListener('eams:event-select', onEvent);
+    window.addEventListener('entrynex:search', onSearch);
+    window.addEventListener('entrynex:event-select', onEvent);
     return () => {
-      window.removeEventListener('eams:search', onSearch);
-      window.removeEventListener('eams:event-select', onEvent);
+      window.removeEventListener('entrynex:search', onSearch);
+      window.removeEventListener('entrynex:event-select', onEvent);
     };
   }, [setParams]);
 
@@ -354,19 +366,29 @@ const OrganiserDashboard = () => {
   const saveCustomization = async () => {
     if (!customizationForm) return;
     try {
-      await updateOrganiserEventCustomization({
-        eventId,
-        basicInfo: customizationForm.basicInfo,
-        branding: customizationForm.branding,
-        confirmationFlow: customizationForm.confirmationFlow,
-        accessRules: {
-          whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
-          entryWindowStart: customizationForm.accessRules.entryWindowStart,
-          entryWindowEnd: customizationForm.accessRules.entryWindowEnd,
-          restrictedZones: customizationForm.accessRules.restrictedZones.split(',').map((item) => item.trim()).filter(Boolean),
-        },
-      });
+      const formData = new FormData();
+      formData.append('eventId', eventId);
+      formData.append('basicInfo', JSON.stringify(customizationForm.basicInfo));
+      formData.append('branding', JSON.stringify(customizationForm.branding));
+      formData.append('confirmationFlow', JSON.stringify(customizationForm.confirmationFlow));
+      formData.append('accessRules', JSON.stringify({
+        whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
+        entryWindowStart: customizationForm.accessRules.entryWindowStart,
+        entryWindowEnd: customizationForm.accessRules.entryWindowEnd,
+        restrictedZones: customizationForm.accessRules.restrictedZones.split(',').map((item) => item.trim()).filter(Boolean),
+      }));
+      formData.append('paymentMethods', JSON.stringify(customizationForm.paymentMethods));
+      formData.append('status', customizationForm.status);
+
+      if (coverImageFile) formData.append('coverImage', coverImageFile);
+      if (logoImageFile) formData.append('logoImage', logoImageFile);
+      if (bannerImageFile) formData.append('bannerImage', bannerImageFile);
+
+      await updateOrganiserEventCustomization(formData);
       toast.success('Event customization updated');
+      setCoverImageFile(null);
+      setLogoImageFile(null);
+      setBannerImageFile(null);
       loadWorkspace();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
@@ -401,7 +423,7 @@ const OrganiserDashboard = () => {
               {[
                 ['Total Tickets', stats.totalTickets],
                 ['Tickets Sold', stats.ticketsSold],
-                ['Confirmed Attendees', stats.confirmedAttendees],
+                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`],
                 ['Checked-In Count', stats.checkedInCount],
               ].map(([label, value]) => (
                 <Card key={label}><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-3xl font-bold text-slate-900">{value || 0}</p></Card>
@@ -497,6 +519,30 @@ const OrganiserDashboard = () => {
                 </div>
               </Card>
               <Card>
+                <CardHeader title="Revenue by Category" subtitle="Distribution across ticket tiers" />
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={workspace?.charts?.revenueByCategory || []}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {(workspace?.charts?.revenueByCategory || []).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${selectedEvent?.settings?.currency || 'LKR'} ${value.toLocaleString()}`} />
+                      <Legend verticalAlign="bottom" height={36}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+              <Card>
                 <CardHeader title="Activity Feed" subtitle="Last five operations" />
                 <div className="space-y-3">
                   {(workspace?.activityFeed || []).map((item) => (
@@ -552,30 +598,82 @@ const OrganiserDashboard = () => {
                   </select>
                 </label>
                 <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Theme color</span>
-                  <input
-                    value={customizationForm.branding.themeColor}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, themeColor: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    placeholder="#2563EB"
-                  />
+                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Currency</span>
+                  <select
+                    value={customizationForm.basicInfo.currency}
+                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, currency: e.target.value } }))}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 bg-white"
+                  >
+                    <option value="LKR">LKR (Sri Lankan Rupee)</option>
+                    <option value="USD">USD (US Dollar)</option>
+                    <option value="EUR">EUR (Euro)</option>
+                    <option value="GBP">GBP (British Pound)</option>
+                    <option value="INR">INR (Indian Rupee)</option>
+                    <option value="AUD">AUD (Australian Dollar)</option>
+                    <option value="AED">AED (UAE Dirham)</option>
+                    <option value="SGD">SGD (Singapore Dollar)</option>
+                  </select>
                 </label>
                 <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Logo image URL</span>
-                  <input
-                    value={customizationForm.branding.logoImage}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, logoImage: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                  />
+                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Theme color</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={customizationForm.branding.themeColor}
+                      onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, themeColor: e.target.value } }))}
+                      className="h-12 w-20 rounded-xl border border-slate-200 p-1 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={customizationForm.branding.themeColor}
+                      onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, themeColor: e.target.value } }))}
+                      className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 uppercase"
+                      placeholder="#2563EB"
+                    />
+                  </div>
                 </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Banner image URL</span>
+                <div className="space-y-4">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</span>
+                  {customizationForm.branding.logoImage && !logoImageFile && (
+                    <div className="h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : `http://localhost:5000${customizationForm.branding.logoImage}`} alt="logo" className="h-full w-full object-contain" />
+                    </div>
+                  )}
                   <input
-                    value={customizationForm.branding.bannerImage}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, bannerImage: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setLogoImageFile(e.target.files?.[0] || null)}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
                   />
-                </label>
+                </div>
+                <div className="space-y-4">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cover Image (Card View)</span>
+                  {customizationForm.branding.coverImage && !coverImageFile && (
+                    <div className="h-24 w-full max-w-xs overflow-hidden rounded-xl border border-slate-200">
+                      <img src={customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : `http://localhost:5000${customizationForm.branding.coverImage}`} alt="cover" className="h-full w-full object-cover" />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </div>
+                <div className="space-y-4">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hero Banner Image</span>
+                  {customizationForm.branding.bannerImage && !bannerImageFile && (
+                    <div className="h-32 w-full overflow-hidden rounded-2xl border border-slate-200">
+                      <img src={customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : `http://localhost:5000${customizationForm.branding.bannerImage}`} alt="banner" className="h-full w-full object-cover" />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setBannerImageFile(e.target.files?.[0] || null)}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -636,6 +734,51 @@ const OrganiserDashboard = () => {
                           onChange={(e) => setCustomizationForm((current) => ({ ...current, confirmationFlow: { ...current.confirmationFlow, [key]: e.target.checked } }))}
                         />
                         {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                  <p className="text-sm font-bold text-blue-900">Visibility Status</p>
+                  <div className="mt-3 space-y-3 text-sm text-blue-700">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                        checked={customizationForm.status === 'published'}
+                        onChange={(e) => setCustomizationForm((current) => ({ 
+                          ...current, 
+                          status: e.target.checked ? 'published' : 'draft' 
+                        }))}
+                      />
+                      <span className="font-semibold">Publish Match (Make visible to public)</span>
+                    </label>
+                    <p className="text-xs text-blue-600/70 ml-7">
+                      When published, this event will appear on the public homepage and users can browse tickets.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-sm font-bold text-slate-900">Payment Methods</p>
+                  <p className="text-xs text-slate-500 mt-1 mb-4">Choose which payment options are available for this match.</p>
+                  <div className="space-y-3 text-sm text-slate-700">
+                    {[
+                      ['card', 'Credit/Debit Card (Online)'],
+                      ['bank_transfer', 'Bank Transfer (Offline)'],
+                      ['cash', 'Cash (At Venue/Counter)'],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!customizationForm.paymentMethods[key]}
+                          onChange={(e) => setCustomizationForm((current) => ({ 
+                            ...current, 
+                            paymentMethods: { ...current.paymentMethods, [key]: e.target.checked } 
+                          }))}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="font-medium">{label}</span>
                       </label>
                     ))}
                   </div>
@@ -723,7 +866,7 @@ const OrganiserDashboard = () => {
               <tbody>
                 {categories.map((ticket) => (
                   <Tr key={ticket.id}>
-                    <Td>{ticket.name}</Td><Td>LKR {Number(ticket.price || 0).toLocaleString()}</Td><Td>{ticket.capacity}</Td><Td>{ticket.soldCount}</Td><Td>{ticket.assignedCount} / {ticket.unassignedCount}</Td>
+                    <Td>{ticket.name}</Td><Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(ticket.price || 0).toLocaleString()}</Td><Td>{ticket.capacity}</Td><Td>{ticket.soldCount}</Td><Td>{ticket.assignedCount} / {ticket.unassignedCount}</Td>
                     <Td className="space-x-2"><button className="text-blue-600" onClick={() => setCategoryModal(ticket)}>Edit</button><button className="text-rose-600" onClick={() => deleteTicketCategory(ticket.id, eventId).then(() => { toast.success('Category deleted'); loadWorkspace(); })}>Delete</button></Td>
                   </Tr>
                 ))}
@@ -930,7 +1073,12 @@ const OrganiserDashboard = () => {
       </Modal>
 
       <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Category' : 'Add Category'}>
-        {categoryModal && <div className="space-y-3"><input value={categoryModal.name || ''} onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Category name" /><input type="number" value={categoryModal.price || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border px-4 py-2" placeholder="Price" /><input type="number" value={categoryModal.capacity || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border px-4 py-2" placeholder="Capacity" /><Button onClick={saveCategory}>Save Category</Button></div>}
+        {categoryModal && <div className="space-y-3"><input value={categoryModal.name || ''} onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Category name" />
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">{selectedEvent?.settings?.currency || 'LKR'}</span>
+            <input type="number" value={categoryModal.price || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border pl-16 pr-4 py-2" placeholder="Price" />
+          </div>
+          <input type="number" value={categoryModal.capacity || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border px-4 py-2" placeholder="Capacity" /><Button onClick={saveCategory}>Save Category</Button></div>}
       </Modal>
 
       <Modal open={subOrgModal} onClose={() => setSubOrgModal(false)} title={subOrgForm._id ? 'Manage Team Member Access' : 'Create Team Member'}>

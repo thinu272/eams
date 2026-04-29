@@ -1,18 +1,22 @@
 const {
   sendOrderConfirmation,
   sendAttendeeInvite,
-  sendFinalConfirmation,
   sendBuyerFinalSummary,
   sendConfirmationReminder,
   sendSubOrganiserInvite,
   sendStatusChange,
   sendBuyerPhotoRejection,
+  sendBuyerTicketProgressUpdate,
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+  sendTempPasswordEmail,
 } = require('../utils/email');
 const { createShortLink } = require('./shortLinkService');
 const { sendSMS } = require('./smsService');
+const { deliverAttendeeTicketEmail, sendBuyerPurchaseSummaryEmail } = require('./ticketDeliveryService');
 
 const parseChannels = (notificationChannel) => {
-  // EAMS Phase 1: Always send Email + SMS when possible.
+  // ENTRYNEX Phase 1: Always send Email + SMS when possible.
   return ['email', 'sms'];
 };
 
@@ -26,7 +30,7 @@ const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationC
   const tasks = [];
 
   if (channels.includes('email')) {
-    tasks.push(sendOrderConfirmation(order, event).catch((error) => {
+    tasks.push(sendBuyerPurchaseSummaryEmail({ order, event }).catch((error) => {
       console.error('ORDER EMAIL ERROR:', error);
     }));
   }
@@ -37,7 +41,7 @@ const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationC
         const shortUrl = await buildShortUrl(`/order/${order.confirmationToken}/confirm`, 'order-confirmation');
         await sendSMS(
           buyerPhone,
-          `EAMS: Order confirmed for ${event.name}. Confirm tickets here: ${shortUrl}`,
+          `ENTRYNEX: Order confirmed for ${event.name}. Confirm tickets here: ${shortUrl}`,
           { rateKey: `order:${buyerPhone}` }
         );
       } catch (error) {
@@ -53,8 +57,17 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
   const channels = parseChannels(notificationChannel);
   const tasks = [];
 
+  const inviteData = {
+    attendee,
+    event,
+    ticketDetails: {
+      categoryName: attendee.categoryName,
+      price: attendee.price || 'N/A', // Assume price might be passed or exists on attendee
+    }
+  };
+
   if (channels.includes('email') && email) {
-    tasks.push(sendAttendeeInvite(attendee, event).catch((error) => {
+    tasks.push(sendAttendeeInvite(inviteData).catch((error) => {
       console.error('INVITE EMAIL ERROR:', error);
     }));
   }
@@ -65,7 +78,7 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
         const shortUrl = await buildShortUrl(`/invite/${attendee.confirmationToken}`, 'invite-link');
         await sendSMS(
           phone,
-          `EAMS: You're invited to ${event.name}. Confirm here: ${shortUrl}`,
+          `ENTRYNEX: You're invited to ${event.name} (${attendee.categoryName}). Confirm here: ${shortUrl}`,
           { rateKey: `invite:${phone}` }
         );
       } catch (error) {
@@ -79,30 +92,32 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
 
 const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel }) => {
   const channels = parseChannels(notificationChannel);
-  const tasks = [];
+  let deliveryResult = { delivered: false, skipped: true, reason: 'email_not_requested' };
 
   if (channels.includes('email')) {
-    tasks.push(sendFinalConfirmation(attendee, event).catch((error) => {
+    try {
+      deliveryResult = await deliverAttendeeTicketEmail({
+        attendee,
+        event,
+      });
+    } catch (error) {
       console.error('FINAL EMAIL ERROR:', error);
-    }));
+    }
   }
 
-  if (channels.includes('sms') && phone) {
-    tasks.push((async () => {
-      try {
-        const shortUrl = await buildShortUrl(`/ticket/${attendee.confirmationToken}`, 'final-ticket');
-        await sendSMS(
-          phone,
-          `EAMS: Ticket confirmed for ${event.name}. Show QR at entry: ${shortUrl}`,
-          { rateKey: `final:${phone}` }
-        );
-      } catch (error) {
-        console.error('FINAL SMS ERROR:', error);
-      }
-    })());
+  if (deliveryResult.delivered && channels.includes('sms') && phone) {
+    try {
+      await sendSMS(
+        phone,
+        `ENTRYNEX Ticket Confirmed: ${event.name}. Your PDF ticket has been sent to your email.`,
+        { rateKey: `final:${phone}` }
+      );
+    } catch (error) {
+      console.error('FINAL SMS ERROR:', error);
+    }
   }
 
-  await Promise.all(tasks);
+  return deliveryResult;
 };
 
 const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
@@ -128,7 +143,7 @@ const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
         const shortUrl = await buildShortUrl(`/order/${order.confirmationToken}/confirm`, 'order-confirmation');
         await sendSMS(
           buyerPhone,
-          `EAMS: All attendees confirmed for ${event.name}. View summary: ${shortUrl}`,
+          `ENTRYNEX: All attendees confirmed for ${event.name}. View summary: ${shortUrl}`,
           { rateKey: `buyer-summary:${buyerPhone}` }
         );
       } catch (error) {
@@ -154,7 +169,7 @@ const notifyConfirmationReminder = async ({ attendee, event, phone, email }) => 
         const shortUrl = await buildShortUrl(`/invite/${attendee.confirmationToken}`, 'invite-reminder');
         await sendSMS(
           phone,
-          `EAMS reminder: Please confirm your ticket for ${event.name}: ${shortUrl}`,
+          `ENTRYNEX reminder: Please confirm your ticket for ${event.name}: ${shortUrl}`,
           { rateKey: `reminder:${phone}` }
         );
       } catch (error) {
@@ -178,7 +193,7 @@ const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
       try {
         await sendSMS(
           phone,
-          `EAMS: You have been invited as Sub-Organiser${event?.name ? ` for ${event.name}` : ''}. Check your email for details.`,
+          `ENTRYNEX: You have been invited as Sub-Organiser${event?.name ? ` for ${event.name}` : ''}. Check your email for details.`,
           { rateKey: `suborg:${phone}` }
         );
       } catch (error) {
@@ -200,7 +215,7 @@ const notifyStatusChange = async ({ attendee, event, status, message }) => {
   if (channels.includes('sms') && attendee.phone) {
     tasks.push(sendSMS(
       attendee.phone,
-      `EAMS update: ${status}. ${message || ''}`.trim(),
+      `ENTRYNEX update: ${status}. ${message || ''}`.trim(),
       { rateKey: `status:${attendee.phone}` }
     ).catch((error) => {
       console.error('STATUS SMS ERROR:', error);
@@ -228,7 +243,7 @@ const notifyPhotoRejection = async ({ attendee, reason, resubmitToken }) => {
         const shortUrl = await buildShortUrl(`/resubmit/${resubmitToken}`, 'photo-resubmit');
         await sendSMS(
           attendee.phone,
-          `Your photo was rejected ❌. Reason: ${reason}. Please re-upload here: ${shortUrl}`,
+          `ENTRYNEX: Your photo was rejected. Reason: ${reason}. Please re-upload here: ${shortUrl}`,
           { rateKey: `reject:${attendee.phone}` }
         );
       } catch (error) {
@@ -256,12 +271,70 @@ const notifyPhotoRejectionNotification = async ({ attendee, event, reason }) => 
       if (buyer.phone) {
         await sendSMS(
           buyer.phone,
-          `EAMS: Attendee photo rejected for ${event?.name || 'event'}. Reason: ${reason}. Resubmit: ${resubmitLink}`,
+          `ENTRYNEX: Attendee photo rejected for ${event?.name || 'event'}. Reason: ${reason}. Resubmit: ${resubmitLink}`,
           { rateKey: `buyer-reject:${buyer.phone}` }
         ).catch((error) => console.error('BUYER PHOTO REJECTION SMS ERROR:', error));
       }
     }
   }
+};
+
+const notifyBuyerTicketProgress = async ({
+  order,
+  attendee,
+  event,
+  ticket,
+  stage,
+}) => {
+  if (!order?.buyerEmail || !stage) return;
+
+  await sendBuyerTicketProgressUpdate({
+    buyer: {
+      name: order.buyerName,
+      email: order.buyerEmail,
+      phone: order.buyerPhone,
+    },
+    event,
+    attendee,
+    ticket,
+    order,
+    stage,
+  }).catch((error) => {
+    console.error('BUYER PROGRESS EMAIL ERROR:', error);
+  });
+};
+
+const notifyUserCredentials = async (user, tempPassword) => {
+  const tasks = [];
+  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+
+  tasks.push(sendTempPasswordEmail(user, tempPassword, loginUrl).catch(err => console.error('CREDENTIALS EMAIL ERROR:', err)));
+
+  if (user.phone) {
+    tasks.push(sendSMS(
+      user.phone,
+      `ENTRYNEX: Your account has been created. Temp Password: ${tempPassword}. Login at: ${loginUrl}`,
+      { rateKey: `creds:${user.phone}` }
+    ).catch(err => console.error('CREDENTIALS SMS ERROR:', err)));
+  }
+
+  await Promise.all(tasks);
+};
+
+const notifyVerification = async (user, verifyUrl) => {
+  await sendVerificationEmail(user, verifyUrl).catch(err => console.error('VERIFICATION EMAIL ERROR:', err));
+};
+
+const notifyPasswordReset = async (user, resetUrl) => {
+  await sendPasswordResetEmail(user, resetUrl).catch(err => console.error('RESET EMAIL ERROR:', err));
+};
+
+const notifyOTP = async (phone, otp) => {
+  await sendSMS(
+    phone,
+    `ENTRYNEX: Your security code is ${otp}. It expires in 5 minutes.`,
+    { rateKey: `otp:${phone}` }
+  );
 };
 
 module.exports = {
@@ -274,5 +347,10 @@ module.exports = {
   notifyStatusChange,
   notifyPhotoRejection,
   notifyPhotoRejectionNotification,
+  notifyBuyerTicketProgress,
+  notifyUserCredentials,
+  notifyVerification,
+  notifyPasswordReset,
+  notifyOTP,
   parseChannels,
 };

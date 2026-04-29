@@ -24,9 +24,9 @@ const OrganiserLayout = ({ children }) => {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <aside className="w-64 bg-slate-950 text-white flex flex-col">
+      <aside className="w-64 bg-brand-dark text-white flex flex-col">
         <div className="px-5 py-5 border-b border-slate-800">
-          <p className="text-xs uppercase tracking-widest text-slate-400">EAMS</p>
+          <p className="text-xs uppercase tracking-widest text-slate-400">ENTRYNEX</p>
           <p className="text-lg font-bold">Main Organiser</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-2">
@@ -36,7 +36,7 @@ const OrganiserLayout = ({ children }) => {
               to={item.to}
               className={({ isActive }) =>
                 `block rounded-xl px-3 py-2 text-sm ${
-                  isActive ? 'bg-blue-500/20 text-blue-200 border border-blue-500/30' : 'text-slate-300 hover:bg-slate-800'
+                  isActive ? 'bg-brand-main/20 text-brand-light border border-brand-main/30' : 'text-slate-300 hover:bg-slate-800'
                 }`
               }
             >
@@ -54,7 +54,7 @@ const OrganiserLayout = ({ children }) => {
             <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Managing</p>
             <p className="text-lg font-bold text-slate-900">{eventName}</p>
           </div>
-          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">Main Organiser</span>
+          <span className="rounded-full bg-brand-light/20 px-3 py-1 text-xs font-semibold text-brand-accent">Main Organiser</span>
         </div>
         <div className="mx-auto max-w-7xl p-6">{children}</div>
       </main>

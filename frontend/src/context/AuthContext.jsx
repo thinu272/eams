@@ -3,7 +3,7 @@ import api from '../api/client';
 import { getCanonicalRole, hasRolePower, ROLES } from '../utils/rbac';
 
 const AuthContext = createContext(null);
-const USER_STORAGE_KEY = 'eams_user';
+const USER_STORAGE_KEY = 'entrynex_user';
 
 const readStoredUser = () => {
   try {
@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
-    const token = localStorage.getItem('eams_token');
+    const token = localStorage.getItem('entrynex_token');
     if (!token) { setLoading(false); return; }
     try {
       const { data } = await api.get('/auth/me');
@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(nextUser));
     } catch (error) {
       if (error?.response?.status === 401) {
-        localStorage.removeItem('eams_token');
+        localStorage.removeItem('entrynex_token');
         localStorage.removeItem(USER_STORAGE_KEY);
         setUser(null);
       } else {
@@ -54,9 +54,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => { loadUser(); }, [loadUser]);
 
-  const login = async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
-    localStorage.setItem('eams_token', data.token);
+  const login = async (email, password, mfaToken) => {
+    const { data } = await api.post('/auth/login', { email, password, mfaToken });
+    
+    if (data.requireMfa) {
+      return { requireMfa: true };
+    }
+
+    localStorage.setItem('entrynex_token', data.accessToken);
     const userData = data.data.user;
     const nextUser = {
       ...userData,
@@ -68,7 +73,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('eams_token');
+    localStorage.removeItem('entrynex_token');
+    localStorage.removeItem('entrynex_refresh_token');
     localStorage.removeItem(USER_STORAGE_KEY);
     setUser(null);
   };

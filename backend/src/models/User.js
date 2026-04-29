@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 /**
- * Normalizes input roles to match the EAMS standard hierarchy.
+ * Normalizes input roles to match the ENTRYNEX standard hierarchy.
  */
 const normalizeRoleForStorage = (role) => {
   const normalized = String(role || '').trim().toUpperCase();
@@ -77,12 +77,28 @@ const userSchema = new mongoose.Schema({
   },
 
   profilePhoto: { type: String },
+  profilePhotoS3Key: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   lastLogin: { type: Date },
 
   // Password reset fields
   passwordResetToken: { type: String, select: false },
   passwordResetExpires: { type: Date, select: false },
+
+  // Email verification and security fields
+  isVerified: { type: Boolean, default: false },
+  emailVerificationToken: { type: String, select: false },
+  emailVerificationExpires: { type: Date, select: false },
+  isTempPassword: { type: Boolean, default: false },
+  // Security & MFA
+  loginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date },
+  mfaEnabled: { type: Boolean, default: false },
+  mfaSecret: { type: String, select: false },
+  mfaBackupCodes: [{ type: String, select: false }],
+  lastMfaVerification: { type: Date },
+  
+  refreshToken: { type: String, select: false },
 }, {
   timestamps: true,
 });

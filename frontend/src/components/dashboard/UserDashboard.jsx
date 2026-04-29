@@ -53,7 +53,7 @@ const UserDashboard = () => {
       // Call the role-based dashboard API endpoint
       const response = await fetch('/api/dashboard/role-based', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('entrynex_token')}`,
           'Content-Type': 'application/json'
         }
       });

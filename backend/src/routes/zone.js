@@ -30,7 +30,10 @@ const userHasEventAccess = async (user, event) => {
   const assignedEventIds = (user.assignedEvents || []).map((item) => item.toString());
   if (assignedEventIds.includes(eventId)) return true;
 
-  return event.createdBy?.toString() === user._id.toString();
+  if (event.createdBy?.toString() === user._id.toString()) return true;
+  if (event.mainOrganiser?.toString() === user._id.toString()) return true;
+  
+  return false;
 };
 
 const userHasZoneAccess = (user, zoneName, zoneId) => {
@@ -106,6 +109,7 @@ const buildDeniedResponse = async ({
           fullName: attendee.fullName,
           categoryName: attendee.categoryName,
           allowedZones: attendee.allowedZones || [],
+          photo: attendee.photo,
         } : null,
       },
     },
@@ -169,13 +173,17 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, message: `You are not assigned to scan ${zoneName}.` });
     }
 
-    const lastGrantedLog = await ZoneLog.findOne({
-      attendeeId: attendee._id,
-      zoneName,
-      accessGranted: true,
-    }).sort({ timestamp: -1 });
+    let action = req.body.action;
+    
+    if (!action) {
+      const lastGrantedLog = await ZoneLog.findOne({
+        attendeeId: attendee._id,
+        zoneName,
+        accessGranted: true,
+      }).sort({ timestamp: -1 });
 
-    const action = lastGrantedLog?.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
+      action = lastGrantedLog?.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
+    }
 
     const recentLog = await ZoneLog.findOne({
       attendeeId: attendee._id,
@@ -268,6 +276,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           fullName: attendee.fullName,
           categoryName: attendee.categoryName,
           allowedZones,
+          photo: attendee.photo,
         },
         event: {
           _id: event._id,

@@ -8,14 +8,12 @@ const PublicLayout = ({ children }) => {
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <nav className="bg-slate-950 border-b border-white/10 sticky top-0 z-50">
+      <nav className="bg-brand-dark border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/50 group-hover:scale-105 transition-transform">
-                <span className="text-white text-xl font-black">E</span>
-              </div>
-              <span className="font-black text-white text-2xl tracking-tight group-hover:text-blue-400 transition-colors">EAMS</span>
+              <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform" onError={(e) => e.target.style.display='none'} />
+              <span className="font-black text-white text-2xl tracking-tight group-hover:text-brand-main transition-colors">ENTRYNEX</span>
             </Link>
             
             <div className="flex items-center gap-6">
@@ -35,7 +33,7 @@ const PublicLayout = ({ children }) => {
                   </button>
                 </div>
               ) : (
-                <Link to="/login" className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/40">
+                <Link to="/login" className="bg-brand-main text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-brand-accent transition-colors shadow-lg shadow-brand-main/40">
                   Partner Sign In
                 </Link>
               )}
@@ -48,11 +46,12 @@ const PublicLayout = ({ children }) => {
         {children}
       </main>
       
-      <footer className="bg-slate-950 border-t border-white/10 text-slate-400 py-12 mt-auto">
+      <footer className="bg-brand-dark border-t border-white/10 text-slate-400 py-12 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="font-black text-slate-300 text-lg tracking-tight">EAMS</span>
+              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display='none'} />
+              <span className="font-black text-slate-300 text-lg tracking-tight">ENTRYNEX</span>
               <span className="text-sm">| Event Access Management System</span>
             </div>
             <div className="text-sm font-medium">

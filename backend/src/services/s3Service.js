@@ -5,6 +5,14 @@
 const AWS = require('aws-sdk');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+const hasS3Config = () => !!(
+  process.env.AWS_ACCESS_KEY_ID &&
+  process.env.AWS_SECRET_ACCESS_KEY &&
+  process.env.AWS_S3_BUCKET
+);
 
 // Configure AWS S3
 const s3 = new AWS.S3({
@@ -13,18 +21,52 @@ const s3 = new AWS.S3({
   region: process.env.AWS_REGION || 'us-east-1',
 });
 
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'eams-photos';
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'entrynex-photos';
 const SIGNED_URL_EXPIRY = 3600; // 1 hour in seconds
+const LOCAL_UPLOAD_ROOT = path.resolve(__dirname, '../../uploads');
+
+const ensureLocalDir = async (dirPath) => {
+  await fs.promises.mkdir(dirPath, { recursive: true });
+};
+
+const saveImageLocally = async (fileBuffer, filename, category = 'attendee-photos') => {
+  const compressedBuffer = await sharp(fileBuffer)
+    .resize(1200, 1200, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 85, progressive: true })
+    .toBuffer();
+
+  const uniqueId = uuidv4();
+  const key = `${category}/${Date.now()}-${uniqueId}.jpg`;
+  const absolutePath = path.join(LOCAL_UPLOAD_ROOT, key);
+  await ensureLocalDir(path.dirname(absolutePath));
+  await fs.promises.writeFile(absolutePath, compressedBuffer);
+
+  const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
+  return {
+    key: null,
+    url: `${backendUrl}/uploads/${key.replace(/\\/g, '/')}`,
+    bucket: 'local',
+    storage: 'local',
+    localPath: absolutePath,
+  };
+};
 
 /**
- * Upload and compress image to S3
+ * Upload and compress image to S3 or local disk fallback
  * @param {Buffer} fileBuffer - Image file buffer
  * @param {string} filename - Original filename
  * @param {string} category - Upload category (e.g., 'attendee-photos')
- * @returns {Promise<{key: String, url: String}>}
+ * @returns {Promise<{key: String|null, url: String}>}
  */
 const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos') => {
   try {
+    if (!hasS3Config()) {
+      return saveImageLocally(fileBuffer, filename, category);
+    }
+
     // Compress image using sharp
     const compressedBuffer = await sharp(fileBuffer)
       .resize(1200, 1200, {
@@ -34,24 +76,19 @@ const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos
       .jpeg({ quality: 85, progressive: true })
       .toBuffer();
 
-    // Generate unique key
-    const timestamp = Date.now();
     const uniqueId = uuidv4();
-    const ext = filename.split('.').pop().toLowerCase();
-    const key = `${category}/${timestamp}-${uniqueId}.jpg`;
+    const key = `${category}/${Date.now()}-${uniqueId}.jpg`;
 
-    // Upload to S3
     const params = {
       Bucket: BUCKET_NAME,
       Key: key,
       Body: compressedBuffer,
       ContentType: 'image/jpeg',
-      ACL: 'private', // Restrict public access
+      ACL: 'private',
       Metadata: {
         'original-filename': filename,
         'upload-timestamp': new Date().toISOString(),
       },
-      // Cache control: images don't change much, cache for 30 days
       CacheControl: 'max-age=2592000, public',
     };
 
@@ -61,9 +98,13 @@ const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos
       key: uploadResult.Key,
       url: uploadResult.Location,
       bucket: uploadResult.Bucket,
+      storage: 's3',
     };
   } catch (err) {
     console.error('S3 upload error:', err);
+    if (!hasS3Config()) {
+      return saveImageLocally(fileBuffer, filename, category);
+    }
     throw new Error(`Failed to upload image to S3: ${err.message}`);
   }
 };
@@ -76,6 +117,8 @@ const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos
  */
 const getSignedUrl = async (s3Key, expirySeconds = SIGNED_URL_EXPIRY) => {
   try {
+    if (!s3Key) return null;
+
     const params = {
       Bucket: BUCKET_NAME,
       Key: s3Key,
@@ -90,12 +133,20 @@ const getSignedUrl = async (s3Key, expirySeconds = SIGNED_URL_EXPIRY) => {
 };
 
 /**
- * Delete image from S3
+ * Delete image from S3 or local disk
  * @param {string} s3Key - S3 object key
  * @returns {Promise<void>}
  */
 const deleteImageFromS3 = async (s3Key) => {
   try {
+    if (!s3Key) return;
+
+    if (!hasS3Config()) {
+      const localPath = path.join(LOCAL_UPLOAD_ROOT, s3Key);
+      await fs.promises.unlink(localPath).catch(() => null);
+      return;
+    }
+
     const params = {
       Bucket: BUCKET_NAME,
       Key: s3Key,
@@ -109,15 +160,15 @@ const deleteImageFromS3 = async (s3Key) => {
   }
 };
 
-/**
- * Delete multiple images from S3
- * @param {Array<string>} s3Keys - Array of S3 object keys
- * @returns {Promise<void>}
- */
 const deleteImagesFromS3 = async (s3Keys) => {
   if (!s3Keys || s3Keys.length === 0) return;
 
   try {
+    if (!hasS3Config()) {
+      await Promise.all(s3Keys.map((key) => deleteImageFromS3(key)));
+      return;
+    }
+
     const params = {
       Bucket: BUCKET_NAME,
       Delete: {
@@ -133,14 +184,10 @@ const deleteImagesFromS3 = async (s3Keys) => {
   }
 };
 
-/**
- * List old images in S3 (for cleanup)
- * @param {number} ageInDays - Age threshold in days
- * @param {string} prefix - S3 prefix/folder (e.g., 'attendee-photos/')
- * @returns {Promise<Array>} Array of old objects
- */
 const getOldImagesInS3 = async (ageInDays = 30, prefix = 'attendee-photos/') => {
   try {
+    if (!hasS3Config()) return [];
+
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - ageInDays);
 
@@ -177,13 +224,12 @@ const getOldImagesInS3 = async (ageInDays = 30, prefix = 'attendee-photos/') => 
   }
 };
 
-/**
- * Auto-cleanup old images (runs periodically)
- * @param {number} ageInDays - Age threshold in days (default: 90)
- * @returns {Promise<{deleted: number, failed: number}>}
- */
 const cleanupOldImages = async (ageInDays = 90) => {
   try {
+    if (!hasS3Config()) {
+      return { deleted: 0, failed: 0 };
+    }
+
     console.log(`Starting S3 cleanup: removing images older than ${ageInDays} days`);
 
     const oldImages = await getOldImagesInS3(ageInDays);
@@ -194,7 +240,6 @@ const cleanupOldImages = async (ageInDays = 90) => {
       return { deleted: 0, failed: 0 };
     }
 
-    // Delete in batches of 1000 (S3 limit)
     let deleted = 0;
     let failed = 0;
 
@@ -217,11 +262,6 @@ const cleanupOldImages = async (ageInDays = 90) => {
   }
 };
 
-/**
- * Get image public URL (for public objects)
- * @param {string} s3Key - S3 object key
- * @returns {String} Public URL
- */
 const getPublicUrl = (s3Key) => {
   return `https://${BUCKET_NAME}.s3.amazonaws.com/${s3Key}`;
 };
@@ -237,4 +277,5 @@ module.exports = {
   getPublicUrl,
   BUCKET_NAME,
   SIGNED_URL_EXPIRY,
+  hasS3Config,
 };

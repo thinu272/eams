@@ -1,5 +1,5 @@
 /**
- * EAMS Role-Based Access Control (RBAC) System
+ * ENTRYNEX Role-Based Access Control (RBAC) System
  * Implements Section 6 Hierarchy and Inheritance
  */
 
@@ -34,6 +34,7 @@ const normalizeRole = (role) => {
   
   // Mapping for legacy or case-insensitive matches
   const mapping = {
+    'admin': ROLES.MAIN_ADMIN,
     'mainadmin': ROLES.MAIN_ADMIN,
     'super_admin': ROLES.MAIN_ADMIN,
     'main_admin': ROLES.MAIN_ADMIN,

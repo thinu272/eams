@@ -67,13 +67,7 @@ const getAttendeeTicket = async (req, res, next) => {
 
     let qrCode = ticket.attendee?.qrCode;
     if (!qrCode && ticket.attendee?.qrToken) {
-      const payload = {
-        attendeeToken: ticket.attendee.qrToken,
-        ticketNumber: ticket.ticketNumber,
-        eventToken: ticket.event?._id?.toString?.() || '',
-        generatedAt: new Date().toISOString(),
-      };
-      qrCode = await QRCode.toDataURL(JSON.stringify(payload));
+      qrCode = await QRCode.toDataURL(ticket.attendee.qrToken);
     }
 
     res.json({ success: true, data: { ticket: mapTicket(ticket, qrCode) } });

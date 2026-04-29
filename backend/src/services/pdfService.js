@@ -1,0 +1,131 @@
+const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
+
+const formatVenue = (venue) => {
+  if (!venue) return 'TBA';
+  if (typeof venue === 'string') return venue;
+  return [venue.name, venue.address, venue.city].filter(Boolean).join(', ') || 'TBA';
+};
+
+const formatEventDate = (date) => (
+  date
+    ? new Date(date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : 'TBA'
+);
+
+const formatEventTime = (date) => (
+  date
+    ? new Date(date).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : 'TBA'
+);
+
+const buildBuffer = (draw) => new Promise(async (resolve, reject) => {
+  try {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    await draw(doc);
+    doc.end();
+  } catch (error) {
+    reject(error);
+  }
+});
+
+const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(async (doc) => {
+  const primaryColor = '#0a1128';
+  const secondaryColor = '#64748b';
+  const ticketCategory = ticket?.categoryName || attendee.categoryName || 'Standard';
+  const qrBuffer = await QRCode.toBuffer(attendee.qrToken, {
+    errorCorrectionLevel: 'H',
+    margin: 1,
+    color: { dark: '#000000', light: '#ffffff' },
+  });
+
+  doc.rect(0, 0, doc.page.width, 100).fill(primaryColor);
+  doc.fillColor('#ffffff').fontSize(24).text('ENTRYNEX TICKET', 50, 40);
+  doc.fontSize(10).text('Event Access Management System', 50, 70);
+
+  doc.moveDown(4);
+  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event Ticket', { align: 'center' });
+  doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
+
+  doc.fillColor(secondaryColor).fontSize(10).text('ATTENDEE', 50, 180);
+  doc.fillColor('#000000').fontSize(14).text(attendee.fullName || 'Attendee', 50, 195);
+
+  doc.fillColor(secondaryColor).fontSize(10).text('CATEGORY', 50, 230);
+  doc.fillColor('#000000').fontSize(14).text(ticketCategory, 50, 245);
+
+  doc.fillColor(secondaryColor).fontSize(10).text('DATE & TIME', 50, 280);
+  doc.fillColor('#000000').fontSize(12).text(`${formatEventDate(event.startDate)} at ${formatEventTime(event.startDate)}`, 50, 295, {
+    width: 220,
+  });
+
+  doc.fillColor(secondaryColor).fontSize(10).text('VENUE', 50, 345);
+  doc.fillColor('#000000').fontSize(12).text(formatVenue(event.venue), 50, 360, { width: 230 });
+
+  doc.image(qrBuffer, 345, 190, { width: 180 });
+  doc.fillColor(secondaryColor).fontSize(9).text('Present this QR at entry for scanning.', 325, 385, {
+    align: 'center',
+    width: 220,
+  });
+
+  doc.rect(0, 750, doc.page.width, 92).fill('#f8fafc');
+  doc.fillColor(secondaryColor).fontSize(9).text('IMPORTANT INSTRUCTIONS', 50, 765);
+  doc.text('- Please present this PDF at the entrance gate.', 50, 782);
+  doc.text('- This ticket is valid only for the confirmed attendee.', 50, 796);
+  doc.text('- Entry is subject to event security and organiser rules.', 50, 810);
+});
+
+const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) => {
+  const primaryColor = '#0a1128';
+  const ticketRows = order.tickets || [];
+
+  doc.rect(0, 0, doc.page.width, 100).fill(primaryColor);
+  doc.fillColor('#ffffff').fontSize(24).text('PURCHASE SUMMARY', 50, 40);
+  doc.fontSize(10).text('Event Access Management System', 50, 70);
+
+  doc.moveDown(4);
+  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event', { align: 'center' });
+  doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
+
+  doc.fillColor('#64748b').fontSize(10).text('BUYER', 50, 180);
+  doc.fillColor('#000000').fontSize(13).text(order.buyerName || 'Buyer', 50, 195);
+  doc.fontSize(11).text(order.buyerEmail || '', 50, 214);
+
+  doc.fillColor('#64748b').fontSize(10).text('ORDER NUMBER', 50, 250);
+  doc.fillColor('#000000').fontSize(12).text(order.orderNumber || '-', 50, 265);
+
+  doc.fillColor('#64748b').fontSize(10).text('DATE & TIME', 50, 300);
+  doc.fillColor('#000000').fontSize(12).text(`${formatEventDate(event.startDate)} at ${formatEventTime(event.startDate)}`, 50, 315);
+
+  doc.fillColor('#64748b').fontSize(10).text('VENUE', 50, 350);
+  doc.fillColor('#000000').fontSize(12).text(formatVenue(event.venue), 50, 365, { width: 470 });
+
+  doc.fillColor(primaryColor).fontSize(14).text('Tickets', 50, 420);
+  let y = 448;
+  ticketRows.forEach((item, index) => {
+    doc.fillColor('#000000').fontSize(12).text(`${index + 1}. ${item.categoryName}`, 60, y);
+    doc.text(`Qty: ${item.quantity}`, 330, y);
+    doc.text(`LKR ${Number(item.price || 0).toLocaleString()}`, 430, y);
+    y += 24;
+  });
+
+  doc.moveTo(50, y + 8).lineTo(545, y + 8).stroke('#e2e8f0');
+  doc.fillColor(primaryColor).fontSize(14).text(`Total: LKR ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
+
+  doc.fillColor('#64748b').fontSize(10).text('Assign attendees to activate each ticket.', 50, y + 60);
+});
+
+module.exports = {
+  generateTicketPDF,
+  generateOrderSummaryPDF,
+};

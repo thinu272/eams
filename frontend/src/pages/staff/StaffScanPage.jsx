@@ -41,6 +41,7 @@ const StaffScanPage = () => {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState({ state: 'idle' });
   const [logs, setLogs] = useState([]);
+  const [gateInput, setGateInput] = useState('');
 
   const availableGates = useMemo(() => (user?.assignedGates || []).filter(Boolean), [user]);
   const gateLocked = availableGates.length > 0;
@@ -49,13 +50,16 @@ const StaffScanPage = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const fallbackEventId = selectedEventId || nextEvents[0]?._id || '';
+      
+      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
+      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
       }
     });
-  }, []);
+  }, [selectedEventId]);
 
   useEffect(() => {
     const handleEventSelect = (event) => {
@@ -63,19 +67,24 @@ const StaffScanPage = () => {
       setSelectedEventId(nextId);
     };
 
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
-    if (availableGates[0]) setGateName(availableGates[0]);
-    else setGateName('Main Gate');
+    if (availableGates[0]) {
+      setGateName(availableGates[0]);
+      setGateInput(availableGates[0]);
+    } else {
+      setGateName('Main Gate');
+      setGateInput('Main Gate');
+    }
   }, [availableGates]);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('eams:event-select', { detail: nextId }));
+    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
   };
 
   const refreshLogs = useCallback(async () => {
@@ -222,13 +231,27 @@ const StaffScanPage = () => {
                     ))}
                   </select>
                   {gateLocked ? (
-                    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700">
-                      {gateName}
-                    </div>
+                    availableGates.length > 1 ? (
+                      <select
+                        value={gateName}
+                        onChange={(e) => setGateName(e.target.value)}
+                        className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700 outline-none focus:border-cyan-500"
+                      >
+                        {availableGates.map((gate) => (
+                          <option key={gate} value={gate}>{gate}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700">
+                        {gateName}
+                      </div>
+                    )
                   ) : (
                     <input
-                      value={gateName}
-                      onChange={(e) => setGateName(e.target.value)}
+                      value={gateInput}
+                      onChange={(e) => setGateInput(e.target.value)}
+                      onBlur={() => setGateName(gateInput)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') setGateName(gateInput); }}
                       placeholder="Gate name"
                       className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
                     />
@@ -312,7 +335,7 @@ const StaffScanPage = () => {
                 </div>
               </div>
             </section>
-            <ActivityList title="Last 10 Entry Scans" items={logs.slice(0, 10)} emptyMessage="No entry scans yet for this staff station." />
+            <ActivityList title="Last 5 Entry Scans" items={logs.slice(0, 5)} emptyMessage="No entry scans yet for this staff station." />
           </div>
 
           <div className="space-y-6">

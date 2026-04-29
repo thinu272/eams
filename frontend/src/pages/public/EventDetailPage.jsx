@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent, validateEventAccessCode } from '../../api/events';
+import { io } from 'socket.io-client';
 
 const buildAssetUrl = (path) => {
   if (!path) return '';
@@ -25,6 +26,7 @@ const EventDetailPage = () => {
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isExpired, setIsExpired] = useState(false);
   const [selectedTickets, setSelectedTickets] = useState({});
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [unlockedCategories, setUnlockedCategories] = useState([]);
@@ -34,11 +36,36 @@ const EventDetailPage = () => {
   const [isValidating, setIsValidating] = useState(false);
   const [codeError, setCodeError] = useState('');
 
-  useEffect(() => {
+  const fetchEvent = () => {
     getEvent(id)
-      .then((res) => setEvent(res.data?.data?.event))
+      .then((res) => {
+        setEvent(res.data?.data?.event);
+        setIsExpired(res.data?.data?.isExpired || false);
+      })
       .catch(() => setEvent(null))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchEvent();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    
+    // Join a room for this specific event
+    socket.emit('join_event', { eventId: id });
+
+    socket.on('event_update', (data) => {
+      console.log('Real-time update received:', data);
+      fetchEvent();
+    });
+
+    return () => {
+      socket.emit('leave_event', { eventId: id });
+      socket.disconnect();
+    };
   }, [id]);
 
   const handleQuantityChange = (categoryId, quantity) => {
@@ -125,9 +152,9 @@ const EventDetailPage = () => {
   const formatCurrency = (value) =>
     value === 0
       ? 'Free'
-      : new Intl.NumberFormat('en-LK', {
+      : new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: 'LKR',
+          currency: event.settings?.currency || 'LKR',
           maximumFractionDigits: 0,
         }).format(value);
 
@@ -160,16 +187,29 @@ const EventDetailPage = () => {
               >
                 ← Back to listings
               </Link>
-              <h1 className="mt-8 max-w-4xl text-5xl font-black uppercase tracking-tight sm:text-6xl text-white">
-                {event.name}
-              </h1>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-6 mt-8">
+                {event.branding?.logoImage && (
+                  <div className="h-20 w-20 flex-shrink-0 rounded-2xl bg-white p-2 shadow-2xl ring-4 ring-white/10 overflow-hidden">
+                    <img src={buildAssetUrl(event.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
+                  </div>
+                )}
+                <h1 className="max-w-4xl text-5xl font-black uppercase tracking-tight sm:text-6xl text-white">
+                  {event.name}
+                </h1>
+              </div>
                <div className="mt-6 flex items-center gap-4">
                   <span className="rounded-md px-3 py-1 text-xs font-black uppercase tracking-widest text-white" style={{ backgroundColor: themeColor }}>
                     {event.eventType || 'Cricket Match'}
                   </span>
-                  <span className="rounded-md bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest border" style={{ color: themeColor, borderColor: `${themeColor}4D` }}>
-                    Tickets Available
-                  </span>
+                  {isExpired ? (
+                    <span className="rounded-md bg-red-500/10 px-3 py-1 text-xs font-bold uppercase tracking-widest border border-red-500/50 text-red-500">
+                      Match Expired
+                    </span>
+                  ) : (
+                    <span className="rounded-md bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest border" style={{ color: themeColor, borderColor: `${themeColor}4D` }}>
+                      Tickets Available
+                    </span>
+                  )}
               </div>
               <p className="mt-6 max-w-3xl text-lg leading-relaxed text-slate-300">
                 {event.description}
@@ -203,20 +243,26 @@ const EventDetailPage = () => {
             </div>
 
              <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
-              <p className="text-sm font-black uppercase tracking-[0.2em]" style={{ color: themeColor }}>
-                Official Tickets
+              <p className="text-sm font-black uppercase tracking-[0.2em]" style={{ color: isExpired ? '#EF4444' : themeColor }}>
+                {isExpired ? 'Match Concluded' : 'Official Tickets'}
               </p>
-              <h2 className="mt-4 text-3xl font-black text-white leading-tight">Secure your access today.</h2>
+              <h2 className="mt-4 text-3xl font-black text-white leading-tight">
+                {isExpired ? 'This event has ended.' : 'Secure your access today.'}
+              </h2>
               <p className="mt-4 text-base text-slate-300 font-medium">
-                Select your preferred ticket category to view pricing and confirm your reservation.
+                {isExpired 
+                  ? 'Ticket booking is no longer available for this match. Please check our upcoming fixtures.'
+                  : 'Select your preferred ticket category to view pricing and confirm your reservation.'
+                }
               </p>
                <button
                 type="button"
-                onClick={() => setIsTicketModalOpen(true)}
-                className="mt-8 inline-flex w-full items-center justify-center rounded-xl px-6 py-4 text-lg font-black text-white shadow-lg shadow-blue-900/50 transition hover:scale-[1.02] active:scale-[0.98] brightness-110"
-                style={{ backgroundColor: themeColor }}
+                onClick={() => !isExpired && setIsTicketModalOpen(true)}
+                disabled={isExpired}
+                className={`mt-8 inline-flex w-full items-center justify-center rounded-xl px-6 py-4 text-lg font-black text-white shadow-lg transition hover:scale-[1.02] active:scale-[0.98] brightness-110 ${isExpired ? 'bg-slate-700 cursor-not-allowed opacity-50 shadow-none' : 'shadow-blue-900/50'}`}
+                style={!isExpired ? { backgroundColor: themeColor } : {}}
               >
-                Choose Tickets
+                {isExpired ? 'Booking Closed' : 'Choose Tickets'}
               </button>
             </div>
           </div>
@@ -541,7 +587,7 @@ const EventDetailPage = () => {
                     Proceed to Checkout
                   </button>
                   <p className="mt-4 text-center text-xs font-medium text-slate-400">
-                    Secure checkout powered by EAMS.
+                    Secure checkout powered by ENTRYNEX.
                   </p>
                 </div>
               </div>
