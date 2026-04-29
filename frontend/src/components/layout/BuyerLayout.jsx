@@ -37,7 +37,7 @@ const BuyerLayout = ({ children }) => {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 md:px-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">EAMS</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-brand-main">ENTRYNEX</p>
             <h1 className="text-lg font-bold text-slate-900">{headerTitle}</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -54,7 +54,7 @@ const BuyerLayout = ({ children }) => {
             </div>
             <button
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-brand-dark px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
               title="Logout"
             >
               <ArrowRightOnRectangleIcon className="h-4 w-4" />
@@ -73,7 +73,7 @@ const BuyerLayout = ({ children }) => {
               end={item.end}
               className={({ isActive }) => (
                 `rounded-2xl px-4 py-2 text-sm font-semibold transition ` +
-                (isActive ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-100')
+                (isActive ? 'bg-brand-dark text-white' : 'bg-white text-slate-700 hover:bg-slate-100')
               )}
             >
               {item.label}

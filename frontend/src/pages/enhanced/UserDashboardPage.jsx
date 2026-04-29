@@ -24,7 +24,7 @@ const UserDashboardPage = () => {
         'MainAdmin': '/admin/dashboard',
         'MainOrganiser': '/organiser/dashboard',
         'SubOrganiser': '/suborg/dashboard',
-        'Staff': '/staff/scan',
+        'Staff': (user?.responsibilities?.entryAccess || user?.assignedGates?.length > 0) ? '/staff/scan' : '/staff/zone-access',
         'Volunteer': '/entry',
         'Auditor': '/auditor/dashboard',
       };
@@ -44,7 +44,7 @@ const UserDashboardPage = () => {
 
       const response = await fetch('/api/dashboard/role-based', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('entrynex_token')}`,
           'Content-Type': 'application/json'
         }
       });
@@ -200,7 +200,7 @@ const getRoleDisplayName = (role) => {
 
 const getRoleBadgeClass = (role) => {
   const classes = {
-    'MainAdmin': 'bg-emerald-100 text-emerald-800',
+    'MainAdmin': 'bg-blue-100 text-blue-800',
     'MainOrganiser': 'bg-blue-100 text-blue-800',
     'SubOrganiser': 'bg-sky-100 text-sky-800',
     'Staff': 'bg-cyan-100 text-cyan-800',

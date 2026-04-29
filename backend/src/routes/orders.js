@@ -6,8 +6,10 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
-const QRCode = require('qrcode');
-const { notifyOrderConfirmation, notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
+const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
+const { generatePayHereData } = require('../services/paymentService');
+const { sendBuyerOrderCreatedEmail } = require('../services/ticketDeliveryService');
+const { optionalProtect } = require('../middleware/auth'); // I'll assume optionalProtect might be useful or I'll just use req.user if present
 
 // POST /api/orders - Create new order
 router.post('/', [
@@ -20,6 +22,7 @@ router.post('/', [
   body('tickets.*.categoryName').notEmpty().withMessage('Category name is required'),
   body('tickets.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
   body('tickets.*.price').isNumeric().withMessage('Price must be a number'),
+  body('buyerId').optional().isMongoId().withMessage('Invalid buyer ID'),
 ], async (req, res) => {
   try {
     // Check validation errors
@@ -32,7 +35,7 @@ router.post('/', [
       });
     }
 
-    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel } = req.body;
+    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId } = req.body;
 
     // Validate event exists
     const event = await Event.findById(eventId);
@@ -91,12 +94,15 @@ router.post('/', [
     // Create order
     const order = new Order({
       eventId,
+      buyerId: buyerId || (req.user ? req.user._id : undefined),
       buyerName,
       buyerEmail,
       buyerPhone,
+      notificationChannel: notificationChannel || 'email',
       tickets: validatedTickets,
       totalAmount,
-      status: 'PENDING',
+      status: 'PENDING_PAYMENT',
+      paymentStatus: 'pending',
       confirmationToken
     });
 
@@ -142,12 +148,15 @@ router.post('/', [
       );
     }
 
-    await notifyOrderConfirmation({
+    await sendBuyerOrderCreatedEmail({
       order,
       event,
-      buyerPhone,
-      notificationChannel,
+    }).catch((error) => {
+      console.error('ORDER CREATED EMAIL ERROR:', error);
     });
+
+    // Generate Payment Data (PayHere)
+    const paymentData = generatePayHereData(order, event);
 
     res.status(201).json({
       success: true,
@@ -155,9 +164,10 @@ router.post('/', [
         orderId: order._id,
         orderNumber: order.orderNumber,
         confirmationToken: order.confirmationToken,
-        totalAmount: order.totalAmount
+        totalAmount: order.totalAmount,
+        paymentData // Frontend will use this to auto-submit form to PayHere
       },
-      message: 'Order created successfully'
+      message: 'Order created. Proceed to payment.'
     });
 
   } catch (error) {
@@ -202,44 +212,48 @@ router.post('/finalize/:orderId', async (req, res) => {
       const attendee = await Attendee.findById(ticket.attendee);
       if (!attendee) continue;
 
-      // Generate secure qrToken if missing
-      if (!attendee.qrToken) {
-        attendee.qrToken = uuidv4();
+      // Ensure ticket status is at least ASSIGNED
+      if (ticket.status === 'PENDING' || ticket.status === 'INVITED') {
+        ticket.status = 'ASSIGNED';
+        await ticket.save();
       }
 
-      // Compose QR payload (no raw DB IDs)
-      const payload = {
-        attendeeToken: attendee.qrToken,
-        eventToken: event?._id?.toString?.() || '',
-        ticketNumber: ticket.ticketNumber,
-        generatedAt: new Date().toISOString(),
-      };
-      const qrData = JSON.stringify(payload);
+      // ONLY generate QR and send final ticket if photo is VERIFIED
+      // If it's still pending or rejected, we skip this part for now.
+      if (attendee.photoVerificationStatus === 'verified' || attendee.photoVerificationStatus === 'Verified') {
+        // Generate secure qrToken if missing
+        if (!attendee.qrToken) {
+          attendee.qrToken = uuidv4();
+        }
 
-      attendee.qrCode = await QRCode.toDataURL(qrData);
-      attendee.confirmationStatus = 'confirmed';
-      attendee.isConfirmed = true;
-      attendee.confirmedAt = attendee.confirmedAt || new Date();
-      attendee.confirmedBy = attendee.confirmedBy || 'order_finalize';
-      attendee.categoryId = attendee.categoryId || ticket.categoryId;
-      attendee.categoryName = attendee.categoryName || ticket.categoryName;
-      attendee.allowedZones = Array.isArray(attendee.allowedZones) && attendee.allowedZones.length
-        ? attendee.allowedZones
-        : (ticket.allowedZones || []);
-      await attendee.save();
+        attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+        attendee.confirmationStatus = 'confirmed';
+        attendee.isConfirmed = true;
+        attendee.confirmedAt = attendee.confirmedAt || new Date();
+        attendee.confirmedBy = attendee.confirmedBy || 'order_finalize';
+        attendee.categoryId = attendee.categoryId || ticket.categoryId;
+        attendee.categoryName = attendee.categoryName || ticket.categoryName;
+        attendee.allowedZones = Array.isArray(attendee.allowedZones) && attendee.allowedZones.length
+          ? attendee.allowedZones
+          : (ticket.allowedZones || []);
+        await attendee.save();
 
-      finalizedAttendees.push(attendee);
+        finalizedAttendees.push(attendee);
 
-      await notifyFinalTicket({
-        attendee,
-        event,
-        phone: attendee.phone,
-        notificationChannel: 'both',
-      });
+        await notifyFinalTicket({
+          attendee,
+          event,
+          phone: attendee.phone,
+          notificationChannel: 'both',
+        });
 
-      // Update ticket status to CONFIRMED (safe idempotence)
-      ticket.status = 'CONFIRMED';
-      await ticket.save();
+        // Update ticket status to CONFIRMED
+        ticket.status = 'CONFIRMED';
+        await ticket.save();
+      } else {
+        // If not verified, we still add it to finalizedAttendees for the summary (as pending)
+        finalizedAttendees.push(attendee);
+      }
     }
 
     order.status = 'CONFIRMED';

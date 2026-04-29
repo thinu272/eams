@@ -44,8 +44,8 @@ const SubOrgTickets = () => {
       setCurrentEventId(e.detail);
       load(e.detail);
     };
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   const handleCreate = async (e) => {

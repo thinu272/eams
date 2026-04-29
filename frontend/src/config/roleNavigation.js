@@ -32,7 +32,6 @@ export const ROLE_NAVIGATION = {
           { to: '/admin/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
           { to: '/admin/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
           { to: '/admin/dashboard?section=settings', label: 'System Settings', icon: ShieldCheckIcon },
-          { to: '/admin/dashboard?section=events', label: 'Create Event', icon: ArrowUpTrayIcon },
         ],
       },
     ],
@@ -49,6 +48,7 @@ export const ROLE_NAVIGATION = {
           { to: '/organiser/dashboard?section=zones', label: 'Zones & Areas', icon: ShieldCheckIcon },
           { to: '/organiser/dashboard?section=suborganisers', label: 'Team Management', icon: UsersIcon },
           { to: '/organiser/dashboard?section=invites', label: 'Invites', icon: GlobeAltIcon },
+          { to: '/organiser/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
           { to: '/organiser/dashboard?section=verification', label: 'Verification', icon: CheckBadgeIcon },
           { to: '/organiser/dashboard?section=logs', label: 'Entry Logs', icon: ClipboardDocumentListIcon },
           { to: '/organiser/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
@@ -76,6 +76,7 @@ export const ROLE_NAVIGATION = {
         items: [
           { to: '/suborg/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
           { to: '/suborg/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
+          { to: '/suborg/zone-search', label: 'Zone Manual Search', icon: UserGroupIcon },
           { to: '/suborg/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
           { to: '/suborg/logs', label: 'Activity Logs', icon: ClipboardDocumentListIcon },
         ],
@@ -88,8 +89,11 @@ export const ROLE_NAVIGATION = {
         title: 'Operations',
         items: [
           { to: '/staff/scan', label: 'Scan Entry', icon: MagnifyingGlassIcon },
-          { to: '/staff/zone-access', label: 'Zone Access', icon: ShieldCheckIcon },
           { to: '/staff/search', label: 'Manual Search', icon: UserGroupIcon },
+          { to: '/staff/zone-access', label: 'Zone Access', icon: ShieldCheckIcon },
+          { to: '/staff/zone-search', label: 'Zone Manual Search', icon: UserGroupIcon },
+          { to: '/staff/verification', label: 'Verification', icon: CheckBadgeIcon },
+          { to: '/staff/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
           { to: '/staff/activity', label: 'Activity Log', icon: ClipboardDocumentListIcon },
         ],
       },
@@ -131,7 +135,7 @@ export const ROLE_LABELS = {
 };
 
 export const ROLE_COLORS = {
-  MainAdmin: 'bg-emerald-100 text-emerald-700',
+  MainAdmin: 'bg-blue-100 text-blue-700',
   MainOrganiser: 'bg-blue-100 text-blue-700',
   SubOrganiser: 'bg-sky-100 text-sky-700',
   Staff: 'bg-cyan-100 text-cyan-700',

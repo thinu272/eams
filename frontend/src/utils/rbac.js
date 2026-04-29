@@ -23,6 +23,7 @@ export const normalizeRole = (role) => {
   const r = String(role).trim();
   
   const mapping = {
+    'admin': ROLES.MAIN_ADMIN,
     'mainadmin': ROLES.MAIN_ADMIN,
     'super_admin': ROLES.MAIN_ADMIN,
     'main_admin': ROLES.MAIN_ADMIN,

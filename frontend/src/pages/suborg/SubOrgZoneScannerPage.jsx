@@ -35,14 +35,14 @@ const SubOrgZoneScannerPage = () => {
       loadZones(nextId);
     };
 
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
-  const handleSubmit = async ({ value, mode, zoneId }) => {
+  const handleSubmit = async ({ value, mode, zoneId, action }) => {
     setSubmitting(true);
     try {
-      const payload = { zoneId, eventId: currentEventId };
+      const payload = { zoneId, eventId: currentEventId, action };
       if (mode === 'rfid') payload.rfidId = value;
       else payload.qrToken = value;
       const response = await scanSubZone(payload);

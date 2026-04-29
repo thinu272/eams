@@ -21,7 +21,7 @@ const systemConfigSchema = new mongoose.Schema({
   communication: {
     senderEmail: {
       type: String,
-      default: process.env.EMAIL_FROM || 'noreply@eams.com',
+      default: process.env.EMAIL_FROM || 'noreply@entrynex.com',
     },
     smsSender: {
       type: String,
@@ -39,15 +39,15 @@ const systemConfigSchema = new mongoose.Schema({
   templates: {
     invite: {
       subject: { type: String, default: "You're Invited - {{eventName}}" },
-      sms: { type: String, default: "EAMS: You're invited to {{eventName}}. Confirm here: {{link}}" },
+      sms: { type: String, default: "ENTRYNEX: You're invited to {{eventName}}. Confirm here: {{link}}" },
     },
     confirmation: {
       subject: { type: String, default: 'Confirmed - Your ticket for {{eventName}}' },
-      sms: { type: String, default: 'EAMS: Ticket confirmed for {{eventName}}. Show QR at entry: {{link}}' },
+      sms: { type: String, default: 'ENTRYNEX: Ticket confirmed for {{eventName}}. Show QR at entry: {{link}}' },
     },
     rejection: {
       subject: { type: String, default: 'Photo Rejected - Resubmit for {{eventName}}' },
-      sms: { type: String, default: 'EAMS: Your photo was rejected. Reason: {{reason}}. Re-upload here: {{link}}' },
+      sms: { type: String, default: 'ENTRYNEX: Your photo was rejected. Reason: {{reason}}. Re-upload here: {{link}}' },
     },
   },
   retention: {
@@ -68,6 +68,14 @@ const systemConfigSchema = new mongoose.Schema({
       type: Boolean,
       default: true,
     },
+  },
+  currency: {
+    type: String,
+    default: 'LKR',
+  },
+  maintenanceMode: {
+    type: Boolean,
+    default: false,
   },
 }, {
   timestamps: true,

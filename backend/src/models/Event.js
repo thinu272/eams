@@ -78,6 +78,7 @@ const eventSchema = new mongoose.Schema({
     themeColor: { type: String, default: '#2563EB' },
     logoImage: { type: String, default: '' },
     bannerImage: { type: String, default: '' },
+    coverImage: { type: String, default: '' },
   },
 
   // Ticket categories (e.g., VIP, General, School, Media)
@@ -111,6 +112,7 @@ const eventSchema = new mongoose.Schema({
 
   // Settings
   settings: {
+    currency: { type: String, default: 'LKR' },
     requirePhotoVerification: { type: Boolean, default: true },
     allowSelfConfirmation: { type: Boolean, default: true },
     confirmationDeadlineHours: { type: Number, default: 48 },
@@ -130,6 +132,11 @@ const eventSchema = new mongoose.Schema({
     inviteSystemEnabled: { type: Boolean, default: true },
     manualApprovalEnabled: { type: Boolean, default: false },
     autoConfirmEnabled: { type: Boolean, default: false },
+    paymentMethods: {
+      card: { type: Boolean, default: true },
+      bank_transfer: { type: Boolean, default: true },
+      cash: { type: Boolean, default: true },
+    },
     accessRules: {
       whoCanEnter: [{ type: String }],
       entryWindowStart: { type: String, default: '' },
@@ -139,6 +146,7 @@ const eventSchema = new mongoose.Schema({
   },
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  revenue: { type: Number, default: 0 },
   publishedAt: { type: Date },
 }, {
   timestamps: true,

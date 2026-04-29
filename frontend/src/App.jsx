@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { hasAnyRole } from './utils/rbac';
+import { getPublicConfig } from './api/events';
 
 // Public pages
 import HomePage from './pages/public/HomePage';
@@ -11,10 +12,14 @@ import EventDetailPage from './pages/public/EventDetailPage';
 import CheckoutPage from './pages/public/CheckoutPage';
 import OrderConfirmationPage from './pages/public/OrderConfirmationPage';
 import AttendeeIdentityConfirmPage from './pages/public/AttendeeIdentityConfirmPage';
+import MaintenancePage from './pages/public/MaintenancePage';
 
 // Auth
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import VerifyEmailPage from './pages/auth/VerifyEmailPage';
 import Dashboard from './pages/Dashboard';
 import UserDashboardPage from './pages/enhanced/UserDashboardPage';
 
@@ -56,6 +61,7 @@ import SubOrgActivityLogsPage from './pages/suborg/SubOrgActivityLogsPage';
 import SubOrgTeam from './pages/suborg/SubOrgTeam';
 import SubOrgTickets from './pages/suborg/SubOrgTickets';
 import BulkUploadPage from './pages/suborg/BulkUploadPage';
+import SubOrgZoneManualSearchPage from './pages/suborg/SubOrgZoneManualSearchPage';
 import EventEditPage from './pages/shared/EventEditPage';
 
 // Entry
@@ -64,6 +70,7 @@ import ZoneScannerPage from './pages/entry/ZoneScannerPage';
 import StaffScanPage from './pages/staff/StaffScanPage';
 import StaffZoneAccessPage from './pages/staff/StaffZoneAccessPage';
 import StaffManualSearchPage from './pages/staff/StaffManualSearchPage';
+import StaffZoneManualSearchPage from './pages/staff/StaffZoneManualSearchPage';
 import StaffActivityLogPage from './pages/staff/StaffActivityLogPage';
 
 // Auditor
@@ -100,6 +107,9 @@ const AppRoutes = () => (
     <Route path="/events/:id" element={<EventDetailPage />} />
     <Route path="/login" element={<LoginPage />} />
     <Route path="/signup" element={<SignupPage />} />
+    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+    <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+    <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
 
     {/* Buyer confirmation flow - public links from email */}
     <Route path="/confirm/:inviteToken" element={<AttendeeIdentityConfirmPage />} />
@@ -150,6 +160,7 @@ const AppRoutes = () => (
     <Route path="/organiser/entry-logs" element={<Protected roles={['MainOrganiser']} redirectTo="/dashboard"><OrganiserDashboard /></Protected>} />
     <Route path="/organiser/reports" element={<Protected roles={['MainOrganiser']} redirectTo="/dashboard"><OrganiserDashboard /></Protected>} />
     <Route path="/organiser/settings" element={<Protected roles={['MainOrganiser']} redirectTo="/dashboard"><OrganiserDashboard /></Protected>} />
+    <Route path="/organiser/upload" element={<Protected roles={['MainOrganiser']} redirectTo="/dashboard"><BulkUploadPage /></Protected>} />
 
     {/* Sub-Organiser */}
     <Route path="/suborg/dashboard" element={<Protected roles={['SubOrganiser']}><SubOrgDashboard /></Protected>} />
@@ -158,6 +169,7 @@ const AppRoutes = () => (
     <Route path="/suborg/verification" element={<Protected roles={['SubOrganiser']}><SubOrgVerificationPage /></Protected>} />
     <Route path="/suborg/entry" element={<Protected roles={['SubOrganiser']}><SubOrgEntryScannerPage /></Protected>} />
     <Route path="/suborg/zone-scan" element={<Protected roles={['SubOrganiser']}><SubOrgZoneScannerPage /></Protected>} />
+    <Route path="/suborg/zone-search" element={<Protected roles={['SubOrganiser']}><SubOrgZoneManualSearchPage /></Protected>} />
     <Route path="/suborg/logs" element={<Protected roles={['SubOrganiser']}><SubOrgActivityLogsPage /></Protected>} />
     <Route path="/suborg/team" element={<Protected roles={['SubOrganiser']}><SubOrgTeam /></Protected>} />
     <Route path="/suborg/tickets" element={<Protected roles={['SubOrganiser']}><SubOrgTickets /></Protected>} />
@@ -169,7 +181,10 @@ const AppRoutes = () => (
     <Route path="/staff/scan" element={<Protected roles={['Staff']}><StaffScanPage /></Protected>} />
     <Route path="/staff/zone-access" element={<Protected roles={['Staff']}><StaffZoneAccessPage /></Protected>} />
     <Route path="/staff/search" element={<Protected roles={['Staff']}><StaffManualSearchPage /></Protected>} />
+    <Route path="/staff/zone-search" element={<Protected roles={['Staff']}><StaffZoneManualSearchPage /></Protected>} />
     <Route path="/staff/activity" element={<Protected roles={['Staff']}><StaffActivityLogPage /></Protected>} />
+    <Route path="/staff/verification" element={<Protected roles={['Staff']}><SubOrgVerificationPage /></Protected>} />
+    <Route path="/staff/upload" element={<Protected roles={['Staff']}><BulkUploadPage /></Protected>} />
     <Route path="/entry" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/entry-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/zone-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><ZoneScannerPage /></Protected>} />
@@ -183,12 +198,28 @@ const AppRoutes = () => (
     <Route path="*" element={<NotFoundPage />} />
   </Routes>
 );
-
 const App = () => {
-  React.useEffect(() => {
+  const { user, loading: authLoading, isAdmin, isOrganiser, isSubOrg, isStaff, isAuditor } = useAuth();
+  const [sysConfig, setSysConfig] = useState({ maintenanceMode: false, currency: 'LKR' });
+  const [configLoading, setConfigLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await getPublicConfig();
+        if (res.data?.success) {
+          setSysConfig(res.data.data);
+        }
+      } catch (err) {
+        console.error('Config fetch failed:', err);
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+    fetchConfig();
+
     const handleUnhandledRejection = (event) => {
       if (event?.reason?.response?.status === 403) {
-        // 403 errors are already handled via toast in api interceptor
         event.preventDefault();
         return;
       }
@@ -198,12 +229,28 @@ const App = () => {
     return () => window.removeEventListener('unhandledrejection', handleUnhandledRejection);
   }, []);
 
+  if (authLoading || configLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/>
+      </div>
+    );
+  }
+
+  // Bypass maintenance mode for all authenticated internal roles
+  const canBypassMaintenance = isAdmin || isOrganiser || isSubOrg || isStaff || isAuditor;
+
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider>
-        <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: '14px' } }} />
+      <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: '14px' } }} />
+      {sysConfig.maintenanceMode && !canBypassMaintenance ? (
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<MaintenancePage />} />
+        </Routes>
+      ) : (
         <AppRoutes />
-      </AuthProvider>
+      )}
     </BrowserRouter>
   );
 };

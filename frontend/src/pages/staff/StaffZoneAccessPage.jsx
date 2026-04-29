@@ -17,9 +17,19 @@ const StaffZoneAccessPage = () => {
   const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
   const [zoneName, setZoneName] = useState('');
   const [manualToken, setManualToken] = useState('');
+  const [scanMode, setScanMode] = useState('ENTRY');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState({ state: 'idle' });
   const [logs, setLogs] = useState([]);
+  const [zoneInput, setZoneInput] = useState('');
+
+  const currentEvent = useMemo(() => events.find((e) => e._id === selectedEventId), [events, selectedEventId]);
+
+  const getZoneDisplayName = useCallback((zone) => {
+    if (!currentEvent || !currentEvent.zones) return zone;
+    const found = currentEvent.zones.find((z) => z.id === zone || z.name === zone);
+    return found ? found.name : zone;
+  }, [currentEvent]);
 
   const assignedZones = useMemo(() => getAssignedZones(user), [user]);
   const zoneLocked = assignedZones.length > 0;
@@ -28,13 +38,14 @@ const StaffZoneAccessPage = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const fallbackEventId = selectedEventId || nextEvents[0]?._id || '';
+      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
+      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
       }
     });
-  }, []);
+  }, [selectedEventId]);
 
   useEffect(() => {
     const handleEventSelect = (event) => {
@@ -42,18 +53,21 @@ const StaffZoneAccessPage = () => {
       setSelectedEventId(nextId);
     };
 
-    window.addEventListener('eams:event-select', handleEventSelect);
-    return () => window.removeEventListener('eams:event-select', handleEventSelect);
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
-    if (assignedZones[0]) setZoneName(assignedZones[0]);
+    if (assignedZones[0]) {
+      setZoneName(assignedZones[0]);
+      setZoneInput(assignedZones[0]);
+    }
   }, [assignedZones]);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('eams:event-select', { detail: nextId }));
+    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
   };
 
   const refreshLogs = useCallback(async () => {
@@ -119,8 +133,8 @@ const StaffZoneAccessPage = () => {
     setSubmitting(true);
     try {
       const payload = mode === 'rfid'
-        ? { rfidId: token, zone: zoneName, eventId: selectedEventId }
-        : { qrToken: token, zone: zoneName, eventId: selectedEventId };
+        ? { rfidId: token, zone: zoneName, eventId: selectedEventId, action: scanMode }
+        : { qrToken: token, zone: zoneName, eventId: selectedEventId, action: scanMode };
       const response = await scanStaffZone(payload);
       const data = response.data?.data || {};
       setResult({
@@ -190,15 +204,49 @@ const StaffZoneAccessPage = () => {
                   {events.map((event) => <option key={event._id} value={event._id}>{event.name}</option>)}
                 </select>
                 {zoneLocked ? (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-700">{zoneName}</div>
+                  assignedZones.length > 1 ? (
+                    <select
+                      value={zoneName}
+                      onChange={(e) => setZoneName(e.target.value)}
+                      className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-700 outline-none focus:border-emerald-500"
+                    >
+                      {assignedZones.map((zone) => (
+                        <option key={zone} value={zone}>{getZoneDisplayName(zone)}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-emerald-700">{getZoneDisplayName(zoneName)}</div>
+                  )
                 ) : (
                   <input
-                    value={zoneName}
-                    onChange={(e) => setZoneName(e.target.value)}
+                    value={zoneInput}
+                    onChange={(e) => setZoneInput(e.target.value)}
+                    onBlur={() => setZoneName(zoneInput)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') setZoneName(zoneInput); }}
                     placeholder="Zone name"
                     className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500"
                   />
                 )}
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {[
+                  ['ENTRY', 'Entry Scan'],
+                  ['EXIT', 'Exit Scan'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setScanMode(value)}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.18em] transition ${
+                      scanMode === value
+                        ? 'border-emerald-600 bg-emerald-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               <div className="mt-6 grid gap-6 lg:grid-cols-[1fr,0.95fr]">
@@ -244,7 +292,7 @@ const StaffZoneAccessPage = () => {
                 </div>
               </div>
             </section>
-            <ActivityList title="Last 10 Zone Scans" items={logs.slice(0, 10)} emptyMessage="No zone access activity yet for this station." />
+            <ActivityList title="Last 5 Zone Scans" items={logs.slice(0, 5)} emptyMessage="No zone access activity yet for this station." />
           </div>
 
           <div className="space-y-6">

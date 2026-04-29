@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
-import { BuildingOffice2Icon, CreditCardIcon, ShieldCheckIcon, TicketIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { BuildingOffice2Icon, CreditCardIcon, ShieldCheckIcon, TicketIcon, UsersIcon, CheckBadgeIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -49,6 +49,8 @@ const emptySettings = {
   templates: { inviteSubject: '', inviteSms: '', confirmationSubject: '', confirmationSms: '', rejectionSubject: '', rejectionSms: '' },
   limits: { logsDays: 365, notificationsDays: 90, jwtTtlHours: 24 },
   featureToggles: { requirePhotoVerification: true, darkModeDefault: false, balancedSecurity: false },
+  currency: 'LKR',
+  maintenanceMode: false,
 };
 
 const downloadBlob = (blob, fallbackName) => {
@@ -63,7 +65,7 @@ const downloadBlob = (blob, fallbackName) => {
 };
 
 const fmt = (value) => (value ? format(new Date(value), 'dd MMM yyyy, HH:mm') : '-');
-const money = (value) => `LKR ${Number(value || 0).toLocaleString()}`;
+const money = (value, currency = 'LKR') => `${currency} ${Number(value || 0).toLocaleString()}`;
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
   <Card className="rounded-3xl border-slate-200">
     <div className="flex items-start justify-between">
@@ -141,8 +143,10 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
             <MetricCard title="Total Events" value={overview?.metrics?.totalEvents || 0} subtitle="All events in the platform" icon={TicketIcon} />
             <MetricCard title="Total Users" value={overview?.metrics?.totalUsers || 0} subtitle="Across every role" icon={UsersIcon} />
             <MetricCard title="Tickets Sold" value={overview?.metrics?.totalTicketsSold || 0} subtitle="System-wide issued tickets" icon={CreditCardIcon} />
-            <MetricCard title="Total Revenue" value={money(overview?.metrics?.totalRevenue)} subtitle="Confirmed order value" icon={BuildingOffice2Icon} />
+            <MetricCard title="Total Revenue" value={money(overview?.metrics?.totalRevenue, workspace?.settings?.currency)} subtitle="Confirmed order value" icon={BuildingOffice2Icon} />
             <MetricCard title="Active Events" value={overview?.metrics?.activeEvents || 0} subtitle="Live events running now" icon={ShieldCheckIcon} />
+            <MetricCard title="Verification Rate" value={`${overview?.metrics?.verificationRate || 0}%`} subtitle="Attendees with verified photos" icon={CheckBadgeIcon} />
+            <MetricCard title="Avg Ticket Price" value={money(overview?.metrics?.avgTicketPrice, workspace?.settings?.currency)} subtitle="Mean price per sold ticket" icon={CurrencyDollarIcon} />
           </div>
           <div className="grid gap-6 xl:grid-cols-[1.7fr,1fr]">
             <Card className="rounded-[28px] border-slate-200">
@@ -247,7 +251,7 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
       )}
       {section === 'reports' && (
         <div className="grid gap-6 xl:grid-cols-3">
-          <Card className="rounded-[28px] border-slate-200"><CardHeader title="Revenue Reports" subtitle="Revenue and ticket sales by event" /><div className="space-y-3">{(reports?.revenue || []).map((row) => <div key={row._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-medium text-slate-900">{row.eventName}</p><p className="text-sm font-semibold text-slate-700">{money(row.revenue)}</p></div><p className="mt-1 text-xs text-slate-500">{row.ticketsSold} tickets • {row.orders} orders</p></div>)}</div></Card>
+          <Card className="rounded-[28px] border-slate-200"><CardHeader title="Revenue Reports" subtitle="Revenue and ticket sales by event" /><div className="space-y-3">{(reports?.revenue || []).map((row) => <div key={row._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-medium text-slate-900">{row.eventName}</p><p className="text-sm font-semibold text-slate-700">{money(row.revenue, workspace?.settings?.currency)}</p></div><p className="mt-1 text-xs text-slate-500">{row.ticketsSold} tickets • {row.orders} orders</p></div>)}</div></Card>
           <Card className="rounded-[28px] border-slate-200"><CardHeader title="Attendance Reports" subtitle="Allowed vs denied entries per event" /><div className="space-y-3">{(reports?.attendance || []).map((row) => <div key={row._id} className="rounded-2xl border border-slate-200 p-4"><p className="font-medium text-slate-900">{row.eventName}</p><p className="mt-1 text-xs text-slate-500">Allowed {row.allowedEntries} • Denied {row.deniedEntries}</p></div>)}</div></Card>
           <Card className="rounded-[28px] border-slate-200"><CardHeader title="Organiser Analytics" subtitle="Top organisers by event throughput" /><div className="space-y-3">{(reports?.organisers || []).map((row) => <div key={row.organiser} className="rounded-2xl border border-slate-200 p-4"><p className="font-medium text-slate-900">{row.organiser}</p><p className="mt-1 text-xs text-slate-500">{row.events} events • {row.ticketsSold} tickets sold</p></div>)}</div></Card>
         </div>
@@ -260,6 +264,11 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
               <Field label="Sender email"><Input value={settingsForm.communication.senderEmail} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, senderEmail: e.target.value } }))} /></Field>
               <Field label="SMS service"><Select value={settingsForm.communication.smsProvider} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, smsProvider: e.target.value } }))}><option value="mock">Local Gateway</option><option value="twilio">Twilio</option></Select></Field>
               <Field label="SMS sender"><Input value={settingsForm.communication.smsSender} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, smsSender: e.target.value } }))} /></Field>
+              <Field label="Default currency"><Input value={settingsForm.currency} onChange={(e) => setSettingsForm((prev) => ({ ...prev, currency: e.target.value }))} placeholder="e.g. LKR, USD" /></Field>
+              <div className="flex items-center gap-3 pt-6">
+                <input type="checkbox" checked={settingsForm.maintenanceMode} onChange={(e) => setSettingsForm((prev) => ({ ...prev, maintenanceMode: e.target.checked }))} className="h-4 w-4 rounded border-slate-300" />
+                <label className="text-sm font-medium text-slate-700">Enable Maintenance Mode (Restricts public access)</label>
+              </div>
             </div>
             <div className="grid gap-6 md:grid-cols-2">
               <Field label="Invite email subject"><Input value={settingsForm.templates.inviteSubject} onChange={(e) => setSettingsForm((prev) => ({ ...prev, templates: { ...prev.templates, inviteSubject: e.target.value } }))} /></Field>
@@ -355,8 +364,8 @@ const AdminDashboard = () => {
         setSearchResults({ events: [], users: [] });
       }
     };
-    window.addEventListener('eams:search', handleSearch);
-    return () => window.removeEventListener('eams:search', handleSearch);
+    window.addEventListener('entrynex:search', handleSearch);
+    return () => window.removeEventListener('entrynex:search', handleSearch);
   }, []);
 
   const openModal = (type, mode = 'create', item = null) => {

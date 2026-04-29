@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const Event = require('../models/Event');
+const SystemConfig = require('../models/SystemConfig');
 const { protect, restrictTo, requireEventAccess } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
@@ -69,7 +70,7 @@ const parseMaybeJson = (value) => {
   }
 };
 
-const normalizeEventPayload = (body, file) => {
+const normalizeEventPayload = (body, file, files) => {
   const payload = { ...body };
 
   ['venue', 'categories', 'zones', 'settings', 'matchDetails', 'customFields'].forEach((key) => {
@@ -96,17 +97,60 @@ const normalizeEventPayload = (body, file) => {
   }
 
   if (file) {
+    // Single file legacy support
     payload.coverImage = `/uploads/${file.filename}`;
+  }
+
+  if (files) {
+    // Ensure branding exists
+    payload.branding = payload.branding || {};
+
+    if (files.coverImage) {
+      const path = `/uploads/${files.coverImage[0].filename}`;
+      payload.coverImage = path;
+      payload.branding.coverImage = path;
+    }
+    
+    if (files.logoImage) {
+      const path = `/uploads/${files.logoImage[0].filename}`;
+      payload.logoImage = path;
+      payload.branding.logoImage = path;
+    }
+
+    if (files.bannerImage) {
+      const path = `/uploads/${files.bannerImage[0].filename}`;
+      payload.bannerImage = path;
+      payload.branding.bannerImage = path;
+    }
   }
 
   return payload;
 };
 
+// GET /api/events/config/public - public system config
+router.get('/config/public', async (req, res, next) => {
+  try {
+    const config = await SystemConfig.findOne();
+    res.json({
+      success: true,
+      data: {
+        currency: config?.currency || 'LKR',
+        maintenanceMode: !!config?.maintenanceMode,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 // GET /api/events - public listing (no auth needed)
 router.get('/', async (req, res, next) => {
   try {
-    const { status = 'published', page = 1, limit = 12, search, date, category } = req.query;
-    const filter = { status };
+    const { status, page = 1, limit = 12, search, date, category } = req.query;
+    
+    // Default to showing published and ongoing events
+    const filter = {
+      status: status ? status : { $in: ['published', 'ongoing'] },
+      endDate: { $gte: new Date(new Date().getTime() - 60 * 60 * 1000) } // Lenient expiry (1 hour grace)
+    };
 
     if (search) {
       filter.name = { $regex: search, $options: 'i' };
@@ -213,7 +257,11 @@ router.get('/manage/:eventId', protect, requireEventAccess, async (req, res, nex
 });
 
 // POST /api/events - create event (admin and organiser)
-router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.single('coverImage'), [
+router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'logoImage', maxCount: 1 },
+  { name: 'bannerImage', maxCount: 1 }
+]), [
   body('name').notEmpty().withMessage('Event name required'),
   body('venue.name').notEmpty().withMessage('Venue name required'),
   body('startDate').isISO8601().withMessage('Valid start date required'),
@@ -224,7 +272,7 @@ router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.sin
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
-    const eventData = normalizeEventPayload(req.body, req.file);
+    const eventData = normalizeEventPayload(req.body, req.file, req.files);
     eventData.createdBy = req.user._id;
     const event = await Event.create(eventData);
     
@@ -309,7 +357,11 @@ router.get('/:eventId/dashboard', protect, requireEventAccess, async (req, res, 
 });
 
 // PATCH /api/events/:eventId - update event
-router.patch('/:eventId', protect, upload.single('coverImage'), restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
+router.patch('/:eventId', protect, upload.fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'logoImage', maxCount: 1 },
+  { name: 'bannerImage', maxCount: 1 }
+]), restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
   try {
     const { eventId } = req.params;
     
@@ -336,7 +388,7 @@ router.patch('/:eventId', protect, upload.single('coverImage'), restrictTo('main
       }
     }
     
-    const updateData = normalizeEventPayload(req.body, req.file);
+    const updateData = normalizeEventPayload(req.body, req.file, req.files);
     const existingEvent = await Event.findById(eventId).select('mainOrganiser');
     if (!existingEvent) return res.status(404).json({ success: false, message: 'Event not found.' });
 
@@ -362,6 +414,12 @@ router.patch('/:eventId', protect, upload.single('coverImage'), restrictTo('main
     }
 
     console.log('[PATCH] Event updated successfully:', event._id);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`event:${event._id}`).emit('event_update', { eventId: event._id });
+      io.to(`dashboard:${event._id}`).emit('event_update', { eventId: event._id });
+    }
+
     res.json({ success: true, data: { event } });
   } catch (err) {
     console.error('[PATCH] Error:', err.message);
@@ -393,7 +451,9 @@ router.get('/:slug', async (req, res, next) => {
     if (!event || event.status === 'draft') {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
-    res.json({ success: true, data: { event } });
+
+    const isExpired = event.endDate && new Date(event.endDate) < new Date();
+    res.json({ success: true, data: { event, isExpired } });
   } catch (err) { next(err); }
 });
 

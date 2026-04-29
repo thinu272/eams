@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Event = require('../models/Event');
 
 const connectDB = async () => {
-  await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/eams');
+  await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/entrynex');
   console.log('MongoDB connected for seeding...');
 };
 
@@ -15,32 +15,43 @@ const seed = async () => {
   console.log('Cleared existing data.');
 
   const admin = await User.create({
-    name: 'System Admin', email: process.env.SEED_ADMIN_EMAIL || 'admin@eams.com',
-    password: process.env.SEED_ADMIN_PASSWORD || 'Admin@123456', role: 'main_admin', isActive: true,
+    name: 'System Admin', email: process.env.SEED_ADMIN_EMAIL || 'admin@stadium.entrynex.com',
+    password: process.env.SEED_ADMIN_PASSWORD || 'Admin@Matrix.Reset', role: 'main_admin', isActive: true,
+    phone: '+94711111111', isVerified: true
   });
 
   const organiser = await User.create({
-    name: 'Roshan Perera', email: 'organiser@eams.com', password: 'Organiser@123',
+    name: 'Roshan Perera', email: 'organiser@stadium.entrynex.com', password: 'Organiser@Matrix.Reset',
     role: 'main_organiser', isActive: true, createdBy: admin._id,
+    phone: '+94722222222'
   });
 
   const subOrg = await User.create({
-    name: 'Nimali Silva', email: 'suborg@eams.com', password: 'SubOrg@123',
+    name: 'Nimali Silva', email: 'suborg@stadium.entrynex.com', password: 'SubOrg@Matrix.Reset',
     role: 'sub_organiser', isActive: true, createdBy: organiser._id,
+    phone: '+94733333333',
     permissions: { canAddAttendees: true, canBulkUpload: true, canVerifyPhotos: true, canInviteAttendees: true, canViewReports: true, canManageStaff: false },
   });
 
   const staff = await User.create({
-    name: 'Kamal Bandara', email: 'staff@eams.com', password: 'Staff@123',
+    name: 'Kamal Bandara', email: 'staff@stadium.entrynex.com', password: 'Staff@Matrix.Reset',
     role: 'staff', isActive: true, assignedGates: ['Gate A', 'Gate B'], createdBy: organiser._id,
+    phone: '+94744444444'
   });
 
   const event = await Event.create({
     name: 'The Big Match 2025', slug: 'the-big-match-2025', description: 'The most anticipated cricket match of the year at R. Premadasa Stadium.',
     eventType: 'cricket',
     venue: { name: 'R. Premadasa International Cricket Stadium', address: 'Khettarama Road', city: 'Colombo', country: 'Sri Lanka' },
-    startDate: new Date('2025-07-15T08:00:00Z'), endDate: new Date('2025-07-17T20:00:00Z'),
-    gatesOpenTime: new Date('2025-07-15T06:00:00Z'), status: 'published', publishedAt: new Date(),
+    startDate: new Date('2027-07-15T08:00:00Z'), endDate: new Date('2027-07-17T20:00:00Z'),
+    gatesOpenTime: new Date('2027-07-15T06:00:00Z'), 
+    status: 'published', 
+    publishedAt: new Date(),
+    branding: {
+      themeColor: '#2563EB',
+      logoImage: '',
+      bannerImage: '',
+    },
     matchDetails: { teamA: 'Royal College', teamB: "S. Thomas' College", matchType: 'Two-Day', series: 'Battle of the Maroons 2025' },
     categories: [
       { id: 'vvip', name: 'VVIP', description: 'Exclusive hospitality suite', price: 25000, capacity: 100, sold: 0, color: '#7C3AED', allowedZones: ['vvip-suite','vip-lounge','premium-stand','general-stand','media-center'], benefits: ['VVIP Suite','Gourmet dining','Priority parking','All areas access'] },
@@ -59,17 +70,43 @@ const seed = async () => {
       { id: 'press-box', name: 'Press Box', capacity: 50, color: '#9333EA' },
     ],
     mainOrganiser: organiser._id, subOrganisers: [subOrg._id], staff: [staff._id],
-    settings: { requirePhotoVerification: true, allowSelfConfirmation: true, confirmationDeadlineHours: 72, maxTicketsPerOrder: 10, rfidEnabled: true },
+    settings: { 
+      currency: 'LKR',
+      requirePhotoVerification: true, 
+      allowSelfConfirmation: true, 
+      confirmationDeadlineHours: 72, 
+      maxTicketsPerOrder: 10, 
+      rfidEnabled: true,
+      paymentMethods: {
+        card: true,
+        bank_transfer: true,
+        cash: true,
+      }
+    },
     createdBy: admin._id,
   });
 
-  await User.updateMany({ _id: { $in: [organiser._id, subOrg._id, staff._id] } }, { $addToSet: { assignedEvents: event._id } });
+  const auditor = await User.create({
+    name: 'Dilshan Silva', email: 'auditor@stadium.entrynex.com', password: 'Auditor@Matrix.Reset',
+    role: 'auditor', isActive: true, createdBy: organiser._id,
+    phone: '+94755555555'
+  });
+
+  const attendeeUser = await User.create({
+    name: 'Thinu Upadya', email: 'attendee@stadium.entrynex.com', password: 'Attendee@Matrix.Reset',
+    role: 'attendee', isActive: true,
+    phone: '+94766666666'
+  });
+
+  await User.updateMany({ _id: { $in: [organiser._id, subOrg._id, staff._id, auditor._id] } }, { $addToSet: { assignedEvents: event._id } });
 
   console.log('\n=== SEED COMPLETE ===');
-  console.log('  Main Admin:     admin@eams.com      / Admin@123456');
-  console.log('  Main Organiser: organiser@eams.com  / Organiser@123');
-  console.log('  Sub Organiser:  suborg@eams.com     / SubOrg@123');
-  console.log('  Staff:          staff@eams.com      / Staff@123');
+  console.log(`  Main Admin:     ${process.env.SEED_ADMIN_EMAIL || 'admin@stadium.entrynex.com'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@Matrix.Reset'}`);
+  console.log('  Main Organiser: organiser@stadium.entrynex.com / Organiser@Matrix.Reset');
+  console.log('  Sub Organiser:  suborg@stadium.entrynex.com    / SubOrg@Matrix.Reset');
+  console.log('  Staff:          staff@stadium.entrynex.com     / Staff@Matrix.Reset');
+  console.log('  Auditor:        auditor@stadium.entrynex.com   / Auditor@Matrix.Reset');
+  console.log('  Attendee:       attendee@stadium.entrynex.com  / Attendee@Matrix.Reset');
   process.exit(0);
 };
 

@@ -9,9 +9,12 @@ const Ticket = require('../models/Ticket');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { protect, restrictTo, requireEventAccess, requirePermission } = require('../middleware/auth');
-const { notifyInvite, notifyFinalTicket } = require('../services/notificationService');
+const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { upload, excelUpload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
+const { validatePhoto } = require('../services/photoValidationService');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
+const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 const { ROLES, normalizeRole } = require('../utils/rbac');
 
 const hasEventAccess = async (user, eventId) => {
@@ -53,7 +56,7 @@ const clampThreshold = (value) => {
 // POST /api/attendees/confirm/:token - attendee self-confirms identity (public)
 router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
   try {
-    const attendee = await Attendee.findOne({ confirmationToken: req.params.token });
+    const attendee = await Attendee.findOne({ confirmationToken: req.params.token }).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
     if (attendee.confirmationStatus === 'confirmed') {
       return res.status(400).json({ success: false, message: 'Already confirmed.' });
@@ -70,9 +73,27 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
     
     // Store S3 photo data
     if (req.s3Data) {
+      // --- AI VALIDATION ---
+      const aiResults = await validatePhoto(req.file.buffer, attendee.event);
+      
       attendee.photo = req.s3Data.url;
       attendee.photoS3Key = req.s3Data.key;
       attendee.photoUploadedAt = new Date();
+      attendee.photoHash = aiResults.hash;
+      attendee.photoValidationMetrics = {
+        ...attendee.photoValidationMetrics,
+        faceCount: aiResults.metrics.faceCount,
+        faceConfidence: aiResults.metrics.faceConfidence,
+        sharpness: aiResults.metrics.sharpness,
+        brightness: aiResults.metrics.brightness,
+      };
+
+      if (!aiResults.isValid) {
+        attendee.photoVerificationStatus = 'rejected';
+        attendee.photoRejectionReason = `AI Auto-Reject: ${aiResults.reason}`;
+      } else {
+        attendee.photoVerificationStatus = 'pending';
+      }
     }
 
     let incomingDescriptor = [];
@@ -90,37 +111,51 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
     attendee.confirmedAt = new Date();
     attendee.confirmedBy = 'self';
 
-    // Generate QR code
-    const qrData = attendee.qrToken;
-    attendee.qrCode = await QRCode.toDataURL(qrData);
+    // DO NOT generate QR code here. It will be generated after admin photo approval.
+    // attendee.qrCode = await QRCode.toDataURL(qrData);
 
     await attendee.save();
 
-    // IMPORTANT: Sync Ticket status
-    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
+    const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: attendee.event });
+    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: nextTicketStatus });
 
-    // Check if all tickets in the order are now confirmed
+    // Check if all tickets in the order are now submitted
     if (attendee.order) {
       const tickets = await Ticket.find({ order: attendee.order });
-      const confirmedCount = tickets.filter(t => t.status === 'CONFIRMED' || t.status === 'ASSIGNED').length;
-      if (confirmedCount === tickets.length) {
+      const assignedCount = tickets.filter(t => t.status === 'ASSIGNED' || t.status === 'CONFIRMED').length;
+      if (assignedCount === tickets.length) {
         await Order.findByIdAndUpdate(attendee.order, { confirmationStatus: 'complete' });
-        // Send final confirmation notifications to all attendees
-        const allAttendees = await Attendee.find({ order: attendee.order });
-        const event = await Event.findById(attendee.event);
-        const order = await Order.findById(attendee.order);
-        allAttendees.forEach(a => notifyFinalTicket({
-          attendee: a,
-          event,
-          phone: a.phone,
-          notificationChannel: 'both',
-        }).catch(console.error));
-        if (order) {
-          const { notifyBuyerFinalSummary } = require('../services/notificationService');
-          notifyBuyerFinalSummary({ order, event, attendees: allAttendees }).catch(console.error);
+        if (!requiresPhotoVerification(attendee.event)) {
+          await notifyFinalTicket({
+            attendee,
+            event: attendee.event,
+            phone: attendee.phone,
+            notificationChannel: 'email',
+          }).catch(console.error);
+        } else {
+          const ticket = await Ticket.findOne({ attendee: attendee._id });
+          const order = await Order.findById(attendee.order);
+          await notifyBuyerTicketProgress({
+            order,
+            attendee,
+            event: attendee.event,
+            ticket,
+            stage: 'pending_verification',
+          });
         }
       } else {
         await Order.findByIdAndUpdate(attendee.order, { confirmationStatus: 'partial' });
+        if (requiresPhotoVerification(attendee.event)) {
+          const ticket = await Ticket.findOne({ attendee: attendee._id });
+          const order = await Order.findById(attendee.order);
+          await notifyBuyerTicketProgress({
+            order,
+            attendee,
+            event: attendee.event,
+            ticket,
+            stage: 'pending_verification',
+          });
+        }
       }
     }
 
@@ -254,8 +289,7 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
     });
 
     // Generate QR code
-    const qrData = JSON.stringify({ token: attendee.qrToken, event: eventId });
-    attendee.qrCode = await QRCode.toDataURL(qrData);
+    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
     await attendee.save();
 
     if (notificationChannel && notificationChannel !== 'none') {
@@ -272,9 +306,12 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
   } catch (err) { next(err); }
 });
 
-// POST /api/attendees/bulk-upload - parse Excel file
-router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), excelUpload.single('file'), async (req, res, next) => {
+router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res, next) => {
   try {
+    const role = normalizeRole(req.user.role);
+    if (![ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(role) && !req.user.permissions?.canBulkUpload) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to perform bulk uploads.' });
+    }
     if (!req.file) return res.status(400).json({ success: false, message: 'Excel file required.' });
     const { eventId, categoryId } = req.body;
     if (!(await hasEventAccess(req.user, eventId))) {
@@ -287,7 +324,6 @@ router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), excelUp
     if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
 
     // Zone validation for Sub-Organisers (Overlap logic)
-    const role = normalizeRole(req.user.role);
     if (role === ROLES.SUB_ORGANISER) {
       const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
       const categoryZones = (category.allowedZones || []).map(String);
@@ -328,8 +364,7 @@ router.post('/bulk-upload', protect, requirePermission('canBulkUpload'), excelUp
           addedVia: 'bulk_upload',
           confirmationStatus: 'pending',
         });
-        const qrData = JSON.stringify({ token: attendee.qrToken, event: eventId });
-        attendee.qrCode = await QRCode.toDataURL(qrData);
+        attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
         await attendee.save();
         results.created++;
       } catch (err) {
@@ -404,6 +439,14 @@ router.post('/invite-by-ticket/:ticketId', async (req, res, next) => {
       notificationChannel: notificationChannel || 'email',
     });
 
+    await notifyBuyerTicketProgress({
+      order: ticket.order,
+      attendee,
+      event: ticket.event,
+      ticket,
+      stage: 'invited',
+    });
+
     res.json({ success: true, message: 'Invite sent successfully.' });
   } catch (err) {
     console.error('INVITE BY TICKET ERROR:', err);
@@ -441,7 +484,7 @@ router.post('/:id/invite', protect, async (req, res, next) => {
 
     attendee.confirmationStatus = 'invited';
     await attendee.save();
-    const ticket = await Ticket.findOne({ attendee: attendee._id });
+    const attendeeTicket = await Ticket.findOne({ attendee: attendee._id });
     if (ticket) {
       ticket.status = 'INVITED';
       ticket.inviteStatus = 'PENDING';
@@ -460,6 +503,15 @@ router.post('/:id/invite', protect, async (req, res, next) => {
       email: attendee.email,
       notificationChannel: req.body.notificationChannel || 'email',
     });
+    const ticket = await Ticket.findOne({ attendee: attendee._id });
+    const order = attendee.order?._id ? attendee.order : await Order.findById(attendee.order);
+    await notifyBuyerTicketProgress({
+      order,
+      attendee,
+      event: attendee.event,
+      ticket: attendeeTicket,
+      stage: 'invited',
+    });
     res.json({ success: true, message: 'Invite sent.' });
   } catch (err) {
     console.error('INVITE ERROR:', err);
@@ -471,19 +523,41 @@ router.post('/:id/invite', protect, async (req, res, next) => {
 router.patch('/:id/verify-photo', protect, requirePermission('canVerifyPhotos'), async (req, res, next) => {
   try {
     const { status, rejectionReason } = req.body;
-    const existingAttendee = await Attendee.findById(req.params.id).select('event');
-    if (!existingAttendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
-    if (!(await hasEventAccess(req.user, existingAttendee.event))) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    const attendee = await Attendee.findById(req.params.id).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    
+    attendee.photoVerificationStatus = status;
+    attendee.photoVerifiedBy = req.user._id;
+    attendee.photoVerifiedAt = new Date();
+    
+    if (status === 'rejected') {
+      attendee.photoRejectionReason = rejectionReason;
+      attendee.qrCode = null; // Clear QR if rejected
+    } else if (status === 'verified') {
+      attendee.photoRejectionReason = null;
+      
+      // Generate QR code on approval
+      attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+      attendee.confirmationStatus = 'confirmed';
+      attendee.isConfirmed = true;
+      
+      // Sync ticket status
+      await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
+      
+      // Send final ticket notification
+      await notifyFinalTicket({
+        attendee,
+        event: attendee.event,
+        phone: attendee.phone,
+        notificationChannel: 'both'
+      }).catch(console.error);
+
+      if (attendee.order) {
+        await processOrderFinalConfirmation({ orderId: attendee.order }).catch(console.error);
+      }
     }
 
-    const attendee = await Attendee.findByIdAndUpdate(req.params.id, {
-      photoVerificationStatus: status,
-      photoVerifiedBy: req.user._id,
-      photoVerifiedAt: new Date(),
-      ...(status === 'rejected' && { photoRejectionReason: rejectionReason }),
-    }, { new: true });
-    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    await attendee.save();
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });
@@ -505,14 +579,15 @@ router.post('/reject-photo', protect, requirePermission('canVerifyPhotos'), asyn
     const resubmitToken = uuidv4();
     const resubmitCount = (attendee.resubmitCount || 0) + 1;
 
-    await Attendee.findByIdAndUpdate(attendeeId, {
-      photoVerificationStatus: 'rejected',
-      photoRejectionReason: reason,
-      resubmitToken,
-      resubmitCount,
-      photoVerifiedBy: req.user._id,
-      photoVerifiedAt: new Date(),
-    });
+    attendee.photoVerificationStatus = 'rejected';
+    attendee.photoRejectionReason = reason;
+    attendee.resubmitToken = resubmitToken;
+    attendee.resubmitCount = resubmitCount;
+    attendee.photoVerifiedBy = req.user._id;
+    attendee.photoVerifiedAt = new Date();
+    attendee.qrCode = null; // Clear QR on rejection
+    
+    await attendee.save();
 
     // Send notifications
     const { notifyPhotoRejection } = require('../services/notificationService');
@@ -584,12 +659,13 @@ router.post('/resubmit/photo', upload.single('photo'), handleS3Upload('attendee-
 
     const existingDescriptor = Array.isArray(attendee.faceDescriptor) ? attendee.faceDescriptor : [];
     const threshold = clampThreshold(req.body.threshold);
+    const skipFaceMatch = req.body.skipFaceMatch === 'true' || req.body.skipFaceMatch === true;
 
     let matchDistance = 0;
     let matchSimilarity = 0;
     let isMatchPass = true;
 
-    if (existingDescriptor.length > 0) {
+    if (existingDescriptor.length > 0 && !skipFaceMatch) {
       if (newFaceDescriptor.length === 0) {
         return res.status(400).json({ success: false, message: 'Face descriptor missing from submission.' });
       }
@@ -630,27 +706,49 @@ router.post('/resubmit/photo', upload.single('photo'), handleS3Upload('attendee-
       await deleteImageFromS3(attendee.photoS3Key).catch(console.error);
     }
 
+    // --- AI VALIDATION ---
+    const aiResults = await validatePhoto(req.file.buffer, attendee.event);
+
     // Store new S3 photo data
     attendee.photo = req.s3Data.url;
     attendee.photoS3Key = req.s3Data.key;
     attendee.photoUploadedAt = new Date();
+    attendee.photoHash = aiResults.hash;
 
     // Log stats for audit
     attendee.photoValidationMetrics = {
-      faceCount: Number(req.body.faceCount || 0),
-      faceConfidence: Number(req.body.faceConfidence || 0),
-      brightness: Number(req.body.brightness || 0),
-      sharpness: Number(req.body.sharpness || 0),
+      faceCount: aiResults.metrics.faceCount,
+      faceConfidence: aiResults.metrics.faceConfidence,
+      sharpness: aiResults.metrics.sharpness,
+      brightness: aiResults.metrics.brightness,
       faceMatchDistance: Number(matchDistance),
       faceMatchSimilarity: Number(matchSimilarity),
       faceMatchThreshold: threshold,
     };
 
+    if (skipFaceMatch) {
+      attendee.notes = [attendee.notes, 'Face match skipped during photo resubmission because client models were unavailable.']
+        .filter(Boolean)
+        .join(' | ');
+    }
+
+    if (!aiResults.isValid) {
+      attendee.photoVerificationStatus = 'rejected';
+      attendee.photoRejectionReason = `AI Auto-Reject: ${aiResults.reason}`;
+      await attendee.save();
+      return res.status(400).json({ 
+        success: false, 
+        message: `Photo rejected by AI: ${aiResults.reason.replace(/_/g, ' ')}`,
+        data: { aiResults }
+      });
+    }
+
     attendee.photoVerificationStatus = 'pending';
     attendee.photoRejectionReason = null; // Clear rejection reason
+    attendee.qrCode = null; // Ensure no QR while pending
     await attendee.save();
 
-    res.json({ success: true, message: 'Photo resubmitted successfully.' });
+    res.json({ success: true, message: 'Photo resubmitted successfully. It is now pending organiser verification.' });
   } catch (err) { next(err); }
 });
 

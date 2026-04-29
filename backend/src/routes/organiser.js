@@ -1,4 +1,7 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
 const { body, validationResult } = require('express-validator');
@@ -18,6 +21,17 @@ const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rb
 
 const router = express.Router();
 const ORGANISER_ROLES = ['sub_organiser', 'main_organiser', 'main_admin', 'super_admin'];
+
+// Local storage for event images
+const uploadDir = path.join(__dirname, '../../uploads');
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'event-' + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+const localUpload = multer({ storage });
 
 const toObjectId = (value) => new mongoose.Types.ObjectId(value);
 const normalizeSearch = (value) => String(value || '').trim();
@@ -199,6 +213,7 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
       ticketCategories,
       customRoles,
       teamMembers,
+      revenueByCategory,
     ] = await Promise.all([
       Ticket.countDocuments({ event: eventId }),
       Ticket.countDocuments({ event: eventId, status: { $ne: 'CANCELLED' } }),
@@ -240,6 +255,11 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
         .populate('createdBy', 'name email role')
         .sort({ role: 1, createdAt: -1 })
         .lean(),
+      Ticket.aggregate([
+        { $match: { event: toObjectId(eventId), status: { $ne: 'CANCELLED' } } },
+        { $group: { _id: '$categoryName', revenue: { $sum: '$price' }, count: { $sum: 1 } } },
+        { $project: { name: '$_id', value: '$revenue', count: 1, _id: 0 } },
+      ]),
     ]);
 
     const zoneOccupancy = {};
@@ -268,6 +288,8 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 5);
 
+    const totalRevenue = (revenueByCategory || []).reduce((acc, curr) => acc + curr.value, 0);
+
     res.json({
       success: true,
       data: {
@@ -281,8 +303,11 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
           zones: req.scopedEvent.zones || [],
           settings: req.scopedEvent.settings || {},
         },
-        overview: { totalTickets, ticketsSold, confirmedAttendees, checkedInCount, zoneOccupancy: topZoneOccupancy },
-        charts: { checkinsOverTime: hourlyCheckins },
+        overview: { totalTickets, ticketsSold, confirmedAttendees, checkedInCount, totalRevenue, zoneOccupancy: topZoneOccupancy },
+        charts: { 
+          checkinsOverTime: hourlyCheckins,
+          revenueByCategory: revenueByCategory,
+        },
         activityFeed,
         attendees: {
           rows: attendeeRows,
@@ -315,6 +340,7 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
             startDate: req.scopedEvent.startDate,
             endDate: req.scopedEvent.endDate,
             venue: req.scopedEvent.venue || {},
+            currency: req.scopedEvent.settings?.currency || 'LKR',
           },
           branding: {
             bannerImage: req.scopedEvent.bannerImage || req.scopedEvent.branding?.bannerImage || '',
@@ -387,6 +413,7 @@ router.post(
       const category = (event.categories || []).find((item) => item.id === categoryId);
       if (!category) return res.status(400).json({ success: false, message: 'Invalid category for this event.' });
 
+      const confirmationToken = uuidv4();
       const attendee = await Attendee.create({
         fullName,
         nationalId,
@@ -404,7 +431,39 @@ router.post(
         photo: req.s3Data?.url,
         photoS3Key: req.s3Data?.key,
         photoUploadedAt: req.s3Data ? new Date() : undefined,
+        confirmationToken
       });
+
+      // Create a complimentary ticket for the manual attendee
+      const orderCount = await Order.countDocuments({ eventId });
+      const order = new Order({
+        eventId,
+        buyerName: fullName,
+        buyerEmail: email || 'manual@entrynex.com',
+        buyerPhone: phone || '',
+        totalAmount: 0,
+        status: 'CONFIRMED',
+        paymentStatus: 'success', // Manual additions are considered successful/complimentary
+        orderNumber: `MAN-${Date.now()}-${orderCount + 1}`,
+        confirmationToken: uuidv4()
+      });
+      await order.save();
+
+      const ticket = new Ticket({
+        event: eventId,
+        order: order._id,
+        attendee: attendee._id,
+        categoryId,
+        categoryName: category.name,
+        allowedZones: category.allowedZones || [],
+        price: 0,
+        slotIndex: 1,
+        status: 'ASSIGNED',
+        inviteToken: confirmationToken,
+        inviteEmail: email,
+        invitePhone: phone
+      });
+      await ticket.save();
 
       await buildActivityNotification({
         userId: req.user._id,
@@ -452,6 +511,7 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
         return;
       }
 
+      const confirmationToken = uuidv4();
       docs.push({
         fullName,
         nationalId: String(row['National ID'] || '').trim(),
@@ -466,11 +526,46 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
         photoVerificationStatus: 'pending',
         addedVia: 'bulk_upload',
         addedBy: req.user._id,
+        confirmationToken
       });
     });
 
     if (docs.length) {
-      await Attendee.insertMany(docs);
+      const createdAttendees = await Attendee.insertMany(docs);
+      
+      // Create a single order for this bulk batch
+      const bulkOrder = new Order({
+        eventId,
+        buyerName: `Bulk Upload (${req.user.name})`,
+        buyerEmail: req.user.email,
+        totalAmount: 0,
+        status: 'CONFIRMED',
+        paymentStatus: 'success',
+        orderNumber: `BULK-${Date.now()}`,
+        confirmationToken: uuidv4()
+      });
+      await bulkOrder.save();
+
+      // Create tickets for bulk attendees
+      const ticketDocs = createdAttendees.map((attendee, idx) => ({
+        event: eventId,
+        order: bulkOrder._id,
+        attendee: attendee._id,
+        categoryId: attendee.categoryId,
+        categoryName: attendee.categoryName,
+        allowedZones: attendee.allowedZones || [],
+        price: 0,
+        slotIndex: idx + 1,
+        status: 'ASSIGNED',
+        inviteToken: attendee.confirmationToken,
+        inviteEmail: attendee.email,
+        invitePhone: attendee.phone,
+        ticketNumber: `TKT-BULK-${Date.now()}-${idx + 1}`
+      }));
+      
+      if (ticketDocs.length) {
+        await Ticket.insertMany(ticketDocs);
+      }
     }
 
     await buildActivityNotification({
@@ -576,6 +671,7 @@ router.post('/attendees/:id/invite', requireEventAccess, requirePermission('canI
         inviteStatus: 'PENDING',
         inviteSentAt: new Date(),
         inviteExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+        inviteToken: attendee.confirmationToken,
       }
     );
 
@@ -873,9 +969,16 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
 
     const requesterRole = normalizeRole(req.user.role);
     
-    // Authorization check: Sub-organisers can only edit users they created
-    if (requesterRole === ROLES.SUB_ORGANISER && String(user.createdBy) !== String(req.user._id)) {
-      return res.status(403).json({ success: false, message: 'You can only manage team members you created.' });
+    // Authorization check: Sub-organisers can only edit users they created or those in their zones
+    if (requesterRole === ROLES.SUB_ORGANISER) {
+      const createdByMe = String(user.createdBy) === String(req.user._id);
+      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
+      const userZoneIds = (user.responsibilities?.zoneIds || []).map(String);
+      const inMyZone = myZoneIds.length > 0 && userZoneIds.some(id => myZoneIds.includes(id));
+
+      if (!createdByMe && !inMyZone) {
+        return res.status(403).json({ success: false, message: 'You can only manage team members you created or who are assigned to your zones.' });
+      }
     }
 
     // Role level check if role is being changed
@@ -1383,40 +1486,70 @@ router.put('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
   }
 });
 
-router.put('/event-customization', requireEventAccess, async (req, res, next) => {
+router.put('/event-customization', requireEventAccess, localUpload.fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'logoImage', maxCount: 1 },
+  { name: 'bannerImage', maxCount: 1 }
+]), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
-    if (req.body.basicInfo) {
-      event.name = req.body.basicInfo.name ?? event.name;
-      event.description = req.body.basicInfo.description ?? event.description;
-      event.eventType = req.body.basicInfo.eventType ?? event.eventType;
-      if (req.body.basicInfo.startDate) event.startDate = new Date(req.body.basicInfo.startDate);
-      if (req.body.basicInfo.endDate) event.endDate = new Date(req.body.basicInfo.endDate);
+
+    const parseJson = (val) => {
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch (e) { return val; }
+      }
+      return val;
+    };
+
+    const basicInfo = parseJson(req.body.basicInfo);
+    const branding = parseJson(req.body.branding);
+    const confirmationFlow = parseJson(req.body.confirmationFlow);
+    const accessRules = parseJson(req.body.accessRules);
+    const paymentMethods = parseJson(req.body.paymentMethods);
+
+    if (basicInfo) {
+      event.name = basicInfo.name ?? event.name;
+      event.description = basicInfo.description ?? event.description;
+      event.eventType = basicInfo.eventType ?? event.eventType;
+      if (basicInfo.startDate) event.startDate = new Date(basicInfo.startDate);
+      if (basicInfo.endDate) event.endDate = new Date(basicInfo.endDate);
       
-      if (req.body.basicInfo.venue) {
+      if (basicInfo.venue) {
         event.venue = {
           ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
-          ...req.body.basicInfo.venue,
+          ...basicInfo.venue,
         };
         event.markModified('venue');
       }
+
+      if (basicInfo.currency) {
+        if (!event.settings) event.settings = {};
+        event.settings.currency = basicInfo.currency;
+        event.markModified('settings.currency');
+      }
     }
 
-    if (req.body.branding) {
-      const b = req.body.branding;
-      event.branding = {
-        ...(event.branding?.toObject ? event.branding.toObject() : event.branding || {}),
-        ...b,
-      };
+    if (branding || req.files) {
+      const b = branding || {};
+      if (!event.branding) event.branding = {};
       
-      // Sync top-level fields for legacy/listing support
-      if (b.bannerImage !== undefined) {
-        event.bannerImage = b.bannerImage;
-        event.coverImage = b.bannerImage; 
+      Object.assign(event.branding, b);
+      
+      if (req.files?.coverImage) {
+        const path = `/uploads/${req.files.coverImage[0].filename}`;
+        event.coverImage = path;
+        event.branding.coverImage = path;
       }
-      if (b.logoImage !== undefined) {
-        event.logoImage = b.logoImage;
+      if (req.files?.bannerImage) {
+        const path = `/uploads/${req.files.bannerImage[0].filename}`;
+        event.bannerImage = path;
+        event.branding.bannerImage = path;
+      }
+      if (req.files?.logoImage) {
+        const path = `/uploads/${req.files.logoImage[0].filename}`;
+        event.logoImage = path;
+        event.branding.logoImage = path;
       }
       
       event.markModified('branding');
@@ -1427,21 +1560,32 @@ router.put('/event-customization', requireEventAccess, async (req, res, next) =>
     }
 
     // Settings & Access Rules
-    const settings = event.settings?.toObject ? event.settings.toObject() : (event.settings || {});
+    if (!event.settings) event.settings = {};
     
-    if (req.body.confirmationFlow) {
-      Object.assign(settings, req.body.confirmationFlow);
+    if (confirmationFlow) {
+      Object.assign(event.settings, confirmationFlow);
+      event.markModified('settings');
     }
     
-    if (req.body.accessRules) {
-      settings.accessRules = {
-        ...(settings.accessRules || {}),
-        ...req.body.accessRules
+    if (accessRules) {
+      event.settings.accessRules = {
+        ...(event.settings.accessRules?.toObject ? event.settings.accessRules.toObject() : event.settings.accessRules || {}),
+        ...accessRules
       };
+      event.markModified('settings.accessRules');
+    }
+
+    if (paymentMethods) {
+      event.settings.paymentMethods = {
+        ...(event.settings.paymentMethods?.toObject ? event.settings.paymentMethods.toObject() : event.settings.paymentMethods || {}),
+        ...paymentMethods
+      };
+      event.markModified('settings.paymentMethods');
     }
     
-    event.settings = settings;
-    event.markModified('settings');
+    if (req.body.status) {
+      event.status = req.body.status;
+    }
     
     await event.save();
 
@@ -1453,6 +1597,12 @@ router.put('/event-customization', requireEventAccess, async (req, res, next) =>
       type: 'success',
       metadata: { actionType: 'event_customization_update' },
     });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`event:${event._id}`).emit('event_update', { eventId: event._id });
+      io.to(`dashboard:${event._id}`).emit('event_update', { eventId: event._id });
+    }
 
     res.json({ success: true, data: { event }, message: 'Event customization updated.' });
   } catch (err) {

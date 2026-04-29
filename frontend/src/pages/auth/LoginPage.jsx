@@ -16,9 +16,10 @@ import {
 const LoginPage = () => {
   const { user, login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '', mfaToken: '' });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaStep, setMfaStep] = useState(false);
 
   useEffect(() => {
     if (user?.role) {
@@ -39,9 +40,14 @@ const LoginPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const user = await login(form.email, form.password);
-      toast.success(`Access Granted — Welcome, ${user.name}`);
-      navigate(getDashboardPathForRole(user.role));
+      const result = await login(form.email, form.password, form.mfaToken);
+      if (result?.requireMfa) {
+        setMfaStep(true);
+        toast('MFA Required — Check your authenticator app');
+        return;
+      }
+      toast.success(`Access Granted — Welcome, ${result.name}`);
+      navigate(getDashboardPathForRole(result.role));
     } catch (err) {
       toast.error(getLoginErrorMessage(err));
     } finally {
@@ -55,7 +61,7 @@ const LoginPage = () => {
       <div 
         className="absolute inset-0 z-0"
         style={{
-          backgroundImage: `url('file:///C:/Users/ThinuUpadya/.gemini/antigravity/brain/4a4596d3-dfa6-4d5a-b2e0-389bc5da345c/stadium_light_bg_1775555602851.png')`,
+          backgroundImage: `url('https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=2805&auto=format&fit=crop')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'brightness(0.95) contrast(1.05)',
@@ -72,11 +78,11 @@ const LoginPage = () => {
       <div className="relative z-10 w-full max-w-[480px] animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
         {/* Branding Section */}
         <div className="mb-10 text-center">
-          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-blue-500/10 mb-6 border border-blue-500/20 shadow-sm backdrop-blur-md">
-             <BoltIcon className="h-8 w-8 text-blue-600" />
+          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-brand-main/10 mb-6 border border-brand-main/20 shadow-sm backdrop-blur-md">
+             <img src="/logo.png" alt="Logo" className="h-10 w-10 object-contain" onError={(e) => e.target.style.display='none'} />
           </div>
           <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-             Secure <span className="text-blue-600">Gateway</span>
+             Secure <span className="text-brand-main">Gateway</span>
           </h1>
           <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
             Precision Access Management
@@ -88,54 +94,77 @@ const LoginPage = () => {
           <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
           
           <form onSubmit={handleSubmit} className="space-y-7">
-            {/* Identity Email */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Verification Email</label>
-              <div className="relative group/field">
-                <EnvelopeIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={e => setForm(f => ({...f, email: e.target.value}))}
-                  placeholder="identity@stadium.eams"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
-                />
-              </div>
-            </div>
+            {!mfaStep ? (
+              <>
+                {/* Identity Email */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Verification Email</label>
+                  <div className="relative group/field">
+                    <EnvelopeIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                    <input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={e => setForm(f => ({...f, email: e.target.value}))}
+                      placeholder="identity@stadium.entrynex.com"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-brand-main/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-main/50 shadow-sm"
+                    />
+                  </div>
+                </div>
 
-            {/* Access Key */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Key</label>
-                 <Link to="/forgot-password" core="true" className="text-[10px] font-bold text-blue-600 hover:text-blue-500 transition-colors uppercase tracking-[0.2em] underline-offset-4 hover:underline">
-                   Lost Key?
-                 </Link>
-              </div>
-              <div className="relative group/field">
-                <LockClosedIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={form.password}
-                  onChange={e => setForm(f => ({...f, password: e.target.value}))}
-                  placeholder="••••••••••••"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-14 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
-                >
-                  {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                {/* Access Key */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Key</label>
+                     <Link to="/forgot-password" core="true" className="text-[10px] font-bold text-blue-600 hover:text-blue-500 transition-colors uppercase tracking-[0.2em] underline-offset-4 hover:underline">
+                       Lost Key?
+                     </Link>
+                  </div>
+                  <div className="relative group/field">
+                    <LockClosedIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={form.password}
+                      onChange={e => setForm(f => ({...f, password: e.target.value}))}
+                      placeholder="••••••••••••"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-14 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
+                    >
+                      {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-blue-600 ml-1">MFA Security Token</label>
+                <div className="relative group/field">
+                  <BoltIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-600 transition-colors" />
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={form.mfaToken}
+                    onChange={e => setForm(f => ({...f, mfaToken: e.target.value}))}
+                    placeholder="Enter 6-digit code"
+                    className="w-full rounded-2xl border border-blue-200 bg-blue-50/30 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                  />
+                </div>
+                <button type="button" onClick={() => setMfaStep(false)} className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2 hover:text-slate-600 transition-colors">
+                  ← Back to Credentials
                 </button>
               </div>
-            </div>
+            )}
 
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full overflow-hidden rounded-2xl bg-blue-600 py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(37,99,235,0.3)] transition-all duration-300 hover:bg-blue-500 hover:shadow-[0_15px_30px_-5px_rgba(37,99,235,0.4)] disabled:opacity-50 active:scale-[0.98]"
+              className="group relative w-full overflow-hidden rounded-2xl bg-brand-dark py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(10,17,40,0.3)] transition-all duration-300 hover:bg-brand-main hover:shadow-[0_15px_30px_-5px_rgba(38,132,255,0.4)] disabled:opacity-50 active:scale-[0.98]"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer" />
               
@@ -146,7 +175,7 @@ const LoginPage = () => {
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  Initiate Secure Access
+                  {mfaStep ? 'Verify Security Token' : 'Initiate Secure Access'}
                   <ChevronRightIcon className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
                 </span>
               )}
@@ -180,12 +209,12 @@ const LoginPage = () => {
               </summary>
               <div className="mt-4 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-2">
                 {[
-                  { r: 'Admin', e: 'admin@stadium.eams', p: 'Admin@Matrix.Reset' },
-                  { r: 'Organiser', e: 'organiser@stadium.eams', p: 'Organiser@Matrix.Reset' },
-                  { r: 'Sub-Org', e: 'suborg@stadium.eams', p: 'SubOrg@Matrix.Reset' },
-                  { r: 'Staff', e: 'staff@stadium.eams', p: 'Staff@Matrix.Reset' },
-                  { r: 'Auditor', e: 'auditor@stadium.eams', p: 'Auditor@Matrix.Reset' },
-                  { r: 'Attendee', e: 'attendee@stadium.eams', p: 'Attendee@Matrix.Reset' },
+                  { r: 'Admin', e: 'admin@stadium.entrynex.com', p: 'Admin@Matrix.Reset' },
+                  { r: 'Organiser', e: 'organiser@stadium.entrynex.com', p: 'Organiser@Matrix.Reset' },
+                  { r: 'Sub-Org', e: 'suborg@stadium.entrynex.com', p: 'SubOrg@Matrix.Reset' },
+                  { r: 'Staff', e: 'staff@stadium.entrynex.com', p: 'Staff@Matrix.Reset' },
+                  { r: 'Auditor', e: 'auditor@stadium.entrynex.com', p: 'Auditor@Matrix.Reset' },
+                  { r: 'Attendee', e: 'attendee@stadium.entrynex.com', p: 'Attendee@Matrix.Reset' },
                 ].map((item, idx) => (
                   <div key={idx} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100 text-[9px] font-bold tracking-wider">
                     <span className="text-blue-600 uppercase mb-1">{item.r} Identity</span>
@@ -221,7 +250,7 @@ const LoginPage = () => {
            </span>
         </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
-           © 2026 EAMS High Fidelity System
+           © 2026 ENTRYNEX High Fidelity System
         </span>
       </div>
     </div>

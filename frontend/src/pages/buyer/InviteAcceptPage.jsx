@@ -5,7 +5,7 @@ import { confirmInvite, getInviteInfo, respondToInvite } from '../../api/attende
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 
-const phoneRegex = /^\+947\d{8}$/;
+const phoneRegex = /^\+?[1-9]\d{1,14}$/;
 
 const formatVenue = (venue) => {
   if (!venue) return 'Venue will be announced';
@@ -40,6 +40,17 @@ const InviteAcceptPage = () => {
       .then((response) => {
         const payload = response.data?.data?.invite;
         setInvite(payload);
+
+        if (payload?.attendee) {
+          setForm({
+            fullName: payload.attendee.fullName || '',
+            email: payload.attendee.email || '',
+            phone: payload.attendee.phone || '',
+            dateOfBirth: payload.attendee.dateOfBirth ? payload.attendee.dateOfBirth.split('T')[0] : '',
+            nicPassport: payload.attendee.nationalId || '',
+          });
+        }
+
         if ((payload?.inviteStatus || 'PENDING') === 'ACCEPTED') {
           setStep('form');
         } else if (payload?.inviteStatus === 'DECLINED') {
@@ -85,7 +96,7 @@ const InviteAcceptPage = () => {
       return toast.error('Name, ID, phone, and date of birth are required');
     }
     if (!phoneRegex.test(form.phone.trim())) {
-      return toast.error('Use Sri Lanka format: +947XXXXXXXX');
+      return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     }
 
     setSubmitting(true);

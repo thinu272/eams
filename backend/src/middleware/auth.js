@@ -55,41 +55,45 @@ const restrictTo = (...roles) => {
  * MainAdmin bypasses all event checks.
  */
 const requireEventAccess = async (req, res, next) => {
-  const { user } = req;
-  const eventId = req.params.eventId || 
-                  req.body.eventId || 
-                  req.query.eventId || 
-                  (user.assignedEvents && user.assignedEvents[0]);
+  try {
+    const { user } = req;
+    const eventId = req.params.eventId || 
+                    req.body.eventId || 
+                    req.query.eventId || 
+                    (user.assignedEvents && user.assignedEvents[0]);
 
-  // Root Authority bypass
-  if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) {
-    return next();
-  }
-  
-  if (!eventId) {
-    return res.status(400).json({ success: false, message: 'Event ID required for scoped operation.' });
-  }
-  
-  // Validate format
-  const isValid = mongoose.Types.ObjectId.isValid(eventId);
-  if (!isValid) {
-    return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
-  }
+    // Root Authority bypass
+    if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) {
+      return next();
+    }
+    
+    if (!eventId) {
+      return res.status(400).json({ success: false, message: 'Event ID required for scoped operation.' });
+    }
+    
+    // Validate format
+    const isValid = mongoose.Types.ObjectId.isValid(eventId);
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
+    }
 
-  // Check explicit assignments
-  if (user.assignedEvents.some(e => e.toString() === eventId.toString())) {
-    return next();
-  }
+    // Check explicit assignments
+    if (user.assignedEvents.some(e => e.toString() === eventId.toString())) {
+      return next();
+    }
 
-  // Check creator status (for organisers who haven't been 'assigned' yet)
-  const Event = require('../models/Event');
-  const event = await Event.findById(eventId).select('createdBy');
-  if (event && event.createdBy?.toString() === user._id.toString()) {
-    return next();
-  }
+    // Check creator status (for organisers who haven't been 'assigned' yet)
+    const Event = require('../models/Event');
+    const event = await Event.findById(eventId).select('createdBy mainOrganiser');
+    if (event && (event.createdBy?.toString() === user._id.toString() || event.mainOrganiser?.toString() === user._id.toString())) {
+      return next();
+    }
 
-  console.log(`[requireEventAccess] DENIED: User ${user._id} attempting scope ${eventId}`);
-  return res.status(403).json({ success: false, message: 'Target event is outside your authorized scope.' });
+    console.log(`[requireEventAccess] DENIED: User ${user._id} attempting scope ${eventId}`);
+    return res.status(403).json({ success: false, message: 'Target event is outside your authorized scope.' });
+  } catch (error) {
+    next(error);
+  }
 };
 
 /**

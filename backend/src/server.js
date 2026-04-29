@@ -9,6 +9,8 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const requestLogger = require("./middleware/requestLogger");
+const helmet = require("helmet");
+const cookieParser = require("cookie-parser");
 const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
 
 // Load environment variables
@@ -25,6 +27,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
   credentials: true,
 }));
+
+app.use(helmet());
+app.use(cookieParser());
+
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
@@ -50,6 +56,18 @@ io.on("connection", (socket) => {
   socket.on("join_dashboard", ({ eventId } = {}) => {
     if (eventId) {
       socket.join(`dashboard:${eventId}`);
+    }
+  });
+  socket.on("join_event", ({ eventId } = {}) => {
+    if (eventId) {
+      socket.join(`event:${eventId}`);
+      console.log(`Socket ${socket.id} joined event room: event:${eventId}`);
+    }
+  });
+  socket.on("leave_event", ({ eventId } = {}) => {
+    if (eventId) {
+      socket.leave(`event:${eventId}`);
+      console.log(`Socket ${socket.id} left event room: event:${eventId}`);
     }
   });
   socket.on("leave_dashboard", ({ eventId } = {}) => {
@@ -89,6 +107,11 @@ app.use('/api/organiser', require('./routes/organiser'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/buyer', require('./routes/buyerRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/sub', require('./routes/sub'));
+app.use('/api/staff', require('./routes/staff'));
+app.use('/api/payment', require('./routes/payment'));
+app.use('/api/upload', require('./routes/upload'));
+app.use('/api/tickets', require('./routes/tickets_download'));
 
 // --- DATABASE CONNECTION ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";

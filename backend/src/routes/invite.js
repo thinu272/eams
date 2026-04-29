@@ -7,7 +7,8 @@ const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
-const { notifyFinalTicket } = require('../services/notificationService');
+const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
+const { resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 
 const getInviteExpiryDate = (ticket) => {
   if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
@@ -36,19 +37,75 @@ const upload = multer({
 router.get('/:token', async (req, res, next) => {
   try {
     const token = req.params.token;
-    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
-    if (!ticket || !ticket.inviteToken) {
+    let ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
+    
+    // Fallback: Check if the token belongs to an Attendee
+    if (!ticket) {
+      const attendee = await Attendee.findOne({ confirmationToken: token }).populate('event');
+      if (attendee) {
+        // Find or create a ticket for this attendee if missing
+        ticket = await Ticket.findOne({ attendee: attendee._id }).populate('event');
+        
+        if (!ticket && attendee.event) {
+          // Recover: Create a complimentary order/ticket if it was missing
+          const Order = require('../models/Order');
+          const bulkOrder = new Order({
+            eventId: attendee.event._id || attendee.event,
+            buyerName: `Recovery (${attendee.fullName})`,
+            buyerEmail: attendee.email || 'recovery@entrynex.com',
+            totalAmount: 0,
+            status: 'CONFIRMED',
+            paymentStatus: 'success',
+            orderNumber: `REC-${Date.now()}`,
+            confirmationToken: token
+          });
+          await bulkOrder.save();
+
+          ticket = new Ticket({
+            event: attendee.event._id || attendee.event,
+            order: bulkOrder._id,
+            attendee: attendee._id,
+            categoryId: attendee.categoryId,
+            categoryName: attendee.categoryName,
+            allowedZones: attendee.allowedZones || [],
+            price: 0,
+            slotIndex: 1,
+            status: 'ASSIGNED',
+            inviteToken: token,
+            inviteEmail: attendee.email,
+            invitePhone: attendee.phone,
+            ticketNumber: `TKT-REC-${Date.now()}`
+          });
+          await ticket.save();
+          // Reload with event populated
+          ticket = await Ticket.findById(ticket._id).populate('event');
+        }
+
+        // If ticket exists but tokens are out of sync, sync them now
+        if (ticket && ticket.inviteToken !== token) {
+          ticket.inviteToken = token;
+          await ticket.save();
+        }
+      }
+    }
+
+    if (!ticket || !ticket.event) {
       return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
     }
     if (ticket.inviteUsedAt) {
       return res.status(400).json({ success: false, message: 'This invitation has already been used.' });
     }
-    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING' && ticket.status !== 'ASSIGNED') {
       return res.status(400).json({ success: false, message: 'This ticket is not open for invitation confirmation.' });
     }
 
     if (isInviteExpired(ticket)) {
       return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    // Ensure attendee is populated
+    if (ticket.attendee && !ticket.attendee.fullName) {
+      ticket = await Ticket.findById(ticket._id).populate('event').populate('attendee');
     }
 
     res.json({
@@ -65,6 +122,13 @@ router.get('/:token', async (req, res, next) => {
           inviteExpiresAt: getInviteExpiryDate(ticket),
           eventStartDate: ticket.event.startDate,
           eventVenue: ticket.event.venue,
+          attendee: ticket.attendee ? {
+            fullName: ticket.attendee.fullName,
+            email: ticket.attendee.email || ticket.inviteEmail,
+            phone: ticket.attendee.phone || ticket.invitePhone,
+            nationalId: ticket.attendee.nationalId,
+            dateOfBirth: ticket.attendee.dateOfBirth,
+          } : null,
         }
       }
     });
@@ -83,14 +147,22 @@ router.post('/respond', [
     }
 
     const { token, response } = req.body;
-    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
-    if (!ticket || !ticket.inviteToken) {
+    let ticket = await Ticket.findOne({ inviteToken: token }).populate('event');
+    
+    if (!ticket) {
+      const attendee = await Attendee.findOne({ confirmationToken: token });
+      if (attendee) {
+        ticket = await Ticket.findOne({ attendee: attendee._id }).populate('event');
+      }
+    }
+
+    if (!ticket) {
       return res.status(404).json({ success: false, message: 'Invalid or expired invitation token.' });
     }
     if (ticket.inviteUsedAt) {
       return res.status(400).json({ success: false, message: 'This invitation has already been used.' });
     }
-    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING' && ticket.status !== 'ASSIGNED') {
       return res.status(400).json({ success: false, message: 'This ticket is not open for invitation confirmation.' });
     }
     if (isInviteExpired(ticket)) {
@@ -139,10 +211,17 @@ router.post('/confirm', upload.single('photo'), [
 
     const { token, fullName, nicPassport, dateOfBirth, phone, email } = req.body;
 
-    const ticket = await Ticket.findOne({ inviteToken: token }).populate('event order');
-    if (!ticket || !ticket.inviteToken) return res.status(404).json({ success: false, message: 'Invalid invitation token.' });
+    let ticket = await Ticket.findOne({ inviteToken: token }).populate('event order');
+    if (!ticket) {
+      const attendee = await Attendee.findOne({ confirmationToken: token });
+      if (attendee) {
+        ticket = await Ticket.findOne({ attendee: attendee._id }).populate('event order');
+      }
+    }
+
+    if (!ticket) return res.status(404).json({ success: false, message: 'Invalid invitation token.' });
     if (ticket.inviteUsedAt) return res.status(400).json({ success: false, message: 'Invitation has already been accepted.' });
-    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING') {
+    if (ticket.status !== 'INVITED' && ticket.status !== 'PENDING' && ticket.status !== 'ASSIGNED') {
       return res.status(400).json({ success: false, message: 'Ticket is no longer available for acceptance.' });
     }
     if ((ticket.inviteStatus || 'PENDING') !== 'ACCEPTED') {
@@ -190,11 +269,22 @@ router.post('/confirm', upload.single('photo'), [
       attendeeData.photoUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${req.file.filename}`;
     }
 
-    const attendee = new Attendee(attendeeData);
-    await attendee.save();
+    let attendee;
+    if (ticket.attendee) {
+      attendee = await Attendee.findById(ticket.attendee);
+      if (attendee) {
+        Object.assign(attendee, attendeeData);
+        await attendee.save();
+      }
+    }
+
+    if (!attendee) {
+      attendee = new Attendee(attendeeData);
+      await attendee.save();
+    }
 
     ticket.attendee = attendee._id;
-    ticket.status = 'ASSIGNED';
+    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     ticket.inviteStatus = 'ACCEPTED';
     ticket.inviteRespondedAt = ticket.inviteRespondedAt || new Date();
     ticket.inviteUsedAt = new Date();
@@ -222,6 +312,16 @@ router.post('/confirm', upload.single('photo'), [
           notificationChannel: 'both',
         }).catch(err => console.error('FINAL CONFIRM NOTIFY ERROR:', err)));
       }
+    }
+
+    if (ticket.order && ticket.event?.settings?.requirePhotoVerification) {
+      await notifyBuyerTicketProgress({
+        order: ticket.order,
+        attendee,
+        event: ticket.event,
+        ticket,
+        stage: 'pending_verification',
+      });
     }
 
     await notifyFinalTicket({

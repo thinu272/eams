@@ -50,7 +50,7 @@ const AdminSettings = () => {
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-slate-400 font-semibold">System Controls</p>
           <h1 className="text-3xl font-bold text-slate-900">System Settings</h1>
-          <p className="text-sm text-slate-500">Persistent communication, retention, security, and template defaults for the EAMS admin layer.</p>
+          <p className="text-sm text-slate-500">Persistent communication, retention, security, and template defaults for the ENTRYNEX admin layer.</p>
         </div>
 
         <form onSubmit={handleSave} className="space-y-6">

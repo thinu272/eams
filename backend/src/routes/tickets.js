@@ -9,7 +9,8 @@ const Order = require('../models/Order');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
 const QRCode = require('qrcode');
-const { notifyInvite, notifyFinalTicket } = require('../services/notificationService');
+const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
+const { resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 
 // Multer configuration for photo upload
 const upload = multer({
@@ -96,7 +97,7 @@ router.post('/assign', upload.single('photo'), [
 
     // Update ticket
     ticket.attendee = attendee._id;
-    ticket.status = 'ASSIGNED';
+    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     await ticket.save();
 
     // Check if all tickets in the order are now assigned
@@ -235,6 +236,14 @@ router.post('/invite', [
       notificationChannel: notificationChannel || 'email',
     });
 
+    await notifyBuyerTicketProgress({
+      order: ticket.order,
+      attendee,
+      event: ticket.event,
+      ticket,
+      stage: 'invited',
+    });
+
     res.json({
       success: true,
       data: {
@@ -316,7 +325,7 @@ router.post('/:id/attendee', upload.single('photo'), [
     await attendee.save();
 
     ticket.attendee = attendee._id;
-    ticket.status = 'ASSIGNED';
+    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     await ticket.save();
 
     await notifyFinalTicket({
@@ -408,6 +417,14 @@ router.post('/:id/invite', [
       phone: phone || attendee.phone,
       email,
       notificationChannel: notificationChannel || 'email',
+    });
+
+    await notifyBuyerTicketProgress({
+      order: ticket.order,
+      attendee,
+      event: ticket.event,
+      ticket,
+      stage: 'invited',
     });
 
     return res.json({

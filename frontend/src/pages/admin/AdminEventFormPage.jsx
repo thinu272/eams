@@ -20,10 +20,12 @@ const AdminEventFormPage = () => {
       .finally(() => setFetching(false));
   }, [id]);
 
-  const handleSubmit = async (payload, coverImageFile) => {
+  const handleSubmit = async (payload, filesObject) => {
     setLoading(true);
     try {
-      if (coverImageFile) {
+      const hasFiles = filesObject && Object.values(filesObject).some(file => !!file);
+
+      if (hasFiles) {
         const formData = new FormData();
         Object.keys(payload).forEach((key) => {
           const value = payload[key];
@@ -34,7 +36,11 @@ const AdminEventFormPage = () => {
             formData.append(key, value);
           }
         });
-        formData.append('coverImage', coverImageFile);
+        
+        if (filesObject.coverImage) formData.append('coverImage', filesObject.coverImage);
+        if (filesObject.logoImage) formData.append('logoImage', filesObject.logoImage);
+        if (filesObject.bannerImage) formData.append('bannerImage', filesObject.bannerImage);
+
         if (id) {
           await updateEvent(id, formData);
         } else {

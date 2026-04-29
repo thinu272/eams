@@ -13,6 +13,8 @@ const attendeeSchema = new mongoose.Schema({
   photo: { type: String }, // S3 URL or file path
   photoS3Key: { type: String }, // S3 object key for deletion/tracking
   photoUploadedAt: { type: Date },
+  rfidTag: { type: String, trim: true, index: true },
+  photoHash: { type: String, index: true },
   customFieldValues: { type: Map, of: String },
 
   // Ticket linkage
@@ -52,7 +54,7 @@ const attendeeSchema = new mongoose.Schema({
   confirmedAt: { type: Date },
   confirmedBy: {
     type: String,
-    enum: ['self', 'organiser', 'sub_organiser'],
+    enum: ['self', 'organiser', 'sub_organiser', 'online_invite'],
   },
 
   // Checkout option

@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
-  const phoneRegex = /^\+947\d{8}$/;
+  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
   const [checkoutData, setCheckoutData] = useState(null);
   const [buyerInfo, setBuyerInfo] = useState({
     name: '',
@@ -67,10 +67,10 @@ const CheckoutPage = () => {
       if (!buyerInfo.phone.trim()) {
         newErrors.phone = 'Phone number is required for SMS notifications';
       } else if (!phoneRegex.test(buyerInfo.phone.trim())) {
-        newErrors.phone = 'Use Sri Lanka format: +947XXXXXXXX';
+        newErrors.phone = 'Enter a valid international phone number (e.g. +1234567890)';
       }
     } else if (buyerInfo.phone.trim() && !phoneRegex.test(buyerInfo.phone.trim())) {
-      newErrors.phone = 'Use Sri Lanka format: +947XXXXXXXX';
+      newErrors.phone = 'Enter a valid international phone number (e.g. +1234567890)';
     }
 
     setErrors(newErrors);
@@ -158,6 +158,8 @@ const CheckoutPage = () => {
     return sum + (cat.price * (checkoutData.selectedTickets[cat.id] || 0));
   }, 0);
 
+  const currency = checkoutData.event?.settings?.currency || 'LKR';
+
   return (
     <PublicLayout>
       <div className="min-h-screen bg-gray-50">
@@ -228,7 +230,7 @@ const CheckoutPage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your phone number"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Format: +947XXXXXXXX</p>
+                  <p className="mt-1 text-xs text-gray-500">Format: +1234567890</p>
                   {errors.phone && (
                     <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
                   )}
@@ -286,11 +288,11 @@ const CheckoutPage = () => {
                     <div className="flex-1">
                       <p className="font-medium text-gray-900">{category.name}</p>
                       <p className="text-sm text-gray-600">
-                        {checkoutData.selectedTickets[category.id]} × LKR {category.price.toLocaleString()}
+                        {checkoutData.selectedTickets[category.id]} × {currency} {category.price.toLocaleString()}
                       </p>
                     </div>
                     <p className="font-semibold text-gray-900">
-                      LKR {(checkoutData.selectedTickets[category.id] * category.price).toLocaleString()}
+                      {currency} {(checkoutData.selectedTickets[category.id] * category.price).toLocaleString()}
                     </p>
                   </div>
                 ))}
@@ -303,7 +305,7 @@ const CheckoutPage = () => {
                 </div>
                 <div className="flex justify-between items-center text-lg font-bold">
                   <span className="text-gray-900">Total Amount</span>
-                  <span className="text-gray-900">LKR {totalPrice.toLocaleString()}</span>
+                  <span className="text-gray-900">{currency} {totalPrice.toLocaleString()}</span>
                 </div>
               </div>
             </div>

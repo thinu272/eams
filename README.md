@@ -1,238 +1,100 @@
-# EAMS — Event Access Management System
+# ENTRYNEX — Event Access Management System
 
-Full-stack event access management platform built with React + Node.js + MongoDB.
+Full-stack event access management platform built with React + Node.js + MongoDB, designed for large-scale sporting events and conferences.
 
 ## Stack
-- **Frontend**: React 18, React Router v6, Tailwind CSS, Recharts
-- **Backend**: Node.js, Express, Mongoose
-- **Database**: MongoDB
-- **Auth**: JWT (RS256)
-
-## Quick Start
-
-### Prerequisites
-- Node.js 18+
-- MongoDB (local or Atlas free tier)
-- npm
+- **Frontend**: React 18, React Router v6, Tailwind CSS, Socket.io-client
+- **Backend**: Node.js, Express, Mongoose, Socket.io
+- **Database**: MongoDB (Atlas or Local)
+- **Auth**: JWT (RS256 compliant)
+- **Communication**: SMTP (SendGrid/Custom) & SMS (Twilio)
+- **Real-time**: Bidirectional communication for dashboard & branding sync
 
 ---
 
-### 1. Clone / unzip and set up
+## Core Features
 
+- **Multi-Stage Event Lifecycle**:
+  - `Draft`: Private preparation mode.
+  - `Published`: Live on public interface.
+  - `Ongoing`: Live match tracking.
+  - `Expired`: Auto-hidden from listings.
+- **Role-Based Access Control (RBAC)**: 7 roles (SuperAdmin to Volunteer) with granular permissions.
+- **Premium Branding Suite**: Organizers can customize theme colors, logos, and hero banners with real-time updates to public pages.
+- **Advanced Photo Verification**: AI-ready photo reviews for secure attendee confirmation.
+- **Private Ticket System**: Lock-and-key ticket categories requiring access codes.
+- **Real-Time Dashboards**: Live check-in stats and visual branding synchronization across all users.
+
+---
+
+## Quick Start
+
+### 1. Installation
 ```bash
 # Backend
 cd backend
-cp .env.example .env
-# Edit .env — set MONGODB_URI and other values
 npm install
+cp .env.example .env # Set your MONGODB_URI
 
 # Frontend
 cd ../frontend
 npm install
 ```
 
-### 2. Start MongoDB
-```bash
-# Local MongoDB
-mongod --dbpath /data/db
-
-# Or use MongoDB Atlas — paste your connection string in .env
-```
-
-### 3. Seed the database
+### 2. Database Seeding
 ```bash
 cd backend
 npm run seed
 ```
-This creates all demo accounts and the sample Big Match event.
+Creates:
+- **Admin**: admin@stadium.entrynex.com / Admin@Matrix.Reset
+- **Organiser**: organiser@stadium.entrynex.com / Organiser@Matrix.Reset
+- **Sub-Org**: suborg@stadium.entrynex.com / SubOrg@Matrix.Reset
+- **Staff**: staff@stadium.entrynex.com / Staff@Matrix.Reset
+- **Auditor**: auditor@stadium.entrynex.com / Auditor@Matrix.Reset
+- **Attendee**: attendee@stadium.entrynex.com / Attendee@Matrix.Reset
+- **Sample Event**: "The Big Match 2025" (Draft)
 
-**Demo credentials:**
-| Role | Email | Password |
-|------|-------|----------|
-| Main Admin | admin@eams.com | Admin@123456 |
-| Main Organiser | organiser@eams.com | Organiser@123 |
-| Sub Organiser | suborg@eams.com | SubOrg@123 |
-| Staff | staff@eams.com | Staff@123 |
+### 3. Run Development
+**Terminal 1 (Backend):** `cd backend && npm run dev`
+**Terminal 2 (Frontend):** `cd frontend && npm start`
 
-### 4. Run the project
+---
 
-**Terminal 1 — Backend:**
-```bash
-cd backend
-npm run dev
-# API running on http://localhost:5000
-```
+## Configuration & Integration
 
-**Terminal 2 — Frontend:**
-```bash
-cd frontend
-npm start
-# App running on http://localhost:3000
-```
+### SMTP (Email) Setup
+The system supports any SMTP provider (SendGrid, Mailgun, or custom). 
+1. In `backend/.env`, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS`.
+2. Organizers can customize email templates (Invite, Confirmation, Rejection) directly from their dashboard.
+
+### Payment Gateway (PayHere / Stripe)
+The checkout system is integrated with PayHere (Sandbox) by default.
+1. Add `PAYHERE_MERCHANT_ID` and `PAYHERE_SECRET` to `.env`.
+2. Organizers can toggle **Card**, **Bank Transfer**, or **Cash** payments per event.
+3. For Stripe, update `CheckoutPage.jsx` and the `orders.js` route.
+
+### Architecture Guide
+For deeper technical details, see:
+- [System Features Summary](./docs/SYSTEM_FEATURES_SUMMARY.md)
+- [Visual Architecture Diagrams](./docs/VISUAL_ARCHITECTURE_DIAGRAMS.md)
+- [Payment & Communication Setup](./docs/SETUP_GUIDE.md)
 
 ---
 
 ## Project Structure
-
 ```
 eams/
 ├── backend/
 │   ├── src/
-│   │   ├── config/         # DB connection
-│   │   ├── middleware/      # Auth, error handling
-│   │   ├── models/          # Mongoose schemas
-│   │   │   ├── User.js
-│   │   │   ├── Event.js
-│   │   │   ├── Order.js
-│   │   │   ├── Ticket.js
-│   │   │   ├── Attendee.js
-│   │   │   └── EntryLog.js
-│   │   ├── routes/          # Express route handlers
-│   │   │   ├── auth.js
-│   │   │   ├── events.js
-│   │   │   ├── orders.js
-│   │   │   ├── attendees.js
-│   │   │   ├── users.js
-│   │   │   └── entry.js
-│   │   ├── utils/           # Email, seed
-│   │   └── server.js
-│   └── .env.example
-│
-└── frontend/
-    └── src/
-        ├── api/             # Axios service modules
-        ├── components/
-        │   ├── layout/      # Sidebar, DashboardLayout, PublicLayout
-        │   └── ui/          # Button, Card, Table, Modal, Badge, Stat
-        ├── context/         # AuthContext
-        └── pages/
-            ├── public/      # HomePage, EventDetailPage
-            ├── auth/        # LoginPage
-            ├── buyer/       # ConfirmOrderPage, AttendeeConfirmPage
-            ├── admin/       # Dashboard, Events, Users
-            ├── organiser/   # Dashboard, Attendees, Team, Logs, Reports
-            ├── suborg/      # Dashboard, Attendees, BulkUpload, PhotoVerify
-            ├── entry/       # EntryScannerPage
-            └── auditor/     # AuditorDashboard
+│   │   ├── models/          # Event, User, Attendee, Ticket, EntryLog
+│   │   ├── routes/          # API Handlers (Organiser, Admin, Public)
+│   │   ├── services/        # Notification, Photo Validation
+│   │   └── server.js        # Entry point with Socket.io
+├── frontend/
+│   ├── src/
+│   │   ├── api/             # API client modules
+│   │   ├── context/         # Global Auth & State
+│   │   └── pages/           # Admin, Organiser, Public, Checkout
+└── docs/                # Extended documentation
 ```
-
----
-
-## API Endpoints
-
-### Auth
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/auth/login | Login |
-| GET | /api/auth/me | Get current user |
-| PATCH | /api/auth/update-password | Change password |
-
-### Events
-| Method | Endpoint | Access |
-|--------|----------|--------|
-| GET | /api/events | Public — list events |
-| GET | /api/events/:slug | Public — event detail |
-| POST | /api/events | Admin only |
-| PATCH | /api/events/:id | Admin / Organiser |
-| PATCH | /api/events/:id/publish | Admin only |
-| GET | /api/events/admin/all | Admin only |
-| GET | /api/events/my/events | All roles |
-| GET | /api/events/:id/dashboard | Organiser+ |
-
-### Orders
-| Method | Endpoint | Access |
-|--------|----------|--------|
-| POST | /api/orders | Public |
-| GET | /api/orders/confirm/:token | Public |
-| PATCH | /api/orders/:id/mark-paid | Public (payment hook) |
-
-### Attendees
-| Method | Endpoint | Access |
-|--------|----------|--------|
-| GET | /api/attendees/confirm/:token | Public |
-| POST | /api/attendees/confirm/:token | Public |
-| GET | /api/attendees/template | Staff+ |
-| POST | /api/attendees/bulk-upload | Sub-org+ |
-| GET | /api/attendees | Staff+ |
-| POST | /api/attendees | Sub-org+ |
-| POST | /api/attendees/:id/invite | Sub-org+ |
-| PATCH | /api/attendees/:id/verify-photo | Sub-org+ |
-
-### Entry Control
-| Method | Endpoint | Access |
-|--------|----------|--------|
-| POST | /api/entry/scan | Staff+ |
-| GET | /api/entry/logs | Organiser+ |
-| GET | /api/entry/stats | Organiser+ |
-| GET | /api/entry/attendee/:qrToken | Staff+ |
-
-### Users
-| Method | Endpoint | Access |
-|--------|----------|--------|
-| GET | /api/users | Admin / Organiser |
-| POST | /api/users | Admin / Organiser |
-| PATCH | /api/users/:id | Admin / Organiser |
-| PATCH | /api/users/:id/assign-event | Admin / Organiser |
-| PATCH | /api/users/:id/toggle-active | Admin / Organiser |
-
----
-
-## Role Hierarchy
-
-| Role | Description |
-|------|-------------|
-| `main_admin` | Full system access. Creates events, assigns organisers. |
-| `main_organiser` | Manages one or more events. Adds sub-organisers and staff. |
-| `sub_organiser` | Manages attendees for assigned event. Bulk upload, photo verify. |
-| `staff` | Entry point scanning, zone access check. |
-| `volunteer` | Limited entry point duties. |
-| `auditor` | Read-only access to logs and reports. |
-
----
-
-## Email Configuration
-
-In development, emails are logged to the console (not sent). To enable real email:
-
-1. Sign up for [SendGrid](https://sendgrid.com) (free tier)
-2. Add credentials to `.env`:
-```
-SMTP_HOST=smtp.sendgrid.net
-SMTP_PORT=587
-SMTP_USER=apikey
-SMTP_PASS=your-sendgrid-api-key
-EMAIL_FROM=noreply@yourdomain.com
-```
-
----
-
-## Payment Integration
-
-The checkout flow is payment-gateway-ready. To connect Stripe:
-
-1. Add `STRIPE_SECRET_KEY` to `.env`
-2. In `backend/src/routes/orders.js`, replace the order creation response with a Stripe PaymentIntent
-3. In `frontend/src/pages/public/EventDetailPage.jsx`, add `@stripe/stripe-js` and the card element
-
----
-
-## RFID Integration
-
-RFID wristband support is built into the data model. To connect hardware:
-
-1. In `backend/src/routes/entry.js` `/scan` endpoint — pass `rfidId` instead of `qrToken`
-2. Connect your hardware scanner SDK to POST to `/api/entry/scan`
-3. Wristband issuance: the `wristbandId` field on `Attendee` is set on first check-in
-
----
-
-## Next Steps (Sprint 2+)
-
-- [ ] Real payment gateway (Stripe)
-- [ ] WebSocket for live dashboard updates
-- [ ] Event category/zone editor UI (admin)
-- [ ] Attendee export to CSV/Excel
-- [ ] Mobile PWA for entry scanners
-- [ ] Email template customisation per event
-- [ ] Multi-day event support
-

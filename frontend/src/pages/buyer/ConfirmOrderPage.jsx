@@ -8,12 +8,12 @@ import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import toast from 'react-hot-toast';
-import { TicketIcon, CheckBadgeIcon, EnvelopeIcon, PhotoIcon } from '@heroicons/react/24/solid';
+import { TicketIcon, CheckBadgeIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/solid';
 
 const ConfirmOrderPage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
-  const phoneRegex = /^\+947\d{8}$/;
+  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState({});
@@ -51,7 +51,7 @@ const ConfirmOrderPage = () => {
       return toast.error('Phone number is required for SMS notifications');
     }
     if (inviteForm.phone && !phoneRegex.test(inviteForm.phone.trim())) {
-      return toast.error('Use Sri Lanka format: +947XXXXXXXX');
+      return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     }
     setInviting(i => ({...i, [inviteModal.ticketId]: true}));
     try {
@@ -212,7 +212,7 @@ const ConfirmOrderPage = () => {
                 setFinalizing(true);
                 try {
                   await finalizeOrder(order._id);
-                  toast.success('Tickets confirmed ✅ Check your email or SMS shortly.');
+                  toast.success('Tickets confirmed. Check your email or SMS shortly.');
                   load();
                 } catch (err) {
                   console.error('Finalize error:', err);
@@ -401,7 +401,7 @@ const ConfirmOrderPage = () => {
             please contact our support team.
           </p>
           <div className="flex gap-4">
-            <Button size="sm" variant="outline" onClick={() => window.location.href = 'mailto:support@eams.com'}>
+            <Button size="sm" variant="outline" onClick={() => window.location.href = 'mailto:support@entrynex.com'}>
               Email Support
             </Button>
             <Button size="sm" variant="outline" onClick={() => window.open('tel:+94123456789', '_self')}>
@@ -444,7 +444,7 @@ const ConfirmOrderPage = () => {
             value={assignForm.phone}
             onChange={(e) => setAssignForm(f => ({...f, phone: e.target.value}))}
             error={assignErrors.phone}
-            placeholder="+947XXXXXXXX"
+            placeholder="+1234567890"
           />
 
           <Input
@@ -517,7 +517,7 @@ const ConfirmOrderPage = () => {
                     }}
                     className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-red-600"
                   >
-                    ✕
+                    <XMarkIcon className="h-4 w-4" />
                   </button>
                 </div>
               )}
@@ -569,7 +569,7 @@ const ConfirmOrderPage = () => {
             type="tel"
             value={inviteForm.phone}
             onChange={(e) => setInviteForm(f => ({ ...f, phone: e.target.value }))}
-            placeholder="+947XXXXXXXX"
+            placeholder="+1234567890"
           />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Send Via</label>

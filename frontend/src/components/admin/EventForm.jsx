@@ -13,7 +13,7 @@ const emptyCategory = () => ({
 });
 const emptyCustomField = () => ({ name: '', type: 'text', required: false, options: [] });
 
-const tabs = ['Basic Info', 'Ticket Categories', 'Zones', 'Advanced Settings'];
+const tabs = ['Basic Info', 'Ticket Categories', 'Zones', 'Customization', 'Advanced Settings'];
 
 const EventForm = ({ initialData, onSubmit, loading }) => {
   const [tab, setTab] = useState('Basic Info');
@@ -30,8 +30,13 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
     venueCountry: initialData?.venue?.country || '',
     venueMapUrl: initialData?.venue?.mapUrl || '',
     publish: initialData?.status === 'published',
+    branding: {
+      themeColor: initialData?.branding?.themeColor || '#2563EB',
+    }
   });
   const [coverImageFile, setCoverImageFile] = useState(null);
+  const [logoImageFile, setLogoImageFile] = useState(null);
+  const [bannerImageFile, setBannerImageFile] = useState(null);
   const [zones, setZones] = useState(initialData?.zones?.length ? initialData.zones : [emptyZone()]);
   const [categories, setCategories] = useState(initialData?.categories?.length ? initialData.categories : [emptyCategory()]);
   const [customFields, setCustomFields] = useState(initialData?.customFields?.length ? initialData.customFields : []);
@@ -41,6 +46,11 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
     confirmationDeadlineHours: initialData?.settings?.confirmationDeadlineHours ?? 48,
     maxTicketsPerOrder: initialData?.settings?.maxTicketsPerOrder ?? 10,
     rfidEnabled: initialData?.settings?.rfidEnabled ?? true,
+    paymentMethods: initialData?.settings?.paymentMethods || {
+      card: true,
+      bank_transfer: true,
+      cash: true,
+    },
   });
 
   const zoneOptions = useMemo(() => zones.filter((z) => z.name.trim().length > 0), [zones]);
@@ -79,9 +89,10 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       zones: cleanedZones,
       customFields,
       settings,
+      branding: form.branding,
       status: form.publish ? 'published' : 'draft',
     };
-    onSubmit(payload, coverImageFile);
+    onSubmit(payload, { coverImage: coverImageFile, logoImage: logoImageFile, bannerImage: bannerImageFile });
   };
 
   return (
@@ -151,10 +162,6 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
           <div>
             <label className="text-xs font-semibold text-slate-500">Venue Map (image URL placeholder)</label>
             <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={form.venueMapUrl} onChange={(e) => setForm((f) => ({ ...f, venueMapUrl: e.target.value }))} />
-          </div>
-          <div className="lg:col-span-2">
-            <label className="text-xs font-semibold text-slate-500">Cover Image (optional)</label>
-            <input type="file" accept="image/*" onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
           </div>
           <div className="flex items-center gap-3 lg:col-span-2">
             <input type="checkbox" checked={form.publish} onChange={(e) => setForm((f) => ({ ...f, publish: e.target.checked }))} />
@@ -231,6 +238,80 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
         </div>
       )}
 
+      {tab === 'Customization' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Theme Color</label>
+              <div className="mt-3 flex items-center gap-4">
+                <input 
+                  type="color" 
+                  value={form.branding.themeColor} 
+                  onChange={(e) => setForm(f => ({ ...f, branding: { ...f.branding, themeColor: e.target.value } }))} 
+                  className="h-12 w-20 cursor-pointer rounded-lg border border-slate-200"
+                />
+                <input 
+                  type="text" 
+                  value={form.branding.themeColor} 
+                  onChange={(e) => setForm(f => ({ ...f, branding: { ...f.branding, themeColor: e.target.value } }))} 
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono"
+                  placeholder="#2563EB"
+                />
+              </div>
+              <p className="mt-2 text-[10px] text-slate-400 font-medium italic">This color will be used for buttons, badges, and accents on the public event page.</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</label>
+              {initialData?.branding?.logoImage && !logoImageFile && (
+                <div className="mt-2 h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
+                  <img src={initialData.branding.logoImage.startsWith('http') ? initialData.branding.logoImage : `http://localhost:5000${initialData.branding.logoImage}`} alt="current logo" className="h-full w-full object-contain" />
+                </div>
+              )}
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={(e) => setLogoImageFile(e.target.files?.[0] || null)} 
+                className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              />
+              <p className="mt-2 text-[10px] text-slate-400 font-medium italic">Small square or circular logo (PNG preferred).</p>
+            </div>
+
+            <div className="lg:col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cover Image (Card View)</label>
+              {initialData?.coverImage && !coverImageFile && (
+                <div className="mt-2 h-32 w-full max-w-md overflow-hidden rounded-xl border border-slate-200">
+                  <img src={initialData.coverImage.startsWith('http') ? initialData.coverImage : `http://localhost:5000${initialData.coverImage}`} alt="current cover" className="h-full w-full object-cover" />
+                </div>
+              )}
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)} 
+                className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              />
+              <p className="mt-2 text-[10px] text-slate-400 font-medium italic">This image appears on the event listing cards. Best: 800x450px.</p>
+            </div>
+
+            <div className="lg:col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hero Banner Image</label>
+              {initialData?.branding?.bannerImage && !bannerImageFile && (
+                <div className="mt-2 h-32 w-full overflow-hidden rounded-xl border border-slate-200">
+                  <img src={initialData.branding.bannerImage.startsWith('http') ? initialData.branding.bannerImage : `http://localhost:5000${initialData.branding.bannerImage}`} alt="current banner" className="h-full w-full object-cover" />
+                </div>
+              )}
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={(e) => setBannerImageFile(e.target.files?.[0] || null)} 
+                className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              />
+              <p className="mt-2 text-[10px] text-slate-400 font-medium italic">Large landscape image for the top of the event page. Recommended: 1920x600px.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === 'Advanced Settings' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -254,6 +335,24 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings((s) => ({ ...s, rfidEnabled: e.target.checked }))} />
               RFID Enabled
             </label>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Allowed Payment Methods</h3>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-600 rounded-xl border border-slate-200 p-4">
+                <input type="checkbox" checked={settings.paymentMethods?.card} onChange={(e) => setSettings((s) => ({ ...s, paymentMethods: { ...s.paymentMethods, card: e.target.checked } }))} />
+                Debit / Credit Card
+              </label>
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-600 rounded-xl border border-slate-200 p-4">
+                <input type="checkbox" checked={settings.paymentMethods?.bank_transfer} onChange={(e) => setSettings((s) => ({ ...s, paymentMethods: { ...s.paymentMethods, bank_transfer: e.target.checked } }))} />
+                Bank Transfer
+              </label>
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-600 rounded-xl border border-slate-200 p-4">
+                <input type="checkbox" checked={settings.paymentMethods?.cash} onChange={(e) => setSettings((s) => ({ ...s, paymentMethods: { ...s.paymentMethods, cash: e.target.checked } }))} />
+                Cash at Entrance
+              </label>
+            </div>
           </div>
 
           <div>

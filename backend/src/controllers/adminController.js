@@ -4,17 +4,26 @@ const Order = require('../models/Order');
 const Attendee = require('../models/Attendee');
 const User = require('../models/User');
 const { normalizeRole } = require('../utils/rbac');
+const crypto = require('crypto');
+const notificationService = require('../services/notificationService');
 
 const getStats = async (req, res, next) => {
   try {
-    const [totalEvents, totalAttendees, revenueRows, totalUsers] = await Promise.all([
+    const [totalEvents, totalAttendees, revenueRows, totalUsers, revenuePerOrganiser] = await Promise.all([
       Event.countDocuments(),
       Attendee.countDocuments(),
       Order.aggregate([
-        { $match: { status: { $ne: 'CANCELLED' } } },
+        { $match: { paymentStatus: 'success' } },
         { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } },
       ]),
       User.countDocuments({ status: 'Active' }),
+      Event.aggregate([
+        { $match: { revenue: { $gt: 0 } } },
+        { $group: { _id: '$mainOrganiser', totalRevenue: { $sum: '$revenue' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'organiser' } },
+        { $unwind: { path: '$organiser', preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, name: { $ifNull: ['$organiser.name', 'Unknown'] }, totalRevenue: 1 } }
+      ])
     ]);
 
     res.json({
@@ -24,6 +33,7 @@ const getStats = async (req, res, next) => {
         totalAttendees,
         totalRevenue: revenueRows[0]?.totalRevenue || 0,
         totalUsers,
+        revenuePerOrganiser
       },
     });
   } catch (err) { next(err); }
@@ -31,17 +41,18 @@ const getStats = async (req, res, next) => {
 
 const getDashboardStats = async (req, res, next) => {
   try {
-    const [totalEvents, totalAttendees, revenueRows, usersByRole] = await Promise.all([
+    const [totalEvents, totalAttendees, revenueRows, usersByRole, revenuePerEvent] = await Promise.all([
       Event.countDocuments(),
       Attendee.countDocuments(),
       Order.aggregate([
-        { $match: { status: { $ne: 'CANCELLED' } } },
+        { $match: { paymentStatus: 'success' } },
         { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } },
       ]),
       User.aggregate([
         { $group: { _id: '$role', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
+      Event.find({ revenue: { $gt: 0 } }).select('name revenue').sort({ revenue: -1 }).limit(10)
     ]);
 
     res.json({
@@ -51,6 +62,7 @@ const getDashboardStats = async (req, res, next) => {
         totalAttendees,
         totalRevenue: revenueRows[0]?.totalRevenue || 0,
         usersByRole,
+        revenuePerEvent
       },
     });
   } catch (err) { next(err); }
@@ -128,7 +140,20 @@ const listUsers = async (req, res, next) => {
 const createUser = async (req, res, next) => {
   try {
     const payload = { ...req.body, role: normalizeRole(req.body.role) };
+    
+    let tempPassword = payload.password;
+    if (!tempPassword) {
+      tempPassword = crypto.randomBytes(8).toString('hex');
+      payload.password = tempPassword;
+    }
+    
+    payload.isTempPassword = true;
+    payload.isVerified = true;
+
     const user = await User.create(payload);
+
+    await notificationService.notifyUserCredentials(user, tempPassword);
+
     res.status(201).json({ success: true, data: { user } });
   } catch (err) { next(err); }
 };

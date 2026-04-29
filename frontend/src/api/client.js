@@ -12,9 +12,9 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('eams_token');
+  const token = localStorage.getItem('entrynex_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  
+
   // If data is FormData, let axios set the correct Content-Type with boundary
   if (config.data instanceof FormData) {
     if (typeof config.headers?.delete === 'function') {
@@ -25,7 +25,7 @@ api.interceptors.request.use((config) => {
       delete config.headers['content-type'];
     }
   }
-  
+
   return config;
 });
 
@@ -36,38 +36,44 @@ api.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
     const status = error.response?.status;
+
     if (!error.response) {
       toast.error('Backend not reachable. Please start the server.');
-      return Promise.resolve({ data: { success: false, data: {}, message: 'Network error' } });
-    }
-    if (status === 401) {
-      if (error.config?.skipAuthRedirect) {
-        return Promise.reject(error);
-      }
-
-      // Don't redirect or clear storage if we're actually on the login page/attempting login
-      if (error.config.url.includes('/auth/login')) {
-         return Promise.reject(error);
-      }
-      if (error.config.url.includes('/auth/me')) {
-        return Promise.reject(error);
-      }
-
-      localStorage.removeItem('eams_token');
-      localStorage.removeItem('eams_user');
-      toast.error('Session expired. Please log in again.');
-      window.location.href = '/login';
       return Promise.reject(error);
     }
-    if (status === 403) {
-      if (error.response?.data && typeof error.response.data === 'object' && !('data' in error.response.data)) {
-        error.response.data.data = {};
+
+    // Handle 401 Unauthorized (Expired Token)
+    if (status === 401 && !originalRequest._retry) {
+      if (originalRequest.skipAuthRedirect || originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/me')) {
+        return Promise.reject(error);
       }
-      toast.error(error.response?.data?.message || 'Access denied (403).');
-      return Promise.resolve(error.response);
+
+      originalRequest._retry = true;
+      try {
+        const res = await axios.post(`${apiBase}/auth/refresh-token`, {}, { withCredentials: true });
+        if (res.data.success) {
+          const newToken = res.data.accessToken;
+          localStorage.setItem('entrynex_token', newToken);
+          api.defaults.headers.Authorization = `Bearer ${newToken}`;
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        // Refresh token failed/expired
+        localStorage.removeItem('entrynex_token');
+        localStorage.removeItem('entrynex_user');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
     }
+
+    if (status === 403) {
+      toast.error(error.response?.data?.message || 'Access denied (403).');
+    }
+
     return Promise.reject(error);
   }
 );

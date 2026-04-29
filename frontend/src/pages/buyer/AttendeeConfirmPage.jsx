@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const AttendeeConfirmPage = () => {
   const { token } = useParams();
-  const phoneRegex = /^\+947\d{8}$/;
+  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +45,7 @@ const AttendeeConfirmPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.fullName || !form.email) return toast.error('Name and email are required');
-    if (form.phone && !phoneRegex.test(form.phone.trim())) return toast.error('Use Sri Lanka format: +947XXXXXXXX');
+    if (form.phone && !phoneRegex.test(form.phone.trim())) return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     setSubmitting(true);
     try {
       const fd = new FormData();

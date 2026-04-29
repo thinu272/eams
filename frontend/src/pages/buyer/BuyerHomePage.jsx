@@ -7,7 +7,11 @@ import {
   UserGroupIcon,
   ClockIcon,
   ArrowRightIcon,
+  QrCodeIcon,
 } from '@heroicons/react/24/outline';
+import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
+import api from '../../api/client';
+import QRCodeDisplay from '../../components/attendee/QRCodeDisplay';
 
 const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
   const tones = {
@@ -30,11 +34,18 @@ const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
 
 const BuyerHomePage = () => {
   const [orders, setOrders] = useState([]);
+  const [passes, setPasses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getBuyerTickets()
-      .then((res) => setOrders(res.data?.data?.orders || []))
+    Promise.all([
+      getBuyerTickets().catch(() => ({ data: { data: { orders: [] } } })),
+      api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } }))
+    ])
+      .then(([buyerRes, userRes]) => {
+        setOrders(buyerRes.data?.data?.orders || []);
+        setPasses(userRes.data?.data?.tickets || []);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -107,8 +118,8 @@ const BuyerHomePage = () => {
               to="/buyer/tickets"
               className="rounded-2xl bg-slate-900 px-5 py-4 text-white shadow-sm transition hover:bg-slate-800"
             >
-              <p className="text-sm font-semibold">My tickets</p>
-              <p className="mt-1 text-xs text-slate-200">See categories and remaining slots</p>
+              <p className="text-sm font-semibold">My orders</p>
+              <p className="mt-1 text-xs text-slate-200">See categories and assign tickets</p>
             </Link>
             <Link
               to="/buyer/invites"
@@ -119,6 +130,62 @@ const BuyerHomePage = () => {
             </Link>
           </div>
         </div>
+
+        {/* My Passes / QR Codes */}
+        {passes.length > 0 && (
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="flex items-center gap-2 mb-6">
+              <QrCodeIcon className="h-6 w-6 text-slate-900" />
+              <h3 className="text-xl font-bold text-slate-900">My Entry Passes</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {passes.map(pass => {
+                const isConfirmed = pass.attendee?.isConfirmed && pass.attendee?.confirmationStatus === 'confirmed';
+                return (
+                  <div key={pass._id} className="rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200">
+                      <h4 className="font-bold text-slate-900 truncate">{pass.event?.name}</h4>
+                      <p className="text-sm text-slate-600">{formatDate(pass.event?.startDate)}</p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold px-2 py-1 bg-white rounded-md border border-slate-200">
+                          {pass.categoryName}
+                        </span>
+                        {isConfirmed ? (
+                          <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+                            <CheckCircleSolid className="h-4 w-4" /> Active
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
+                            <ClockIcon className="h-4 w-4" /> Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-6 flex-1 flex flex-col items-center justify-center bg-white">
+                      {isConfirmed ? (
+                        <>
+                          <QRCodeDisplay 
+                            value={pass.attendee?.qrCode || pass.attendee?.qrToken || pass.qrToken} 
+                            size={180}
+                            className="mb-3"
+                          />
+                          <p className="text-xs text-slate-500 text-center">Scan at the entrance</p>
+                        </>
+                      ) : (
+                        <div className="text-center py-4">
+                          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                            <QrCodeIcon className="h-8 w-8 text-slate-400" />
+                          </div>
+                          <p className="text-sm text-slate-600">Complete confirmation to view QR code</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </BuyerLayout>
   );

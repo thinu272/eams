@@ -7,6 +7,7 @@ const Ticket = require('../models/Ticket');
 const { protect, requirePermission } = require('../middleware/auth');
 const { triggerCleanupNow } = require('../utils/s3Cleanup');
 const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+const { notifyPhotoRejectionNotification } = require('../services/notificationService');
 
 // Check organiser event access
 const hasEventAccess = async (user, eventId) => {
@@ -165,7 +166,15 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
         photoRejectionReason: reason,
       },
       { new: true },
-    ).select('_id fullName email photoVerificationStatus photoRejectionReason');
+    ).populate('event').select('_id fullName email photoVerificationStatus photoRejectionReason resubmitToken order event phone');
+
+    await notifyPhotoRejectionNotification({
+      attendee: updated,
+      event: updated.event,
+      reason,
+    }).catch((error) => {
+      console.error('PHOTO REJECTION NOTIFY ERROR:', error);
+    });
 
     res.json({ success: true, message: 'Photo rejected successfully.', data: { attendee: updated } });
   } catch (err) {

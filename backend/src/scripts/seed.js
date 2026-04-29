@@ -9,7 +9,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 const demoUsers = [
   {
     name: 'System Administrator',
-    email: 'admin@stadium.eams',
+    email: 'admin@stadium.entrynex.com',
     password: 'Admin@Matrix.Reset',
     role: 'MainAdmin',
     phone: '+94 77 111 2222',
@@ -18,7 +18,7 @@ const demoUsers = [
   },
   {
     name: 'Event Director',
-    email: 'organiser@stadium.eams',
+    email: 'organiser@stadium.entrynex.com',
     password: 'Organiser@Matrix.Reset',
     role: 'MainOrganiser',
     phone: '+94 77 222 3333',
@@ -27,7 +27,7 @@ const demoUsers = [
   },
   {
     name: 'Sector Lead',
-    email: 'suborg@stadium.eams',
+    email: 'suborg@stadium.entrynex.com',
     password: 'SubOrg@Matrix.Reset',
     role: 'SubOrganiser',
     phone: '+94 77 333 4444',
@@ -36,7 +36,7 @@ const demoUsers = [
   },
   {
     name: 'Gate Controller',
-    email: 'staff@stadium.eams',
+    email: 'staff@stadium.entrynex.com',
     password: 'Staff@Matrix.Reset',
     role: 'Staff',
     phone: '+94 77 444 5555',
@@ -45,7 +45,7 @@ const demoUsers = [
   },
   {
     name: 'Field Volunteer',
-    email: 'volunteer@stadium.eams',
+    email: 'volunteer@stadium.entrynex.com',
     password: 'Volunteer@Matrix.Reset',
     role: 'Volunteer',
     phone: '+94 77 555 6666',
@@ -54,7 +54,7 @@ const demoUsers = [
   },
   {
     name: 'Financial Auditor',
-    email: 'auditor@stadium.eams',
+    email: 'auditor@stadium.entrynex.com',
     password: 'Auditor@Matrix.Reset',
     role: 'Auditor',
     phone: '+94 77 666 7777',
@@ -63,7 +63,7 @@ const demoUsers = [
   },
   {
     name: 'VVIP Attendee',
-    email: 'attendee@stadium.eams',
+    email: 'attendee@stadium.entrynex.com',
     password: 'Attendee@Matrix.Reset',
     role: 'Attendee',
     phone: '+94 77 777 8888',
@@ -79,9 +79,9 @@ const seedDatabase = async () => {
     console.log('Connection Established.');
 
     console.log('Flushing existing demo ecosystem...');
-    // Clear all @stadium.eams users to start fresh or by explicit email
-    await User.deleteMany({ email: { $regex: '@stadium.eams$' } });
-    await User.deleteMany({ email: { $regex: '@eams.com$' } }); // Clear old ones too
+    // Clear all @stadium.entrynex.com users to start fresh or by explicit email
+    await User.deleteMany({ email: { $regex: '@stadium.entrynex.com$' } });
+    await User.deleteMany({ email: { $regex: '@entrynex.com$' } }); // Clear old ones too
 
     console.log('Initializing Premium Identities...');
     for (const user of demoUsers) {
