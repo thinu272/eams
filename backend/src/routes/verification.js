@@ -117,14 +117,28 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
         photoVerifiedBy: req.user._id,
         photoVerifiedAt: new Date(),
         photoRejectionReason: null,
+        // Auto-confirm attendee once photo is approved
+        confirmationStatus: 'confirmed',
+        isConfirmed: true,
+        confirmedAt: new Date(),
+        confirmedBy: 'organiser',
       },
       { new: true },
-    ).select('_id fullName email photoVerificationStatus order');
+    ).populate('event').select('_id fullName email phone photoVerificationStatus confirmationStatus isConfirmed order event qrToken qrCode');
 
     // Keep ticket lifecycle in sync once attendee is verified.
     await Ticket.findOneAndUpdate({ attendee: attendeeId }, { status: 'CONFIRMED' });
 
-    // Trigger final confirmation email workflow only when all slots in order are verified.
+    // Trigger specific attendee notification
+    const { notifyFinalTicket } = require('../services/notificationService');
+    await notifyFinalTicket({
+      attendee: updated,
+      event: updated.event,
+      phone: updated.phone,
+      notificationChannel: 'both',
+    }).catch((err) => console.error('INDIVIDUAL FINAL NOTIFY ERROR:', err));
+
+    // Trigger final confirmation email workflow for order context
     const finalConfirmation = await processOrderFinalConfirmation({ orderId: updated.order });
 
     res.json({

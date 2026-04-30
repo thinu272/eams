@@ -111,7 +111,6 @@ app.use('/api/sub', require('./routes/sub'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/upload', require('./routes/upload'));
-app.use('/api/tickets', require('./routes/tickets_download'));
 
 // --- DATABASE CONNECTION ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";

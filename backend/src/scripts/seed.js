@@ -14,6 +14,7 @@ const demoUsers = [
     role: 'MainAdmin',
     phone: '+94 77 111 2222',
     status: 'Active',
+    isVerified: true,
     permissions: { all: true }
   },
   {
@@ -23,6 +24,7 @@ const demoUsers = [
     role: 'MainOrganiser',
     phone: '+94 77 222 3333',
     status: 'Active',
+    isVerified: true,
     permissions: { canManageEvents: true }
   },
   {
@@ -32,6 +34,7 @@ const demoUsers = [
     role: 'SubOrganiser',
     phone: '+94 77 333 4444',
     status: 'Active',
+    isVerified: true,
     permissions: { canScanTickets: true, canViewLogs: true }
   },
   {
@@ -41,6 +44,7 @@ const demoUsers = [
     role: 'Staff',
     phone: '+94 77 444 5555',
     status: 'Active',
+    isVerified: true,
     permissions: { canScanTickets: true }
   },
   {
@@ -50,6 +54,7 @@ const demoUsers = [
     role: 'Volunteer',
     phone: '+94 77 555 6666',
     status: 'Active',
+    isVerified: true,
     permissions: { canScanTickets: true }
   },
   {
@@ -59,6 +64,7 @@ const demoUsers = [
     role: 'Auditor',
     phone: '+94 77 666 7777',
     status: 'Active',
+    isVerified: true,
     permissions: { canViewReports: true }
   },
   {
@@ -68,6 +74,7 @@ const demoUsers = [
     role: 'Attendee',
     phone: '+94 77 777 8888',
     status: 'Active',
+    isVerified: true,
     permissions: {}
   }
 ];

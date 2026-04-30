@@ -38,6 +38,25 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
   const from = process.env.EMAIL_FROM || 'noreply@entrynex.com';
   const sendGrid = getSendGridClient();
 
+  // Add Logo as CID attachment for all emails
+  const path = require('path');
+  const fs = require('fs');
+  const logoPath = path.join(process.cwd(), '../frontend/public/logo.png');
+  let logoAttachment = null;
+  
+  if (fs.existsSync(logoPath)) {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoAttachment = {
+      content: logoBuffer.toString('base64'),
+      filename: 'logo.png',
+      type: 'image/png',
+      disposition: 'inline',
+      contentId: 'logo',
+      content_id: 'logo',
+    };
+    attachments.push(logoAttachment);
+  }
+
   if (sendGrid) {
     const msg = {
       to,
@@ -47,21 +66,18 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
       attachments,
     };
 
-    if (templateId) {
-      msg.templateId = templateId;
-      msg.dynamicTemplateData = dynamicTemplateData;
-      delete msg.subject;
-      delete msg.html;
-    }
-
     await sendGrid.send(msg);
     return;
   }
 
   const transporter = createTransporter();
   const smtpAttachments = attachments.map((attachment) => ({
-    ...attachment,
+    filename: attachment.filename,
+    content: attachment.content,
     encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
+    cid: attachment.contentId || attachment.cid,
+    contentType: attachment.type || attachment.contentType,
+    disposition: attachment.disposition,
   }));
   await transporter.sendMail({
     from,
@@ -97,7 +113,8 @@ const baseTemplate = (content) => `
 <body>
 <div class="container">
   <div class="header">
-    <h1>ENTRYNEX</h1>
+    <img src="cid:logo" alt="ENTRYNEX" style="height: 60px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;">
+    <h1 style="display: none;">ENTRYNEX</h1>
   </div>
   <div class="body">${content}</div>
   <div class="footer">

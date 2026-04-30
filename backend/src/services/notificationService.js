@@ -90,7 +90,7 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
   await Promise.all(tasks);
 };
 
-const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel }) => {
+const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, force = false }) => {
   const channels = parseChannels(notificationChannel);
   let deliveryResult = { delivered: false, skipped: true, reason: 'email_not_requested' };
 
@@ -99,6 +99,7 @@ const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel }
       deliveryResult = await deliverAttendeeTicketEmail({
         attendee,
         event,
+        force,
       });
     } catch (error) {
       console.error('FINAL EMAIL ERROR:', error);

@@ -111,8 +111,11 @@ router.post('/login', loginLimiter, [
     }
     
     // Check Email Verification
-    // Bypassing for MainAdmin or for backward compatibility if isVerified is undefined
-    if (user.isVerified === false && user.role !== 'MainAdmin') {
+    // Bypassing for administrative and operational roles (MainAdmin, MainOrganiser, SubOrganiser, Staff, Volunteer, Auditor)
+    const INTERNAL_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor'];
+    const isInternalRole = INTERNAL_ROLES.includes(user.role);
+
+    if (user.isVerified === false && !isInternalRole) {
       return res.status(403).json({ success: false, message: 'Please verify your email address to log in.' });
     }
 

@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
+const axios = require('axios');
 
 const formatVenue = (venue) => {
   if (!venue) return 'TBA';
@@ -43,26 +44,43 @@ const buildBuffer = (draw) => new Promise(async (resolve, reject) => {
 const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(async (doc) => {
   const primaryColor = '#0a1128';
   const secondaryColor = '#64748b';
+  const accentColor = '#2684ff';
   const ticketCategory = ticket?.categoryName || attendee.categoryName || 'Standard';
+  
+  // 1. Generate QR Code
   const qrBuffer = await QRCode.toBuffer(attendee.qrToken, {
     errorCorrectionLevel: 'H',
     margin: 1,
     color: { dark: '#000000', light: '#ffffff' },
   });
 
+  // 2. Fetch Attendee Photo if available
+  let photoBuffer = null;
+  if (attendee.photo) {
+    try {
+      const response = await axios.get(attendee.photo, { responseType: 'arraybuffer' });
+      photoBuffer = Buffer.from(response.data);
+    } catch (error) {
+      console.error('PDF_PHOTO_FETCH_ERROR:', error.message);
+    }
+  }
+
+  // Header Section
   doc.rect(0, 0, doc.page.width, 100).fill(primaryColor);
   doc.fillColor('#ffffff').fontSize(24).text('ENTRYNEX TICKET', 50, 40);
-  doc.fontSize(10).text('Event Access Management System', 50, 70);
+  doc.fontSize(10).text('Verified Event Entry Pass', 50, 70);
 
+  // Main Content
   doc.moveDown(4);
   doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event Ticket', { align: 'center' });
   doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
 
+  // Left Column: Details
   doc.fillColor(secondaryColor).fontSize(10).text('ATTENDEE', 50, 180);
   doc.fillColor('#000000').fontSize(14).text(attendee.fullName || 'Attendee', 50, 195);
 
   doc.fillColor(secondaryColor).fontSize(10).text('CATEGORY', 50, 230);
-  doc.fillColor('#000000').fontSize(14).text(ticketCategory, 50, 245);
+  doc.fillColor(accentColor).fontSize(14).text(ticketCategory.toUpperCase(), 50, 245);
 
   doc.fillColor(secondaryColor).fontSize(10).text('DATE & TIME', 50, 280);
   doc.fillColor('#000000').fontSize(12).text(`${formatEventDate(event.startDate)} at ${formatEventTime(event.startDate)}`, 50, 295, {
@@ -72,12 +90,28 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   doc.fillColor(secondaryColor).fontSize(10).text('VENUE', 50, 345);
   doc.fillColor('#000000').fontSize(12).text(formatVenue(event.venue), 50, 360, { width: 230 });
 
-  doc.image(qrBuffer, 345, 190, { width: 180 });
-  doc.fillColor(secondaryColor).fontSize(9).text('Present this QR at entry for scanning.', 325, 385, {
+  // Right Column: Photo and QR
+  if (photoBuffer) {
+    // Circle or rounded rect for photo
+    doc.save();
+    doc.roundedRect(365, 180, 140, 140, 15).clip();
+    doc.image(photoBuffer, 365, 180, { width: 140, height: 140, cover: [140, 140] });
+    doc.restore();
+    doc.roundedRect(365, 180, 140, 140, 15).stroke('#e2e8f0');
+    
+    // QR Code below photo
+    doc.image(qrBuffer, 385, 335, { width: 100 });
+  } else {
+    // QR Code centered in right col if no photo
+    doc.image(qrBuffer, 345, 190, { width: 180 });
+  }
+
+  doc.fillColor(secondaryColor).fontSize(9).text('Present this QR at entry for scanning.', 325, 450, {
     align: 'center',
     width: 220,
   });
 
+  // Footer / Instructions
   doc.rect(0, 750, doc.page.width, 92).fill('#f8fafc');
   doc.fillColor(secondaryColor).fontSize(9).text('IMPORTANT INSTRUCTIONS', 50, 765);
   doc.text('- Please present this PDF at the entrance gate.', 50, 782);

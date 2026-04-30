@@ -49,7 +49,17 @@ const statusColor = {
 };
 
 const emptyAttendee = { fullName: '', email: '', phone: '', nationalId: '', categoryId: '', notes: '' };
-const emptyCategory = { name: '', description: '', price: 0, capacity: 0, allowedZones: [], benefits: [] };
+const emptyCategory = { 
+  name: '', 
+  description: '', 
+  price: 0, 
+  capacity: 0, 
+  allowedZones: [], 
+  benefits: [],
+  isPrivate: false,
+  maxUsage: null,
+  assignedSubOrganisers: []
+};
 const emptySubOrg = { 
   name: '', 
   email: '', 
@@ -169,6 +179,10 @@ const OrganiserDashboard = () => {
       });
       setZoneAssignments(zoneMap);
     } catch (error) {
+      if (error.response?.status === 404) {
+        localStorage.removeItem('lastSelectedEventId');
+        setEventId('');
+      }
       toast.error(error.response?.data?.message || 'Failed to load organiser workspace');
     } finally {
       setLoading(false);
@@ -204,8 +218,8 @@ const OrganiserDashboard = () => {
     };
 
     const onEvent = (event) => {
-      const nextEventId = String(event.detail || '');
-      if (!nextEventId) return;
+      const nextEventId = event.detail ? String(event.detail) : '';
+      if (!nextEventId || nextEventId === 'undefined') return;
       setEventId(nextEventId);
       localStorage.setItem('lastSelectedEventId', nextEventId);
     };
@@ -1073,12 +1087,92 @@ const OrganiserDashboard = () => {
       </Modal>
 
       <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Category' : 'Add Category'}>
-        {categoryModal && <div className="space-y-3"><input value={categoryModal.name || ''} onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Category name" />
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">{selectedEvent?.settings?.currency || 'LKR'}</span>
-            <input type="number" value={categoryModal.price || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border pl-16 pr-4 py-2" placeholder="Price" />
+        {categoryModal && (
+          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
+            <div className="space-y-3">
+              <label className="block space-y-1">
+                <span className="text-xs font-bold uppercase text-slate-500">Category Name</span>
+                <input value={categoryModal.name || ''} onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="e.g. VIP Gold" />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-xs font-bold uppercase text-slate-500">Price ({selectedEvent?.settings?.currency || 'LKR'})</span>
+                  <input type="number" value={categoryModal.price || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-bold uppercase text-slate-500">Capacity</span>
+                  <input type="number" value={categoryModal.capacity || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!categoryModal.isPrivate}
+                    onChange={(e) => setCategoryModal((current) => ({ ...current, isPrivate: e.target.checked }))}
+                    className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-indigo-900">Private Ticket</span>
+                    <span className="text-[10px] text-indigo-600/70 leading-tight">Requires a special access code to view and purchase.</span>
+                  </div>
+                </label>
+
+                {categoryModal.isPrivate && (
+                  <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-indigo-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase">Access Code</span>
+                      <span className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-mono font-bold text-white tracking-widest">
+                        {categoryModal.accessCode || 'AUTO-GEN'}
+                      </span>
+                    </div>
+                    {categoryModal.id && (
+                      <p className="mt-2 text-[10px] text-slate-400 italic">
+                        Access code is fixed once created. Only Sub-Organisers can regenerate codes if permitted.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <span className="text-xs font-bold uppercase text-slate-500">Management Delegation</span>
+                <p className="mt-1 text-[10px] text-slate-400">Assign specific sub-organisers to manage this category's attendees and private status.</p>
+                
+                <div className="mt-3 space-y-2">
+                  {teamMembers.filter(m => m.role === 'SubOrganiser').map((member) => (
+                    <label key={member._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-2 text-sm hover:bg-slate-50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={(categoryModal.assignedSubOrganisers || []).includes(member._id)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...new Set([...(categoryModal.assignedSubOrganisers || []), member._id])]
+                            : (categoryModal.assignedSubOrganisers || []).filter(id => id !== member._id);
+                          setCategoryModal(current => ({ ...current, assignedSubOrganisers: next }));
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-700">{member.name}</span>
+                        <span className="text-[10px] text-slate-500">{member.email}</span>
+                      </div>
+                    </label>
+                  ))}
+                  {teamMembers.filter(m => m.role === 'SubOrganiser').length === 0 && (
+                    <p className="text-xs italic text-slate-400 py-2">No sub-organisers found in your team.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <Button className="w-full shadow-lg shadow-blue-500/20" onClick={saveCategory}>
+              {categoryModal.id ? 'Save Changes' : 'Create Category'}
+            </Button>
           </div>
-          <input type="number" value={categoryModal.capacity || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border px-4 py-2" placeholder="Capacity" /><Button onClick={saveCategory}>Save Category</Button></div>}
+        )}
       </Modal>
 
       <Modal open={subOrgModal} onClose={() => setSubOrgModal(false)} title={subOrgForm._id ? 'Manage Team Member Access' : 'Create Team Member'}>

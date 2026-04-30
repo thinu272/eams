@@ -365,6 +365,9 @@ const CheckoutPage = () => {
                           <p className="font-black text-slate-900 uppercase tracking-tight">{category.name}</p>
                           <p className="mt-1 text-sm font-bold text-slate-400 uppercase tracking-widest">
                             {selectedTickets[category.id]} Units × {formatCurrency(category.price)}
+                            <span className="ml-2 block text-[10px] text-slate-500">
+                               Remaining: {Math.max(0, category.capacity - (category.sold || 0))} seats
+                            </span>
                           </p>
                         </div>
                         <p className="font-black" style={{ color: themeColor }}>

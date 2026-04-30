@@ -39,6 +39,7 @@ const categorySchema = new mongoose.Schema({
   accessCode: { type: String },
   accessCodeHash: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedSubOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   usageCount: { type: Number, default: 0 },
   maxUsage: { type: Number },
 }, { _id: false });

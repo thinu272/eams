@@ -117,7 +117,6 @@ const AppRoutes = () => (
     <Route path="/resubmit/:token" element={<ResubmitPage />} />
     <Route path="/checkout" element={<CheckoutPage />} />
     <Route path="/order/:token/confirm" element={<OrderConfirmationPage />} />
-    <Route path="/attendee/confirm/:token" element={<AttendeeConfirmPage />} />
     <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
     <Route path="/dashboard/enhanced" element={<Protected><UserDashboardPage /></Protected>} />
     <Route path="/buyer/dashboard" element={<Protected roles={['BUYER']}><BuyerDashboardPage /></Protected>} />
@@ -130,7 +129,6 @@ const AppRoutes = () => (
     <Route path="/attendee/dashboard" element={<Protected roles={['BUYER']}><AttendeeDashboardPage /></Protected>} />
                 <Route path="/attendee/tickets" element={<Protected roles={['BUYER']}><AttendeeTicketsPage /></Protected>} />
                 <Route path="/attendee/ticket/:ticketId" element={<Protected roles={['BUYER']}><AttendeeTicketViewPage /></Protected>} />
-                <Route path="/confirm/:token" element={<AttendeeConfirmationPage />} />
                 <Route path="/attendee/events" element={<Protected roles={['BUYER']}><AttendeeEventsPage /></Protected>} />
                 <Route path="/attendee/profile" element={<Protected roles={['BUYER']}><AttendeeProfilePage /></Protected>} />
                 <Route path="/attendee/notifications" element={<Protected roles={['BUYER']}><AttendeeNotificationsPage /></Protected>} />

@@ -304,10 +304,25 @@ const EventDetailPage = () => {
                           {formatCurrency(category.price)}
                         </p>
                         
-                        <div className="pt-6 border-t border-slate-100">
-                          <h4 className="text-sm font-bold uppercase tracking-wide text-slate-900 mb-4 flex items-center gap-2">
-                             <CheckCircleIcon className="h-5 w-5" style={{ color: themeColor }} /> Included Zones
-                          </h4>
+                        <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold uppercase tracking-wide text-slate-900 flex items-center gap-2">
+                               <CheckCircleIcon className="h-5 w-5" style={{ color: themeColor }} /> Included Zones
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${
+                                (category.capacity - category.sold) <= 0 
+                                  ? 'bg-red-100 text-red-600' 
+                                  : (category.capacity - category.sold) < 50 
+                                    ? 'bg-amber-100 text-amber-600' 
+                                    : 'bg-emerald-100 text-emerald-600'
+                              }`}>
+                                {(category.capacity - category.sold) <= 0 
+                                  ? 'Sold Out' 
+                                  : `${category.capacity - category.sold} Seats Left`}
+                              </span>
+                            </div>
+                          </div>
                           <div className="flex flex-wrap gap-2">
                             {category.allowedZones && category.allowedZones.length > 0 ? (
                               category.allowedZones.map(zoneId => {
@@ -486,6 +501,9 @@ const EventDetailPage = () => {
                         <p className={`mt-2 text-2xl font-black ${isLocked ? 'text-slate-300' : 'text-blue-700'}`}>
                           {formatCurrency(category.price)}
                         </p>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Availability: {Math.max(0, category.capacity - (category.sold || 0))} / {category.capacity}
+                        </p>
                       </div>
 
                       {isLocked ? (
@@ -499,6 +517,10 @@ const EventDetailPage = () => {
                         >
                           Enter Code
                         </button>
+                      ) : (category.capacity - (category.sold || 0)) <= 0 ? (
+                        <div className="rounded-xl bg-red-50 px-6 py-3 border border-red-100">
+                          <span className="text-sm font-black uppercase tracking-widest text-red-600">Sold Out</span>
+                        </div>
                       ) : (
                         <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-100/50">
                           <button
@@ -515,9 +537,9 @@ const EventDetailPage = () => {
                           <button
                             type="button"
                             onClick={() =>
-                              handleQuantityChange(categoryId, Math.min(selected + 1, maxSelectable))
+                              handleQuantityChange(categoryId, Math.min(selected + 1, Math.min(maxSelectable, category.capacity - (category.sold || 0))))
                             }
-                            disabled={selected >= maxSelectable}
+                            disabled={selected >= maxSelectable || selected >= (category.capacity - (category.sold || 0))}
                             className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-200 text-xl font-bold text-slate-900 shadow-sm transition-all hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             +

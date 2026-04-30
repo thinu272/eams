@@ -23,20 +23,20 @@ const seed = async () => {
   const organiser = await User.create({
     name: 'Roshan Perera', email: 'organiser@stadium.entrynex.com', password: 'Organiser@Matrix.Reset',
     role: 'main_organiser', isActive: true, createdBy: admin._id,
-    phone: '+94722222222'
+    phone: '+94722222222', isVerified: true
   });
 
   const subOrg = await User.create({
     name: 'Nimali Silva', email: 'suborg@stadium.entrynex.com', password: 'SubOrg@Matrix.Reset',
     role: 'sub_organiser', isActive: true, createdBy: organiser._id,
-    phone: '+94733333333',
+    phone: '+94733333333', isVerified: true,
     permissions: { canAddAttendees: true, canBulkUpload: true, canVerifyPhotos: true, canInviteAttendees: true, canViewReports: true, canManageStaff: false },
   });
 
   const staff = await User.create({
     name: 'Kamal Bandara', email: 'staff@stadium.entrynex.com', password: 'Staff@Matrix.Reset',
     role: 'staff', isActive: true, assignedGates: ['Gate A', 'Gate B'], createdBy: organiser._id,
-    phone: '+94744444444'
+    phone: '+94744444444', isVerified: true
   });
 
   const event = await Event.create({
@@ -89,13 +89,13 @@ const seed = async () => {
   const auditor = await User.create({
     name: 'Dilshan Silva', email: 'auditor@stadium.entrynex.com', password: 'Auditor@Matrix.Reset',
     role: 'auditor', isActive: true, createdBy: organiser._id,
-    phone: '+94755555555'
+    phone: '+94755555555', isVerified: true
   });
 
   const attendeeUser = await User.create({
     name: 'Thinu Upadya', email: 'attendee@stadium.entrynex.com', password: 'Attendee@Matrix.Reset',
     role: 'attendee', isActive: true,
-    phone: '+94766666666'
+    phone: '+94766666666', isVerified: true
   });
 
   await User.updateMany({ _id: { $in: [organiser._id, subOrg._id, staff._id, auditor._id] } }, { $addToSet: { assignedEvents: event._id } });

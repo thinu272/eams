@@ -47,6 +47,17 @@ const PublicEventCard = ({ event }) => {
           </Badge>
         </div>
 
+        {categories.length > 0 && categories.every(c => c.sold >= c.capacity) && (
+          <div className="absolute right-4 top-4">
+            <Badge
+              color="red"
+              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg bg-red-600 border-none"
+            >
+              Sold Out
+            </Badge>
+          </div>
+        )}
+
         {event.branding?.logoImage && (
           <div className="absolute bottom-4 left-4 h-12 w-12 overflow-hidden rounded-xl bg-white p-1.5 shadow-xl ring-2 ring-white/20">
             <img
