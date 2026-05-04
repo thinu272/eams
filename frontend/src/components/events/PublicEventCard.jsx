@@ -20,64 +20,77 @@ const PublicEventCard = ({ event }) => {
   return (
     <Link
       to={`/events/${event.slug || event._id}`}
-      className="group flex h-full min-h-[460px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-900/10"
+      className="group card-premium flex h-full min-h-[460px] flex-col p-0 overflow-hidden"
     >
-      <div className="relative aspect-[16/11] overflow-hidden bg-slate-100">
+      <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
         {eventImage ? (
           <img
             src={buildAssetUrl(eventImage)}
             alt={event.name}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-slate-800 text-5xl font-black uppercase text-slate-400">
+          <div className="flex h-full w-full items-center justify-center bg-slate-900 text-5xl font-black uppercase text-slate-700">
             {event.name.substring(0, 2)}
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/65 via-slate-950/10 to-transparent"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
 
-        <div className="absolute left-4 top-4">
-          <Badge
-            color="sky"
-            className="border-none px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white shadow-lg"
-            style={{ backgroundColor: themeColor }}
+        <div className="absolute left-5 top-5">
+          <div
+            className="rounded-full px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-lg backdrop-blur-md bg-white/20 border border-white/30"
           >
             {event.eventType || 'Cricket Match'}
-          </Badge>
+          </div>
         </div>
 
         {categories.length > 0 && categories.every(c => c.sold >= c.capacity) && (
-          <div className="absolute right-4 top-4">
-            <Badge
-              color="red"
-              className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg bg-red-600 border-none"
+          <div className="absolute right-5 top-5">
+            <div
+              className="rounded-full bg-rose-600 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-rose-900/40"
             >
               Sold Out
-            </Badge>
+            </div>
           </div>
         )}
 
-        {event.branding?.logoImage && (
-          <div className="absolute bottom-4 left-4 h-12 w-12 overflow-hidden rounded-xl bg-white p-1.5 shadow-xl ring-2 ring-white/20">
-            <img
-              src={buildAssetUrl(event.branding.logoImage)}
-              alt={`${event.name} logo`}
-              className="h-full w-full object-contain"
-            />
+        <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
+           {event.branding?.logoImage && (
+            <div className="h-14 w-14 overflow-hidden rounded-2xl bg-white/90 p-2 shadow-2xl backdrop-blur-sm border border-white/50">
+              <img
+                src={buildAssetUrl(event.branding.logoImage)}
+                alt={`${event.name} logo`}
+                className="h-full w-full object-contain"
+              />
+            </div>
+          )}
+          <div className="text-right">
+             <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
+              Tickets From
+            </span>
+            <span className="mt-1 block text-lg font-black text-white">
+              {minPrice > 0
+                ? `${event.settings?.currency || 'LKR'} ${minPrice.toLocaleString()}`
+                : hasFree
+                  ? 'Free'
+                  : 'TBD'}
+            </span>
           </div>
-        )}
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col p-6">
-        <h3 className="line-clamp-2 min-h-[4rem] text-2xl font-black leading-tight text-slate-900 transition-colors group-hover:text-blue-700 lg:text-[2rem]">
+        <h3 className="line-clamp-2 min-h-[4rem] text-2xl font-black leading-tight text-slate-900 transition-colors group-hover:text-brand-main">
           {event.name}
         </h3>
 
-        <div className="mt-6 space-y-3.5">
-          <div className="flex items-start gap-3 text-[15px] font-medium text-slate-600">
-            <CalendarDaysIcon className="h-5 w-5 flex-shrink-0" style={{ color: themeColor }} />
-            <span className="leading-tight">
+        <div className="mt-6 flex flex-col gap-3">
+          <div className="flex items-center gap-3 text-sm font-semibold text-slate-500">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-brand-main">
+               <CalendarDaysIcon className="h-4 w-4" />
+            </div>
+            <span>
               {event.startDate
                 ? new Date(event.startDate).toLocaleDateString('en-US', {
                     weekday: 'short',
@@ -89,32 +102,18 @@ const PublicEventCard = ({ event }) => {
             </span>
           </div>
 
-          <div className="flex items-start gap-3 text-[15px] font-medium text-slate-600">
-            <MapPinIcon className="h-5 w-5 flex-shrink-0" style={{ color: themeColor }} />
-            <span className="line-clamp-2 leading-tight">{event.venue?.name || 'TBD'}</span>
+          <div className="flex items-center gap-3 text-sm font-semibold text-slate-500">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-brand-main">
+               <MapPinIcon className="h-4 w-4" />
+            </div>
+            <span className="line-clamp-1">{event.venue?.name || 'TBD'}</span>
           </div>
         </div>
 
-        <div className="mt-auto flex items-end justify-between border-t border-slate-100 pt-5">
-          <div>
-            <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-              Tickets From
-            </span>
-            <span className="mt-1.5 block text-[1.05rem] font-black text-slate-900">
-              {minPrice > 0
-                ? `${event.settings?.currency || 'LKR'} ${minPrice.toLocaleString()}`
-                : hasFree
-                  ? 'Free'
-                  : 'TBD'}
-            </span>
+        <div className="mt-8">
+           <div className="btn-premium w-full text-center py-3 bg-slate-900 text-sm tracking-widest uppercase font-black group-hover:bg-brand-main group-hover:shadow-brand-main/40 transition-all duration-500">
+            View Experience
           </div>
-
-          <span
-            className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-opacity group-hover:opacity-95"
-            style={{ backgroundColor: themeColor }}
-          >
-            Details
-          </span>
         </div>
       </div>
     </Link>

@@ -867,25 +867,36 @@ router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req
     const isMainOrganiser = hasRolePower(req.user.role, ROLES.MAIN_ORGANISER);
     let users = [];
     
+    const query = {
+      assignedEvents: req.scopedEvent._id,
+      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] }
+    };
+
     if (isMainOrganiser) {
-      // Main Organisers see all sub-organisers assigned to this event
-      users = req.scopedEvent.subOrganisers || [];
+      // Main Organisers see everyone assigned to this event
+      users = await User.find(query)
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
+        .populate('customRole')
+        .lean();
     } else {
       // Sub-Organisers see:
       // 1. team members they created for this event
-      // 2. existing members they assigned into this event, limited to their zone scope
+      // 2. existing members assigned to the event that share their zone scope
       const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-      users = await User.find({
-        assignedEvents: req.scopedEvent._id,
-        role: { $in: [ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
-        $or: [
+
+      if (myZoneIds.length > 0) {
+        query.$or = [
           { createdBy: req.user._id },
-          myZoneIds.length
-            ? { 'responsibilities.zoneIds': { $in: myZoneIds } }
-            : { _id: req.user._id },
-        ],
-      }).select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy').populate('customRole').lean();
+          { 'responsibilities.zoneIds': { $in: myZoneIds } }
+        ];
       }
+      // If global (no zones), they see all members assigned to the event with these roles
+
+      users = await User.find(query)
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
+        .populate('customRole')
+        .lean();
+    }
       
       res.json({ success: true, data: { users } });
     } catch (err) {
@@ -1595,6 +1606,33 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     const confirmationFlow = parseJson(req.body.confirmationFlow);
     const accessRules = parseJson(req.body.accessRules);
     const paymentMethods = parseJson(req.body.paymentMethods);
+    const matchDetails = parseJson(req.body.matchDetails);
+    const concertDetails = parseJson(req.body.concertDetails);
+    const conferenceDetails = parseJson(req.body.conferenceDetails);
+
+    if (matchDetails) {
+      event.matchDetails = {
+        ...(event.matchDetails?.toObject ? event.matchDetails.toObject() : event.matchDetails || {}),
+        ...matchDetails
+      };
+      event.markModified('matchDetails');
+    }
+
+    if (concertDetails) {
+      event.concertDetails = {
+        ...(event.concertDetails?.toObject ? event.concertDetails.toObject() : event.concertDetails || {}),
+        ...concertDetails
+      };
+      event.markModified('concertDetails');
+    }
+
+    if (conferenceDetails) {
+      event.conferenceDetails = {
+        ...(event.conferenceDetails?.toObject ? event.conferenceDetails.toObject() : event.conferenceDetails || {}),
+        ...conferenceDetails
+      };
+      event.markModified('conferenceDetails');
+    }
 
     if (basicInfo) {
       event.name = basicInfo.name ?? event.name;

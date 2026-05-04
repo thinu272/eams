@@ -251,38 +251,31 @@ const SubOrgTeam = () => {
                     <div className="text-xs text-slate-400">{user.phone}</div>
                   </Td>
                   <Td>
-                    {['Staff', 'Volunteer'].includes(user.role) ? (
-                      <>
-                        <div className="flex flex-wrap gap-1">
-                          {user.assignedGates?.length > 0 && (
-                            <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry Point</span>
-                          )}
-                          {user.assignedZones?.length > 0 && (
-                            <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone Checkpoint</span>
-                          )}
-                          {!user.assignedGates?.length && !user.assignedZones?.length && (
-                            <span className="text-xs text-slate-400 italic">Not set</span>
-                          )}
-                        </div>
-                        {user.assignedGates?.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {user.assignedGates.map((gate) => (
-                              <span key={gate} className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">{gate}</span>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">Not applicable</span>
+                    <div className="flex flex-wrap gap-1">
+                      {user.assignedGates?.length > 0 && (
+                        <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry Point</span>
+                      )}
+                      {user.assignedZones?.length > 0 && (
+                        <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone Checkpoint</span>
+                      )}
+                      {!user.assignedGates?.length && !user.assignedZones?.length && (
+                        <span className="text-xs text-slate-400 italic">No direct scope</span>
+                      )}
+                    </div>
+                    {user.assignedGates?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {user.assignedGates.map((gate) => (
+                          <span key={gate} className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">{gate}</span>
+                        ))}
+                      </div>
                     )}
                   </Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
-                      {(['Staff', 'Volunteer'].includes(user.role) ? (user.assignedZones || user.responsibilities?.zoneIds || []) : []).map(zid => (
+                      {(user.assignedZones || user.responsibilities?.zoneIds || []).map(zid => (
                         <span key={zid} className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] text-indigo-700 font-medium">{zid}</span>
                       ))}
-                      {!['Staff', 'Volunteer'].includes(user.role) && <span className="text-xs text-slate-400 italic">Not applicable</span>}
-                      {['Staff', 'Volunteer'].includes(user.role) && (!(user.assignedZones || user.responsibilities?.zoneIds)?.length) && <span className="text-xs text-slate-400 italic">No specific zone</span>}
+                      {(!(user.assignedZones || user.responsibilities?.zoneIds)?.length) && <span className="text-xs text-slate-400 italic">No specific zone</span>}
                     </div>
                   </Td>
                   <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>

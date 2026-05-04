@@ -104,6 +104,21 @@ const eventSchema = new mongoose.Schema({
     series: { type: String },
   },
 
+  // Details for concert
+  concertDetails: {
+    mainArtist: { type: String },
+    supportingBands: [{ type: String }],
+    genre: { type: String },
+    tourName: { type: String },
+  },
+
+  // Details for conference
+  conferenceDetails: {
+    theme: { type: String },
+    speakers: [{ type: String }],
+    scheduleUrl: { type: String },
+  },
+
   // Assigned personnel
   mainOrganiser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   subOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

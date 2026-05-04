@@ -400,7 +400,7 @@ const AttendeeIdentityConfirmPage = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Phone Number *</label>
-                    <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="+947XXXXXXXX" required />
+                    <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="+1234567890" required />
                   </div>
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Identity Photo (Selfie) *</label>

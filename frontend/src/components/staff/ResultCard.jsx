@@ -34,19 +34,19 @@ const ResultCard = ({ state = 'idle', attendee, message, detail, meta = [], acti
   const Icon = tone.icon;
 
   return (
-    <section className={`rounded-[28px] border p-6 shadow-sm transition-colors ${tone.wrapper}`}>
-      <div className="flex items-start justify-between gap-4">
+    <section className={`rounded-[24px] lg:rounded-[28px] border p-4 lg:p-6 shadow-sm transition-colors ${tone.wrapper}`}>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${tone.badge}`}>
-            <Icon className="h-9 w-9" />
+          <div className={`flex h-12 w-12 lg:h-16 lg:w-16 shrink-0 items-center justify-center rounded-2xl ${tone.badge}`}>
+            <Icon className="h-7 w-7 lg:h-9 lg:w-9" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] opacity-60">Scan Result</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight">{message || tone.title}</h2>
-            <p className="mt-2 text-sm font-medium opacity-80">{detail || 'Scan a ticket to validate event access.'}</p>
+            <p className="text-[10px] lg:text-xs font-black uppercase tracking-[0.25em] opacity-60">Scan Result</p>
+            <h2 className="mt-1 lg:mt-2 text-xl lg:text-3xl font-black tracking-tight">{message || tone.title}</h2>
+            <p className="mt-1 lg:mt-2 text-xs lg:text-sm font-medium opacity-80">{detail || 'Scan a ticket to validate event access.'}</p>
           </div>
         </div>
-        <span className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.2em] ${tone.badge}`}>
+        <span className={`rounded-full px-4 py-1.5 lg:py-2 text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] self-start sm:self-center ${tone.badge}`}>
           {state === 'success' ? 'Green' : state === 'error' ? 'Red' : 'Idle'}
         </span>
       </div>

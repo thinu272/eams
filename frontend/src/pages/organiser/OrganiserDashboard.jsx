@@ -139,7 +139,7 @@ const OrganiserDashboard = () => {
         basicInfo: {
           name: nextData?.event?.name || '',
           description: nextData?.event?.description || '',
-          eventType: nextData?.event?.eventType || 'other',
+          eventType: nextData?.event?.eventType || 'cricket',
           venue: {
             name: nextData?.event?.venue?.name || '',
             address: nextData?.event?.venue?.address || '',
@@ -149,6 +149,9 @@ const OrganiserDashboard = () => {
           },
           currency: nextData?.settings?.currency || 'LKR',
         },
+        matchDetails: nextData?.event?.matchDetails || { teamA: '', teamB: '', matchType: '', series: '' },
+        concertDetails: nextData?.event?.concertDetails || { mainArtist: '', supportingBands: [], genre: '', tourName: '' },
+        conferenceDetails: nextData?.event?.conferenceDetails || { theme: '', speakers: [], scheduleUrl: '' },
         branding: {
           themeColor: nextData?.event?.branding?.themeColor || '#2563EB',
           logoImage: nextData?.event?.branding?.logoImage || nextData?.event?.logoImage || '',
@@ -393,6 +396,14 @@ const OrganiserDashboard = () => {
       }));
       formData.append('paymentMethods', JSON.stringify(customizationForm.paymentMethods));
       formData.append('status', customizationForm.status);
+      
+      if (customizationForm.basicInfo.eventType === 'cricket') {
+        formData.append('matchDetails', JSON.stringify(customizationForm.matchDetails));
+      } else if (customizationForm.basicInfo.eventType === 'concert') {
+        formData.append('concertDetails', JSON.stringify(customizationForm.concertDetails));
+      } else if (customizationForm.basicInfo.eventType === 'conference') {
+        formData.append('conferenceDetails', JSON.stringify(customizationForm.conferenceDetails));
+      }
 
       if (coverImageFile) formData.append('coverImage', coverImageFile);
       if (logoImageFile) formData.append('logoImage', logoImageFile);
@@ -415,32 +426,57 @@ const OrganiserDashboard = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <section className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-teal-700 p-6 text-white shadow-lg">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-white/60">Main Organiser Workspace</p>
-              <h1 className="mt-2 text-3xl font-bold">{selectedEvent?.name || 'Assigned Event'}</h1>
-              <p className="mt-2 text-sm text-white/75">{selectedEvent?.venue?.name || 'Venue'} · {selectedEvent?.status || 'draft'}</p>
+      <div className="space-y-8 pb-20">
+        <section className="relative overflow-hidden rounded-[40px] bg-brand-dark p-8 lg:p-12 text-white shadow-2xl">
+          <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-brand-main/20 rounded-full blur-[120px]"></div>
+          <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="animate-fade-in">
+              <p className="text-[10px] font-black uppercase tracking-[0.5em] text-brand-main">Organiser Workspace</p>
+              <h1 className="mt-4 text-4xl lg:text-6xl font-black tracking-tight leading-none">{selectedEvent?.name || 'Assigned Event'}</h1>
+              <div className="mt-6 flex flex-wrap gap-4 text-sm font-medium">
+                <span className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-4 py-1.5 backdrop-blur-sm">
+                  <div className={`h-2 w-2 rounded-full ${selectedEvent?.status === 'published' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-400'}`}></div>
+                  {selectedEvent?.status || 'draft'}
+                </span>
+                <span className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-4 py-1.5 backdrop-blur-sm">
+                   {selectedEvent?.venue?.name || 'Venue'}
+                </span>
+              </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-right">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white/50">Control Scope</p>
-              <p className="mt-2 text-lg font-black">{teamMembers.length || 0} team members</p>
-              <p className="mt-1 text-sm text-white/70">{selectedEvent?.zones?.length || 0} zones · {categories.length || 0} ticket categories</p>
+            <div className="grid grid-cols-2 gap-4 lg:gap-6 animate-fade-in [animation-delay:200ms]">
+               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Team Strength</p>
+                  <p className="mt-2 text-3xl font-black text-brand-main">{teamMembers.length || 0}</p>
+                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">Active Members</p>
+               </div>
+               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Structure</p>
+                  <p className="mt-2 text-3xl font-black text-brand-main">{categories.length || 0}</p>
+                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">Ticket Classes</p>
+               </div>
             </div>
           </div>
         </section>
 
         {(activeSection === 'overview' || activeSection === '') && (
           <>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {[
-                ['Total Tickets', stats.totalTickets],
-                ['Tickets Sold', stats.ticketsSold],
-                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`],
-                ['Checked-In Count', stats.checkedInCount],
-              ].map(([label, value]) => (
-                <Card key={label}><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-3xl font-bold text-slate-900">{value || 0}</p></Card>
+                ['Total Tickets', stats.totalTickets, '🎫'],
+                ['Tickets Sold', stats.ticketsSold, '🔥'],
+                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`, '💰'],
+                ['Checked-In', stats.checkedInCount, '✅'],
+              ].map(([label, value, icon], idx) => (
+                <div key={label} className="card-premium animate-fade-in" style={{ animationDelay: `${(idx + 1) * 100}ms` }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{label}</p>
+                    <span className="text-xl grayscale opacity-50">{icon}</span>
+                  </div>
+                  <p className="text-3xl font-black text-slate-900 tracking-tight">{value || 0}</p>
+                  <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-main rounded-full animate-shimmer" style={{ width: label === 'Tickets Sold' ? `${(stats.ticketsSold / stats.totalTickets) * 100}%` : '40%' }}></div>
+                  </div>
+                </div>
               ))}
             </section>
             <section className="grid gap-6 xl:grid-cols-3">
@@ -611,6 +647,75 @@ const OrganiserDashboard = () => {
                     <option value="other">Other</option>
                   </select>
                 </label>
+
+                {customizationForm.basicInfo.eventType === 'cricket' && (
+                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Cricket Match Details</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="space-y-1 text-sm">
+                        <span>Team A</span>
+                        <input value={customizationForm.matchDetails.teamA} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, teamA: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Team B</span>
+                        <input value={customizationForm.matchDetails.teamB} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, teamB: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Match Type</span>
+                        <input value={customizationForm.matchDetails.matchType} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, matchType: e.target.value } }))} placeholder="T20, ODI" className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Series</span>
+                        <input value={customizationForm.matchDetails.series} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, series: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {customizationForm.basicInfo.eventType === 'concert' && (
+                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Concert Details</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="space-y-1 text-sm">
+                        <span>Main Artist</span>
+                        <input value={customizationForm.concertDetails.mainArtist} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, mainArtist: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Supporting Bands (Comma separated)</span>
+                        <input value={customizationForm.concertDetails.supportingBands?.join(', ')} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, supportingBands: e.target.value.split(',').map(s => s.trim()) } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Genre</span>
+                        <input value={customizationForm.concertDetails.genre} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, genre: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Tour Name</span>
+                        <input value={customizationForm.concertDetails.tourName} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, tourName: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {customizationForm.basicInfo.eventType === 'conference' && (
+                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Conference Details</p>
+                    <div className="grid gap-4 sm:grid-cols-1">
+                      <label className="space-y-1 text-sm">
+                        <span>Theme</span>
+                        <input value={customizationForm.conferenceDetails.theme} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, theme: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Speakers (Comma separated)</span>
+                        <input value={customizationForm.conferenceDetails.speakers?.join(', ')} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, speakers: e.target.value.split(',').map(s => s.trim()) } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Schedule URL</span>
+                        <input value={customizationForm.conferenceDetails.scheduleUrl} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, scheduleUrl: e.target.value } }))} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-4 py-2" />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 <label className="space-y-2 text-sm">
                   <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Currency</span>
                   <select

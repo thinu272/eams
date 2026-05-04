@@ -159,7 +159,7 @@ const BuyerProfilePage = () => {
                   value={form.phone}
                   onChange={handleChange}
                   className="w-full rounded-2xl border border-slate-200 bg-white px-10 py-3 text-sm outline-none ring-slate-900/10 focus:ring-4"
-                  placeholder="+94 77 123 4567"
+                  placeholder="+1234567890"
                 />
               </div>
             </div>

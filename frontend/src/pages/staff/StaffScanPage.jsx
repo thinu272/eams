@@ -190,41 +190,41 @@ const StaffScanPage = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-cyan-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-[24px] lg:rounded-[32px] bg-gradient-to-br from-cyan-950 via-slate-950 to-slate-900 p-5 lg:p-8 text-white shadow-xl">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Staff Operations</p>
-              <h1 className="mt-3 text-4xl font-black tracking-tight">Entry Scanner</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
-                Fast, tablet-friendly ticket validation for assigned entry points. Scan QR codes, confirm valid attendees, and keep the queue moving.
+              <p className="text-[10px] lg:text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Staff Operations</p>
+              <h1 className="mt-2 text-3xl lg:text-5xl font-black tracking-tight">Entry Scanner</h1>
+              <p className="mt-3 max-w-2xl text-xs lg:text-sm font-medium text-slate-300 leading-relaxed">
+                Fast, mobile-ready ticket validation for assigned entry points. Scan QR codes, confirm valid attendees, and keep the queue moving.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:flex lg:gap-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 lg:min-w-[160px]">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Assigned Gates</p>
-                <p className="mt-2 text-lg font-black">{getAssignedGateLabel(user)}</p>
+                <p className="mt-2 text-base lg:text-lg font-black truncate">{getAssignedGateLabel(user)}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 lg:min-w-[160px]">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Response Goal</p>
-                <p className="mt-2 text-lg font-black">&lt; 1 second</p>
+                <p className="mt-2 text-base lg:text-lg font-black">&lt; 1 second</p>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr] xl:grid-cols-[1.15fr,0.85fr]">
           <div className="space-y-6">
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <section className="rounded-[24px] lg:rounded-[28px] border border-slate-200 bg-white p-5 lg:p-6 shadow-sm">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-400">Scanner Setup</p>
-                  <h2 className="mt-2 text-2xl font-black text-slate-900">Live Entry Validation</h2>
+                  <p className="text-[10px] lg:text-xs font-black uppercase tracking-[0.25em] text-slate-400">Scanner Setup</p>
+                  <h2 className="mt-2 text-xl lg:text-2xl font-black text-slate-900">Live Entry Validation</h2>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full lg:w-auto">
                   <select
                     value={selectedEventId}
                     onChange={(e) => handleEventChange(e.target.value)}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 lg:py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
                   >
                     {events.map((event) => (
                       <option key={event._id} value={event._id}>{event.name}</option>
@@ -235,14 +235,14 @@ const StaffScanPage = () => {
                       <select
                         value={gateName}
                         onChange={(e) => setGateName(e.target.value)}
-                        className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700 outline-none focus:border-cyan-500"
+                        className="w-full rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 lg:py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700 outline-none focus:border-cyan-500"
                       >
                         {availableGates.map((gate) => (
                           <option key={gate} value={gate}>{gate}</option>
                         ))}
                       </select>
                     ) : (
-                      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700">
+                      <div className="w-full rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 lg:py-4 text-sm font-black uppercase tracking-[0.2em] text-cyan-700 text-center lg:text-left">
                         {gateName}
                       </div>
                     )
@@ -253,7 +253,7 @@ const StaffScanPage = () => {
                       onBlur={() => setGateName(gateInput)}
                       onKeyDown={(e) => { if (e.key === 'Enter') setGateName(gateInput); }}
                       placeholder="Gate name"
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 lg:py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
                     />
                   )}
                 </div>
@@ -279,7 +279,7 @@ const StaffScanPage = () => {
                 ))}
               </div>
 
-              <div className="mt-6 grid gap-6 lg:grid-cols-[1fr,0.95fr]">
+              <div className="mt-6 grid gap-6 md:grid-cols-1 lg:grid-cols-[1fr,0.95fr]">
                 <div className="space-y-4">
                   <div className="rounded-[28px] border border-cyan-100 bg-cyan-50 p-4">
                     <div className="mb-4 flex items-center justify-between">

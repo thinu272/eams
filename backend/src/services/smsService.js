@@ -4,20 +4,21 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const SystemConfig = require('../models/SystemConfig');
 
 // Provider Interface (Implicit) should implement:
 // async send(to, message) -> { success: boolean, messageId?: string, error?: string }
 
 class TwilioProvider {
-  constructor() {
+  constructor(config) {
     this.client = null;
-    this.from = process.env.TWILIO_PHONE_NUMBER;
+    this.from = config.general?.platformName || process.env.TWILIO_PHONE_NUMBER;
     
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-      this.client = require('twilio')(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN
-      );
+    const sid = config.sms?.apiKey || process.env.TWILIO_ACCOUNT_SID;
+    const token = config.sms?.apiSecret || process.env.TWILIO_AUTH_TOKEN;
+    
+    if (sid && token) {
+      this.client = require('twilio')(sid, token);
     }
   }
 
@@ -43,7 +44,6 @@ class TwilioProvider {
 
 class SMSManager {
   constructor() {
-    this.provider = new TwilioProvider();
     this.rateStore = new Map();
     this.windowMs = parseInt(process.env.SMS_RATE_WINDOW_MS || '900000', 10);
     this.maxPerWindow = parseInt(process.env.SMS_RATE_LIMIT_PER_WINDOW || '5', 10);
@@ -62,12 +62,20 @@ class SMSManager {
 
     const phone = to.replace(/\s+/g, '').trim();
     
-    // Basic validation for Sri Lankan numbers if needed, but keeping generic for now
     if (this._isRateLimited(rateKey || phone)) {
       throw new Error('SMS rate limit exceeded.');
     }
 
-    const res = await this.provider.send(phone, message);
+    const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+    
+    if (config.sms?.provider === 'mock') {
+      console.log(`[SMS MOCK] To: ${phone} | Message: ${message}`);
+      return { sent: true, mock: true };
+    }
+
+    const provider = new TwilioProvider(config);
+    const res = await provider.send(phone, message);
+    
     return {
       sent: res.success,
       messageId: res.messageId,

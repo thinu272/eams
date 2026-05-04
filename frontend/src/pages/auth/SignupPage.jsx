@@ -137,7 +137,7 @@ const SignupPage = () => {
                     required
                     value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    placeholder="+94 77 123..."
+                    placeholder="+1234567890"
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-4 pl-14 pr-5 text-sm font-semibold text-slate-900 placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
                   />
                 </div>

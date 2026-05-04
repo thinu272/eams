@@ -1,14 +1,11 @@
 const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
+const SystemConfig = require('../models/SystemConfig');
 
-const createTransporter = () => {
-  const hasSmtpCreds = process.env.SMTP_HOST && process.env.SMTP_PASS;
-  const hasSendGridKey = process.env.SENDGRID_API_KEY;
+const createTransporter = async (config) => {
+  const hasSmtpCreds = config?.email?.smtpHost && config?.email?.smtpPassword;
   
-  // Only use dev transporter if NO real credentials are found
-  const isDev = !hasSmtpCreds && !hasSendGridKey;
-
-  if (isDev) {
+  if (config?.email?.provider === 'mock') {
     console.log('EMAIL: Using Development Transporter (Console Log only)');
     return {
       sendMail: (opts) => {
@@ -19,24 +16,30 @@ const createTransporter = () => {
       },
     };
   }
-  console.log('EMAIL: Using SMTP Transporter:', process.env.SMTP_HOST);
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
+
+  if (hasSmtpCreds && config?.email?.provider === 'smtp') {
+    console.log('EMAIL: Using SMTP Transporter:', config.email.smtpHost);
+    return nodemailer.createTransport({
+      host: config.email.smtpHost,
+      port: config.email.smtpPort || 587,
+      auth: { user: config.email.smtpUser, pass: config.email.smtpPassword },
+    });
+  }
+  
+  return null;
 };
 
-const getSendGridClient = () => {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey) return null;
+const getSendGridClient = (config) => {
+  const apiKey = config?.email?.sendgridApiKey || config?.integrations?.sendgridApiKey || process.env.SENDGRID_API_KEY;
+  if (!apiKey || config?.email?.provider !== 'sendgrid') return null;
   sgMail.setApiKey(apiKey);
   return sgMail;
 };
 
 const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplateData, attachments = [] }) => {
-  const from = process.env.EMAIL_FROM || 'noreply@entrynex.com';
-  const sendGrid = getSendGridClient();
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const from = config.email?.senderEmail || config.general?.supportEmail || process.env.EMAIL_FROM || 'noreply@entrynex.com';
+  const sendGrid = getSendGridClient(config);
 
   // Add Logo as CID attachment for all emails
   const path = require('path');
@@ -70,7 +73,9 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
     return;
   }
 
-  const transporter = createTransporter();
+  const transporter = await createTransporter(config);
+  if (!transporter) return;
+  
   const smtpAttachments = attachments.map((attachment) => ({
     filename: attachment.filename,
     content: attachment.content,

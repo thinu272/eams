@@ -11,6 +11,7 @@ const EntryLog = require('../models/EntryLog');
 const ZoneLog = require('../models/ZoneLog');
 const Notification = require('../models/Notification');
 const SystemConfig = require('../models/SystemConfig');
+const AuditLog = require('../models/AuditLog');
 const { protect, checkRole } = require('../middleware/auth');
 const crypto = require('crypto');
 const notificationService = require('../services/notificationService');
@@ -106,32 +107,76 @@ const serializeUser = (user) => ({
 });
 
 const serializeSettings = (config) => ({
-  communication: {
-    emailProvider: config.communication?.emailProvider || 'smtp',
-    senderEmail: config.communication?.senderEmail || '',
-    smsProvider: config.communication?.smsProvider || 'mock',
-    smsSender: config.communication?.smsSender || '',
+  general: {
+    platformName: config.general?.platformName || 'ENTRYNEX',
+    supportEmail: config.general?.supportEmail || 'support@entrynex.com',
+    systemStatus: config.general?.systemStatus || 'Active',
+    defaultRoles: config.general?.defaultRoles || ['Attendee'],
   },
-  templates: {
-    inviteSubject: config.templates?.invite?.subject || '',
-    inviteSms: config.templates?.invite?.sms || '',
-    confirmationSubject: config.templates?.confirmation?.subject || '',
-    confirmationSms: config.templates?.confirmation?.sms || '',
-    rejectionSubject: config.templates?.rejection?.subject || '',
-    rejectionSms: config.templates?.rejection?.sms || '',
+  branding: {
+    logoUrl: config.branding?.logoUrl || '',
+    faviconUrl: config.branding?.faviconUrl || '',
+    primaryColor: config.branding?.primaryColor || '#2563eb',
+    secondaryColor: config.branding?.secondaryColor || '#4f46e5',
+    applyToEmails: config.branding?.applyToEmails ?? true,
+    applyToTickets: config.branding?.applyToTickets ?? true,
+    applyToUi: config.branding?.applyToUi ?? true,
   },
-  limits: {
-    logsDays: config.retention?.logsDays || 365,
-    notificationsDays: config.retention?.notificationsDays || 90,
+  email: {
+    provider: config.email?.provider || 'smtp',
+    smtpHost: config.email?.smtpHost || '',
+    smtpPort: config.email?.smtpPort || 587,
+    smtpUser: config.email?.smtpUser || '',
+    smtpPassword: config.email?.smtpPassword || '',
+    sendgridApiKey: config.email?.sendgridApiKey || '',
+    senderName: config.email?.senderName || 'ENTRYNEX',
+    templates: {
+      inviteSubject: config.email?.templates?.inviteSubject || "You're Invited - {{eventName}}",
+      ticketSubject: config.email?.templates?.ticketSubject || 'Confirmed - Your ticket for {{eventName}}',
+      resetSubject: config.email?.templates?.resetSubject || 'Password Reset Request',
+    },
+  },
+  sms: {
+    provider: config.sms?.provider || 'mock',
+    apiKey: config.sms?.apiKey || '',
+    apiSecret: config.sms?.apiSecret || '',
+    enabled: config.sms?.enabled ?? false,
+  },
+  payment: {
+    gateway: config.payment?.gateway || 'none',
+    publishableKey: config.payment?.publishableKey || '',
+    secretKey: config.payment?.secretKey || '',
+    defaultCurrency: config.payment?.defaultCurrency || 'LKR',
+    enabled: config.payment?.enabled ?? false,
+  },
+  security: {
     jwtTtlHours: config.security?.jwtTtlHours || 24,
+    minPasswordLength: config.security?.minPasswordLength || 8,
+    requirePasswordComplexity: config.security?.requirePasswordComplexity ?? false,
+    loginRateLimit: config.security?.loginRateLimit || 5,
+    emailVerificationRequired: config.security?.emailVerificationRequired ?? false,
+    twoFactorEnabled: config.security?.twoFactorEnabled ?? false,
   },
-  featureToggles: {
-    requirePhotoVerification: Boolean(config.security?.requirePhotoVerification),
-    darkModeDefault: config.theme?.defaultMode === 'dark',
-    balancedSecurity: config.security?.mode === 'balanced',
+  ticketing: {
+    qrEnabled: config.ticketing?.qrEnabled ?? true,
+    pdfEnabled: config.ticketing?.pdfEnabled ?? true,
+    autoSendOnConfirm: config.ticketing?.autoSendOnConfirm ?? true,
+    accessCodeToggle: config.ticketing?.accessCodeToggle ?? true,
   },
-  currency: config.currency || 'LKR',
-  maintenanceMode: !!config.maintenanceMode,
+  regional: {
+    defaultCurrency: config.regional?.defaultCurrency || 'LKR',
+    timezone: config.regional?.timezone || 'Asia/Colombo',
+    dateFormat: config.regional?.dateFormat || 'MM/DD/YYYY',
+    multiCurrency: config.regional?.multiCurrency ?? false,
+  },
+  integrations: {
+    storageProvider: config.integrations?.storageProvider || 'local',
+    awsAccessKey: config.integrations?.awsAccessKey || '',
+    awsSecretKey: config.integrations?.awsSecretKey || '',
+    awsBucket: config.integrations?.awsBucket || '',
+    mapsApiKey: config.integrations?.mapsApiKey || '',
+    aiServiceKey: config.integrations?.aiServiceKey || '',
+  },
 });
 
 router.use(protect, checkRole('SUPER_ADMIN'));
@@ -571,33 +616,99 @@ router.get('/settings', async (req, res, next) => {
 
 router.patch('/settings', async (req, res, next) => {
   try {
+    const previous = await SystemConfig.findOne({ key: 'global' }).lean();
+    
+    const setQuery = {};
+    if (req.body.general) {
+      if (req.body.general.platformName !== undefined) setQuery['general.platformName'] = req.body.general.platformName;
+      if (req.body.general.supportEmail !== undefined) setQuery['general.supportEmail'] = req.body.general.supportEmail;
+      if (req.body.general.systemStatus !== undefined) setQuery['general.systemStatus'] = req.body.general.systemStatus;
+      if (req.body.general.defaultRoles !== undefined) setQuery['general.defaultRoles'] = req.body.general.defaultRoles;
+    }
+    if (req.body.branding) {
+      if (req.body.branding.logoUrl !== undefined) setQuery['branding.logoUrl'] = req.body.branding.logoUrl;
+      if (req.body.branding.faviconUrl !== undefined) setQuery['branding.faviconUrl'] = req.body.branding.faviconUrl;
+      if (req.body.branding.primaryColor !== undefined) setQuery['branding.primaryColor'] = req.body.branding.primaryColor;
+      if (req.body.branding.secondaryColor !== undefined) setQuery['branding.secondaryColor'] = req.body.branding.secondaryColor;
+      if (req.body.branding.applyToEmails !== undefined) setQuery['branding.applyToEmails'] = req.body.branding.applyToEmails;
+      if (req.body.branding.applyToTickets !== undefined) setQuery['branding.applyToTickets'] = req.body.branding.applyToTickets;
+      if (req.body.branding.applyToUi !== undefined) setQuery['branding.applyToUi'] = req.body.branding.applyToUi;
+    }
+    if (req.body.email) {
+      if (req.body.email.provider !== undefined) setQuery['email.provider'] = req.body.email.provider;
+      if (req.body.email.smtpHost !== undefined) setQuery['email.smtpHost'] = req.body.email.smtpHost;
+      if (req.body.email.smtpPort !== undefined) setQuery['email.smtpPort'] = req.body.email.smtpPort;
+      if (req.body.email.smtpUser !== undefined) setQuery['email.smtpUser'] = req.body.email.smtpUser;
+      if (req.body.email.smtpPassword !== undefined) setQuery['email.smtpPassword'] = req.body.email.smtpPassword;
+      if (req.body.email.sendgridApiKey !== undefined) setQuery['email.sendgridApiKey'] = req.body.email.sendgridApiKey;
+      if (req.body.email.senderName !== undefined) setQuery['email.senderName'] = req.body.email.senderName;
+      if (req.body.email.templates) {
+        if (req.body.email.templates.inviteSubject !== undefined) setQuery['email.templates.inviteSubject'] = req.body.email.templates.inviteSubject;
+        if (req.body.email.templates.ticketSubject !== undefined) setQuery['email.templates.ticketSubject'] = req.body.email.templates.ticketSubject;
+        if (req.body.email.templates.resetSubject !== undefined) setQuery['email.templates.resetSubject'] = req.body.email.templates.resetSubject;
+      }
+    }
+    if (req.body.sms) {
+      if (req.body.sms.provider !== undefined) setQuery['sms.provider'] = req.body.sms.provider;
+      if (req.body.sms.apiKey !== undefined) setQuery['sms.apiKey'] = req.body.sms.apiKey;
+      if (req.body.sms.apiSecret !== undefined) setQuery['sms.apiSecret'] = req.body.sms.apiSecret;
+      if (req.body.sms.enabled !== undefined) setQuery['sms.enabled'] = req.body.sms.enabled;
+    }
+    if (req.body.payment) {
+      if (req.body.payment.gateway !== undefined) setQuery['payment.gateway'] = req.body.payment.gateway;
+      if (req.body.payment.publishableKey !== undefined) setQuery['payment.publishableKey'] = req.body.payment.publishableKey;
+      if (req.body.payment.secretKey !== undefined) setQuery['payment.secretKey'] = req.body.payment.secretKey;
+      if (req.body.payment.defaultCurrency !== undefined) setQuery['payment.defaultCurrency'] = req.body.payment.defaultCurrency;
+      if (req.body.payment.enabled !== undefined) setQuery['payment.enabled'] = req.body.payment.enabled;
+    }
+    if (req.body.security) {
+      if (req.body.security.jwtTtlHours !== undefined) setQuery['security.jwtTtlHours'] = req.body.security.jwtTtlHours;
+      if (req.body.security.minPasswordLength !== undefined) setQuery['security.minPasswordLength'] = req.body.security.minPasswordLength;
+      if (req.body.security.requirePasswordComplexity !== undefined) setQuery['security.requirePasswordComplexity'] = req.body.security.requirePasswordComplexity;
+      if (req.body.security.loginRateLimit !== undefined) setQuery['security.loginRateLimit'] = req.body.security.loginRateLimit;
+      if (req.body.security.emailVerificationRequired !== undefined) setQuery['security.emailVerificationRequired'] = req.body.security.emailVerificationRequired;
+      if (req.body.security.twoFactorEnabled !== undefined) setQuery['security.twoFactorEnabled'] = req.body.security.twoFactorEnabled;
+    }
+    if (req.body.ticketing) {
+      if (req.body.ticketing.qrEnabled !== undefined) setQuery['ticketing.qrEnabled'] = req.body.ticketing.qrEnabled;
+      if (req.body.ticketing.pdfEnabled !== undefined) setQuery['ticketing.pdfEnabled'] = req.body.ticketing.pdfEnabled;
+      if (req.body.ticketing.autoSendOnConfirm !== undefined) setQuery['ticketing.autoSendOnConfirm'] = req.body.ticketing.autoSendOnConfirm;
+      if (req.body.ticketing.accessCodeToggle !== undefined) setQuery['ticketing.accessCodeToggle'] = req.body.ticketing.accessCodeToggle;
+    }
+    if (req.body.regional) {
+      if (req.body.regional.defaultCurrency !== undefined) setQuery['regional.defaultCurrency'] = req.body.regional.defaultCurrency;
+      if (req.body.regional.timezone !== undefined) setQuery['regional.timezone'] = req.body.regional.timezone;
+      if (req.body.regional.dateFormat !== undefined) setQuery['regional.dateFormat'] = req.body.regional.dateFormat;
+      if (req.body.regional.multiCurrency !== undefined) setQuery['regional.multiCurrency'] = req.body.regional.multiCurrency;
+    }
+    if (req.body.integrations) {
+      if (req.body.integrations.storageProvider !== undefined) setQuery['integrations.storageProvider'] = req.body.integrations.storageProvider;
+      if (req.body.integrations.awsAccessKey !== undefined) setQuery['integrations.awsAccessKey'] = req.body.integrations.awsAccessKey;
+      if (req.body.integrations.awsSecretKey !== undefined) setQuery['integrations.awsSecretKey'] = req.body.integrations.awsSecretKey;
+      if (req.body.integrations.awsBucket !== undefined) setQuery['integrations.awsBucket'] = req.body.integrations.awsBucket;
+      if (req.body.integrations.mapsApiKey !== undefined) setQuery['integrations.mapsApiKey'] = req.body.integrations.mapsApiKey;
+      if (req.body.integrations.aiServiceKey !== undefined) setQuery['integrations.aiServiceKey'] = req.body.integrations.aiServiceKey;
+    }
+
     const current = await SystemConfig.findOneAndUpdate(
       { key: 'global' },
-      {
-        $setOnInsert: { key: 'global' },
-        $set: {
-          'communication.emailProvider': req.body.communication?.emailProvider || 'smtp',
-          'communication.senderEmail': req.body.communication?.senderEmail || '',
-          'communication.smsProvider': req.body.communication?.smsProvider || 'mock',
-          'communication.smsSender': req.body.communication?.smsSender || '',
-          'templates.invite.subject': req.body.templates?.inviteSubject || '',
-          'templates.invite.sms': req.body.templates?.inviteSms || '',
-          'templates.confirmation.subject': req.body.templates?.confirmationSubject || '',
-          'templates.confirmation.sms': req.body.templates?.confirmationSms || '',
-          'templates.rejection.subject': req.body.templates?.rejectionSubject || '',
-          'templates.rejection.sms': req.body.templates?.rejectionSms || '',
-          'retention.logsDays': req.body.limits?.logsDays || 365,
-          'retention.notificationsDays': req.body.limits?.notificationsDays || 90,
-          'security.jwtTtlHours': req.body.limits?.jwtTtlHours || 24,
-          'security.requirePhotoVerification': Boolean(req.body.featureToggles?.requirePhotoVerification),
-          'security.mode': req.body.featureToggles?.balancedSecurity ? 'balanced' : 'strict',
-          'theme.defaultMode': req.body.featureToggles?.darkModeDefault ? 'dark' : 'light',
-          'currency': req.body.currency || 'LKR',
-          'maintenanceMode': !!req.body.maintenanceMode,
-        },
-      },
+      { $setOnInsert: { key: 'global' }, $set: setQuery },
       { new: true, upsert: true },
     );
+    
+    // Log the audit event
+    await AuditLog.create({
+      adminId: req.user._id,
+      adminEmail: req.user.email,
+      action: 'SETTINGS_UPDATED',
+      details: {
+        fieldsUpdated: Object.keys(setQuery),
+        previous: previous || {},
+        new: req.body
+      },
+      ipAddress: req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown'
+    });
+
     res.json({ success: true, data: { settings: serializeSettings(current) } });
   } catch (error) {
     next(error);

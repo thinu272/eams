@@ -86,4 +86,28 @@ router.post('/attendee-photo/:token', upload.single('photo'), handleS3Upload('at
   }
 });
 
+/**
+ * POST /api/upload/system-asset
+ * Endpoint for super admins to upload logos, favicons, etc.
+ */
+router.post('/system-asset', protect, upload.single('photo'), handleS3Upload('system-assets'), async (req, res) => {
+  try {
+    if (!req.s3Data) {
+      return res.status(400).json({ success: false, message: 'File is required' });
+    }
+
+    res.json({
+      success: true,
+      message: 'System asset uploaded successfully',
+      data: {
+        url: req.s3Data.url,
+        key: req.s3Data.key
+      }
+    });
+  } catch (error) {
+    console.error('SYSTEM ASSET UPLOAD ERROR:', error);
+    res.status(500).json({ success: false, message: 'Server error during upload' });
+  }
+});
+
 module.exports = router;

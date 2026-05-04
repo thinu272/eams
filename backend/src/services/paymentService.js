@@ -1,15 +1,14 @@
 const crypto = require('crypto');
+const SystemConfig = require('../models/SystemConfig');
 
 /**
  * PayHere (Sri Lanka) Payment Integration
- * 
- * PayHere requires a set of hidden fields to be sent via a POST request to their gateway.
- * For security, we generate a signature (hash) on the backend.
  */
 
-const getPayHereHash = (orderId, amount, currency) => {
-  const merchantId = process.env.PAYHERE_MERCHANT_ID || '1211149'; // Default to test ID if not set
-  const merchantSecret = process.env.PAYHERE_SECRET || '4MjY0NDc2ODU3MzExMzk2NTMxMzUxMzU3MDU3MjAzMTM2MTUyNTY='; // Default to test secret
+const getPayHereHash = async (orderId, amount, currency) => {
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const merchantId = config.payment?.publishableKey || process.env.PAYHERE_MERCHANT_ID || '1211149';
+  const merchantSecret = config.payment?.secretKey || process.env.PAYHERE_SECRET || '4MjY0NDc2ODU3MzExMzk2NTMxMzUxMzU3MDU3MjAzMTM2MTUyNTY=';
   
   const amountFormatted = parseFloat(amount).toFixed(2);
   
@@ -28,11 +27,12 @@ const getPayHereHash = (orderId, amount, currency) => {
   return hash;
 };
 
-const generatePayHereData = (order, event) => {
-  const merchantId = process.env.PAYHERE_MERCHANT_ID || '1211149';
-  const currency = 'LKR';
+const generatePayHereData = async (order, event) => {
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const merchantId = config.payment?.publishableKey || process.env.PAYHERE_MERCHANT_ID || '1211149';
+  const currency = config.payment?.defaultCurrency || 'LKR';
   
-  const hash = getPayHereHash(order.orderNumber, order.totalAmount, currency);
+  const hash = await getPayHereHash(order.orderNumber, order.totalAmount, currency);
   
   return {
     merchant_id: merchantId,
@@ -59,11 +59,8 @@ const generatePayHereData = (order, event) => {
 
 /**
  * Stripe Integration (Placeholder)
- * To be implemented if Stripe is preferred or as a secondary option.
  */
 const createStripeSession = async (order, event) => {
-  // Logic for stripe.checkout.sessions.create
-  // requires 'stripe' package
   console.log('Stripe session creation would happen here');
   return null;
 };
