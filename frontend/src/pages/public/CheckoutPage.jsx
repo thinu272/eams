@@ -90,8 +90,8 @@ const CheckoutPage = () => {
       return;
     }
 
-    if (buyerDetails.phone && !/^\+947\d{8}$/.test(buyerDetails.phone.trim())) {
-      toast.error('Phone number must be in +947XXXXXXXX format');
+    if (buyerDetails.phone && !/^\+?[1-9]\d{1,14}$/.test(buyerDetails.phone.trim().replace(/\s+/g, ''))) {
+      toast.error('Please enter a valid international phone number');
       return;
     }
 
@@ -242,10 +242,10 @@ const CheckoutPage = () => {
                       value={buyerDetails.phone}
                       onChange={handleInputChange}
                       className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 placeholder:text-slate-400 transition focus:border-blue-500 focus:bg-white focus:outline-none"
-                      placeholder="+947XXXXXXXX"
+                      placeholder="+1234567890"
                     />
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Must be in international format (e.g., +94771234567)
+                      Must be in international format (e.g., +1234567890)
                     </p>
                   </div>
                 </div>
@@ -365,6 +365,9 @@ const CheckoutPage = () => {
                           <p className="font-black text-slate-900 uppercase tracking-tight">{category.name}</p>
                           <p className="mt-1 text-sm font-bold text-slate-400 uppercase tracking-widest">
                             {selectedTickets[category.id]} Units × {formatCurrency(category.price)}
+                            <span className="ml-2 block text-[10px] text-slate-500">
+                               Remaining: {Math.max(0, category.capacity - (category.sold || 0))} seats
+                            </span>
                           </p>
                         </div>
                         <p className="font-black" style={{ color: themeColor }}>

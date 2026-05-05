@@ -56,11 +56,28 @@ const verifyPhoto = async (req, res, next) => {
         reason: attendee.photoRejectionReason,
       });
     } else {
+      attendee.confirmationStatus = 'confirmed';
+      attendee.isConfirmed = true;
+      attendee.confirmedAt = new Date();
+      attendee.confirmedBy = 'organiser';
+      
+      await attendee.save();
+
+      const { notifyFinalTicket, notifyStatusChange } = require('../services/notificationService');
+      
+      await notifyFinalTicket({
+        attendee,
+        event: attendee.event,
+        phone: attendee.phone,
+        notificationChannel: 'both',
+        force: true
+      }).catch((err) => console.error('CONTROLLER FINAL NOTIFY ERROR:', err));
+
       await notifyStatusChange({
         attendee,
         event: attendee.event,
         status: 'Photo Verified',
-        message: 'Your photo has been verified successfully.',
+        message: 'Your photo has been verified successfully and your ticket has been sent to your email.',
       });
     }
 

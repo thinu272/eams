@@ -540,16 +540,22 @@ router.patch('/:id/verify-photo', protect, requirePermission('canVerifyPhotos'),
       attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
       attendee.confirmationStatus = 'confirmed';
       attendee.isConfirmed = true;
+      attendee.confirmedAt = new Date();
+      attendee.confirmedBy = 'organiser';
       
       // Sync ticket status
       await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
       
+      // Ensure data is saved before notifying
+      await attendee.save();
+
       // Send final ticket notification
       await notifyFinalTicket({
         attendee,
         event: attendee.event,
         phone: attendee.phone,
-        notificationChannel: 'both'
+        notificationChannel: 'both',
+        force: true
       }).catch(console.error);
 
       if (attendee.order) {
@@ -772,7 +778,20 @@ router.patch('/:id', protect, async (req, res, next) => {
     if (!(await hasEventAccess(req.user, existingAttendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
-    const attendee = await Attendee.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const attendee = await Attendee.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('event');
+    
+    // Trigger notification if status changed to confirmed
+    if (req.body.confirmationStatus === 'confirmed') {
+      const { notifyFinalTicket } = require('../services/notificationService');
+      await notifyFinalTicket({
+        attendee,
+        event: attendee.event,
+        phone: attendee.phone,
+        notificationChannel: 'both',
+        force: true
+      }).catch(console.error);
+    }
+
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });

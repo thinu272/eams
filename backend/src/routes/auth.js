@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const SystemConfig = require('../models/SystemConfig');
 const { protect } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 
@@ -17,14 +18,17 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const signAccessToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+const signAccessToken = (id, ttlHours = 24) =>
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: `${ttlHours}h` });
 
 const signRefreshToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
 const sendTokens = async (user, statusCode, res) => {
-  const accessToken = signAccessToken(user._id);
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const ttlHours = config.security?.jwtTtlHours || 24;
+  
+  const accessToken = signAccessToken(user._id, ttlHours);
   const refreshToken = signRefreshToken(user._id);
   
   user.refreshToken = refreshToken;
@@ -111,8 +115,11 @@ router.post('/login', loginLimiter, [
     }
     
     // Check Email Verification
-    // Bypassing for MainAdmin or for backward compatibility if isVerified is undefined
-    if (user.isVerified === false && user.role !== 'MainAdmin') {
+    // Bypassing for administrative and operational roles (MainAdmin, MainOrganiser, SubOrganiser, Staff, Volunteer, Auditor)
+    const INTERNAL_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor'];
+    const isInternalRole = INTERNAL_ROLES.includes(user.role);
+
+    if (user.isVerified === false && !isInternalRole) {
       return res.status(403).json({ success: false, message: 'Please verify your email address to log in.' });
     }
 

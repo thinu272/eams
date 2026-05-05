@@ -156,7 +156,7 @@ router.post('/', [
     });
 
     // Generate Payment Data (PayHere)
-    const paymentData = generatePayHereData(order, event);
+    const paymentData = await generatePayHereData(order, event);
 
     res.status(201).json({
       success: true,

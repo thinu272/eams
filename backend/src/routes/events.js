@@ -73,7 +73,7 @@ const parseMaybeJson = (value) => {
 const normalizeEventPayload = (body, file, files) => {
   const payload = { ...body };
 
-  ['venue', 'categories', 'zones', 'settings', 'matchDetails', 'customFields'].forEach((key) => {
+  ['venue', 'categories', 'zones', 'settings', 'matchDetails', 'concertDetails', 'conferenceDetails', 'customFields'].forEach((key) => {
     if (key in payload) {
       payload[key] = parseMaybeJson(payload[key]);
     }

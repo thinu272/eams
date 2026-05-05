@@ -39,6 +39,7 @@ const categorySchema = new mongoose.Schema({
   accessCode: { type: String },
   accessCodeHash: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedSubOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   usageCount: { type: Number, default: 0 },
   maxUsage: { type: Number },
 }, { _id: false });
@@ -101,6 +102,21 @@ const eventSchema = new mongoose.Schema({
     teamB: { type: String },
     matchType: { type: String },
     series: { type: String },
+  },
+
+  // Details for concert
+  concertDetails: {
+    mainArtist: { type: String },
+    supportingBands: [{ type: String }],
+    genre: { type: String },
+    tourName: { type: String },
+  },
+
+  // Details for conference
+  conferenceDetails: {
+    theme: { type: String },
+    speakers: [{ type: String }],
+    scheduleUrl: { type: String },
   },
 
   // Assigned personnel

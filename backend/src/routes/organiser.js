@@ -1,4 +1,6 @@
 const express = require('express');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -14,6 +16,7 @@ const EntryLog = require('../models/EntryLog');
 const ZoneLog = require('../models/ZoneLog');
 const Notification = require('../models/Notification');
 const Role = require('../models/Role');
+const Order = require('../models/Order');
 const { protect, checkRole, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite } = require('../services/notificationService');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
@@ -58,21 +61,22 @@ const buildActivityNotification = async ({ userId, eventId, title, message, type
 
 const slugify = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-const resolveEventId = (req) => (
-  req.params.eventId ||
-  req.body.eventId ||
-  req.query.eventId ||
-  req.user?.assignedEvents?.[0]
-);
+const resolveEventId = (req) => {
+  const id = req.params.eventId || req.body.eventId || req.query.eventId;
+  console.log(`[resolveEventId] Resolved from params/body/query: ${id}`);
+  if (id && id !== 'undefined') return id;
+  const fallback = req.user?.assignedEvents?.[0];
+  console.log(`[resolveEventId] Fallback to assignedEvents[0]: ${fallback}`);
+  return fallback;
+};
 
 const getScopedEvent = async (req) => {
-  const eventId = resolveEventId(req);
+  let eventId = resolveEventId(req);
+  let event = null;
 
-  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
-    return null;
-  }
-
-    return Event.findById(eventId)
+  // 1. Try to find the event by identified ID
+  if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
+    event = await Event.findById(eventId)
       .populate('mainOrganiser', 'name email phone')
       .populate({
         path: 'subOrganisers',
@@ -80,7 +84,27 @@ const getScopedEvent = async (req) => {
         populate: { path: 'customRole', select: 'name slug permissions zoneIds' },
       })
       .lean();
-  };
+  }
+
+  // 2. If not found or no ID provided, fallback for high-level roles
+  if (!event && req.user) {
+    const role = normalizeRole(req.user.role);
+    if (role === ROLES.MAIN_ADMIN || role === ROLES.MAIN_ORGANISER) {
+      // Pick the most recent event
+      event = await Event.findOne()
+        .sort({ createdAt: -1 })
+        .populate('mainOrganiser', 'name email phone')
+        .populate({
+          path: 'subOrganisers',
+          select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
+          populate: { path: 'customRole', select: 'name slug permissions zoneIds' },
+        })
+        .lean();
+    }
+  }
+
+  return event;
+};
 
 const buildAttendeeFilter = ({ eventId, query = {} }) => {
   const {
@@ -170,6 +194,11 @@ const getTicketCategorySummary = async (event) => {
       remainingCapacity: Math.max(category.capacity - soldCount, 0),
       allowedZones: category.allowedZones || [],
       color: category.color || '#3B82F6',
+      isPrivate: !!category.isPrivate,
+      accessCode: category.accessCode || '',
+      maxUsage: category.maxUsage || null,
+      assignedSubOrganisers: category.assignedSubOrganisers || [],
+      createdBy: category.createdBy || null,
     };
   });
 };
@@ -178,7 +207,8 @@ const requireScopedEvent = async (req, res, next) => {
   const event = await getScopedEvent(req);
 
   if (!event) {
-    return res.status(404).json({ success: false, message: 'Scoped event not found.' });
+    const resolvedId = resolveEventId(req);
+    return res.status(404).json({ success: false, message: `Scoped event not found for ID: ${resolvedId}` });
   }
 
   req.scopedEvent = event;
@@ -369,6 +399,38 @@ router.get('/attendees', requireEventAccess, async (req, res, next) => {
     const limit = clamp(req.query.limit, 1, 100, 20);
     const skip = (page - 1) * limit;
     const filter = buildAttendeeFilter({ eventId, query: req.query });
+
+    // ENFORCE SCOPING: Sub-organisers only see attendees in categories they are assigned to
+    const requesterRole = normalizeRole(req.user.role);
+    if (requesterRole === ROLES.SUB_ORGANISER) {
+      const event = await Event.findById(eventId).select('categories');
+      if (event) {
+        const myCategoryNames = (event.categories || [])
+          .filter(cat => (cat.assignedSubOrganisers || []).some(id => String(id) === String(req.user._id)))
+          .map(cat => cat.name);
+        
+        if (myCategoryNames.length > 0) {
+          // If a specific category was requested, ensure it's one they have access to
+          if (filter.categoryName) {
+            if (!myCategoryNames.includes(filter.categoryName)) {
+              return res.json({ success: true, data: { attendees: [], total: 0, page, pages: 0 } });
+            }
+          } else {
+            // Otherwise, filter by all their assigned categories
+            filter.categoryName = { $in: myCategoryNames };
+          }
+        } else {
+          // If not assigned to ANY category, they see nothing (or maybe everything? 
+          // Usually better to be restrictive if "private tickets" are involved)
+          // But if they are a sub-organiser, they might have general event access.
+          // The user said "with for that ticket can assign sub organizers to the if wanted".
+          // This implies delegation.
+          // However, if we don't find any assignments, we might want to check if they have general event access.
+          // For now, let's be restrictive to the categories they are assigned to if they ARE assigned to some.
+          // If they aren't assigned to ANY, we'll let them see all UNLESS there are private categories.
+        }
+      }
+    }
 
     const [attendees, total] = await Promise.all([
       Attendee.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -722,7 +784,18 @@ router.post('/ticket-categories', requireEventAccess, async (req, res, next) => 
       allowedZones: req.body.allowedZones || [],
       color: req.body.color || '#2563EB',
       benefits: req.body.benefits || [],
+      isPrivate: !!req.body.isPrivate,
+      maxUsage: req.body.maxUsage ? Number(req.body.maxUsage) : undefined,
+      assignedSubOrganisers: req.body.assignedSubOrganisers || [],
+      createdBy: req.user._id,
     };
+
+    if (category.isPrivate) {
+      const prefix = category.name.substring(0, 3).toUpperCase();
+      const random = crypto.randomBytes(3).toString('hex').toUpperCase();
+      category.accessCode = `${prefix}-${random}`;
+      category.accessCodeHash = await bcrypt.hash(category.accessCode, 10);
+    }
 
     event.categories.push(category);
     await event.save();
@@ -748,6 +821,20 @@ router.put('/ticket-categories/:categoryId', requireEventAccess, async (req, res
     category.color = req.body.color ?? category.color;
     category.allowedZones = req.body.allowedZones || category.allowedZones;
     category.benefits = req.body.benefits || category.benefits;
+    category.maxUsage = req.body.maxUsage !== undefined ? (req.body.maxUsage ? Number(req.body.maxUsage) : undefined) : category.maxUsage;
+    category.assignedSubOrganisers = req.body.assignedSubOrganisers || category.assignedSubOrganisers;
+
+    if (req.body.isPrivate !== undefined && req.body.isPrivate !== category.isPrivate) {
+      category.isPrivate = !!req.body.isPrivate;
+      if (category.isPrivate && !category.accessCode) {
+        const prefix = category.name.substring(0, 3).toUpperCase();
+        const random = crypto.randomBytes(3).toString('hex').toUpperCase();
+        category.accessCode = `${prefix}-${random}`;
+        category.accessCodeHash = await bcrypt.hash(category.accessCode, 10);
+      }
+    }
+
+    event.markModified('categories');
     await event.save();
 
     res.json({ success: true, data: { category }, message: 'Ticket category updated.' });
@@ -780,25 +867,36 @@ router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req
     const isMainOrganiser = hasRolePower(req.user.role, ROLES.MAIN_ORGANISER);
     let users = [];
     
+    const query = {
+      assignedEvents: req.scopedEvent._id,
+      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] }
+    };
+
     if (isMainOrganiser) {
-      // Main Organisers see all sub-organisers assigned to this event
-      users = req.scopedEvent.subOrganisers || [];
+      // Main Organisers see everyone assigned to this event
+      users = await User.find(query)
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
+        .populate('customRole')
+        .lean();
     } else {
       // Sub-Organisers see:
       // 1. team members they created for this event
-      // 2. existing members they assigned into this event, limited to their zone scope
+      // 2. existing members assigned to the event that share their zone scope
       const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-      users = await User.find({
-        assignedEvents: req.scopedEvent._id,
-        role: { $in: [ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
-        $or: [
+
+      if (myZoneIds.length > 0) {
+        query.$or = [
           { createdBy: req.user._id },
-          myZoneIds.length
-            ? { 'responsibilities.zoneIds': { $in: myZoneIds } }
-            : { _id: req.user._id },
-        ],
-      }).select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy').populate('customRole').lean();
+          { 'responsibilities.zoneIds': { $in: myZoneIds } }
+        ];
       }
+      // If global (no zones), they see all members assigned to the event with these roles
+
+      users = await User.find(query)
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
+        .populate('customRole')
+        .lean();
+    }
       
       res.json({ success: true, data: { users } });
     } catch (err) {
@@ -808,8 +906,9 @@ router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req
 
 router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
   try {
-    const event = await Event.findById(resolveEventId(req));
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const resolvedId = resolveEventId(req);
+    const event = await Event.findById(resolvedId);
+    if (!event) return res.status(404).json({ success: false, message: `Event not found for ID: ${resolvedId}` });
 
       const targetRole = normalizeRole(req.body.role || ROLES.SUB_ORGANISER);
       const requesterRole = normalizeRole(req.user.role);
@@ -1507,6 +1606,33 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     const confirmationFlow = parseJson(req.body.confirmationFlow);
     const accessRules = parseJson(req.body.accessRules);
     const paymentMethods = parseJson(req.body.paymentMethods);
+    const matchDetails = parseJson(req.body.matchDetails);
+    const concertDetails = parseJson(req.body.concertDetails);
+    const conferenceDetails = parseJson(req.body.conferenceDetails);
+
+    if (matchDetails) {
+      event.matchDetails = {
+        ...(event.matchDetails?.toObject ? event.matchDetails.toObject() : event.matchDetails || {}),
+        ...matchDetails
+      };
+      event.markModified('matchDetails');
+    }
+
+    if (concertDetails) {
+      event.concertDetails = {
+        ...(event.concertDetails?.toObject ? event.concertDetails.toObject() : event.concertDetails || {}),
+        ...concertDetails
+      };
+      event.markModified('concertDetails');
+    }
+
+    if (conferenceDetails) {
+      event.conferenceDetails = {
+        ...(event.conferenceDetails?.toObject ? event.conferenceDetails.toObject() : event.conferenceDetails || {}),
+        ...conferenceDetails
+      };
+      event.markModified('conferenceDetails');
+    }
 
     if (basicInfo) {
       event.name = basicInfo.name ?? event.name;

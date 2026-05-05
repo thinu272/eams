@@ -115,7 +115,6 @@ const attendeeSchema = new mongoose.Schema({
 });
 
 attendeeSchema.index({ event: 1, email: 1 });
-attendeeSchema.index({ qrToken: 1 });
 attendeeSchema.index({ confirmationToken: 1 });
 
 module.exports = mongoose.model('Attendee', attendeeSchema);

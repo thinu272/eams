@@ -1,15 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
-const DashboardLayout = ({ children }) => (
-  <div className="flex min-h-screen bg-slate-50">
-    <Sidebar />
-    <main className="flex-1 overflow-auto">
-      <Topbar />
-      <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
-    </main>
-  </div>
-);
+const DashboardLayout = ({ children }) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Mobile Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      <Sidebar 
+        isMobileOpen={isMobileMenuOpen} 
+        onClose={() => setIsMobileMenuOpen(false)} 
+      />
+      
+      <main className="flex-1 overflow-auto">
+        <Topbar onMenuClick={() => setIsMobileMenuOpen(true)} />
+        <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
+      </main>
+    </div>
+  );
+};
 
 export default DashboardLayout;

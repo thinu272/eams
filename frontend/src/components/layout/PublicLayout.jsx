@@ -8,12 +8,22 @@ const PublicLayout = ({ children }) => {
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <nav className="bg-brand-dark border-b border-white/10 sticky top-0 z-50">
+      <nav className="bg-brand-dark/95 backdrop-blur-md border-b border-white/5 sticky top-0 z-50 shadow-2xl shadow-brand-dark/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
-            <Link to="/" className="flex items-center gap-3 group">
-              <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain group-hover:scale-105 transition-transform" onError={(e) => e.target.style.display='none'} />
-              <span className="font-black text-white text-2xl tracking-tight group-hover:text-brand-main transition-colors">ENTRYNEX</span>
+            <Link to="/" className="flex items-center gap-3 group px-4 py-2 rounded-2xl hover:bg-white/5 transition-all duration-300">
+              <div className="relative">
+                <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain group-hover:rotate-12 transition-transform duration-500 drop-shadow-[0_0_15px_rgba(38,132,255,0.4)]" onError={(e) => e.target.style.display='none'} />
+                <div className="absolute inset-0 bg-brand-main blur-2xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
+              </div>
+              <div className="flex flex-col leading-none">
+                <span className="font-black text-white text-2xl tracking-tighter group-hover:text-brand-main transition-colors flex items-center">
+                  ENTRY<span className="text-brand-main">NEX</span>
+                </span>
+                <span className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-500 group-hover:text-slate-400 transition-colors">
+                  High Fidelity Access
+                </span>
+              </div>
             </Link>
             
             <div className="flex items-center gap-6">
@@ -49,10 +59,18 @@ const PublicLayout = ({ children }) => {
       <footer className="bg-brand-dark border-t border-white/10 text-slate-400 py-12 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display='none'} />
-              <span className="font-black text-slate-300 text-lg tracking-tight">ENTRYNEX</span>
-              <span className="text-sm">| Event Access Management System</span>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain opacity-80" onError={(e) => e.target.style.display='none'} />
+              <div className="flex flex-col leading-none">
+                <span className="font-black text-slate-200 text-lg tracking-tighter flex items-center">
+                  ENTRY<span className="text-brand-main">NEX</span>
+                </span>
+                <span className="text-[6px] font-black uppercase tracking-[0.2em] text-slate-600">
+                  Precision Registry
+                </span>
+              </div>
+              <span className="h-4 w-px bg-slate-800 ml-2 hidden sm:block"></span>
+              <span className="text-xs hidden sm:block text-slate-500 font-bold uppercase tracking-widest ml-2">Event Access Management</span>
             </div>
             <div className="text-sm font-medium">
               &copy; {new Date().getFullYear()} All rights reserved.

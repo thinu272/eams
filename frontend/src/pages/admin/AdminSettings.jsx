@@ -58,12 +58,24 @@ const AdminSettings = () => {
             <CardHeader title="Communication Providers" subtitle="Operational sender defaults and provider visibility" />
             <div className="grid gap-4 lg:grid-cols-2">
               <input className="rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Sender email" value={settings.communication?.senderEmail || ''} onChange={(e) => updateField('communication', 'senderEmail', e.target.value)} />
-              <input className="rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="SMS sender" value={settings.communication?.smsSender || ''} onChange={(e) => updateField('communication', 'smsSender', e.target.value)} />
+              <input className="rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="SMS sender (Phone Number)" value={settings.communication?.smsSender || ''} onChange={(e) => updateField('communication', 'smsSender', e.target.value)} />
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Email provider: {settings.communication?.emailProvider || 'smtp'}</div>
-              <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">SMS provider: {settings.communication?.smsProvider || 'mock'}</div>
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <select className="w-full bg-transparent px-4 py-3 text-sm text-slate-900 outline-none" value={settings.communication?.smsProvider || 'mock'} onChange={(e) => updateField('communication', 'smsProvider', e.target.value)}>
+                  <option value="mock">Mock SMS (Console Logging)</option>
+                  <option value="twilio">Twilio</option>
+                </select>
+              </div>
             </div>
+            
+            {settings.communication?.smsProvider === 'twilio' && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <input className="rounded-lg border border-slate-200 px-4 py-2 text-sm" placeholder="Twilio Account SID" value={settings.communication?.twilioSid || ''} onChange={(e) => updateField('communication', 'twilioSid', e.target.value)} />
+                <input type="password" className="rounded-lg border border-slate-200 px-4 py-2 text-sm" placeholder="Twilio Auth Token" value={settings.communication?.twilioAuthToken || ''} onChange={(e) => updateField('communication', 'twilioAuthToken', e.target.value)} />
+              </div>
+            )}
           </Card>
 
           <Card>

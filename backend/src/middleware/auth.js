@@ -57,13 +57,12 @@ const restrictTo = (...roles) => {
 const requireEventAccess = async (req, res, next) => {
   try {
     const { user } = req;
-    const eventId = req.params.eventId || 
-                    req.body.eventId || 
-                    req.query.eventId || 
-                    (user.assignedEvents && user.assignedEvents[0]);
+    const rawId = req.params.eventId || req.body.eventId || req.query.eventId;
+    const eventId = (rawId && rawId !== 'undefined') ? rawId : (user.assignedEvents && user.assignedEvents[0]);
 
-    // Root Authority bypass
-    if (normalizeRole(user.role) === ROLES.MAIN_ADMIN) {
+    // Root Authority bypass (Admins and Main Organisers have global scope)
+    const canonicalRole = normalizeRole(user.role);
+    if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {
       return next();
     }
     

@@ -21,68 +21,81 @@ const HomePage = () => {
   return (
     <PublicLayout>
       {/* Hero Section */}
-      <div className="relative overflow-hidden bg-slate-950 text-white">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=2805&auto=format&fit=crop')] bg-cover bg-center opacity-20 mix-blend-overlay"></div>
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-slate-950 to-transparent"></div>
-        <div className="relative max-w-7xl mx-auto px-4 py-28 text-center sm:px-6 lg:px-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-1.5 text-sm font-medium text-sky-300 backdrop-blur-sm">
-            <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
-            Live Updates & Tickets Available
+      <div className="relative min-h-[85vh] flex items-center overflow-hidden bg-brand-dark text-white">
+        {/* Animated Background Elements */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-brand-main/20 rounded-full blur-[120px] animate-pulse"></div>
+          <div className="absolute top-[20%] -right-[5%] w-[30%] h-[30%] bg-brand-accent/20 rounded-full blur-[100px] animate-float"></div>
+        </div>
+        
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=2805&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-soft-light scale-105 animate-[shimmer_20s_infinite_alternate]"></div>
+        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-brand-dark via-brand-dark/80 to-transparent"></div>
+        
+        <div className="relative max-w-7xl mx-auto px-6 py-20 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-300 backdrop-blur-md animate-fade-in">
+            <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.8)]"></span>
+            Next-Gen Event Experience
           </div>
-          <h1 className="mt-8 text-5xl font-black uppercase tracking-tight leading-tight md:text-7xl">
-            Experience the <span className="text-sky-400">Match Live</span>
+          
+          <h1 className="mt-8 text-6xl font-black uppercase tracking-tighter leading-[0.9] md:text-8xl lg:text-[9rem] animate-fade-in [animation-delay:100ms]">
+            Live the <br/>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-main via-blue-400 to-cyan-400">Moment</span>
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-xl text-slate-300 font-medium pb-2">
-            Secure your seats for the biggest cricket events. VVIP, VIP, General Admission, and Media passes available now.
+          
+          <p className="mx-auto mt-10 max-w-2xl text-lg md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
+            ENTRYNEX platform secures your seats for the most exclusive events. <br className="hidden md:block"/>
+            From stadium matches to premium conferences, we handle the access.
           </p>
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-6 animate-fade-in [animation-delay:300ms]">
             <Link
               to="/events"
-              className="rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-lg shadow-blue-900/50 transition-all hover:bg-blue-500 hover:scale-105 active:scale-95"
+              className="btn-premium group flex items-center gap-3 px-10 py-5 text-lg"
             >
-              Browse Events
+              Secure Tickets
+              <ChevronRightIcon className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Link>
             <Link
               to="/login"
-              className="rounded-xl border-2 border-slate-600 bg-slate-900/50 px-8 py-4 text-lg font-bold text-slate-300 backdrop-blur-sm transition-all hover:border-slate-400 hover:text-white"
+              className="px-10 py-5 text-lg font-bold text-slate-300 hover:text-white transition-all border border-white/10 rounded-2xl hover:bg-white/5 backdrop-blur-sm"
             >
-              Partner Portal
+              Organiser Login
             </Link>
           </div>
         </div>
       </div>
 
       {/* Featured Events Section */}
-      <div id="events" className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-        <div className="flex flex-col items-center text-center">
-          <h2 className="text-4xl font-black uppercase tracking-tight text-slate-900">
-            Upcoming <span className="text-blue-700">Events</span>
+      <div id="events" className="relative z-10 mx-auto max-w-7xl px-6 py-32">
+        <div className="flex flex-col items-center text-center mb-20">
+          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-main mb-4">Curated Selection</p>
+          <h2 className="text-4xl md:text-5xl font-black tracking-tight text-slate-900">
+            Featured <span className="text-brand-main">Experiences</span>
           </h2>
-          <div className="mt-3 h-1.5 w-24 rounded-full bg-blue-600"></div>
-          <p className="mb-12 mt-6 max-w-2xl text-lg text-slate-600">
-            Don't miss out on the action. Select an event below to view ticket categories, stadium zones, and prices.
-          </p>
+          <div className="mt-6 h-1 w-20 rounded-full bg-brand-main/20 overflow-hidden">
+            <div className="h-full w-1/2 bg-brand-main rounded-full animate-shimmer"></div>
+          </div>
         </div>
 
         {loading ? (
-          <div className="mx-auto grid max-w-[1220px] grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 xl:gap-10">
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((item) => (
               <div
                 key={item}
-                className="h-[460px] rounded-2xl border border-slate-200 bg-slate-100 animate-pulse"
+                className="h-[500px] rounded-[32px] border border-slate-100 bg-white/50 animate-pulse shimmer-effect"
               />
             ))}
           </div>
         ) : events.length === 0 ? (
-          <div className="py-20 text-center">
-            <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-slate-100">
-              <CalendarDaysIcon className="h-10 w-10 text-slate-400" />
+          <div className="py-20 text-center glass rounded-[40px] border-dashed border-slate-200">
+            <div className="inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-100 text-slate-300">
+              <CalendarDaysIcon className="h-12 w-12" />
             </div>
-            <p className="mt-4 text-xl font-medium text-slate-900">No events found</p>
-            <p className="text-slate-500">There are no published events at this time. Check back later!</p>
+            <p className="mt-6 text-2xl font-black text-slate-900">Stay Tuned</p>
+            <p className="mt-2 text-slate-500 font-medium">New experiences are being curated as we speak.</p>
           </div>
         ) : (
-          <div className="mx-auto grid max-w-[1220px] grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 xl:gap-10">
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
             {events.map((event) => {
               return <PublicEventCard key={event._id} event={event} />;
             })}
@@ -90,13 +103,13 @@ const HomePage = () => {
         )}
 
         {events.length > 0 && (
-          <div className="mt-16 text-center">
+          <div className="mt-20 text-center">
              <Link
               to="/events"
-              className="inline-flex items-center gap-2 text-lg font-bold text-blue-700 hover:text-blue-600 transition-colors group"
+              className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-white border border-slate-200 text-sm font-black uppercase tracking-widest text-slate-900 hover:bg-slate-50 hover:border-brand-main transition-all group"
             >
-              View all upcoming matches 
-              <ChevronRightIcon className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              Explore all events 
+              <ChevronRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1 text-brand-main" />
             </Link>
           </div>
         )}

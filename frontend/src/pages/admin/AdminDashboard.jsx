@@ -10,6 +10,7 @@ import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
+import AdminSettingsPanel from './AdminSettingsPanel';
 import toast from 'react-hot-toast';
 import {
   createSuperAdminEvent,
@@ -44,14 +45,6 @@ const SECTION_LABELS = {
 };
 
 const statusTone = { Active: 'green', Inactive: 'red', Live: 'green', Upcoming: 'blue', Completed: 'gray', Allowed: 'green', Denied: 'red', pending: 'amber', rejected: 'red', verified: 'green' };
-const emptySettings = {
-  communication: { emailProvider: 'smtp', senderEmail: '', smsProvider: 'mock', smsSender: '' },
-  templates: { inviteSubject: '', inviteSms: '', confirmationSubject: '', confirmationSms: '', rejectionSubject: '', rejectionSms: '' },
-  limits: { logsDays: 365, notificationsDays: 90, jwtTtlHours: 24 },
-  featureToggles: { requirePhotoVerification: true, darkModeDefault: false, balancedSecurity: false },
-  currency: 'LKR',
-  maintenanceMode: false,
-};
 
 const downloadBlob = (blob, fallbackName) => {
   const url = window.URL.createObjectURL(blob);
@@ -121,7 +114,7 @@ const SectionFilters = ({ section, params, updateQuery, organiserOptions = [] })
   );
 };
 
-const SectionContent = ({ section, workspace, params, updateQuery, openModal, loadWorkspace, settingsForm, setSettingsForm, saveSettings, deleteOrganiser, deleteUser }) => {
+const SectionContent = ({ section, workspace, params, updateQuery, openModal, loadWorkspace, deleteOrganiser, deleteUser }) => {
   const overview = workspace?.overview;
   const eventRows = workspace?.events?.rows || [];
   const organiserRows = workspace?.organisations?.rows || [];
@@ -257,34 +250,7 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
         </div>
       )}
       {section === 'settings' && (
-        <Card className="rounded-[28px] border-slate-200">
-          <form className="space-y-8" onSubmit={saveSettings}>
-            <div className="grid gap-6 md:grid-cols-2">
-              <Field label="Email service"><Select value={settingsForm.communication.emailProvider} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, emailProvider: e.target.value } }))}><option value="smtp">SMTP</option><option value="sendgrid">SendGrid</option></Select></Field>
-              <Field label="Sender email"><Input value={settingsForm.communication.senderEmail} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, senderEmail: e.target.value } }))} /></Field>
-              <Field label="SMS service"><Select value={settingsForm.communication.smsProvider} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, smsProvider: e.target.value } }))}><option value="mock">Local Gateway</option><option value="twilio">Twilio</option></Select></Field>
-              <Field label="SMS sender"><Input value={settingsForm.communication.smsSender} onChange={(e) => setSettingsForm((prev) => ({ ...prev, communication: { ...prev.communication, smsSender: e.target.value } }))} /></Field>
-              <Field label="Default currency"><Input value={settingsForm.currency} onChange={(e) => setSettingsForm((prev) => ({ ...prev, currency: e.target.value }))} placeholder="e.g. LKR, USD" /></Field>
-              <div className="flex items-center gap-3 pt-6">
-                <input type="checkbox" checked={settingsForm.maintenanceMode} onChange={(e) => setSettingsForm((prev) => ({ ...prev, maintenanceMode: e.target.checked }))} className="h-4 w-4 rounded border-slate-300" />
-                <label className="text-sm font-medium text-slate-700">Enable Maintenance Mode (Restricts public access)</label>
-              </div>
-            </div>
-            <div className="grid gap-6 md:grid-cols-2">
-              <Field label="Invite email subject"><Input value={settingsForm.templates.inviteSubject} onChange={(e) => setSettingsForm((prev) => ({ ...prev, templates: { ...prev.templates, inviteSubject: e.target.value } }))} /></Field>
-              <Field label="Invite SMS"><Input value={settingsForm.templates.inviteSms} onChange={(e) => setSettingsForm((prev) => ({ ...prev, templates: { ...prev.templates, inviteSms: e.target.value } }))} /></Field>
-              <Field label="Confirmation email subject"><Input value={settingsForm.templates.confirmationSubject} onChange={(e) => setSettingsForm((prev) => ({ ...prev, templates: { ...prev.templates, confirmationSubject: e.target.value } }))} /></Field>
-              <Field label="Confirmation SMS"><Input value={settingsForm.templates.confirmationSms} onChange={(e) => setSettingsForm((prev) => ({ ...prev, templates: { ...prev.templates, confirmationSms: e.target.value } }))} /></Field>
-            </div>
-            <div className="grid gap-6 md:grid-cols-3">
-              <Field label="Log retention days"><Input type="number" value={settingsForm.limits.logsDays} onChange={(e) => setSettingsForm((prev) => ({ ...prev, limits: { ...prev.limits, logsDays: Number(e.target.value) } }))} /></Field>
-              <Field label="Notification retention days"><Input type="number" value={settingsForm.limits.notificationsDays} onChange={(e) => setSettingsForm((prev) => ({ ...prev, limits: { ...prev.limits, notificationsDays: Number(e.target.value) } }))} /></Field>
-              <Field label="JWT TTL hours"><Input type="number" value={settingsForm.limits.jwtTtlHours} onChange={(e) => setSettingsForm((prev) => ({ ...prev, limits: { ...prev.limits, jwtTtlHours: Number(e.target.value) } }))} /></Field>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">{[['requirePhotoVerification', 'Require photo verification'], ['darkModeDefault', 'Default to dark mode'], ['balancedSecurity', 'Balanced security mode']].map(([key, label]) => <label key={key} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4"><input type="checkbox" checked={Boolean(settingsForm.featureToggles[key])} onChange={(e) => setSettingsForm((prev) => ({ ...prev, featureToggles: { ...prev.featureToggles, [key]: e.target.checked } }))} /><span className="text-sm text-slate-700">{label}</span></label>)}</div>
-            <div className="flex justify-end"><Button type="submit">Save settings</Button></div>
-          </form>
-        </Card>
+        <AdminSettingsPanel />
       )}
     </>
   );
@@ -328,7 +294,6 @@ const AdminDashboard = () => {
   const [modal, setModal] = useState({ type: '', mode: 'create', item: null });
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const [settingsForm, setSettingsForm] = useState(emptySettings);
   const [searchResults, setSearchResults] = useState({ events: [], users: [] });
 
   const updateQuery = (key, value) => setParams((current) => {
@@ -342,7 +307,6 @@ const AdminDashboard = () => {
     try {
       const response = await getSuperAdminWorkspace(Object.fromEntries(params.entries()));
       setWorkspace(response.data?.data || null);
-      if (response.data?.data?.settings) setSettingsForm(response.data.data.settings);
     } catch {
       toast.error('Failed to load super admin workspace');
     } finally {
@@ -390,20 +354,6 @@ const AdminDashboard = () => {
       loadWorkspace();
     } catch {
       toast.error(`Failed to ${modal.mode} ${modal.type}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveSettings = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await updateSuperAdminSettings(settingsForm);
-      toast.success('System settings updated');
-      loadWorkspace();
-    } catch {
-      toast.error('Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -476,9 +426,6 @@ const AdminDashboard = () => {
           openModal={openModal}
           loadWorkspace={loadWorkspace}
           exportReport={exportReport}
-          settingsForm={settingsForm}
-          setSettingsForm={setSettingsForm}
-          saveSettings={saveSettings}
           deleteOrganiser={handleDeleteOrganiser}
           deleteUser={handleDeleteUser}
         />

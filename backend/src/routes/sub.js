@@ -81,15 +81,24 @@ const getPermittedCategories = (user, event) => {
       accessCode: cat.accessCode || '',
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
+      assignedSubOrganisers: cat.assignedSubOrganisers || [],
     }));
   }
 
   const myZones = getAssignedZoneIds(user, event).map(String);
+  const userId = user._id.toString();
   
   return categories
     .filter((cat) => {
+      // 1. Explicitly assigned to this sub-organiser
+      const isAssigned = (cat.assignedSubOrganisers || []).some(id => id.toString() === userId);
+      if (isAssigned) return true;
+
+      // 2. Created by this sub-organiser
+      if (cat.createdBy && cat.createdBy.toString() === userId) return true;
+
+      // 3. Zone overlap (Legacy/Fallback)
       const catZones = (cat.allowedZones || []).map(String);
-      // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
       return catZones.length === 0 || catZones.some(z => myZones.includes(z));
     })
     .map((cat) => ({
@@ -104,6 +113,7 @@ const getPermittedCategories = (user, event) => {
       accessCode: cat.accessCode || '',
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
+      assignedSubOrganisers: cat.assignedSubOrganisers || [],
     }));
 };
 
@@ -502,11 +512,27 @@ router.post('/verify', async (req, res, next) => {
         reason: attendee.photoRejectionReason,
       });
     } else {
+      attendee.confirmationStatus = 'confirmed';
+      attendee.isConfirmed = true;
+      attendee.confirmedAt = new Date();
+      attendee.confirmedBy = 'sub_organiser';
+      await attendee.save();
+
+      const { notifyFinalTicket, notifyStatusChange } = require('../services/notificationService');
       const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
       const Ticket = require('../models/Ticket');
+
+      await notifyFinalTicket({
+        attendee,
+        event: attendee.event,
+        phone: attendee.phone,
+        notificationChannel: 'both',
+        force: true
+      }).catch((err) => console.error('SUB_ORG FINAL NOTIFY ERROR:', err));
+
       const orderTickets = await Ticket.find({ order: attendee.order }).populate('attendee');
       const allVerified = orderTickets.length > 0 && orderTickets.every(t => t.attendee && t.attendee.photoVerificationStatus === 'verified');
-      
+
       if (allVerified) {
          await processOrderFinalConfirmation({ orderId: attendee.order });
       } else {
@@ -722,7 +748,8 @@ router.post('/tickets', async (req, res, next) => {
       allowedZones, 
       isPrivate, 
       maxUsage,
-      description 
+      description,
+      assignedSubOrganisers
     } = req.body;
 
     const { event, error } = await resolveScopedEvent(req.user, eventId);
@@ -767,6 +794,7 @@ router.post('/tickets', async (req, res, next) => {
       accessCodeHash,
       maxUsage: maxUsage ? Number(maxUsage) : undefined,
       createdBy: req.user._id,
+      assignedSubOrganisers: Array.isArray(assignedSubOrganisers) ? assignedSubOrganisers : [],
       usageCount: 0
     };
 
@@ -831,13 +859,108 @@ router.patch('/tickets/:categoryId/regenerate', async (req, res, next) => {
     event.markModified('categories');
     await event.save();
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: 'Access code regenerated successfully.',
       data: {
         accessCode: newAccessCode
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/tickets/:categoryId', async (req, res, next) => {
+  try {
+    if (normalizeRole(req.user.role) === ROLES.STAFF) {
+      return res.status(403).json({ success: false, message: 'Staff are not authorized to modify tickets.' });
+    }
+    const { eventId, name, price, capacity, allowedZones, description, isPrivate, maxUsage, assignedSubOrganisers } = req.body;
+    const { categoryId } = req.params;
+
+    const { event, error } = await resolveScopedEvent(req.user, eventId);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    const index = event.categories.findIndex(c => c.id === categoryId);
+    if (index === -1) return res.status(404).json({ success: false, message: 'Category not found.' });
+
+    const cat = event.categories[index];
+    const userId = req.user._id.toString();
+    const isOwner = cat.createdBy && cat.createdBy.toString() === userId;
+    const isAssigned = (cat.assignedSubOrganisers || []).some(id => id.toString() === userId);
+
+    if (!isOwner && !isAssigned) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to modify this category.' });
+    }
+
+    if (name) cat.name = name;
+    if (price !== undefined) cat.price = Number(price);
+    if (capacity !== undefined) cat.capacity = Number(capacity);
+    if (description !== undefined) cat.description = description;
+    if (maxUsage !== undefined) cat.maxUsage = maxUsage ? Number(maxUsage) : undefined;
+    if (assignedSubOrganisers !== undefined) cat.assignedSubOrganisers = Array.isArray(assignedSubOrganisers) ? assignedSubOrganisers : [];
+    
+    if (allowedZones) {
+      const assignedZoneIds = getAssignedZoneIds(req.user, event).map(String);
+      const requestedZones = (allowedZones || []).map(String);
+      const unauthorizedZones = requestedZones.filter(id => !assignedZoneIds.includes(id));
+      if (unauthorizedZones.length > 0) {
+        return res.status(403).json({ success: false, message: `Unauthorized zones: ${unauthorizedZones.join(', ')}` });
+      }
+      cat.allowedZones = requestedZones;
+    }
+
+    if (isPrivate !== undefined && isPrivate !== cat.isPrivate) {
+      cat.isPrivate = !!isPrivate;
+      if (cat.isPrivate && !cat.accessCode) {
+        const prefix = cat.name.substring(0, 3).toUpperCase();
+        const random = crypto.randomBytes(3).toString('hex').toUpperCase();
+        cat.accessCode = `${prefix}-${random}`;
+        cat.accessCodeHash = await bcrypt.hash(cat.accessCode, 10);
+      }
+    }
+
+    event.markModified('categories');
+    await event.save();
+
+    res.json({ success: true, message: 'Ticket category updated.', data: { category: cat } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/tickets/:categoryId', async (req, res, next) => {
+  try {
+    if (normalizeRole(req.user.role) === ROLES.STAFF) {
+      return res.status(403).json({ success: false, message: 'Staff are not authorized to delete tickets.' });
+    }
+    const { eventId } = req.query;
+    const { categoryId } = req.params;
+
+    const { event, error } = await resolveScopedEvent(req.user, eventId);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    const index = event.categories.findIndex(c => c.id === categoryId);
+    if (index === -1) return res.status(404).json({ success: false, message: 'Category not found.' });
+
+    const cat = event.categories[index];
+    const userId = req.user._id.toString();
+    const isOwner = cat.createdBy && cat.createdBy.toString() === userId;
+
+    if (!isOwner) {
+      return res.status(403).json({ success: false, message: 'Only the creator can delete this category.' });
+    }
+
+    if (cat.sold > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete category with existing sales.' });
+    }
+
+    event.categories.splice(index, 1);
+    event.markModified('categories');
+    await event.save();
+
+    res.json({ success: true, message: 'Ticket category deleted.' });
   } catch (error) {
     next(error);
   }

@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { BellIcon, MagnifyingGlassIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { BellIcon, MagnifyingGlassIcon, ChevronDownIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
-import { getRoleLabel, getRoleColor } from '../../config/roleNavigation';
+import { getRoleLabel } from '../../config/roleNavigation';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../../api/notifications';
 import { getMyEvents } from '../../api/events';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
-const Topbar = () => {
+const Topbar = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -23,7 +23,6 @@ const Topbar = () => {
   const isSuperAdminWorkspace = user?.role === 'MainAdmin';
   const isStaffWorkspace = user?.role === 'Staff';
   const assignedGateText = (user?.assignedGates || []).filter(Boolean).join(', ');
-  const assignedZoneText = (user?.assignedZones || []).filter(Boolean).join(', ');
 
   const loadNotifications = async () => {
     try {
@@ -92,116 +91,115 @@ const Topbar = () => {
   };
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Event Access Management System</p>
-        <p className="text-lg font-bold text-slate-900">
-          {isOrganiserWorkspace ? 'Organiser Command Desk' : isSuperAdminWorkspace ? 'Super Admin Control Center' : isStaffWorkspace ? 'Staff Operations Desk' : 'System Administration Console'}
-        </p>
-        {isStaffWorkspace && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <span className="rounded-full bg-cyan-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-700">
-              Staff: {user?.name || 'Operator'}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
-              Gate: {assignedGateText || 'Any gate'}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
-              Zone: {assignedZoneText || 'Any zone'}
-            </span>
-          </div>
-        )}
-      </div>
+    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200/50 bg-white/70 px-4 lg:px-8 py-4 backdrop-blur-xl">
       <div className="flex items-center gap-4">
+        <button 
+          onClick={onMenuClick}
+          className="p-2.5 text-slate-500 hover:bg-slate-100/50 rounded-xl lg:hidden transition-colors"
+        >
+          <Bars3Icon className="h-6 w-6" />
+        </button>
+        <div className="animate-fade-in">
+          <p className="hidden sm:block text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">System Dashboard</p>
+          <p className="text-sm lg:text-base font-black text-slate-900 tracking-tight">
+            {isOrganiserWorkspace ? 'Command Center' : isSuperAdminWorkspace ? 'Global Control' : isStaffWorkspace ? 'Operations Terminal' : 'Console'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 lg:gap-6">
         {isOrganiserWorkspace && events.length > 0 && (
           <select
             value={selectedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+            className="hidden md:block rounded-xl border border-slate-200 bg-white/50 px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:border-brand-main transition-all"
           >
             {events.map((event) => (
               <option key={event._id} value={event._id}>{event.name}</option>
             ))}
           </select>
         )}
-        <div className={`items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-500 ${isStaffWorkspace ? 'hidden' : 'hidden lg:flex'}`}>
+
+        <div className={`items-center gap-2 rounded-xl border border-slate-200/50 bg-white/50 px-4 py-2 text-slate-400 focus-within:border-brand-main focus-within:text-brand-main transition-all ${isStaffWorkspace ? 'hidden' : 'hidden lg:flex'}`}>
           <MagnifyingGlassIcon className="h-4 w-4" />
           <input
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder={isSuperAdminWorkspace ? 'Search events, users, organisers...' : 'Search attendees, logs, events...'}
-            className="w-72 bg-transparent text-sm outline-none placeholder:text-slate-400"
+            placeholder="Quick search..."
+            className="bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
           />
         </div>
-        <div className="relative">
-          <button
-            className="relative rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-900"
-            onClick={() => setOpen((value) => !value)}
-          >
-          <BellIcon className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
-              {unreadCount}
+
+        {/* Staff Workspace Info */}
+        {isStaffWorkspace && (
+          <div className="hidden sm:flex items-center gap-2">
+            <span className="rounded-xl bg-brand-main/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-brand-main">
+              {assignedGateText || 'General Gate'}
             </span>
-          )}
-        </button>
-        {open && (
-          <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-slate-900">Notifications</p>
-              <button onClick={handleMarkAll} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
-                Mark all read
-              </button>
-            </div>
-            <div className="space-y-3 max-h-80 overflow-auto">
-              {items.map((item) => (
-                <button
-                  key={item._id}
-                  onClick={() => handleItemClick(item)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
-                    item.read ? 'border-slate-100 bg-slate-50 text-slate-500' : 'border-blue-100 bg-blue-50 text-slate-900'
-                  }`}
-                >
-                  <p className="font-semibold">{item.title}</p>
-                  {item.message && <p className="text-xs text-slate-500">{item.message}</p>}
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
-                  </p>
-                </button>
-              ))}
-              {items.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-                  No notifications yet.
-                </div>
-              )}
-            </div>
           </div>
         )}
+
+        {/* Notifications */}
+        <div className="relative">
+          <button
+            onClick={() => setOpen(!open)}
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/50 text-slate-500 hover:bg-slate-200/50 transition-all"
+          >
+            <BellIcon className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-lg bg-brand-main px-1 text-[9px] font-black text-white shadow-lg shadow-brand-main/30">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+          {open && (
+            <div className="absolute right-0 mt-3 w-80 rounded-[28px] border border-slate-100 bg-white p-4 shadow-2xl animate-fade-in overflow-hidden">
+              <div className="flex items-center justify-between mb-4 px-2">
+                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">Notifications</p>
+                <button onClick={handleMarkAll} className="text-[10px] font-black text-brand-main uppercase tracking-widest hover:underline">
+                  Clear All
+                </button>
+              </div>
+              <div className="space-y-2 max-h-80 overflow-auto custom-scrollbar">
+                {items.length > 0 ? items.map((item) => (
+                  <div key={item._id} onClick={() => handleItemClick(item)} className={`group cursor-pointer rounded-2xl p-3 transition-all ${item.read ? 'hover:bg-slate-50' : 'bg-brand-main/5 hover:bg-brand-main/10'}`}>
+                    <p className={`text-sm font-bold ${item.read ? 'text-slate-600' : 'text-slate-900'}`}>{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-500 font-medium leading-relaxed">{item.message}</p>
+                    <p className="mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}</p>
+                  </div>
+                )) : (
+                  <div className="py-10 text-center">
+                     <p className="text-sm text-slate-400 font-medium italic">No new alerts</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* User Profile */}
         {user && (
           <div className="relative">
             <button
               onClick={() => setProfileOpen((value) => !value)}
-              className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2"
+              className="flex items-center gap-3 rounded-xl border border-slate-200/50 bg-white/50 pl-3 pr-2 py-1.5 hover:bg-slate-50 transition-all"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">
+              <div className="h-7 w-7 rounded-lg bg-brand-main flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-brand-main/20">
                 {user.name?.charAt(0) || 'U'}
               </div>
-              <div className="leading-tight text-left">
-                <p className="text-sm font-semibold text-slate-900">{user.name}</p>
-                <span className={`text-[10px] font-semibold uppercase tracking-widest ${getRoleColor(user.role)} rounded-full px-2 py-0.5`}>
-                  {getRoleLabel(user.role)}
-                </span>
-              </div>
-              <ChevronDownIcon className="h-4 w-4 text-slate-500" />
+              <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
             </button>
             {profileOpen && (
-              <div className="absolute right-0 mt-3 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                <button onClick={() => navigate(isOrganiserWorkspace ? '/organiser/dashboard?section=settings' : isStaffWorkspace ? '/dashboard' : '/admin/dashboard?section=settings')} className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-                  Open dashboard
+              <div className="absolute right-0 mt-3 w-56 rounded-[24px] border border-slate-100 bg-white p-2 shadow-2xl animate-fade-in">
+                <div className="px-4 py-3 border-b border-slate-50 mb-1">
+                   <p className="text-sm font-black text-slate-900 truncate">{user.name}</p>
+                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mt-0.5">{user.role}</p>
+                </div>
+                <button onClick={() => navigate(isOrganiserWorkspace ? '/organiser/dashboard?section=settings' : isStaffWorkspace ? '/dashboard' : '/admin/dashboard?section=settings')} className="w-full flex items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors">
+                  Dashboard Settings
                 </button>
-                <button onClick={handleLogout} className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-rose-500 hover:bg-rose-500/10">
-                  Sign out
+                <button onClick={handleLogout} className="mt-1 w-full flex items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-bold text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+                  Sign Out
                 </button>
               </div>
             )}

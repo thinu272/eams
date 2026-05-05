@@ -7,75 +7,75 @@ const systemConfigSchema = new mongoose.Schema({
     unique: true,
     default: 'global',
   },
-  theme: {
-    defaultMode: {
-      type: String,
-      enum: ['light', 'dark', 'system'],
-      default: 'system',
-    },
-    accent: {
-      type: String,
-      default: '#2563eb',
+  general: {
+    platformName: { type: String, default: 'ENTRYNEX' },
+    supportEmail: { type: String, default: 'support@entrynex.com' },
+    systemStatus: { type: String, enum: ['Active', 'Maintenance'], default: 'Active' },
+    defaultRoles: { type: [String], default: ['Attendee'] },
+  },
+  branding: {
+    logoUrl: { type: String, default: '' },
+    faviconUrl: { type: String, default: '' },
+    primaryColor: { type: String, default: '#2563eb' },
+    secondaryColor: { type: String, default: '#4f46e5' },
+    applyToEmails: { type: Boolean, default: true },
+    applyToTickets: { type: Boolean, default: true },
+    applyToUi: { type: Boolean, default: true },
+  },
+  email: {
+    provider: { type: String, enum: ['smtp', 'sendgrid', 'mock'], default: 'smtp' },
+    smtpHost: { type: String, default: '' },
+    smtpPort: { type: Number, default: 587 },
+    smtpUser: { type: String, default: '' },
+    smtpPassword: { type: String, default: '' },
+    sendgridApiKey: { type: String, default: '' },
+    senderName: { type: String, default: 'ENTRYNEX' },
+    templates: {
+      inviteSubject: { type: String, default: "You're Invited - {{eventName}}" },
+      ticketSubject: { type: String, default: 'Confirmed - Your ticket for {{eventName}}' },
+      resetSubject: { type: String, default: 'Password Reset Request' },
     },
   },
-  communication: {
-    senderEmail: {
-      type: String,
-      default: process.env.EMAIL_FROM || 'noreply@entrynex.com',
-    },
-    smsSender: {
-      type: String,
-      default: process.env.TWILIO_PHONE_NUMBER || '',
-    },
-    emailProvider: {
-      type: String,
-      default: process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp',
-    },
-    smsProvider: {
-      type: String,
-      default: process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'mock',
-    },
+  sms: {
+    provider: { type: String, enum: ['mock', 'twilio', 'localApi'], default: 'mock' },
+    apiKey: { type: String, default: '' },
+    apiSecret: { type: String, default: '' },
+    enabled: { type: Boolean, default: false },
   },
-  templates: {
-    invite: {
-      subject: { type: String, default: "You're Invited - {{eventName}}" },
-      sms: { type: String, default: "ENTRYNEX: You're invited to {{eventName}}. Confirm here: {{link}}" },
-    },
-    confirmation: {
-      subject: { type: String, default: 'Confirmed - Your ticket for {{eventName}}' },
-      sms: { type: String, default: 'ENTRYNEX: Ticket confirmed for {{eventName}}. Show QR at entry: {{link}}' },
-    },
-    rejection: {
-      subject: { type: String, default: 'Photo Rejected - Resubmit for {{eventName}}' },
-      sms: { type: String, default: 'ENTRYNEX: Your photo was rejected. Reason: {{reason}}. Re-upload here: {{link}}' },
-    },
-  },
-  retention: {
-    logsDays: { type: Number, default: 365 },
-    notificationsDays: { type: Number, default: 90 },
+  payment: {
+    gateway: { type: String, enum: ['none', 'stripe', 'payhere'], default: 'none' },
+    publishableKey: { type: String, default: '' },
+    secretKey: { type: String, default: '' },
+    defaultCurrency: { type: String, default: 'LKR' },
+    enabled: { type: Boolean, default: false },
   },
   security: {
-    mode: {
-      type: String,
-      enum: ['strict', 'balanced', 'open'],
-      default: 'strict',
-    },
-    jwtTtlHours: {
-      type: Number,
-      default: 24,
-    },
-    requirePhotoVerification: {
-      type: Boolean,
-      default: true,
-    },
+    jwtTtlHours: { type: Number, default: 24 },
+    minPasswordLength: { type: Number, default: 8 },
+    requirePasswordComplexity: { type: Boolean, default: false },
+    loginRateLimit: { type: Number, default: 5 },
+    emailVerificationRequired: { type: Boolean, default: false },
+    twoFactorEnabled: { type: Boolean, default: false },
   },
-  currency: {
-    type: String,
-    default: 'LKR',
+  ticketing: {
+    qrEnabled: { type: Boolean, default: true },
+    pdfEnabled: { type: Boolean, default: true },
+    autoSendOnConfirm: { type: Boolean, default: true },
+    accessCodeToggle: { type: Boolean, default: true },
   },
-  maintenanceMode: {
-    type: Boolean,
-    default: false,
+  regional: {
+    defaultCurrency: { type: String, default: 'LKR' },
+    timezone: { type: String, default: 'Asia/Colombo' },
+    dateFormat: { type: String, default: 'MM/DD/YYYY' },
+    multiCurrency: { type: Boolean, default: false },
+  },
+  integrations: {
+    storageProvider: { type: String, enum: ['local', 'aws', 'cloudinary'], default: 'local' },
+    awsAccessKey: { type: String, default: '' },
+    awsSecretKey: { type: String, default: '' },
+    awsBucket: { type: String, default: '' },
+    mapsApiKey: { type: String, default: '' },
+    aiServiceKey: { type: String, default: '' },
   },
 }, {
   timestamps: true,

@@ -184,8 +184,8 @@ const OrderConfirmationPage = () => {
       toast.error('Please enter a phone number for SMS.');
       return;
     }
-    if (!/^\+947\d{8}$/.test(phone)) {
-      toast.error('Phone must be in +947XXXXXXXX format.');
+    if (!/^\+?[1-9]\d{1,14}$/.test(phone.trim().replace(/\s+/g, ''))) {
+      toast.error('Please enter a valid international phone number');
       return;
     }
 
@@ -478,7 +478,7 @@ const OrderConfirmationPage = () => {
                                                             type="tel"
                                                             value={invitePhoneByTicket[ticket._id] || ''}
                                                             onChange={(e) => setInvitePhoneByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
-                                                            placeholder="Guest Phone (+947XXXXXXXX)"
+                                                            placeholder="Guest Phone (+1234567890)"
                                                             className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                         />
                                                     </div>

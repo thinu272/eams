@@ -25,3 +25,4 @@ export const exportSuperAdminReport = (params) =>
 export const getSuperAdminSettings = () => api.get('/super-admin/settings');
 export const updateSuperAdminSettings = (payload) => api.patch('/super-admin/settings', payload);
 export const getSuperAdminLogs = (params) => api.get('/super-admin/logs', { params });
+export const uploadSystemAsset = (formData) => api.post('/upload/system-asset', formData);

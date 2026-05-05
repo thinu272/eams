@@ -117,21 +117,21 @@ const StaffManualSearchPage = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-900 p-6 text-white shadow-xl">
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Staff Operations</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight">Manual Search</h1>
-          <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
+        <section className="rounded-[24px] lg:rounded-[32px] bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-900 p-5 lg:p-8 text-white shadow-xl">
+          <p className="text-[10px] lg:text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Staff Operations</p>
+          <h1 className="mt-2 text-3xl lg:text-5xl font-black tracking-tight">Manual Search</h1>
+          <p className="mt-3 max-w-2xl text-xs lg:text-sm font-medium text-slate-300 leading-relaxed">
             Search by attendee name or phone, review ticket state, and perform manual check-in when queue conditions require it.
           </p>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr] xl:grid-cols-[1.15fr,0.85fr]">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="grid gap-4 lg:grid-cols-[0.4fr,1fr]">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[0.4fr,1fr]">
               <select
                 value={selectedEventId}
                 onChange={(e) => handleEventChange(e.target.value)}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 lg:py-4 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500"
               >
                 {events.map((event) => <option key={event._id} value={event._id}>{event.name}</option>)}
               </select>

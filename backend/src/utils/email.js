@@ -1,14 +1,11 @@
 const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
+const SystemConfig = require('../models/SystemConfig');
 
-const createTransporter = () => {
-  const hasSmtpCreds = process.env.SMTP_HOST && process.env.SMTP_PASS;
-  const hasSendGridKey = process.env.SENDGRID_API_KEY;
+const createTransporter = async (config) => {
+  const hasSmtpCreds = config?.email?.smtpHost && config?.email?.smtpPassword;
   
-  // Only use dev transporter if NO real credentials are found
-  const isDev = !hasSmtpCreds && !hasSendGridKey;
-
-  if (isDev) {
+  if (config?.email?.provider === 'mock') {
     console.log('EMAIL: Using Development Transporter (Console Log only)');
     return {
       sendMail: (opts) => {
@@ -19,24 +16,49 @@ const createTransporter = () => {
       },
     };
   }
-  console.log('EMAIL: Using SMTP Transporter:', process.env.SMTP_HOST);
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
+
+  if (hasSmtpCreds && config?.email?.provider === 'smtp') {
+    console.log('EMAIL: Using SMTP Transporter:', config.email.smtpHost);
+    return nodemailer.createTransport({
+      host: config.email.smtpHost,
+      port: config.email.smtpPort || 587,
+      auth: { user: config.email.smtpUser, pass: config.email.smtpPassword },
+    });
+  }
+  
+  return null;
 };
 
-const getSendGridClient = () => {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey) return null;
+const getSendGridClient = (config) => {
+  const apiKey = config?.email?.sendgridApiKey || config?.integrations?.sendgridApiKey || process.env.SENDGRID_API_KEY;
+  if (!apiKey || config?.email?.provider !== 'sendgrid') return null;
   sgMail.setApiKey(apiKey);
   return sgMail;
 };
 
 const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplateData, attachments = [] }) => {
-  const from = process.env.EMAIL_FROM || 'noreply@entrynex.com';
-  const sendGrid = getSendGridClient();
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const from = config.email?.senderEmail || config.general?.supportEmail || process.env.EMAIL_FROM || 'noreply@entrynex.com';
+  const sendGrid = getSendGridClient(config);
+
+  // Add Logo as CID attachment for all emails
+  const path = require('path');
+  const fs = require('fs');
+  const logoPath = path.join(process.cwd(), '../frontend/public/logo.png');
+  let logoAttachment = null;
+  
+  if (fs.existsSync(logoPath)) {
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoAttachment = {
+      content: logoBuffer.toString('base64'),
+      filename: 'logo.png',
+      type: 'image/png',
+      disposition: 'inline',
+      contentId: 'logo',
+      content_id: 'logo',
+    };
+    attachments.push(logoAttachment);
+  }
 
   if (sendGrid) {
     const msg = {
@@ -47,21 +69,20 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
       attachments,
     };
 
-    if (templateId) {
-      msg.templateId = templateId;
-      msg.dynamicTemplateData = dynamicTemplateData;
-      delete msg.subject;
-      delete msg.html;
-    }
-
     await sendGrid.send(msg);
     return;
   }
 
-  const transporter = createTransporter();
+  const transporter = await createTransporter(config);
+  if (!transporter) return;
+  
   const smtpAttachments = attachments.map((attachment) => ({
-    ...attachment,
+    filename: attachment.filename,
+    content: attachment.content,
     encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
+    cid: attachment.contentId || attachment.cid,
+    contentType: attachment.type || attachment.contentType,
+    disposition: attachment.disposition,
   }));
   await transporter.sendMail({
     from,
@@ -97,7 +118,8 @@ const baseTemplate = (content) => `
 <body>
 <div class="container">
   <div class="header">
-    <h1>ENTRYNEX</h1>
+    <img src="cid:logo" alt="ENTRYNEX" style="height: 60px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;">
+    <h1 style="display: none;">ENTRYNEX</h1>
   </div>
   <div class="body">${content}</div>
   <div class="footer">

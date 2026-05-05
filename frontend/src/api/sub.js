@@ -15,4 +15,6 @@ export const updateSubOrgTeamMember = (id, payload) => api.put(`/organiser/sub-o
 
 // Ticket Management for Sub-Organisers
 export const createSubTicket = (payload) => api.post('/sub/tickets', payload);
+export const updateSubTicket = (categoryId, payload) => api.patch(`/sub/tickets/${categoryId}`, payload);
+export const deleteSubTicket = (categoryId, params) => api.delete(`/sub/tickets/${categoryId}`, { params });
 export const regenerateTicketCode = (categoryId, payload) => api.patch(`/sub/tickets/${categoryId}/regenerate`, payload);
