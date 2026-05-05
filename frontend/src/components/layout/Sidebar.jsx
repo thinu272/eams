@@ -24,7 +24,7 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
 
     if (location.pathname !== targetPath) return false;
     if (targetSection) return currentSection === targetSection;
-    if (targetPath === '/admin/dashboard') return currentSection === '';
+    if (targetPath === '/admin/dashboard' || targetPath === '/organiser/dashboard') return currentSection === '';
     return true;
   };
 
@@ -45,8 +45,8 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
       >
         <div className="flex h-20 items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-main to-blue-400 shadow-lg shadow-brand-main/40 overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover p-1.5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-lg shadow-black/10 overflow-hidden">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain p-1" onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=EX'; }} />
             </div>
             {!collapsed && (
               <span className="text-xl font-black tracking-tighter text-white uppercase italic">

@@ -234,11 +234,22 @@ router.post('/confirm', upload.single('photo'), [
 
     // Duplicate check by NIC/passport for same event
     const [nationalId, passportNumber] = nicPassport.includes('P') || nicPassport.includes('p') ? [null, nicPassport] : [nicPassport, null];
-    const duplicate = await Attendee.findOne({
+    
+    const duplicateQuery = {
       event: ticket.event._id,
-      $or: [{ nationalId }, { passportNumber }],
+      $or: [
+        ...(nationalId ? [{ nationalId }] : []),
+        ...(passportNumber ? [{ passportNumber }] : [])
+      ],
       confirmationStatus: { $in: ['confirmed', 'assigned'] }
-    });
+    };
+
+    // Important: Exclude the current attendee from the duplicate check
+    if (ticket.attendee) {
+      duplicateQuery._id = { $ne: ticket.attendee._id || ticket.attendee };
+    }
+
+    const duplicate = await Attendee.findOne(duplicateQuery);
     if (duplicate) {
       return res.status(409).json({ success: false, message: 'An attendee with this ID is already confirmed for this event.' });
     }

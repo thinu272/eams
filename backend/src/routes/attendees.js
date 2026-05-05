@@ -302,6 +302,20 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
       });
     }
 
+    // UPDATE SOLD COUNT AND BROADCAST
+    await Event.updateOne(
+      { _id: eventId, 'categories.id': categoryId },
+      { $inc: { 'categories.$.sold': 1 } }
+    );
+
+    const { emitDashboardEvent } = require('../utils/socket');
+    const io = req.app.get('io');
+    emitDashboardEvent(io, 'event_update', eventId, {
+      type: 'MANUAL_ADDITION',
+      eventId,
+      categoryId
+    });
+
     res.status(201).json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });
@@ -371,6 +385,24 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
         results.errors.push({ row: i + 2, message: err.message });
       }
     }
+
+    // UPDATE SOLD COUNT AND BROADCAST FOR BULK
+    if (results.created > 0) {
+      await Event.updateOne(
+        { _id: eventId, 'categories.id': categoryId },
+        { $inc: { 'categories.$.sold': results.created } }
+      );
+
+      const { emitDashboardEvent } = require('../utils/socket');
+      const io = req.app.get('io');
+      emitDashboardEvent(io, 'event_update', eventId, {
+        type: 'BULK_UPLOAD',
+        eventId,
+        categoryId,
+        count: results.created
+      });
+    }
+
     res.json({ success: true, data: results, message: `${results.created} attendees imported. ${results.errors.length} errors.` });
   } catch (err) { next(err); }
 });

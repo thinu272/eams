@@ -11,7 +11,7 @@ This directory contains comprehensive documentation for the EAMS platform, inclu
 | Need | Read This |
 |------|-----------|
 | **Just get it running** | [QUICK_START.md](QUICK_START.md) |
-| **Setup SMTP & Payments** | [SETUP_GUIDE.md](SETUP_GUIDE.md) |
+| **Setup Services & S3** | [SETUP_GUIDE.md](SETUP_GUIDE.md) |
 | **Understand the system** | [SYSTEM_FEATURES_SUMMARY.md](SYSTEM_FEATURES_SUMMARY.md) |
 | **Visual diagrams** | [VISUAL_ARCHITECTURE_DIAGRAMS.md](VISUAL_ARCHITECTURE_DIAGRAMS.md) |
 | **Buyer Portal reference** | [BUYER_CONFIRMATION_PORTAL_GUIDE.md](BUYER_CONFIRMATION_PORTAL_GUIDE.md) |
@@ -26,16 +26,16 @@ This directory contains comprehensive documentation for the EAMS platform, inclu
 - **Status:** [Icon: Success] Updated for new seed logic.
 
 ### 2. SETUP_GUIDE.md [Icon: Settings]
-- **Purpose:** Configuration instructions for SMTP (Email) and Payment Gateways (PayHere/Stripe).
-- **Status:** [Icon: Success] NEW.
+- **Purpose:** Configuration instructions for SMTP, Twilio SMS, and AWS S3 Storage.
+- **Status:** [Icon: Success] Updated for Infrastructure 2.0.
 
 ### 3. SYSTEM_FEATURES_SUMMARY.md [Icon: List]
-- **Purpose:** High-level overview of Draft Workflows, Branding Sync, and Multi-Currency support.
-- **Status:** [Icon: Success] NEW.
+- **Purpose:** High-level overview of Draft Workflows, Branding Sync, and Real-Time Seat Availability.
+- **Status:** [Icon: Success] Updated for Real-Time Sync.
 
 ### 4. VISUAL_ARCHITECTURE_DIAGRAMS.md [Icon: Chart]
-- **Purpose:** Mermaid diagrams for Lifecycle, Real-Time Sync, and Database schemas.
-- **Status:** [Icon: Success] Updated for Socket.io and Draft status.
+- **Purpose:** Mermaid diagrams for Lifecycle, Real-Time Sync, and Infrastructure Ecosystem.
+- **Status:** [Icon: Success] Updated for S3 and Twilio flows.
 
 ### 5. BUYER_CONFIRMATION_PORTAL_GUIDE.md [Icon: User]
 - **Purpose:** Detailed guide for the ticket assignment and invite system.

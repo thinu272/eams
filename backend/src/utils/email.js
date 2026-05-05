@@ -3,9 +3,13 @@ const sgMail = require('@sendgrid/mail');
 const SystemConfig = require('../models/SystemConfig');
 
 const createTransporter = async (config) => {
-  const hasSmtpCreds = config?.email?.smtpHost && config?.email?.smtpPassword;
-  
-  if (config?.email?.provider === 'mock') {
+  const smtpHost = config?.email?.smtpHost || process.env.SMTP_HOST;
+  const smtpPort = config?.email?.smtpPort || process.env.SMTP_PORT || 587;
+  const smtpUser = config?.email?.smtpUser || process.env.SMTP_USER;
+  const smtpPassword = config?.email?.smtpPassword || process.env.SMTP_PASS;
+  const provider = config?.email?.provider || (process.env.SMTP_HOST ? 'smtp' : 'mock');
+
+  if (provider === 'mock') {
     console.log('EMAIL: Using Development Transporter (Console Log only)');
     return {
       sendMail: (opts) => {
@@ -17,12 +21,15 @@ const createTransporter = async (config) => {
     };
   }
 
-  if (hasSmtpCreds && config?.email?.provider === 'smtp') {
-    console.log('EMAIL: Using SMTP Transporter:', config.email.smtpHost);
+  if (smtpHost && smtpPassword) {
+    console.log('EMAIL: Using SMTP Transporter:', smtpHost);
     return nodemailer.createTransport({
-      host: config.email.smtpHost,
-      port: config.email.smtpPort || 587,
-      auth: { user: config.email.smtpUser, pass: config.email.smtpPassword },
+      host: smtpHost,
+      port: parseInt(smtpPort, 10),
+      auth: { user: smtpUser, pass: smtpPassword },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
   }
   
@@ -31,15 +38,20 @@ const createTransporter = async (config) => {
 
 const getSendGridClient = (config) => {
   const apiKey = config?.email?.sendgridApiKey || config?.integrations?.sendgridApiKey || process.env.SENDGRID_API_KEY;
-  if (!apiKey || config?.email?.provider !== 'sendgrid') return null;
+  if (!apiKey) return null;
   sgMail.setApiKey(apiKey);
   return sgMail;
 };
 
 const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplateData, attachments = [] }) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
-  const from = config.email?.senderEmail || config.general?.supportEmail || process.env.EMAIL_FROM || 'noreply@entrynex.com';
-  const sendGrid = getSendGridClient(config);
+  const from = process.env.EMAIL_FROM || config.email?.senderEmail || config.general?.supportEmail || 'noreply@entrynex.com';
+  const preferredProvider = config.email?.provider || (process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp');
+  const templateMode = config.email?.templateMode || 'code';
+  
+  console.log(`EMAIL_SEND: Attempting send to ${to} from ${from} (Provider: ${preferredProvider}, Mode: ${templateMode})`);
+  
+  const sendGrid = preferredProvider === 'sendgrid' ? getSendGridClient(config) : null;
 
   // Add Logo as CID attachment for all emails
   const path = require('path');
@@ -61,36 +73,60 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
   }
 
   if (sendGrid) {
-    const msg = {
-      to,
-      from,
-      subject,
-      html,
-      attachments,
-    };
+    try {
+      const msg = {
+        to,
+        from,
+        subject,
+        html,
+        attachments,
+      };
 
-    await sendGrid.send(msg);
-    return;
+      // Use SendGrid Dynamic Template only if mode is 'sendgrid' AND templateId exists
+      if (templateMode === 'sendgrid' && templateId) {
+        msg.templateId = templateId;
+        msg.dynamicTemplateData = dynamicTemplateData;
+        delete msg.html; // SendGrid ignores subject/html if templateId is present
+        console.log(`EMAIL_INFO: Using SendGrid Dynamic Template ${templateId}`);
+      } else {
+        console.log(`EMAIL_INFO: Using Local Code Template with SendGrid provider`);
+      }
+
+      await sendGrid.send(msg);
+      console.log(`EMAIL_SUCCESS: Sent via SendGrid to ${to}`);
+      return;
+    } catch (error) {
+      console.error('EMAIL_SENDGRID_ERROR: Falling back to SMTP if available', error);
+      // Fall through to SMTP
+    }
   }
 
   const transporter = await createTransporter(config);
-  if (!transporter) return;
+  if (!transporter) {
+    console.error(`EMAIL_FATAL: No email provider available for ${to}. Checked SendGrid and SMTP.`);
+    return;
+  }
   
-  const smtpAttachments = attachments.map((attachment) => ({
-    filename: attachment.filename,
-    content: attachment.content,
-    encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
-    cid: attachment.contentId || attachment.cid,
-    contentType: attachment.type || attachment.contentType,
-    disposition: attachment.disposition,
-  }));
-  await transporter.sendMail({
-    from,
-    to,
-    subject,
-    html,
-    attachments: smtpAttachments,
-  });
+  try {
+    const smtpAttachments = attachments.map((attachment) => ({
+      filename: attachment.filename,
+      content: attachment.content,
+      encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
+      cid: attachment.contentId || attachment.cid,
+      contentType: attachment.type || attachment.contentType,
+      disposition: attachment.disposition,
+    }));
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      attachments: smtpAttachments,
+    });
+    console.log(`EMAIL_SUCCESS: Sent via SMTP to ${to}`);
+  } catch (error) {
+    console.error(`EMAIL_SMTP_ERROR: Failed to send to ${to}`, error);
+  }
 };
 
 const baseTemplate = (content) => `
@@ -151,9 +187,13 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
     ? `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your payment of <strong>LKR ${order.totalAmount.toLocaleString()}</strong> has been processed.`
     : `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your order for <strong>LKR ${order.totalAmount.toLocaleString()}</strong> has been created and is waiting for payment confirmation.`;
   const cta = isPaid ? 'Complete Ticket Confirmation' : 'View Order Details';
-  const subject = isPaid
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const templateMode = config.email?.templateMode || 'code';
+  const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.order : null;
+
+  const subject = config.email?.templates?.ticketSubject || (isPaid
     ? `Order Confirmed - ${event.name} (${order.orderNumber})`
-    : `Order Received - ${event.name} (${order.orderNumber})`;
+    : `Order Received - ${event.name} (${order.orderNumber})`);
 
   const html = baseTemplate(`
     <h2 class="h2">${title}</h2>
@@ -179,10 +219,28 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
         : 'Note: Ticket assignment and attendee confirmation continue after payment is completed.'}
     </p>
   `);
+
+  const dynamicTemplateData = {
+    title,
+    alert,
+    buyerName: order.buyerName,
+    intro,
+    orderNumber: order.orderNumber,
+    eventName: event.name,
+    venueName: event.venue?.name || 'TBD',
+    eventDate,
+    ticketSummary,
+    confirmUrl,
+    cta,
+    isPaid
+  };
+
   await sendWithProvider({
     to: order.buyerEmail,
     subject,
     html,
+    templateId,
+    dynamicTemplateData,
     attachments: pdfBuffer ? [{
       content: pdfBuffer.toString('base64'),
       filename: `purchase-summary-${order.orderNumber}.pdf`,
@@ -202,6 +260,10 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
   const eventTime = event?.startDate
     ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : 'TBD';
+
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const templateMode = config.email?.templateMode || 'code';
+  const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.invite : null;
 
   const html = baseTemplate(`
     <h2 class="h2">You've Been Invited!</h2>
@@ -227,10 +289,22 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
     </p>
   `);
 
+  const dynamicTemplateData = {
+    attendeeEmail: attendee.email,
+    eventName: event.name,
+    venueName: event.venue?.name || 'TBD',
+    eventDate,
+    eventTime,
+    ticketCategory: ticketDetails.categoryName,
+    confirmUrl
+  };
+
   await sendWithProvider({
     to: attendee.email,
-    subject: `Invitation: ${event.name} — Action Required`,
+    subject: config.email?.templates?.inviteSubject || `Invitation: ${event.name} — Action Required`,
     html,
+    templateId,
+    dynamicTemplateData,
   });
 };
 
@@ -253,6 +327,10 @@ const sendFinalConfirmation = async (payload) => {
   const eventTime = event?.startDate
     ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : 'TBD';
+
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const templateMode = config.email?.templateMode || 'code';
+  const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.ticket : null;
 
   const html = baseTemplate(`
     <h2 class="h2">Your Ticket is Ready!</h2>
@@ -292,9 +370,9 @@ const sendFinalConfirmation = async (payload) => {
 
   await sendWithProvider({
     to: attendee.email,
-    subject: `Confirmed: Your entry ticket for ${event.name}`,
+    subject: config.email?.templates?.ticketSubject || `Confirmed: Your entry ticket for ${event.name}`,
     html,
-    templateId: process.env.SENDGRID_FINAL_CONFIRMATION_TEMPLATE_ID,
+    templateId: templateId || process.env.SENDGRID_FINAL_CONFIRMATION_TEMPLATE_ID,
     dynamicTemplateData,
     attachments: pdfBuffer
       ? [{
@@ -604,6 +682,34 @@ const sendTempPasswordEmail = async (user, tempPassword, loginUrl) => {
   });
 };
 
+const sendRoleAssignmentEmail = async (user, newRole, assignedEvents = []) => {
+  const eventNames = assignedEvents.map(e => e.name || 'Assigned Event').join(', ');
+  const html = baseTemplate(`
+    <h2 class="h2">Account Authority Updated</h2>
+    <div class="alert">Your system access level or event assignments have been updated.</div>
+    
+    <p>Dear <strong>${user.name}</strong>,</p>
+    <p>An administrator has updated your account permissions on ENTRYNEX.</p>
+    
+    <div style="margin: 24px 0; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+      <div class="info-row"><span class="info-label">NEW ROLE</span><span class="info-value">${newRole}</span></div>
+      <div class="info-row"><span class="info-label">ASSIGNED EVENTS</span><span class="info-value">${eventNames || 'None / Global'}</span></div>
+    </div>
+    
+    <p>You can now log in to the dashboard to access your updated features and management tools.</p>
+    
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login">Go to Dashboard</a>
+    </div>
+  `);
+
+  await sendWithProvider({
+    to: user.email,
+    subject: `ENTRYNEX: Account Permissions Updated - ${newRole}`,
+    html,
+  });
+};
+
 module.exports = {
   sendOrderConfirmation,
   sendAttendeeInvite,
@@ -618,4 +724,5 @@ module.exports = {
   sendPasswordResetEmail,
   sendVerificationEmail,
   sendTempPasswordEmail,
+  sendRoleAssignmentEmail,
 };

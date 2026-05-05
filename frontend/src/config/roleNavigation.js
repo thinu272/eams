@@ -22,6 +22,7 @@ export const ROLE_NAVIGATION = {
         title: 'Super Admin',
         items: [
           { to: '/admin/dashboard', label: 'Overview', icon: HomeIcon },
+          { to: '/admin/live', label: 'Live Stream', icon: SignalIcon },
           { to: '/admin/dashboard?section=events', label: 'Events', icon: TicketIcon },
           { to: '/admin/dashboard?section=organisations', label: 'Organisations', icon: UserGroupIcon },
           { to: '/admin/dashboard?section=users', label: 'Users', icon: UsersIcon },
@@ -42,6 +43,7 @@ export const ROLE_NAVIGATION = {
         title: 'Event Control',
         items: [
           { to: '/organiser/dashboard', label: 'Overview', icon: HomeIcon },
+          { to: '/organiser/live', label: 'Live Stream', icon: SignalIcon },
           { to: '/organiser/dashboard?section=customization', label: 'Event Customization', icon: ArrowUpTrayIcon },
           { to: '/organiser/dashboard?section=attendees', label: 'Attendees', icon: UserGroupIcon },
           { to: '/organiser/dashboard?section=tickets', label: 'Tickets', icon: TicketIcon },

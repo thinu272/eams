@@ -2,15 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, WalletIcon } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
+import { getEvent } from '../../api/events';
 import { createOrder } from '../../api/orders';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
 
 const CheckoutPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { selectedTickets, eventId, event } = location.state || {};
-  const themeColor = event?.branding?.themeColor || '#2563EB';
+  const { selectedTickets, eventId, event: initialEvent } = location.state || {};
+  const [event, setEvent] = useState(initialEvent);
+  const themeColor = '#2563EB'; // Reverted to default brand blue
   const { user } = useAuth();
 
   const [buyerDetails, setBuyerDetails] = useState({
@@ -18,6 +21,32 @@ const CheckoutPage = () => {
     email: user?.email || '',
     phone: user?.phone || '',
   });
+
+  const fetchEvent = () => {
+    if (!eventId) return;
+    getEvent(eventId)
+      .then((res) => {
+        setEvent(res.data?.data?.event);
+      })
+      .catch((err) => console.error('Failed to sync event on checkout:', err));
+  };
+
+  useEffect(() => {
+    if (!eventId) return undefined;
+    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    
+    socket.emit('join_event', { eventId });
+
+    socket.on('event_update', (data) => {
+      console.log('Real-time update on checkout:', data);
+      fetchEvent();
+    });
+
+    return () => {
+      socket.emit('leave_event', { eventId });
+      socket.disconnect();
+    };
+  }, [eventId]);
   const [paymentMethod, setPaymentMethod] = useState(() => {
     const methods = event.settings?.paymentMethods;
     if (methods?.card ?? true) return 'card';

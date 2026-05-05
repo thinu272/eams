@@ -136,6 +136,7 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
       event: updated.event,
       phone: updated.phone,
       notificationChannel: 'both',
+      force: true
     }).catch((err) => console.error('INDIVIDUAL FINAL NOTIFY ERROR:', err));
 
     // Trigger final confirmation email workflow for order context

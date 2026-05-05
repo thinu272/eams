@@ -125,6 +125,7 @@ const EventEditPage = () => {
         <EventForm 
           initialData={event} 
           organisers={authIsAdmin ? organisers : []}
+          isAdmin={authIsAdmin}
           onSubmit={handleSubmit} 
           onCancel={() => navigate(-1)} 
           loading={updating}

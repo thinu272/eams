@@ -58,12 +58,17 @@ const requireEventAccess = async (req, res, next) => {
   try {
     const { user } = req;
     const rawId = req.params.eventId || req.body.eventId || req.query.eventId;
-    const eventId = (rawId && rawId !== 'undefined') ? rawId : (user.assignedEvents && user.assignedEvents[0]);
+    let eventId = (rawId && rawId !== 'undefined') ? rawId : null;
 
     // Root Authority bypass (Admins and Main Organisers have global scope)
     const canonicalRole = normalizeRole(user.role);
     if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {
       return next();
+    }
+    
+    // If no ID provided or "undefined" string, fallback to first assigned
+    if (!eventId) {
+      eventId = user.assignedEvents && user.assignedEvents[0];
     }
     
     if (!eventId) {
@@ -73,6 +78,12 @@ const requireEventAccess = async (req, res, next) => {
     // Validate format
     const isValid = mongoose.Types.ObjectId.isValid(eventId);
     if (!isValid) {
+      // If the provided ID was invalid, try fallback before failing
+      const fallback = user.assignedEvents && user.assignedEvents[0];
+      if (fallback && mongoose.Types.ObjectId.isValid(fallback)) {
+        req.query.eventId = fallback; // Update for downstream
+        return next();
+      }
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
 
@@ -85,6 +96,15 @@ const requireEventAccess = async (req, res, next) => {
     const Event = require('../models/Event');
     const event = await Event.findById(eventId).select('createdBy mainOrganiser');
     if (event && (event.createdBy?.toString() === user._id.toString() || event.mainOrganiser?.toString() === user._id.toString())) {
+      return next();
+    }
+
+    // If we reach here, the requested ID was unauthorized. 
+    // Let's try one last fallback to the first assigned event.
+    const finalFallback = user.assignedEvents && user.assignedEvents[0];
+    if (finalFallback && finalFallback.toString() !== eventId.toString()) {
+      console.log(`[requireEventAccess] Unauthorized scope ${eventId}, falling back to ${finalFallback}`);
+      req.query.eventId = finalFallback; // Inject fallback for downstream handlers
       return next();
     }
 

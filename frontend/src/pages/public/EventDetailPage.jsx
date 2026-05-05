@@ -6,6 +6,10 @@ import {
   ClockIcon,
   MapPinIcon,
   XMarkIcon,
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  LockClosedIcon,
+  LockOpenIcon,
 } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent, validateEventAccessCode } from '../../api/events';
@@ -146,7 +150,7 @@ const EventDetailPage = () => {
   }, 0);
   
   const selectedCategories = categories.filter((category) => selectedTickets[getCategoryId(category)] > 0);
-  const themeColor = event.branding?.themeColor || '#2563EB';
+  const themeColor = '#2563EB';
   const heroImage = event.branding?.bannerImage || event.coverImage || event.bannerImage;
   
   const formatCurrency = (value) =>
@@ -183,9 +187,9 @@ const EventDetailPage = () => {
             <div>
               <Link
                 to="/events"
-                className="inline-flex rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-bold text-sky-400 transition hover:bg-white/10 hover:border-sky-400/50 backdrop-blur"
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-bold text-sky-400 transition hover:bg-white/10 hover:border-sky-400/50 backdrop-blur"
               >
-                ← Back to listings
+                <ArrowLeftIcon className="h-4 w-4" /> Back to listings
               </Link>
               <div className="flex flex-col sm:flex-row sm:items-center gap-6 mt-8">
                 {event.branding?.logoImage && (
@@ -199,7 +203,7 @@ const EventDetailPage = () => {
               </div>
                <div className="mt-6 flex items-center gap-4">
                   <span className="rounded-md px-3 py-1 text-xs font-black uppercase tracking-widest text-white" style={{ backgroundColor: themeColor }}>
-                    {event.eventType || 'Cricket Match'}
+                    {event.eventType === 'other' && event.customEventType ? event.customEventType : (event.eventType || 'Cricket Match')}
                   </span>
                   {isExpired ? (
                     <span className="rounded-md bg-red-500/10 px-3 py-1 text-xs font-bold uppercase tracking-widest border border-red-500/50 text-red-500">
@@ -273,6 +277,98 @@ const EventDetailPage = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-12">
+              {/* Event Specific Details */}
+              {(event.eventType === 'cricket' && event.matchDetails) && (
+                <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-6">Match Details</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Team A</p>
+                      <p className="text-lg font-bold text-slate-900">{event.matchDetails.teamA || 'TBD'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Team B</p>
+                      <p className="text-lg font-bold text-slate-900">{event.matchDetails.teamB || 'TBD'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Match Type</p>
+                      <p className="text-lg font-bold text-slate-900">{event.matchDetails.matchType || 'TBD'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Series</p>
+                      <p className="text-lg font-bold text-slate-900">{event.matchDetails.series || 'TBD'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(event.eventType === 'concert' && event.concertDetails) && (
+                <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-6">Concert Info</h2>
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Main Artist</p>
+                        <p className="text-lg font-bold text-slate-900">{event.concertDetails.mainArtist || 'TBD'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Genre</p>
+                        <p className="text-lg font-bold text-slate-900">{event.concertDetails.genre || 'TBD'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Tour Name</p>
+                        <p className="text-lg font-bold text-slate-900">{event.concertDetails.tourName || 'TBD'}</p>
+                      </div>
+                    </div>
+                    {event.concertDetails.supportingBands?.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Supporting Acts</p>
+                        <div className="flex flex-wrap gap-2">
+                          {event.concertDetails.supportingBands.map((band, idx) => (
+                            <span key={idx} className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200">
+                              {band}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(event.eventType === 'conference' && event.conferenceDetails) && (
+                <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-6">Conference Details</h2>
+                  <div className="space-y-6">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Theme</p>
+                      <p className="text-lg font-bold text-slate-900">{event.conferenceDetails.theme || 'TBD'}</p>
+                    </div>
+                    {event.conferenceDetails.speakers?.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Keynote Speakers</p>
+                        <div className="flex flex-wrap gap-2">
+                          {event.conferenceDetails.speakers.map((speaker, idx) => (
+                            <span key={idx} className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200">
+                              {speaker}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {event.conferenceDetails.scheduleUrl && (
+                      <a 
+                        href={event.conferenceDetails.scheduleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:underline"
+                      >
+                        View Full Schedule <ChevronRightIcon className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
               
               {/* Ticket Categories Segment */}
                <div>
@@ -382,7 +478,7 @@ const EventDetailPage = () => {
                                   <td key={`${zoneId}-${categoryId}`} className="px-6 py-4 text-center">
                                     {hasAccess ? (
                                        <span className="inline-flex items-center justify-center h-8 w-8 rounded-full ring-4" style={{ backgroundColor: `${themeColor}1A`, color: themeColor, ringColor: `${themeColor}1A` }}>
-                                        ✓
+                                        <CheckCircleIcon className="h-4 w-4" />
                                       </span>
                                     ) : (
                                       <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-400">
@@ -427,10 +523,10 @@ const EventDetailPage = () => {
                           href={event.venue.mapUrl} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="inline-flex items-center text-xs font-bold uppercase tracking-wider hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider hover:underline"
                           style={{ color: themeColor }}
                         >
-                          View on Map →
+                          View on Map <ChevronRightIcon className="h-3 w-3" />
                         </a>
                       )}
                     </div>
@@ -491,10 +587,11 @@ const EventDetailPage = () => {
                         <div className="flex items-center gap-2">
                           <h3 className={`text-xl font-black ${isLocked ? 'text-slate-400' : 'text-slate-900'}`}>{category.name}</h3>
                           {category.isPrivate && (
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                               isLocked ? 'bg-slate-200 text-slate-500' : 'bg-emerald-100 text-emerald-700'
                             }`}>
-                              {isLocked ? '🔒 Private' : '🔓 Unlocked'}
+                              {isLocked ? <LockClosedIcon className="h-3 w-3" /> : <LockOpenIcon className="h-3 w-3" />}
+                              {isLocked ? 'Private' : 'Unlocked'}
                             </span>
                           )}
                         </div>

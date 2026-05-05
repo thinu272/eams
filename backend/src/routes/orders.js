@@ -148,6 +148,15 @@ router.post('/', [
       );
     }
 
+    // BROADCAST REAL-TIME AVAILABILITY UPDATE
+    const { emitDashboardEvent } = require('../utils/socket');
+    const io = req.app.get('io');
+    emitDashboardEvent(io, 'event_update', eventId, {
+      type: 'TICKET_PURCHASED',
+      eventId,
+      tickets: validatedTickets
+    });
+
     await sendBuyerOrderCreatedEmail({
       order,
       event,

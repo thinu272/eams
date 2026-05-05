@@ -30,7 +30,8 @@ const formatEventTime = (date) => (
 
 const buildBuffer = (draw) => new Promise(async (resolve, reject) => {
   try {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    // Set margin to 0 so we can draw to the edges without triggering auto-page breaks
+    const doc = new PDFDocument({ margin: 0, size: 'A4' });
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
     doc.on('end', () => resolve(Buffer.concat(buffers)));
@@ -112,11 +113,13 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   });
 
   // Footer / Instructions
-  doc.rect(0, 750, doc.page.width, 92).fill('#f8fafc');
-  doc.fillColor(secondaryColor).fontSize(9).text('IMPORTANT INSTRUCTIONS', 50, 765);
-  doc.text('- Please present this PDF at the entrance gate.', 50, 782);
-  doc.text('- This ticket is valid only for the confirmed attendee.', 50, 796);
-  doc.text('- Entry is subject to event security and organiser rules.', 50, 810);
+  const footerHeight = 90;
+  const footerY = doc.page.height - footerHeight;
+  doc.rect(0, footerY, doc.page.width, footerHeight).fill('#f8fafc');
+  doc.fillColor(secondaryColor).fontSize(9).text('IMPORTANT INSTRUCTIONS', 50, footerY + 15);
+  doc.text('- Please present this PDF at the entrance gate.', 50, footerY + 32);
+  doc.text('- This ticket is valid only for the confirmed attendee.', 50, footerY + 46);
+  doc.text('- Entry is subject to event security and organiser rules.', 50, footerY + 60);
 });
 
 const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) => {
@@ -147,12 +150,21 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
   doc.fillColor(primaryColor).fontSize(14).text('Tickets', 50, 420);
   let y = 448;
   ticketRows.forEach((item, index) => {
+    // Check for page overflow
+    if (y > 750) {
+      doc.addPage();
+      y = 50;
+    }
     doc.fillColor('#000000').fontSize(12).text(`${index + 1}. ${item.categoryName}`, 60, y);
     doc.text(`Qty: ${item.quantity}`, 330, y);
     doc.text(`LKR ${Number(item.price || 0).toLocaleString()}`, 430, y);
     y += 24;
   });
 
+  if (y > 780) {
+    doc.addPage();
+    y = 50;
+  }
   doc.moveTo(50, y + 8).lineTo(545, y + 8).stroke('#e2e8f0');
   doc.fillColor(primaryColor).fontSize(14).text(`Total: LKR ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
 

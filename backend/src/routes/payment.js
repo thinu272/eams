@@ -88,6 +88,25 @@ router.post('/notify', async (req, res) => {
       await order.save();
     } else {
       // FAILED / CANCELLED
+      if (order.paymentStatus !== 'failed' && order.paymentStatus !== 'cancelled') {
+        // Release tickets back to inventory
+        for (const item of order.tickets) {
+          await Event.updateOne(
+            { _id: eventId, 'categories.name': item.categoryName },
+            { $inc: { 'categories.$.sold': -item.quantity } }
+          );
+        }
+
+        // Broadcast availability update
+        const { emitDashboardEvent } = require('../utils/socket');
+        const io = req.app.get('io');
+        emitDashboardEvent(io, 'event_update', eventId, {
+          type: 'TICKET_RELEASED',
+          eventId,
+          tickets: order.tickets
+        });
+      }
+
       order.paymentStatus = 'failed';
       order.status = 'CANCELLED';
       order.paymentDetails = { 
@@ -97,7 +116,6 @@ router.post('/notify', async (req, res) => {
       };
       await order.save();
       
-      // Optionally release tickets back to inventory here
       console.log(`PAYMENT FAILED/CANCELLED: Order ${order.orderNumber}, Status ${status_code}`);
     }
 

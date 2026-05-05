@@ -165,8 +165,19 @@ const updateUser = async (req, res, next) => {
     }
     const payload = { ...req.body };
     if (payload.role) payload.role = normalizeRole(payload.role);
-    const user = await User.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).select('-password');
+    if (payload.password && String(payload.password).trim() !== '') {
+      payload.password = await bcrypt.hash(payload.password, 12);
+    } else {
+      delete payload.password;
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).select('-password').populate('assignedEvents', 'name');
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    // Notify if critical permissions changed
+    if (req.body.role || req.body.assignedEvent || req.body.assignedEvents) {
+      await notificationService.notifyRoleAssignment(user, user.role, user.assignedEvents);
+    }
+
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 };

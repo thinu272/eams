@@ -71,6 +71,8 @@ const buildEventFilter = ({ status, organiser, from, to, search }) => {
 const serializeEvent = (event) => ({
   _id: event._id,
   name: event.name,
+  description: event.description || '',
+  eventType: event.eventType || 'cricket',
   organiser: event.mainOrganiser ? { _id: event.mainOrganiser._id, name: event.mainOrganiser.name, email: event.mainOrganiser.email } : null,
   date: event.startDate,
   endDate: event.endDate,
@@ -79,6 +81,7 @@ const serializeEvent = (event) => ({
   lifecycleStatus: event.status,
   ticketsSold: Array.isArray(event.categories) ? event.categories.reduce((sum, category) => sum + (category.sold || 0), 0) : 0,
   ticketCapacity: Array.isArray(event.categories) ? event.categories.reduce((sum, category) => sum + (category.capacity || 0), 0) : 0,
+  settings: event.settings || {},
   createdAt: event.createdAt,
 });
 
@@ -124,6 +127,7 @@ const serializeSettings = (config) => ({
   },
   email: {
     provider: config.email?.provider || 'smtp',
+    templateMode: config.email?.templateMode || 'code',
     smtpHost: config.email?.smtpHost || '',
     smtpPort: config.email?.smtpPort || 587,
     smtpUser: config.email?.smtpUser || '',
@@ -434,9 +438,42 @@ router.get('/search', async (req, res, next) => {
 
 router.post('/events', async (req, res, next) => {
   try {
-    const { name, startDate, endDate, organiserId, venueName, status = 'draft', description = '' } = req.body;
-    const event = await Event.create({ name, description, startDate, endDate, status, venue: { name: venueName || 'TBD' }, mainOrganiser: organiserId || undefined, createdBy: req.user._id, categories: [], zones: [] });
-    if (organiserId && mongoose.Types.ObjectId.isValid(organiserId)) await User.findByIdAndUpdate(organiserId, { $addToSet: { assignedEvents: event._id } });
+    const { 
+      name, startDate, endDate, organiserId, venueName, 
+      status = 'draft', description = '', eventType = 'cricket',
+      requirePhotoVerification = true, allowSelfConfirmation = true, rfidEnabled = true,
+      currency = 'LKR', paymentCard = true, paymentBank = true, paymentCash = true 
+    } = req.body;
+
+    const event = await Event.create({ 
+      name, 
+      description, 
+      startDate, 
+      endDate, 
+      status, 
+      eventType,
+      venue: { name: venueName || 'TBD' }, 
+      mainOrganiser: organiserId || undefined, 
+      createdBy: req.user._id, 
+      categories: [], 
+      zones: [],
+      settings: {
+        requirePhotoVerification,
+        allowSelfConfirmation,
+        rfidEnabled,
+        currency,
+        paymentMethods: {
+          card: paymentCard,
+          bank_transfer: paymentBank,
+          cash: paymentCash
+        }
+      }
+    });
+
+    if (organiserId && mongoose.Types.ObjectId.isValid(organiserId)) {
+      await User.findByIdAndUpdate(organiserId, { $addToSet: { assignedEvents: event._id } });
+    }
+
     const hydrated = await Event.findById(event._id).populate('mainOrganiser', 'name email');
     res.status(201).json({ success: true, data: { event: serializeEvent(hydrated) } });
   } catch (error) {
@@ -447,12 +484,29 @@ router.post('/events', async (req, res, next) => {
 router.patch('/events/:id', async (req, res, next) => {
   try {
     const updates = {};
-    ['name', 'description', 'startDate', 'endDate', 'status'].forEach((field) => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
+    ['name', 'description', 'startDate', 'endDate', 'status', 'eventType'].forEach((field) => { 
+      if (req.body[field] !== undefined) updates[field] = req.body[field]; 
+    });
+
     if (req.body.venueName !== undefined) updates['venue.name'] = req.body.venueName;
     if (req.body.organiserId !== undefined) updates.mainOrganiser = req.body.organiserId || null;
+
+    // Handle nested settings
+    if (req.body.requirePhotoVerification !== undefined) updates['settings.requirePhotoVerification'] = req.body.requirePhotoVerification;
+    if (req.body.allowSelfConfirmation !== undefined) updates['settings.allowSelfConfirmation'] = req.body.allowSelfConfirmation;
+    if (req.body.rfidEnabled !== undefined) updates['settings.rfidEnabled'] = req.body.rfidEnabled;
+    if (req.body.currency !== undefined) updates['settings.currency'] = req.body.currency;
+    if (req.body.paymentCard !== undefined) updates['settings.paymentMethods.card'] = req.body.paymentCard;
+    if (req.body.paymentBank !== undefined) updates['settings.paymentMethods.bank_transfer'] = req.body.paymentBank;
+    if (req.body.paymentCash !== undefined) updates['settings.paymentMethods.cash'] = req.body.paymentCash;
+
     const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true }).populate('mainOrganiser', 'name email');
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    if (req.body.organiserId && mongoose.Types.ObjectId.isValid(req.body.organiserId)) await User.findByIdAndUpdate(req.body.organiserId, { $addToSet: { assignedEvents: event._id } });
+
+    if (req.body.organiserId && mongoose.Types.ObjectId.isValid(req.body.organiserId)) {
+      await User.findByIdAndUpdate(req.body.organiserId, { $addToSet: { assignedEvents: event._id } });
+    }
+
     res.json({ success: true, data: { event: serializeEvent(event) } });
   } catch (error) {
     next(error);
@@ -482,9 +536,13 @@ router.post('/organisers', async (req, res, next) => {
     payload.isTempPassword = true;
     payload.isVerified = true;
 
+    console.log('CREATE ORGANISER: Attempting to create user with payload:', { ...payload, password: '[REDACTED]' });
     const organiser = await User.create(payload);
+    console.log('CREATE ORGANISER: User created successfully. ID:', organiser._id);
     
+    console.log('CREATE ORGANISER: Triggering notification for credentials...');
     await notificationService.notifyUserCredentials(organiser, tempPassword);
+    console.log('CREATE ORGANISER: Notification triggered.');
 
     const hydrated = await User.findById(organiser._id).populate('assignedEvents', 'name');
     res.status(201).json({ success: true, data: { organiser: serializeOrganiser(hydrated) } });
@@ -497,6 +555,12 @@ router.patch('/organisers/:id', async (req, res, next) => {
   try {
     const organiser = await User.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('assignedEvents', 'name');
     if (!organiser) return res.status(404).json({ success: false, message: 'Organiser not found' });
+    
+    // Notify if critical permissions changed
+    if (req.body.role || req.body.assignedEvents) {
+      await notificationService.notifyRoleAssignment(organiser, organiser.role, organiser.assignedEvents);
+    }
+
     res.json({ success: true, data: { organiser: serializeOrganiser(organiser) } });
   } catch (error) {
     next(error);
@@ -532,9 +596,13 @@ router.post('/users', async (req, res, next) => {
     payload.isTempPassword = true;
     payload.isVerified = true;
 
+    console.log('CREATE USER: Attempting to create user with payload:', { ...payload, password: '[REDACTED]' });
     const user = await User.create(payload);
+    console.log('CREATE USER: User created successfully. ID:', user._id);
 
+    console.log('CREATE USER: Triggering notification for credentials...');
     await notificationService.notifyUserCredentials(user, tempPassword);
+    console.log('CREATE USER: Notification triggered.');
 
     const hydrated = await User.findById(user._id).populate('assignedEvents', 'name');
     res.status(201).json({ success: true, data: { user: serializeUser(hydrated) } });
@@ -546,9 +614,19 @@ router.post('/users', async (req, res, next) => {
 router.patch('/users/:id', async (req, res, next) => {
   try {
     const updates = { ...req.body };
-    if (req.body.password) updates.password = await bcrypt.hash(req.body.password, 12);
+    if (req.body.password && String(req.body.password).trim() !== '') {
+      updates.password = await bcrypt.hash(req.body.password, 12);
+    } else {
+      delete updates.password;
+    }
     const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true, context: 'query' }).populate('assignedEvents', 'name');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Notify if critical permissions changed
+    if (req.body.role || req.body.assignedEvents) {
+      await notificationService.notifyRoleAssignment(user, user.role, user.assignedEvents);
+    }
+
     res.json({ success: true, data: { user: serializeUser(user) } });
   } catch (error) {
     next(error);
@@ -636,6 +714,7 @@ router.patch('/settings', async (req, res, next) => {
     }
     if (req.body.email) {
       if (req.body.email.provider !== undefined) setQuery['email.provider'] = req.body.email.provider;
+      if (req.body.email.templateMode !== undefined) setQuery['email.templateMode'] = req.body.email.templateMode;
       if (req.body.email.smtpHost !== undefined) setQuery['email.smtpHost'] = req.body.email.smtpHost;
       if (req.body.email.smtpPort !== undefined) setQuery['email.smtpPort'] = req.body.email.smtpPort;
       if (req.body.email.smtpUser !== undefined) setQuery['email.smtpUser'] = req.body.email.smtpUser;

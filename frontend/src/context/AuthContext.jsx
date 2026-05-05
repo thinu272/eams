@@ -55,21 +55,32 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => { loadUser(); }, [loadUser]);
 
   const login = async (email, password, mfaToken) => {
-    const { data } = await api.post('/auth/login', { email, password, mfaToken });
-    
-    if (data.requireMfa) {
-      return { requireMfa: true };
-    }
+    try {
+      const { data } = await api.post('/auth/login', { email, password, mfaToken });
+      
+      if (data.requireMfa) {
+        return { requireMfa: true };
+      }
 
-    localStorage.setItem('entrynex_token', data.accessToken);
-    const userData = data.data.user;
-    const nextUser = {
-      ...userData,
-      rbacRole: getCanonicalRole(userData?.role),
-    };
-    setUser(nextUser);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(nextUser));
-    return nextUser;
+      localStorage.setItem('entrynex_token', data.accessToken);
+      const userData = data.data.user;
+      const nextUser = {
+        ...userData,
+        rbacRole: getCanonicalRole(userData?.role),
+      };
+      setUser(nextUser);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(nextUser));
+      return nextUser;
+    } catch (error) {
+      if (error.response?.status === 403 && error.response?.data?.requirePasswordChange) {
+        return { 
+          requirePasswordChange: true, 
+          tempToken: error.response.data.tempToken,
+          message: error.response.data.message
+        };
+      }
+      throw error;
+    }
   };
 
   const logout = () => {
