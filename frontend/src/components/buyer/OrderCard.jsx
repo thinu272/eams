@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import Badge from '../ui/Badge';
 
 const OrderCard = ({ order }) => {
@@ -30,8 +31,8 @@ const OrderCard = ({ order }) => {
 
       <div className="mt-4 flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-900">{order.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}</p>
-        <Link to={`/buyer/orders/${order._id}`} className="text-sm font-semibold text-blue-600 hover:text-blue-700">
-          Manage Confirmation →
+        <Link to={`/buyer/orders/${order._id}`} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+          Manage Confirmation <ChevronRightIcon className="h-3 w-3" />
         </Link>
       </div>
     </div>

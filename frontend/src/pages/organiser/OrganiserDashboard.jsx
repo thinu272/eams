@@ -33,9 +33,9 @@ import {
   assignZoneCategories,
   exportOrganiserEventData,
   resendOrganiserNotification,
-  updateOrganiserSettings,
   updateOrganiserEventCustomization,
 } from '../../api/organiser';
+import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 
 const statusColor = {
   pending: 'amber',
@@ -140,6 +140,7 @@ const OrganiserDashboard = () => {
           name: nextData?.event?.name || '',
           description: nextData?.event?.description || '',
           eventType: nextData?.event?.eventType || 'cricket',
+          customEventType: nextData?.event?.customEventType || '',
           venue: {
             name: nextData?.event?.venue?.name || '',
             address: nextData?.event?.venue?.address || '',
@@ -394,7 +395,6 @@ const OrganiserDashboard = () => {
         entryWindowEnd: customizationForm.accessRules.entryWindowEnd,
         restrictedZones: customizationForm.accessRules.restrictedZones.split(',').map((item) => item.trim()).filter(Boolean),
       }));
-      formData.append('paymentMethods', JSON.stringify(customizationForm.paymentMethods));
       formData.append('status', customizationForm.status);
       
       if (customizationForm.basicInfo.eventType === 'cricket') {
@@ -462,15 +462,15 @@ const OrganiserDashboard = () => {
           <>
             <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {[
-                ['Total Tickets', stats.totalTickets, '🎫'],
-                ['Tickets Sold', stats.ticketsSold, '🔥'],
-                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`, '💰'],
-                ['Checked-In', stats.checkedInCount, '✅'],
-              ].map(([label, value, icon], idx) => (
+                ['Total Tickets', stats.totalTickets, TicketIcon],
+                ['Tickets Sold', stats.ticketsSold, FireIcon],
+                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`, BanknotesIcon],
+                ['Checked-In', stats.checkedInCount, CheckBadgeIcon],
+              ].map(([label, value, Icon], idx) => (
                 <div key={label} className="card-premium animate-fade-in" style={{ animationDelay: `${(idx + 1) * 100}ms` }}>
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{label}</p>
-                    <span className="text-xl grayscale opacity-50">{icon}</span>
+                    <Icon className="h-5 w-5 text-brand-main/50" />
                   </div>
                   <p className="text-3xl font-black text-slate-900 tracking-tight">{value || 0}</p>
                   <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -636,16 +636,26 @@ const OrganiserDashboard = () => {
                 </label>
                 <label className="space-y-2 text-sm">
                   <span className="text-slate-500">Event type</span>
-                  <select
-                    value={customizationForm.basicInfo.eventType}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, eventType: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                  >
-                    <option value="cricket">Cricket</option>
-                    <option value="concert">Concert</option>
-                    <option value="conference">Conference</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <div className="space-y-2">
+                    <select
+                      value={customizationForm.basicInfo.eventType}
+                      onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, eventType: e.target.value } }))}
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                    >
+                      <option value="cricket">Cricket</option>
+                      <option value="concert">Concert</option>
+                      <option value="conference">Conference</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {customizationForm.basicInfo.eventType === 'other' && (
+                      <input 
+                        value={customizationForm.basicInfo.customEventType || ''} 
+                        onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, customEventType: e.target.value } }))} 
+                        placeholder="Specify type (e.g. Festival)" 
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                      />
+                    )}
+                  </div>
                 </label>
 
                 {customizationForm.basicInfo.eventType === 'cricket' && (
@@ -732,24 +742,6 @@ const OrganiserDashboard = () => {
                     <option value="AED">AED (UAE Dirham)</option>
                     <option value="SGD">SGD (Singapore Dollar)</option>
                   </select>
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Theme color</span>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={customizationForm.branding.themeColor}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, themeColor: e.target.value } }))}
-                      className="h-12 w-20 rounded-xl border border-slate-200 p-1 cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={customizationForm.branding.themeColor}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, branding: { ...current.branding, themeColor: e.target.value } }))}
-                      className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 uppercase"
-                      placeholder="#2563EB"
-                    />
-                  </div>
                 </label>
                 <div className="space-y-4">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</span>
@@ -878,30 +870,6 @@ const OrganiserDashboard = () => {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <p className="text-sm font-bold text-slate-900">Payment Methods</p>
-                  <p className="text-xs text-slate-500 mt-1 mb-4">Choose which payment options are available for this match.</p>
-                  <div className="space-y-3 text-sm text-slate-700">
-                    {[
-                      ['card', 'Credit/Debit Card (Online)'],
-                      ['bank_transfer', 'Bank Transfer (Offline)'],
-                      ['cash', 'Cash (At Venue/Counter)'],
-                    ].map(([key, label]) => (
-                      <label key={key} className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!customizationForm.paymentMethods[key]}
-                          onChange={(e) => setCustomizationForm((current) => ({ 
-                            ...current, 
-                            paymentMethods: { ...current.paymentMethods, [key]: e.target.checked } 
-                          }))}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="font-medium">{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
                 <label className="space-y-2 text-sm">
                   <span className="text-slate-500">Who can enter</span>
                   <input

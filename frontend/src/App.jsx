@@ -20,6 +20,7 @@ import SignupPage from './pages/auth/SignupPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import VerifyEmailPage from './pages/auth/VerifyEmailPage';
+import ChangeTempPasswordPage from './pages/auth/ChangeTempPasswordPage';
 import Dashboard from './pages/Dashboard';
 import UserDashboardPage from './pages/enhanced/UserDashboardPage';
 
@@ -110,6 +111,7 @@ const AppRoutes = () => (
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
     <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
+    <Route path="/change-password" element={<ChangeTempPasswordPage />} />
 
     {/* Buyer confirmation flow - public links from email */}
     <Route path="/confirm/:inviteToken" element={<AttendeeIdentityConfirmPage />} />

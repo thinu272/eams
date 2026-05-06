@@ -24,102 +24,74 @@ stateDiagram-v2
     }
 ```
 
-## 2. Real-Time Branding Synchronization
+### 2. Real-Time Data Synchronization
+
+EAMS uses Socket.io to ensure all users see the latest state of the event instantly.
 
 ```mermaid
 sequenceDiagram
-    participant Org as Organiser Dashboard
+    participant User as Buyer / Public
     participant API as Backend (Socket.io)
-    participant Pub as Public Event Page
-    participant Home as Home / Listing Page
+    participant Org as Organiser Dashboard
+    participant S3 as AWS S3 Storage
 
-    Org->>API: PUT /event-customization (Logo, Color, etc.)
-    API->>API: Save to MongoDB
-    API->>API: Emit 'event_update' (room: eventId)
-    API-->>Pub: Broadcast Update (Socket)
-    API-->>Home: Broadcast Update (Socket)
+    Note over User, Org: Scenario: Ticket Purchase or Admin Change
     
-    Pub->>Pub: Re-fetch Event Data
-    Pub->>Pub: Apply Dynamic Styles (Theme Color)
-    Home->>Home: Update Card Accent & Logo
+    Org->>API: PUT /event-customization (Logo/Colors)
+    API->>S3: Upload Assets
+    API->>API: Emit 'event_update' (room: eventId)
+    API-->>User: Update Branding Instantly
+    
+    User->>API: POST /api/orders (Purchase)
+    API->>API: Update Inventory
+    API->>API: Emit 'event_update' (room: eventId)
+    API-->>User: Update Seat Availability (All Clients)
+    API-->>Org: Update Dashboard Stats
 ```
 
-## 3. Buyer Confirmation Portal - Implementation Summary
-
-## System Architecture Diagram
+## 3. High-Level System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         BUYER CONFIRMATION PORTAL                         │
+│                         ENTRYNEX SYSTEM ECOSYSTEM                         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │  FRONTEND (React)                                                        │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  /confirmation/:token                                            │   │
-│  │  ┌────────────────────────────────────────────────────────────┐  │   │
-│  │  │ ConfirmOrderPage                                           │  │   │
-│  │  │ ├─ Order Summary (Buyer Info)                             │  │   │
-│  │  │ ├─ Progress Section (Real-time Bar)                       │  │   │
-│  │  │ ├─ Tickets Grid                                           │  │   │
-│  │  │ │  └─ TicketCard × N                                      │  │   │
-│  │  │ │     ├─ Status Badge                                     │  │   │
-│  │  │ │     ├─ Assign Myself Button ──→ AssignModal             │  │   │
-│  │  │ │     └─ Send Invite Button                               │  │   │
-│  │  │ ├─ AssignModal (Popup)                                    │  │   │
-│  │  │ │  ├─ FullName Input                                      │  │   │
-│  │  │ │  ├─ Email Input                                         │  │   │
-│  │  │ │  ├─ DateOfBirth Input                                   │  │   │
-│  │  │ │  ├─ NationalId Input                                    │  │   │
-│  │  │ │  ├─ PassportNumber Input                                │  │   │
-│  │  │ │  └─ Submit Button                                       │  │   │
-│  │  │ └─ Complete Confirmation Button (when allAssigned=true)   │  │   │
-│  │  └────────────────────────────────────────────────────────────┘  │   │
+│  │  Pages: Home, Checkout, Confirmation, Organiser Dashboard        │   │
+│  │  State: Socket.io-client (Real-time listener)                    │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │           │                                                              │
-│           ├─→ GET /api/orders/confirm/:token                           │
-│           ├─→ POST /api/tickets/assign                                 │
-│           ├─→ POST /api/tickets/invite                                 │
-│           └─→ POST /api/attendees/confirm/:token                       │
+│           ├─→ REST API Requests                                         │
+│           └─→ WebSocket Events (Branding, Seats, Check-ins)            │
 │                                                                         │
 │  BACKEND (Node.js/Express)                                             │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  API Routes                                                      │  │
-│  │  ├─ GET /orders/confirm/:token                                  │  │
-│  │  │  └─ Fetch Order + Tickets (with populate)                   │  │
-│  │  │                                                               │  │
-│  │  ├─ POST /tickets/assign                                        │  │
-│  │  │  ├─ Validate input (fullName, email, DOB, etc)             │  │
-│  │  │  ├─ Check ticket status (must be PENDING)                  │  │
-│  │  │  ├─ Create Attendee (confirmationStatus='confirmed')        │  │
-│  │  │  ├─ Generate QR code                                        │  │
-│  │  │  ├─ Update Ticket (status='ASSIGNED')                       │  │
-│  │  │  ├─ Check if all assigned → Update Order.allAssigned       │  │
-│  │  │  └─ Return attendee + ticket                                │  │
-│  │  │                                                               │  │
-│  │  ├─ POST /tickets/invite                                        │  │
-│  │  │  ├─ Validate email                                          │  │
-│  │  │  ├─ Check ticket status (must be PENDING)                  │  │
-│  │  │  ├─ Create Attendee (confirmationStatus='invited')         │  │
-│  │  │  ├─ Update Ticket (status='INVITED')                        │  │
-│  │  │  ├─ Send invite email                                       │  │
-│  │  │  └─ Return ticket with inviteEmail                          │  │
-│  │  │                                                               │  │
-│  │  └─ POST /attendees/confirm/:token                              │  │
-│  │     ├─ Validate attendee token                                 │  │
-│  │     ├─ Update Attendee (status='confirmed')                    │  │
-│  │     ├─ Update Ticket (status='CONFIRMED')                      │  │
-│  │     ├─ Check if all confirmed                                  │  │
-│  │     └─ Send final confirmation email                           │  │
+│  │  Services Layer                                                   │  │
+│  │  ├─ Notification Engine (Decoupled Email + Twilio SMS)           │  │
+│  │  ├─ Storage Service (AWS S3 Integration)                         │  │
+│  │  ├─ PDF Generator (Ticket QR Generation)                         │  │
+│  │  └─ Socket Manager (Room-based broadcasting)                      │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
-│                    │                                                    │
-│                    ↓                                                    │
-│  DATABASE (MongoDB)                                                    │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │  Collections                                                      │  │
-│  │  ├─ Orders                                                        │  │
-│  │  │  ├─ _id                                                       │  │
-│  │  │  ├─ orderNumber                                               │  │
-│  │  │  ├─ buyerName, buyerEmail                                    │  │
+│           │                    │                    │                    │
+│           ↓                    ↓                    ↓                    │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐        │
+│  │     MongoDB      │  │      AWS S3      │  │     Twilio       │        │
+│  │ (Data Persistence)│  │ (Photos/Assets)  │  │ (SMS Gateway)    │        │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## 4. Database Collections
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Collections                                                      │
+├──────────────────────────────────────────────────────────────────┤
+│  ├─ Orders                                                        │
+│  │  ├─ _id                                                       │
+│  │  ├─ orderNumber                                               │
 │  │  │  ├─ confirmationToken (UUID)                                 │  │
 │  │  │  ├─ allAssigned: Boolean ← NEW                               │  │
 │  │  │  └─ status                                                    │  │

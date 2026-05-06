@@ -79,6 +79,10 @@ const normalizeEventPayload = (body, file, files) => {
     }
   });
 
+  if (body.customEventType) {
+    payload.customEventType = body.customEventType;
+  }
+
   if (payload.settings) {
     if (payload.settings.emailTemplates === undefined || payload.settings.emailTemplates === null) {
       delete payload.settings.emailTemplates;
@@ -153,7 +157,12 @@ router.get('/', async (req, res, next) => {
     };
 
     if (search) {
-      filter.name = { $regex: search, $options: 'i' };
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { customEventType: { $regex: search, $options: 'i' } },
+        { 'venue.name': { $regex: search, $options: 'i' } }
+      ];
     }
 
     if (date) {
@@ -167,7 +176,7 @@ router.get('/', async (req, res, next) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [events, total] = await Promise.all([
       Event.find(filter)
-        .select('name slug description venue startDate eventType categories coverImage bannerImage branding')
+        .select('name slug description venue startDate eventType customEventType categories coverImage bannerImage branding')
         .sort('startDate')
         .skip(skip)
         .limit(parseInt(limit)),

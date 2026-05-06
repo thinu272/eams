@@ -32,7 +32,7 @@ const EventsListingPage = () => {
         
         // Extract unique eventTypes for the filter dropdown if not fully loaded yet
         if (filters.category === '' && filters.search === '' && filters.date === '') {
-           const types = [...new Set(fetched.map(e => e.eventType).filter(Boolean))];
+           const types = [...new Set(fetched.map(e => (e.eventType === 'other' && e.customEventType) ? e.customEventType : e.eventType).filter(Boolean))];
            setAvailableCategories(types.length > 0 ? types : ['Cricket Match', 'Tournament', 'VIP Event']);
         }
       })

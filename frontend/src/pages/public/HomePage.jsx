@@ -28,8 +28,10 @@ const HomePage = () => {
           <div className="absolute top-[20%] -right-[5%] w-[30%] h-[30%] bg-brand-accent/20 rounded-full blur-[100px] animate-float"></div>
         </div>
         
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=2805&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-soft-light scale-105 animate-[shimmer_20s_infinite_alternate]"></div>
-        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-brand-dark via-brand-dark/80 to-transparent"></div>
+        <div className="absolute inset-0 bg-slate-950">
+          <div className="absolute inset-0 bg-gradient-to-br from-brand-dark via-slate-900 to-blue-900/20" />
+          <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500/10 via-transparent to-transparent" />
+        </div>
         
         <div className="relative max-w-7xl mx-auto px-6 py-20 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-300 backdrop-blur-md animate-fade-in">
@@ -37,9 +39,8 @@ const HomePage = () => {
             Next-Gen Event Experience
           </div>
           
-          <h1 className="mt-8 text-6xl font-black uppercase tracking-tighter leading-[0.9] md:text-8xl lg:text-[9rem] animate-fade-in [animation-delay:100ms]">
-            Live the <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-main via-blue-400 to-cyan-400">Moment</span>
+          <h1 className="mt-8 text-4xl font-black uppercase tracking-tighter leading-tight md:text-6xl lg:text-7xl animate-fade-in [animation-delay:100ms] whitespace-nowrap">
+            Live the <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-main via-blue-400 to-cyan-400">Moment</span>
           </h1>
           
           <p className="mx-auto mt-10 max-w-2xl text-lg md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
@@ -66,14 +67,14 @@ const HomePage = () => {
       </div>
 
       {/* Featured Events Section */}
-      <div id="events" className="relative z-10 mx-auto max-w-7xl px-6 py-32">
-        <div className="flex flex-col items-center text-center mb-20">
-          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-main mb-4">Curated Selection</p>
-          <h2 className="text-4xl md:text-5xl font-black tracking-tight text-slate-900">
-            Featured <span className="text-brand-main">Experiences</span>
+      <div id="events" className="relative z-10 mx-auto max-w-[1400px] px-6 py-32">
+        <div className="flex flex-col items-center text-center mb-24">
+          <p className="text-xs font-black uppercase tracking-[0.5em] text-brand-main mb-4 opacity-80">Discovery</p>
+          <h2 className="text-4xl md:text-6xl font-black tracking-tight text-slate-900 leading-tight">
+            Featured <br className="md:hidden"/> <span className="text-brand-main">Experiences</span>
           </h2>
-          <div className="mt-6 h-1 w-20 rounded-full bg-brand-main/20 overflow-hidden">
-            <div className="h-full w-1/2 bg-brand-main rounded-full animate-shimmer"></div>
+          <div className="mt-8 h-1.5 w-32 rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-full w-1/3 bg-brand-main rounded-full animate-shimmer"></div>
           </div>
         </div>
 

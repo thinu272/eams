@@ -263,17 +263,91 @@ const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, org
       <form className="space-y-4" onSubmit={saveEntity}>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Name"><Input value={form.name || ''} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} /></Field>
-          <Field label="Email / organiser email"><Input value={form.email || ''} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} disabled={modal.type === 'event'} /></Field>
+          {modal.type !== 'event' && (
+            <Field label="Email Address">
+              <Input value={form.email || ''} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} />
+            </Field>
+          )}
           {modal.type === 'event' ? (
             <>
+              <Field label="Description">
+                <textarea 
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows="3"
+                  value={form.description || ''} 
+                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} 
+                />
+              </Field>
+              <Field label="Event Type">
+                <Select value={form.eventType || 'cricket'} onChange={(e) => setForm((prev) => ({ ...prev, eventType: e.target.value }))}>
+                  <option value="cricket">Cricket Match</option>
+                  <option value="concert">Concert</option>
+                  <option value="conference">Conference</option>
+                  <option value="other">Other</option>
+                </Select>
+              </Field>
               <Field label="Start date"><Input type="datetime-local" value={form.startDate || ''} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} /></Field>
               <Field label="End date"><Input type="datetime-local" value={form.endDate || ''} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} /></Field>
               <Field label="Venue"><Input value={form.venueName || ''} onChange={(e) => setForm((prev) => ({ ...prev, venueName: e.target.value }))} /></Field>
+              <Field label="Status">
+                <Select value={form.status || 'draft'} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}>
+                  <option value="draft">Draft</option>
+                  <option value="published">Published</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </Select>
+              </Field>
               <Field label="Assigned organiser"><Select value={form.organiserId || ''} onChange={(e) => setForm((prev) => ({ ...prev, organiserId: e.target.value }))}><option value="">Unassigned</option>{organiserOptions.map((option) => <option key={option._id} value={option._id}>{option.name}</option>)}</Select></Field>
+              
+              <div className="col-span-2 pt-4 border-t border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Payment & Currency</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Currency">
+                    <Select value={form.currency || 'LKR'} onChange={(e) => setForm((prev) => ({ ...prev, currency: e.target.value }))}>
+                      <option value="LKR">LKR (Rs.)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                    </Select>
+                  </Field>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentCard !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentCard: e.target.checked }))} />
+                      <span className="text-sm text-slate-700">Card Payment</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentBank !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentBank: e.target.checked }))} />
+                      <span className="text-sm text-slate-700">Bank Transfer</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentCash !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentCash: e.target.checked }))} />
+                      <span className="text-sm text-slate-700">Cash Payment</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="col-span-2 pt-4 border-t border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Event Controls</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.requirePhotoVerification !== false} onChange={(e) => setForm(prev => ({ ...prev, requirePhotoVerification: e.target.checked }))} />
+                    <span className="text-sm text-slate-700">Photo Verification</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.allowSelfConfirmation !== false} onChange={(e) => setForm(prev => ({ ...prev, allowSelfConfirmation: e.target.checked }))} />
+                    <span className="text-sm text-slate-700">Self Confirmation</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.rfidEnabled !== false} onChange={(e) => setForm(prev => ({ ...prev, rfidEnabled: e.target.checked }))} />
+                    <span className="text-sm text-slate-700">RFID Enabled</span>
+                  </label>
+                </div>
+              </div>
             </>
           ) : (
             <>
-              <Field label="Phone"><Input value={form.phone || ''} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} /></Field>
+              <Field label="Phone"><Input value={form.phone || ''} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} required /></Field>
               <Field label="Password"><Input type="password" value={form.password || ''} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} /></Field>
               <Field label="Role"><Select value={form.role || ''} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}>{(modal.type === 'organiser' ? ['MainOrganiser', 'SubOrganiser'] : ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee']).map((role) => <option key={role} value={role}>{role}</option>)}</Select></Field>
               <Field label="Status"><Select value={form.status || 'Active'} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}><option value="Active">Active</option><option value="Inactive">Inactive</option></Select></Field>
@@ -334,7 +408,23 @@ const AdminDashboard = () => {
 
   const openModal = (type, mode = 'create', item = null) => {
     setModal({ type, mode, item });
-    if (type === 'event') setForm({ name: item?.name || '', startDate: item?.date ? new Date(item.date).toISOString().slice(0, 16) : '', endDate: item?.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : '', organiserId: item?.organiser?._id || '', venueName: item?.venue || '', status: item?.lifecycleStatus || 'draft', description: item?.description || '' });
+    if (type === 'event') setForm({ 
+      name: item?.name || '', 
+      startDate: item?.date ? new Date(item.date).toISOString().slice(0, 16) : '', 
+      endDate: item?.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : '', 
+      organiserId: item?.organiser?._id || '', 
+      venueName: item?.venue || '', 
+      status: item?.lifecycleStatus || 'draft', 
+      description: item?.description || '',
+      eventType: item?.eventType || 'cricket',
+      requirePhotoVerification: item?.settings?.requirePhotoVerification ?? true,
+      allowSelfConfirmation: item?.settings?.allowSelfConfirmation ?? true,
+      rfidEnabled: item?.settings?.rfidEnabled ?? true,
+      currency: item?.settings?.currency || 'LKR',
+      paymentCard: item?.settings?.paymentMethods?.card ?? true,
+      paymentBank: item?.settings?.paymentMethods?.bank_transfer ?? true,
+      paymentCash: item?.settings?.paymentMethods?.cash ?? true
+    });
     if (type === 'organiser' || type === 'user') setForm({ name: item?.name || '', email: item?.email || '', phone: item?.phone || '', password: '', role: item?.role || (type === 'organiser' ? 'MainOrganiser' : 'Staff'), status: item?.status || 'Active' });
   };
   const closeModal = () => { setModal({ type: '', mode: 'create', item: null }); setForm({}); };
@@ -352,8 +442,8 @@ const AdminDashboard = () => {
       toast.success(`${modal.type} ${modal.mode === 'create' ? 'created' : 'updated'}`);
       closeModal();
       loadWorkspace();
-    } catch {
-      toast.error(`Failed to ${modal.mode} ${modal.type}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Failed to ${modal.mode} ${modal.type}`);
     } finally {
       setSaving(false);
     }

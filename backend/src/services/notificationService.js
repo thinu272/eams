@@ -13,11 +13,32 @@ const {
 } = require('../utils/email');
 const { createShortLink } = require('./shortLinkService');
 const { sendSMS } = require('./smsService');
+const { sendWhatsApp } = require('./whatsappService');
 const { deliverAttendeeTicketEmail, sendBuyerPurchaseSummaryEmail } = require('./ticketDeliveryService');
+const SystemConfig = require('../models/SystemConfig');
 
-const parseChannels = (notificationChannel) => {
-  // ENTRYNEX Phase 1: Always send Email + SMS when possible.
-  return ['email', 'sms'];
+const parseChannels = async (notificationChannel) => {
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const channels = ['email'];
+  
+  // Enable SMS if DB says so OR if env credentials exist
+  if (config.sms?.enabled || (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN)) {
+    channels.push('sms');
+  }
+  
+  // Enable WhatsApp if DB says so
+  if (config.whatsapp?.enabled) {
+    channels.push('whatsapp');
+  }
+  
+  return channels;
+};
+
+const templateReplace = (template, data) => {
+  if (!template) return '';
+  return template.replace(/{{(\w+)}}/g, (match, key) => {
+    return data[key] || match;
+  });
 };
 
 const buildShortUrl = async (targetPath, label) => {
@@ -26,7 +47,8 @@ const buildShortUrl = async (targetPath, label) => {
 };
 
 const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationChannel }) => {
-  const channels = parseChannels(notificationChannel);
+  const channels = await parseChannels(notificationChannel);
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
   const tasks = [];
 
   if (channels.includes('email')) {
@@ -35,26 +57,26 @@ const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationC
     }));
   }
 
+  const shortUrl = await buildShortUrl(`/order/${order.confirmationToken}/confirm`, 'order-confirmation');
+  const data = { eventName: event.name, orderNumber: order.orderNumber, shortUrl, buyerName: order.buyerName };
+
   if (channels.includes('sms') && buyerPhone) {
-    tasks.push((async () => {
-      try {
-        const shortUrl = await buildShortUrl(`/order/${order.confirmationToken}/confirm`, 'order-confirmation');
-        await sendSMS(
-          buyerPhone,
-          `ENTRYNEX: Order confirmed for ${event.name}. Confirm tickets here: ${shortUrl}`,
-          { rateKey: `order:${buyerPhone}` }
-        );
-      } catch (error) {
-        console.error('ORDER SMS ERROR:', error);
-      }
-    })());
+    const template = config.sms?.templates?.confirmation || 'ENTRYNEX: Order confirmed for {{eventName}}. Confirm tickets here: {{shortUrl}}';
+    tasks.push(sendSMS(buyerPhone, templateReplace(template, data), { rateKey: `order:${buyerPhone}` })
+      .catch((error) => console.error('ORDER SMS ERROR:', error)));
+  }
+
+  if (channels.includes('whatsapp') && buyerPhone) {
+    const template = config.whatsapp?.templates?.confirmation || 'Hello! Your order for {{eventName}} is confirmed. Confirm here: {{shortUrl}}';
+    tasks.push(sendWhatsApp(buyerPhone, templateReplace(template, data))
+      .catch((error) => console.error('ORDER WHATSAPP ERROR:', error)));
   }
 
   await Promise.all(tasks);
 };
 
 const notifyInvite = async ({ attendee, event, phone, email, notificationChannel }) => {
-  const channels = parseChannels(notificationChannel);
+  const channels = await parseChannels(notificationChannel);
   const tasks = [];
 
   const inviteData = {
@@ -91,8 +113,8 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
 };
 
 const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, force = false }) => {
-  const channels = parseChannels(notificationChannel);
-  let deliveryResult = { delivered: false, skipped: true, reason: 'email_not_requested' };
+  const channels = await parseChannels(notificationChannel);
+  let deliveryResult = { delivered: false, skipped: false, reason: null };
 
   if (channels.includes('email')) {
     try {
@@ -103,14 +125,17 @@ const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, 
       });
     } catch (error) {
       console.error('FINAL EMAIL ERROR:', error);
+      deliveryResult = { delivered: false, error: error.message };
     }
   }
 
-  if (deliveryResult.delivered && channels.includes('sms') && phone) {
+  // Decoupled SMS: Send SMS if requested, even if email was skipped (e.g. already_sent)
+  // Only skip SMS if there was a hard failure in email that suggests we shouldn't proceed
+  if (channels.includes('sms') && phone) {
     try {
       await sendSMS(
         phone,
-        `ENTRYNEX Ticket Confirmed: ${event.name}. Your PDF ticket has been sent to your email.`,
+        `ENTRYNEX Ticket Confirmed: ${event.name || 'Event'}. Your PDF ticket has been sent to your email.`,
         { rateKey: `final:${phone}` }
       );
     } catch (error) {
@@ -122,7 +147,7 @@ const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, 
 };
 
 const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
-  const channels = parseChannels('both');
+  const channels = await parseChannels('both');
   const tasks = [];
   const buyerPhone = order.buyerPhone;
 
@@ -157,7 +182,7 @@ const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
 };
 
 const notifyConfirmationReminder = async ({ attendee, event, phone, email }) => {
-  const channels = parseChannels('both');
+  const channels = await parseChannels('both');
   const tasks = [];
   if (channels.includes('email') && email) {
     tasks.push(sendConfirmationReminder(attendee, event).catch((error) => {
@@ -182,7 +207,7 @@ const notifyConfirmationReminder = async ({ attendee, event, phone, email }) => 
 };
 
 const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
-  const channels = parseChannels('both');
+  const channels = await parseChannels('both');
   const tasks = [];
   if (channels.includes('email') && email) {
     tasks.push(sendSubOrganiserInvite(user, event).catch((error) => {
@@ -206,7 +231,7 @@ const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
 };
 
 const notifyStatusChange = async ({ attendee, event, status, message }) => {
-  const channels = parseChannels('both');
+  const channels = await parseChannels('both');
   const tasks = [];
   if (channels.includes('email') && attendee.email) {
     tasks.push(sendStatusChange(attendee, event, status, message).catch((error) => {
@@ -306,6 +331,7 @@ const notifyBuyerTicketProgress = async ({
 };
 
 const notifyUserCredentials = async (user, tempPassword) => {
+  console.log(`NOTIFY: Sending credentials to ${user.email} with temp password ${tempPassword}`);
   const tasks = [];
   const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
 
@@ -338,6 +364,18 @@ const notifyOTP = async (phone, otp) => {
   );
 };
 
+const notifyRoleAssignment = async (user, newRole, assignedEvents = []) => {
+  await require('../utils/email').sendRoleAssignmentEmail(user, newRole, assignedEvents).catch(err => console.error('ROLE EMAIL ERROR:', err));
+  
+  if (user.phone) {
+    await sendSMS(
+      user.phone,
+      `ENTRYNEX: Your account role has been updated to ${newRole}. Log in to view changes.`,
+      { rateKey: `role:${user.phone}` }
+    ).catch(err => console.error('ROLE SMS ERROR:', err));
+  }
+};
+
 module.exports = {
   notifyOrderConfirmation,
   notifyInvite,
@@ -353,5 +391,6 @@ module.exports = {
   notifyVerification,
   notifyPasswordReset,
   notifyOTP,
+  notifyRoleAssignment,
   parseChannels,
 };

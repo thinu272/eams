@@ -140,8 +140,9 @@ const getScopeZoneKeys = (event, assignedZoneIds) => {
 
 const resolveScopedEvent = async (user, explicitEventId) => {
   const role = normalizeRole(user?.role);
-  let eventId = explicitEventId;
+  let eventId = (explicitEventId && explicitEventId !== 'undefined') ? explicitEventId : null;
 
+  // Fallback to first assigned if no valid ID provided
   if (!eventId) {
     eventId = user?.assignedEvents?.[0];
   }
@@ -150,17 +151,33 @@ const resolveScopedEvent = async (user, explicitEventId) => {
     return { error: 'No assigned event available for this account.' };
   }
 
-  const event = await Event.findById(eventId);
+  let event = await Event.findById(eventId);
+  
+  // If requested event not found, try fallback to first assigned (if different)
+  if (!event && String(eventId) !== String(user?.assignedEvents?.[0])) {
+    const fallbackId = user?.assignedEvents?.[0];
+    if (fallbackId && mongoose.Types.ObjectId.isValid(fallbackId)) {
+       event = await Event.findById(fallbackId);
+    }
+  }
+
   if (!event) {
     return { error: 'Assigned event not found.' };
   }
 
+  // Final scope check: Admins and Main Organisers have global scope
   if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) {
     return { event };
   }
 
   const assignedEventIds = (user?.assignedEvents || []).map((item) => item.toString());
   if (!assignedEventIds.includes(event._id.toString())) {
+    // If unauthorized, try fallback to first assigned
+    const fallbackId = user?.assignedEvents?.[0];
+    if (fallbackId && fallbackId.toString() !== event._id.toString()) {
+       const fallbackEvent = await Event.findById(fallbackId);
+       if (fallbackEvent) return { event: fallbackEvent };
+    }
     return { error: 'Requested event is outside your assignment.' };
   }
 
@@ -524,7 +541,7 @@ router.post('/verify', async (req, res, next) => {
 
       await notifyFinalTicket({
         attendee,
-        event: attendee.event,
+        event: event,
         phone: attendee.phone,
         notificationChannel: 'both',
         force: true

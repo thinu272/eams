@@ -8,8 +8,9 @@ import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
 const TABS = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
-  { id: 'email', label: 'Email (SMTP)' },
+  { id: 'email', label: 'Email' },
   { id: 'sms', label: 'SMS' },
+  { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'payment', label: 'Payments' },
   { id: 'security', label: 'Security' },
   { id: 'ticketing', label: 'Ticketing' },
@@ -249,6 +250,12 @@ const AdminSettingsPanel = () => {
                       <option value="mock">Mock Email (Console Logging)</option>
                     </Select>
                   </Field>
+                  <Field label="Template Integration">
+                    <Select value={settings.email?.templateMode || 'code'} onChange={(e) => updateSetting('email', 'templateMode', e.target.value)}>
+                      <option value="code">Built-in (Code Based)</option>
+                      <option value="sendgrid">SendGrid Dynamic Templates</option>
+                    </Select>
+                  </Field>
                   <Field label="Sender Name">
                     <Input value={settings.email?.senderName || ''} onChange={(e) => updateSetting('email', 'senderName', e.target.value)} placeholder="e.g., ENTRYNEX Events" />
                   </Field>
@@ -281,15 +288,35 @@ const AdminSettingsPanel = () => {
 
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h3 className="font-semibold text-slate-900">Email Templates</h3>
-                  <Field label="Invitation Email Subject">
-                    <Input value={settings.email?.templates?.inviteSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'inviteSubject', e.target.value)} />
-                  </Field>
-                  <Field label="Ticket Email Subject">
-                    <Input value={settings.email?.templates?.ticketSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'ticketSubject', e.target.value)} />
-                  </Field>
-                  <Field label="Password Reset Subject">
-                    <Input value={settings.email?.templates?.resetSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'resetSubject', e.target.value)} />
-                  </Field>
+                  
+                  {settings.email?.templateMode === 'sendgrid' ? (
+                    <div className="grid gap-4 md:grid-cols-2 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                      <Field label="Invitation Template ID">
+                        <Input value={settings.email?.templateIds?.invite || ''} onChange={(e) => updateNestedSetting('email', 'templateIds', 'invite', e.target.value)} placeholder="d-xxxxxxxx" />
+                      </Field>
+                      <Field label="Ticket Template ID">
+                        <Input value={settings.email?.templateIds?.ticket || ''} onChange={(e) => updateNestedSetting('email', 'templateIds', 'ticket', e.target.value)} placeholder="d-xxxxxxxx" />
+                      </Field>
+                      <Field label="Order Template ID">
+                        <Input value={settings.email?.templateIds?.order || ''} onChange={(e) => updateNestedSetting('email', 'templateIds', 'order', e.target.value)} placeholder="d-xxxxxxxx" />
+                      </Field>
+                      <Field label="Password Reset Template ID">
+                        <Input value={settings.email?.templateIds?.reset || ''} onChange={(e) => updateNestedSetting('email', 'templateIds', 'reset', e.target.value)} placeholder="d-xxxxxxxx" />
+                      </Field>
+                    </div>
+                  ) : (
+                    <>
+                      <Field label="Invitation Email Subject">
+                        <Input value={settings.email?.templates?.inviteSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'inviteSubject', e.target.value)} />
+                      </Field>
+                      <Field label="Ticket Email Subject">
+                        <Input value={settings.email?.templates?.ticketSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'ticketSubject', e.target.value)} />
+                      </Field>
+                      <Field label="Password Reset Subject">
+                        <Input value={settings.email?.templates?.resetSubject || ''} onChange={(e) => updateNestedSetting('email', 'templates', 'resetSubject', e.target.value)} />
+                      </Field>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -316,6 +343,65 @@ const AdminSettingsPanel = () => {
                     </Field>
                   </div>
                 )}
+                
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <h3 className="font-semibold text-slate-900">Custom SMS Templates</h3>
+                  <Field label="Ticket Confirmation SMS">
+                    <textarea 
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      rows="3"
+                      value={settings.sms?.templates?.confirmation || ''} 
+                      onChange={(e) => updateNestedSetting('sms', 'templates', 'confirmation', e.target.value)}
+                      placeholder="Use {{eventName}}, {{attendeeName}} etc."
+                    />
+                  </Field>
+                  <Field label="Verification Rejection SMS">
+                    <textarea 
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      rows="3"
+                      value={settings.sms?.templates?.rejection || ''} 
+                      onChange={(e) => updateNestedSetting('sms', 'templates', 'rejection', e.target.value)}
+                    />
+                  </Field>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'whatsapp' && (
+              <div className="space-y-6">
+                <Toggle label="Enable WhatsApp Notifications" checked={settings.whatsapp?.enabled} onChange={(v) => updateSetting('whatsapp', 'enabled', v)} />
+                <div className="grid gap-6 md:grid-cols-2">
+                  <Field label="WhatsApp Provider">
+                    <Select value={settings.whatsapp?.provider || 'none'} onChange={(e) => updateSetting('whatsapp', 'provider', e.target.value)}>
+                      <option value="none">Disabled</option>
+                      <option value="twilio">Twilio WhatsApp API</option>
+                      <option value="meta">Meta Graph API (Direct)</option>
+                    </Select>
+                  </Field>
+                </div>
+                {settings.whatsapp?.provider !== 'none' && (
+                  <div className="grid gap-6 md:grid-cols-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <Field label="API Key / Token">
+                      <Input value={settings.whatsapp?.apiKey || ''} onChange={(e) => updateSetting('whatsapp', 'apiKey', e.target.value)} />
+                    </Field>
+                    <Field label="API Secret / App ID">
+                      <Input type="password" value={settings.whatsapp?.apiSecret || ''} onChange={(e) => updateSetting('whatsapp', 'apiSecret', e.target.value)} />
+                    </Field>
+                  </div>
+                )}
+                
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <h3 className="font-semibold text-slate-900">WhatsApp Templates</h3>
+                  <Field label="Ticket Confirmation Message">
+                    <textarea 
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      rows="3"
+                      value={settings.whatsapp?.templates?.confirmation || ''} 
+                      onChange={(e) => updateNestedSetting('whatsapp', 'templates', 'confirmation', e.target.value)}
+                      placeholder="Use {{eventName}}, {{attendeeName}} etc."
+                    />
+                  </Field>
+                </div>
               </div>
             )}
 

@@ -46,6 +46,11 @@ const LoginPage = () => {
         toast('MFA Required — Check your authenticator app');
         return;
       }
+      if (result?.requirePasswordChange) {
+        toast(result.message || 'Security update required');
+        navigate('/change-password', { state: { tempToken: result.tempToken } });
+        return;
+      }
       toast.success(`Access Granted — Welcome, ${result.name}`);
       navigate(getDashboardPathForRole(result.role));
     } catch (err) {
@@ -57,19 +62,8 @@ const LoginPage = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-sans selection:bg-blue-500/30 flex items-center justify-center p-6 sm:p-12">
-      {/* Premium Daylight Stadium Background */}
-      <div 
-        className="absolute inset-0 z-0"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=2805&auto=format&fit=crop')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          filter: 'brightness(0.95) contrast(1.05)',
-        }}
-      >
-        <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-white/80" />
-      </div>
+      {/* Premium Gradient Background */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30" />
 
       {/* Soft Daylight Glows */}
       <div className="absolute top-0 right-1/4 h-[600px] w-[600px] rounded-full bg-blue-500/5 blur-[120px] pointer-events-none" />

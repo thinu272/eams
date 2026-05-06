@@ -57,6 +57,7 @@ const eventSchema = new mongoose.Schema({
     enum: ['cricket', 'concert', 'conference', 'other'],
     default: 'cricket',
   },
+  customEventType: { type: String },
   venue: {
     name: { type: String, required: true },
     address: { type: String },
@@ -166,6 +167,7 @@ const eventSchema = new mongoose.Schema({
   publishedAt: { type: Date },
 }, {
   timestamps: true,
+  minimize: false,
 });
 
 // Auto-generate slug from name

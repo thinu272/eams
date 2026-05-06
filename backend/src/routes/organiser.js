@@ -332,6 +332,10 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
           status: req.scopedEvent.status,
           zones: req.scopedEvent.zones || [],
           settings: req.scopedEvent.settings || {},
+          matchDetails: req.scopedEvent.matchDetails || {},
+          concertDetails: req.scopedEvent.concertDetails || {},
+          conferenceDetails: req.scopedEvent.conferenceDetails || {},
+          customEventType: req.scopedEvent.customEventType || '',
         },
         overview: { totalTickets, ticketsSold, confirmedAttendees, checkedInCount, totalRevenue, zoneOccupancy: topZoneOccupancy },
         charts: { 
@@ -534,6 +538,20 @@ router.post(
         message: `${attendee.fullName} was added to ${event.name}.`,
         type: 'success',
         metadata: { actionType: 'attendee_create', attendeeId: String(attendee._id) },
+      });
+
+      // UPDATE SOLD COUNT AND BROADCAST
+      await Event.updateOne(
+        { _id: eventId, 'categories.id': categoryId },
+        { $inc: { 'categories.$.sold': 1 } }
+      );
+
+      const { emitDashboardEvent } = require('../utils/socket');
+      const io = req.app.get('io');
+      emitDashboardEvent(io, 'event_update', eventId, {
+        type: 'MANUAL_ADDITION',
+        eventId,
+        categoryId
       });
 
       res.status(201).json({ success: true, data: { attendee }, message: 'Attendee added.' });
@@ -1638,6 +1656,7 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       event.name = basicInfo.name ?? event.name;
       event.description = basicInfo.description ?? event.description;
       event.eventType = basicInfo.eventType ?? event.eventType;
+      event.customEventType = basicInfo.customEventType ?? event.customEventType;
       if (basicInfo.startDate) event.startDate = new Date(basicInfo.startDate);
       if (basicInfo.endDate) event.endDate = new Date(basicInfo.endDate);
       

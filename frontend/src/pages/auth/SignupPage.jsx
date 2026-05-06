@@ -61,19 +61,8 @@ const SignupPage = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-sans selection:bg-blue-500/30 flex items-center justify-center p-6 sm:p-12">
-      {/* Premium Daylight Stadium Background */}
-      <div 
-        className="absolute inset-0 z-0"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=2805&auto=format&fit=crop')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          filter: 'brightness(0.9) contrast(1.05)',
-        }}
-      >
-        <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-white/80" />
-      </div>
+      {/* Premium Gradient Background */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30" />
 
       <div className="relative z-10 w-full max-w-[540px] animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
         {/* Branding Section */}

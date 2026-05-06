@@ -24,6 +24,7 @@ const systemConfigSchema = new mongoose.Schema({
   },
   email: {
     provider: { type: String, enum: ['smtp', 'sendgrid', 'mock'], default: 'smtp' },
+    templateMode: { type: String, enum: ['code', 'sendgrid'], default: 'code' },
     smtpHost: { type: String, default: '' },
     smtpPort: { type: Number, default: 587 },
     smtpUser: { type: String, default: '' },
@@ -35,12 +36,31 @@ const systemConfigSchema = new mongoose.Schema({
       ticketSubject: { type: String, default: 'Confirmed - Your ticket for {{eventName}}' },
       resetSubject: { type: String, default: 'Password Reset Request' },
     },
+    templateIds: {
+      invite: { type: String, default: '' },
+      ticket: { type: String, default: '' },
+      reset: { type: String, default: '' },
+      order: { type: String, default: '' },
+    }
   },
   sms: {
     provider: { type: String, enum: ['mock', 'twilio', 'localApi'], default: 'mock' },
     apiKey: { type: String, default: '' },
     apiSecret: { type: String, default: '' },
     enabled: { type: Boolean, default: false },
+    templates: {
+      confirmation: { type: String, default: 'Confirmed: Your ticket for {{eventName}} is ready. Show this at entry.' },
+      rejection: { type: String, default: 'Notice: Your verification for {{eventName}} was not successful. Please contact support.' },
+    },
+  },
+  whatsapp: {
+    provider: { type: String, enum: ['none', 'twilio', 'meta'], default: 'none' },
+    apiKey: { type: String, default: '' },
+    apiSecret: { type: String, default: '' },
+    enabled: { type: Boolean, default: false },
+    templates: {
+      confirmation: { type: String, default: 'Hello! Your ticket for {{eventName}} is confirmed. 🎫' },
+    },
   },
   payment: {
     gateway: { type: String, enum: ['none', 'stripe', 'payhere'], default: 'none' },

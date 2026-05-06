@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 
-const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers = [] }) => {
+const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers = [], isAdmin = false }) => {
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -14,14 +14,24 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
     mainOrganiser: '',
     categories: [],
     zones: [],
-    matchDetails: { teamA: '', teamB: '', matchType: '', series: '' },
-    concertDetails: { mainArtist: '', supportingBands: [], genre: '', tourName: '' },
-    conferenceDetails: { theme: '', speakers: [], scheduleUrl: '' },
+    matchDetails: { 
+      teamA: '', teamB: '', matchType: '', series: '',
+      ...(initialData.matchDetails || {})
+    },
+    concertDetails: { 
+      mainArtist: '', supportingBands: [], genre: '', tourName: '',
+      ...(initialData.concertDetails || {})
+    },
+    conferenceDetails: { 
+      theme: '', speakers: [], scheduleUrl: '',
+      ...(initialData.conferenceDetails || {})
+    },
     settings: {
       requirePhotoVerification: true,
       allowSelfConfirmation: true,
       rfidEnabled: true,
       maxTicketsPerOrder: 10,
+      ...(initialData.settings || {}),
     },
     ...initialData,
     // Format dates for datetime-local input (yyyy-MM-ddTHH:mm)
@@ -39,7 +49,15 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
   };
   
   const dynamicTab = getDynamicTab();
-  const tabs = ['Basic Info', 'Categories', 'Zones', ...(dynamicTab ? [dynamicTab] : []), 'Settings'];
+  const tabs = [
+    'Basic Info', 
+    'Categories', 
+    'Zones', 
+    ...(dynamicTab ? [dynamicTab] : []), 
+    'Branding', 
+    'Payment', 
+    'Settings'
+  ];
 
   const [activeTab, setActiveTab] = useState('Basic Info');
 
@@ -95,9 +113,20 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event Type</label>
-                <select name="eventType" value={form.eventType} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  {['cricket', 'concert', 'conference', 'other'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                </select>
+                <div className="space-y-2">
+                  <select name="eventType" value={form.eventType} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    {['cricket', 'concert', 'conference', 'other'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                  {form.eventType === 'other' && (
+                    <input 
+                      name="customEventType" 
+                      value={form.customEventType || ''} 
+                      onChange={handleChange} 
+                      placeholder="Specify type (e.g. Festival)" 
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Venue Name *</label>
@@ -110,11 +139,11 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
               <div className="grid grid-cols-2 gap-2 col-span-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
-                  <input type="datetime-local" name="startDate" value={form.startDate} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+                  <input type="datetime-local" name="startDate" value={form.startDate} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"/>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
-                  <input type="datetime-local" name="endDate" value={form.endDate} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+                  <input type="datetime-local" name="endDate" value={form.endDate} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"/>
                 </div>
               </div>
               <div className="col-span-2">
@@ -202,19 +231,110 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
           </div>
         )}
 
+        {activeTab === 'Branding' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Logo URL</label>
+                <input name="branding.logoImage" value={form.branding?.logoImage || ''} onChange={handleChange} placeholder="https://..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Banner Image URL</label>
+                <input name="branding.bannerImage" value={form.branding?.bannerImage || ''} onChange={handleChange} placeholder="https://..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image URL</label>
+                <input name="branding.coverImage" value={form.branding?.coverImage || ''} onChange={handleChange} placeholder="https://..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'Payment' && (
+          <div className="space-y-6">
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+              <h4 className="text-sm font-semibold text-blue-900 mb-2">Payment Settings</h4>
+              <p className="text-xs text-blue-700">Select which payment methods are accepted for this event.</p>
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                <input type="checkbox" name="settings.paymentMethods.card" checked={form.settings?.paymentMethods?.card !== false} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Credit / Debit Card</span>
+                  <span className="text-xs text-gray-500">Processed via Stripe or PayHere (as configured in Global Settings)</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                <input type="checkbox" name="settings.paymentMethods.bank_transfer" checked={form.settings?.paymentMethods?.bank_transfer !== false} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Bank Transfer / Cash Deposit</span>
+                  <span className="text-xs text-gray-500">Requires manual verification of deposit slips</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                <input type="checkbox" name="settings.paymentMethods.cash" checked={form.settings?.paymentMethods?.cash !== false} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">On-Site Cash Payment</span>
+                  <span className="text-xs text-gray-500">Only available for registered physical outlets or gates</span>
+                </div>
+              </label>
+            </div>
+            <div className="pt-4 mt-6 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Event Currency</label>
+              <select name="settings.currency" value={form.settings?.currency || 'LKR'} onChange={handleChange} className="w-40 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="LKR">LKR (Rs.)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </select>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'Settings' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <input type="checkbox" name="settings.requirePhotoVerification" checked={form.settings.requirePhotoVerification} onChange={handleChange} id="requirePhoto"/>
-              <label htmlFor="requirePhoto" className="text-sm text-gray-700 font-medium">Require Photo Verification</label>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-gray-900 border-b pb-2">Identity & Verification</h4>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.requirePhotoVerification" checked={form.settings.requirePhotoVerification} onChange={handleChange} id="requirePhoto" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="requirePhoto" className="text-sm text-gray-700 font-medium">Require Photo Verification</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.allowSelfConfirmation" checked={form.settings.allowSelfConfirmation} onChange={handleChange} id="allowSelf" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="allowSelf" className="text-sm text-gray-700 font-medium">Allow Attendee Self-Confirmation</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.rfidEnabled" checked={form.settings.rfidEnabled} onChange={handleChange} id="rfid" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="rfid" className="text-sm text-gray-700 font-medium">Enable RFID/Wristband tracking</label>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-gray-900 border-b pb-2">Registration Logic</h4>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.inviteSystemEnabled" checked={form.settings.inviteSystemEnabled !== false} onChange={handleChange} id="inviteSys" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="inviteSys" className="text-sm text-gray-700 font-medium">Enable Invitation System</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.manualApprovalEnabled" checked={form.settings.manualApprovalEnabled} onChange={handleChange} id="manualAppr" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="manualAppr" className="text-sm text-gray-700 font-medium">Manual Order Approval</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.autoConfirmEnabled" checked={form.settings.autoConfirmEnabled} onChange={handleChange} id="autoConf" className="w-4 h-4 text-blue-600 rounded"/>
+                  <label htmlFor="autoConf" className="text-sm text-gray-700 font-medium">Auto-confirm Paid Tickets</label>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <input type="checkbox" name="settings.allowSelfConfirmation" checked={form.settings.allowSelfConfirmation} onChange={handleChange} id="allowSelf"/>
-              <label htmlFor="allowSelf" className="text-sm text-gray-700 font-medium">Allow Attendee Self-Confirmation</label>
-            </div>
-            <div className="flex items-center gap-3">
-              <input type="checkbox" name="settings.rfidEnabled" checked={form.settings.rfidEnabled} onChange={handleChange} id="rfid"/>
-              <label htmlFor="rfid" className="text-sm text-gray-700 font-medium">Enable RFID/Wristband tracking</label>
+
+            <div className="grid grid-cols-2 gap-4 pt-6 border-t border-gray-100">
+               <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Max Tickets Per Order</label>
+                 <input type="number" name="settings.maxTicketsPerOrder" value={form.settings.maxTicketsPerOrder || 10} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+               </div>
+               <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Confirmation Deadline (Hours)</label>
+                 <input type="number" name="settings.confirmationDeadlineHours" value={form.settings.confirmationDeadlineHours || 48} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+               </div>
             </div>
           </div>
         )}

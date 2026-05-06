@@ -45,12 +45,21 @@ const SubOrgDashboard = () => {
       listSubOrganisers({ eventId }).catch(() => ({ data: { data: { users: [] } } }))
     ])
       .then(([subRes, teamRes]) => {
-        setData(subRes.data?.data || null);
+        const dashboardData = subRes.data?.data || null;
+        setData(dashboardData);
         setTeamMembers(teamRes.data?.data?.users || []);
         setLoadError('');
+        
+        // Sync currentEventId if backend fell back to a different one
+        if (dashboardData?.event?._id && String(dashboardData.event._id) !== String(eventId)) {
+          console.log(`[Dashboard] Syncing event ID to ${dashboardData.event._id}`);
+          setCurrentEventId(String(dashboardData.event._id));
+          localStorage.setItem('lastSelectedEventId', String(dashboardData.event._id));
+        }
       })
       .catch((error) => {
-        if (error.response?.status === 404) {
+        const status = error.response?.status;
+        if (status === 404 || status === 403) {
           localStorage.removeItem('lastSelectedEventId');
           setCurrentEventId('');
         }
