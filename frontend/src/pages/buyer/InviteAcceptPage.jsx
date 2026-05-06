@@ -4,6 +4,8 @@ import { CalendarDaysIcon, CheckBadgeIcon, MapPinIcon, TicketIcon, XCircleIcon }
 import { confirmInvite, getInviteInfo, respondToInvite } from '../../api/attendees';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import CameraCapture from '../../components/shared/CameraCapture';
+import { CameraIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
 const phoneRegex = /^\+?[1-9]\d{1,14}$/;
 
@@ -34,6 +36,8 @@ const InviteAcceptPage = () => {
     nicPassport: '',
   });
   const [photo, setPhoto] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     getInviteInfo(token)
@@ -262,9 +266,53 @@ const InviteAcceptPage = () => {
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Upload Photo</label>
-                      <input type="file" accept="image/jpeg,image/png" onChange={(e) => setPhoto(e.target.files?.[0] || null)} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm" />
-                      <p className="mt-1 text-xs text-slate-500">Optional but recommended for entry verification.</p>
+                      <label className="mb-2 block text-sm font-medium text-slate-700">Identity Verification Photo</label>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex gap-2">
+                          <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
+                            {photo ? (
+                              <div className="relative h-full w-full">
+                                <img src={preview} alt="Preview" className="h-full w-full rounded-xl object-cover shadow-md" />
+                                <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
+                                  <PhotoIcon className="h-6 w-6 text-white" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center">
+                                <PhotoIcon className="mb-1 h-6 w-6 text-slate-300 transition-colors group-hover:text-blue-500" />
+                                <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload</p>
+                              </div>
+                            )}
+                            <input type="file" accept="image/*" onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setPhoto(file);
+                                setPreview(URL.createObjectURL(file));
+                              }
+                            }} className="hidden" />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowCamera(true)}
+                            className="flex-1 group relative flex h-[100px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
+                          >
+                            <CameraIcon className="mb-1 h-6 w-6 text-slate-300 transition-colors group-hover:text-blue-500" />
+                            <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Live Photo</p>
+                          </button>
+                        </div>
+
+                        {showCamera && (
+                          <CameraCapture 
+                            onCapture={(file) => {
+                              setPhoto(file);
+                              setPreview(URL.createObjectURL(file));
+                            }} 
+                            onClose={() => setShowCamera(false)} 
+                          />
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">Recommended for entry verification.</p>
                     </div>
                   </div>
 

@@ -75,7 +75,7 @@ const EventsListingPage = () => {
       <section className="bg-slate-950 text-white border-b border-white/10">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
-            <h1 className="text-4xl font-black uppercase tracking-tight text-white md:text-5xl">
+            <h1 className="text-3xl font-black uppercase tracking-tight text-white md:text-5xl">
               Match <span className="text-sky-400">Fixtures</span>
             </h1>
             <p className="mt-4 text-lg text-slate-400 font-medium max-w-xl">

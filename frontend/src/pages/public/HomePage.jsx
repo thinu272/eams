@@ -39,38 +39,32 @@ const HomePage = () => {
             Next-Gen Event Experience
           </div>
           
-          <h1 className="mt-8 text-4xl font-black uppercase tracking-tighter leading-tight md:text-6xl lg:text-7xl animate-fade-in [animation-delay:100ms] whitespace-nowrap">
+          <h1 className="mt-8 text-3xl font-black uppercase tracking-tighter leading-tight md:text-6xl lg:text-7xl animate-fade-in [animation-delay:100ms]">
             Live the <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-main via-blue-400 to-cyan-400">Moment</span>
           </h1>
           
-          <p className="mx-auto mt-10 max-w-2xl text-lg md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
+          <p className="mx-auto mt-10 max-w-2xl text-base md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
             ENTRYNEX platform secures your seats for the most exclusive events. <br className="hidden md:block"/>
             From stadium matches to premium conferences, we handle the access.
           </p>
           
-          <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-6 animate-fade-in [animation-delay:300ms]">
+          <div className="mt-12 flex justify-center animate-fade-in [animation-delay:300ms]">
             <Link
               to="/events"
-              className="btn-premium group flex items-center gap-3 px-10 py-5 text-lg"
+              className="btn-premium group flex items-center gap-3 px-8 py-4 md:px-10 md:py-5 text-base md:text-lg"
             >
               Secure Tickets
               <ChevronRightIcon className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-            </Link>
-            <Link
-              to="/login"
-              className="px-10 py-5 text-lg font-bold text-slate-300 hover:text-white transition-all border border-white/10 rounded-2xl hover:bg-white/5 backdrop-blur-sm"
-            >
-              Organiser Login
             </Link>
           </div>
         </div>
       </div>
 
       {/* Featured Events Section */}
-      <div id="events" className="relative z-10 mx-auto max-w-[1400px] px-6 py-32">
-        <div className="flex flex-col items-center text-center mb-24">
+      <div id="events" className="relative z-10 mx-auto max-w-[1400px] px-4 sm:px-6 py-20 md:py-32 overflow-hidden">
+        <div className="flex flex-col items-center text-center mb-16 md:mb-24">
           <p className="text-xs font-black uppercase tracking-[0.5em] text-brand-main mb-4 opacity-80">Discovery</p>
-          <h2 className="text-4xl md:text-6xl font-black tracking-tight text-slate-900 leading-tight">
+          <h2 className="text-3xl md:text-6xl font-black tracking-tight text-slate-900 leading-tight">
             Featured <br className="md:hidden"/> <span className="text-brand-main">Experiences</span>
           </h2>
           <div className="mt-8 h-1.5 w-32 rounded-full bg-slate-100 overflow-hidden">

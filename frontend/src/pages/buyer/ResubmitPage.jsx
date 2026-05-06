@@ -4,6 +4,8 @@ import { getResubmitInfo, resubmitPhoto } from '../../api/attendees';
 import { photoQualityChecker, photoEnhancer } from '../../utils/photoQualityChecker';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import CameraCapture from '../../components/shared/CameraCapture';
+import { CameraIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
 const ResubmitPage = () => {
   const { token } = useParams();
@@ -23,6 +25,7 @@ const ResubmitPage = () => {
   const [qualityAnalysis, setQualityAnalysis] = useState(null);
   const [enhancedPreview, setEnhancedPreview] = useState(null);
   const [activeFilter, setActiveFilter] = useState('none');
+  const [showCamera, setShowCamera] = useState(false);
 
   const imageRef = useRef(null);
   const overlayRef = useRef(null);
@@ -464,16 +467,45 @@ const ResubmitPage = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select New Photo
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Provide New Photo
             </label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
+            <div className="flex gap-3">
+              <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 transition-all hover:border-blue-500 hover:bg-blue-50">
+                <PhotoIcon className="h-6 w-6 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mt-2 group-hover:text-blue-700">Upload</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setShowCamera(true)}
+                className="flex-1 group relative flex h-[100px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 transition-all hover:border-blue-500 hover:bg-blue-50"
+              >
+                <CameraIcon className="h-6 w-6 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mt-2 group-hover:text-blue-700">Live Camera</span>
+              </button>
+            </div>
+
+            {showCamera && (
+              <CameraCapture 
+                onCapture={async (file) => {
+                  const errors = await validatePhoto(file);
+                  setValidationErrors(errors);
+                  setAllowOverride(errors.length > 0);
+                  setEnhancedPreview(null);
+                  setActiveFilter('none');
+                  setPhoto(file);
+                  setPreview(URL.createObjectURL(file));
+                }} 
+                onClose={() => setShowCamera(false)} 
+              />
+            )}
           </div>
 
           {validationErrors.length > 0 && (

@@ -14,6 +14,8 @@ import {
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getBuyerOrderByToken, saveTicketAttendee, sendTicketInvite } from '../../api/orders';
+import CameraCapture from '../../components/shared/CameraCapture';
+import { CameraIcon } from '@heroicons/react/24/outline';
 
 const OrderConfirmationPage = () => {
   const { token } = useParams();
@@ -25,6 +27,7 @@ const OrderConfirmationPage = () => {
   const [invitePhoneByTicket, setInvitePhoneByTicket] = useState({});
   const [submittingTicketId, setSubmittingTicketId] = useState(null);
   const [formByTicket, setFormByTicket] = useState({});
+  const [cameraTicketId, setCameraTicketId] = useState(null);
 
   const loadOrder = async () => {
     setLoading(true);
@@ -410,36 +413,55 @@ const OrderConfirmationPage = () => {
                                                     </div>
 
                                                     {/* Photo Upload Area */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Identity Verification Photo</label>
-                                                        <label className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 cursor-pointer group">
-                                                            {form.photo ? (
-                                                                <div className="relative h-32 w-full">
-                                                                    <img 
-                                                                        src={URL.createObjectURL(form.photo)} 
-                                                                        alt="Preview" 
-                                                                        className="h-full w-full rounded-xl object-cover shadow-md"
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="flex gap-2">
+                                                                <label className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 cursor-pointer group">
+                                                                    {form.photo ? (
+                                                                        <div className="relative h-32 w-full">
+                                                                            <img 
+                                                                                src={URL.createObjectURL(form.photo)} 
+                                                                                alt="Preview" 
+                                                                                className="h-full w-full rounded-xl object-cover shadow-md"
+                                                                            />
+                                                                            <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-white">Change Photo</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex flex-col items-center py-4">
+                                                                            <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                                                                <UserPlusIcon className="h-6 w-6" />
+                                                                            </div>
+                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
+                                                                        </div>
+                                                                    )}
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        onChange={(e) => updateForm(ticket._id, 'photo', e.target.files?.[0] || null)}
+                                                                        className="hidden"
                                                                     />
-                                                                    <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-white">Change Photo</span>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex flex-col items-center py-4">
+                                                                </label>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setCameraTicketId(ticket._id)}
+                                                                    className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 group"
+                                                                >
                                                                     <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                                                        <UserPlusIcon className="h-6 w-6" />
+                                                                        <CameraIcon className="h-6 w-6" />
                                                                     </div>
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Tap to Upload Identity Photo</p>
-                                                                </div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Live Camera</p>
+                                                                </button>
+                                                            </div>
+
+                                                            {cameraTicketId === ticket._id && (
+                                                                <CameraCapture 
+                                                                    onCapture={(file) => updateForm(ticket._id, 'photo', file)} 
+                                                                    onClose={() => setCameraTicketId(null)} 
+                                                                />
                                                             )}
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                onChange={(e) => updateForm(ticket._id, 'photo', e.target.files?.[0] || null)}
-                                                                className="hidden"
-                                                            />
-                                                        </label>
-                                                    </div>
+                                                        </div>
 
                                                     <button
                                                         type="button"
