@@ -18,6 +18,7 @@ const SubOrgTickets = () => {
     capacity: '',
     allowedZones: [],
     isPrivate: false,
+    isVisible: true,
     maxUsage: '',
     description: ''
   });
@@ -68,7 +69,7 @@ const SubOrgTickets = () => {
         }
         setIsModalOpen(false);
         setFormData({
-          name: '', price: '', capacity: '', allowedZones: [], isPrivate: false, maxUsage: '', description: ''
+          name: '', price: '', capacity: '', allowedZones: [], isPrivate: false, isVisible: true, maxUsage: '', description: ''
         });
         load(currentEventId);
       }
@@ -298,6 +299,24 @@ const SubOrgTickets = () => {
                       />
                     </div>
                   )}
+                </div>
+
+                <div className="md:col-span-2 rounded-2xl bg-slate-50 p-6 border border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-black uppercase text-slate-900">Visible to Public</h4>
+                      <p className="text-xs text-slate-500 mt-1">Show this ticket in the public event listing.</p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input 
+                        type="checkbox" 
+                        className="peer sr-only" 
+                        checked={formData.isVisible}
+                        onChange={e => setFormData({...formData, isVisible: e.target.checked})}
+                      />
+                      <div className="peer h-7 w-12 rounded-full bg-slate-200 after:absolute after:start-[4px] after:top-[4px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full" />
+                    </label>
+                  </div>
                 </div>
               </div>
 

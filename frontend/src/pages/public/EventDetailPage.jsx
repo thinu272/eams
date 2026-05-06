@@ -143,7 +143,7 @@ const EventDetailPage = () => {
   }
 
   const allZones = event.zones || [];
-  const categories = event.categories || [];
+  const categories = (event.categories || []).filter(c => c.isVisible !== false);
   const totalTickets = Object.values(selectedTickets).reduce((sum, qty) => sum + qty, 0);
   const totalPrice = categories.reduce((sum, category) => {
     return sum + category.price * (selectedTickets[getCategoryId(category)] || 0);

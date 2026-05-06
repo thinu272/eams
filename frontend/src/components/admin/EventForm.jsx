@@ -10,6 +10,7 @@ const emptyCategory = () => ({
   price: 0,
   capacity: 0,
   allowedZones: [],
+  isVisible: true,
 });
 const emptyCustomField = () => ({ name: '', type: 'text', required: false, options: [] });
 
@@ -187,6 +188,14 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
                 <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Price" value={cat.price} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, price: Number(e.target.value) } : c))} />
                 <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Capacity" value={cat.capacity} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, capacity: Number(e.target.value) } : c))} />
                 <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Description" value={cat.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, description: e.target.value } : c))} />
+                <label className="flex items-center gap-2 px-1">
+                  <input 
+                    type="checkbox" 
+                    checked={cat.isVisible !== false} 
+                    onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, isVisible: e.target.checked } : c))} 
+                  />
+                  <span className="text-xs font-semibold text-slate-600">Visible to public</span>
+                </label>
               </div>
               <div className="mt-3">
                 <p className="text-xs font-semibold text-slate-500 mb-2">Allowed Zones</p>

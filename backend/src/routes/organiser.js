@@ -199,6 +199,7 @@ const getTicketCategorySummary = async (event) => {
       maxUsage: category.maxUsage || null,
       assignedSubOrganisers: category.assignedSubOrganisers || [],
       createdBy: category.createdBy || null,
+      isVisible: category.isVisible !== false,
     };
   });
 };
@@ -806,6 +807,7 @@ router.post('/ticket-categories', requireEventAccess, async (req, res, next) => 
       maxUsage: req.body.maxUsage ? Number(req.body.maxUsage) : undefined,
       assignedSubOrganisers: req.body.assignedSubOrganisers || [],
       createdBy: req.user._id,
+      isVisible: req.body.isVisible !== false,
     };
 
     if (category.isPrivate) {
@@ -841,6 +843,7 @@ router.put('/ticket-categories/:categoryId', requireEventAccess, async (req, res
     category.benefits = req.body.benefits || category.benefits;
     category.maxUsage = req.body.maxUsage !== undefined ? (req.body.maxUsage ? Number(req.body.maxUsage) : undefined) : category.maxUsage;
     category.assignedSubOrganisers = req.body.assignedSubOrganisers || category.assignedSubOrganisers;
+    if (req.body.isVisible !== undefined) category.isVisible = !!req.body.isVisible;
 
     if (req.body.isPrivate !== undefined && req.body.isPrivate !== category.isPrivate) {
       category.isPrivate = !!req.body.isPrivate;

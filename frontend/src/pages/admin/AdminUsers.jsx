@@ -187,6 +187,20 @@ const AdminUsers = () => {
                         <PencilSquareIcon className="h-4 w-4" /> Edit
                       </button>
                       <button
+                        onClick={async () => {
+                          try {
+                            await updateUser(user._id, { status: user.status === 'Active' ? 'Inactive' : 'Active' });
+                            toast.success('Status updated');
+                            load();
+                          } catch (err) {
+                            toast.error('Failed to update status');
+                          }
+                        }}
+                        className={`text-xs ${user.status === 'Active' ? 'text-amber-600 hover:text-amber-700' : 'text-emerald-600 hover:text-emerald-700'} flex items-center gap-1`}
+                      >
+                        {user.status === 'Active' ? 'Disable' : 'Activate'}
+                      </button>
+                      <button
                         onClick={() => handleDelete(user._id)}
                         className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1"
                       >
@@ -245,10 +259,6 @@ const AdminUsers = () => {
               {events.map((event) => (
                 <option key={event._id} value={event._id}>{event.name}</option>
               ))}
-            </select>
-            <select className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={editingUser.status || 'Active'} onChange={(e) => setEditingUser((u) => ({ ...u, status: e.target.value }))}>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
             </select>
             <div className="flex gap-3">
               <Button type="submit" loading={saving} className="bg-blue-600 hover:bg-blue-500">Save</Button>

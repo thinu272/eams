@@ -58,7 +58,8 @@ const emptyCategory = {
   benefits: [],
   isPrivate: false,
   maxUsage: null,
-  assignedSubOrganisers: []
+  assignedSubOrganisers: [],
+  isVisible: true
 };
 const emptySubOrg = { 
   name: '', 
@@ -1179,6 +1180,21 @@ const OrganiserDashboard = () => {
                 </label>
               </div>
 
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={categoryModal.isVisible !== false}
+                    onChange={(e) => setCategoryModal((current) => ({ ...current, isVisible: e.target.checked }))}
+                    className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-emerald-900">Visible to Public</span>
+                    <span className="text-[10px] text-emerald-600/70 leading-tight">Show this ticket in the public event listing.</span>
+                  </div>
+                </label>
+              </div>
+
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -1201,11 +1217,6 @@ const OrganiserDashboard = () => {
                         {categoryModal.accessCode || 'AUTO-GEN'}
                       </span>
                     </div>
-                    {categoryModal.id && (
-                      <p className="mt-2 text-[10px] text-slate-400 italic">
-                        Access code is fixed once created. Only Sub-Organisers can regenerate codes if permitted.
-                      </p>
-                    )}
                   </div>
                 )}
               </div>

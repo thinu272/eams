@@ -174,7 +174,11 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
       {section === 'organisations' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
           <Table><thead><Tr><Th>Organiser</Th><Th>Status</Th><Th>Events</Th><Th>Tickets Sold</Th><Th>Live Events</Th><Th>Actions</Th></Tr></thead><tbody>
-            {organiserRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.stats.eventsCreated}</Td><Td>{row.stats.ticketsSold}</Td><Td>{row.stats.liveEvents}</Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('organiser', 'edit', row)}>Manage</Button><Button variant="outline" className="text-rose-500" onClick={() => deleteOrganiser(row)}>Delete</Button></div></Td></Tr>)}
+            {organiserRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.stats.eventsCreated}</Td><Td>{row.stats.ticketsSold}</Td><Td>{row.stats.liveEvents}</Td><Td><div className="flex gap-2">
+              <Button variant="outline" onClick={() => openModal('organiser', 'edit', row)}>Manage</Button>
+              <Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('Organiser status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button>
+              <Button variant="outline" className="text-rose-500" onClick={() => deleteOrganiser(row)}>Delete</Button>
+            </div></Td></Tr>)}
           </tbody></Table>
         </Card>
       )}
@@ -350,7 +354,6 @@ const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, org
               <Field label="Phone"><Input value={form.phone || ''} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} required /></Field>
               <Field label="Password"><Input type="password" value={form.password || ''} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} /></Field>
               <Field label="Role"><Select value={form.role || ''} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}>{(modal.type === 'organiser' ? ['MainOrganiser', 'SubOrganiser'] : ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee']).map((role) => <option key={role} value={role}>{role}</option>)}</Select></Field>
-              <Field label="Status"><Select value={form.status || 'Active'} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}><option value="Active">Active</option><option value="Inactive">Inactive</option></Select></Field>
             </>
           )}
         </div>

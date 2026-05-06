@@ -82,6 +82,7 @@ const getPermittedCategories = (user, event) => {
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
       assignedSubOrganisers: cat.assignedSubOrganisers || [],
+      isVisible: cat.isVisible !== false,
     }));
   }
 
@@ -114,6 +115,7 @@ const getPermittedCategories = (user, event) => {
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
       assignedSubOrganisers: cat.assignedSubOrganisers || [],
+      isVisible: cat.isVisible !== false,
     }));
 };
 
@@ -812,7 +814,8 @@ router.post('/tickets', async (req, res, next) => {
       maxUsage: maxUsage ? Number(maxUsage) : undefined,
       createdBy: req.user._id,
       assignedSubOrganisers: Array.isArray(assignedSubOrganisers) ? assignedSubOrganisers : [],
-      usageCount: 0
+      usageCount: 0,
+      isVisible: req.body.isVisible !== false
     };
 
     event.categories.push(newCategory);
@@ -917,6 +920,7 @@ router.patch('/tickets/:categoryId', async (req, res, next) => {
     if (description !== undefined) cat.description = description;
     if (maxUsage !== undefined) cat.maxUsage = maxUsage ? Number(maxUsage) : undefined;
     if (assignedSubOrganisers !== undefined) cat.assignedSubOrganisers = Array.isArray(assignedSubOrganisers) ? assignedSubOrganisers : [];
+    if (req.body.isVisible !== undefined) cat.isVisible = !!req.body.isVisible;
     
     if (allowedZones) {
       const assignedZoneIds = getAssignedZoneIds(req.user, event).map(String);

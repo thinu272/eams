@@ -93,7 +93,7 @@ router.post('/login', loginLimiter, [
     }
 
     if (user.status !== 'Active') {
-      return res.status(401).json({ success: false, message: 'Account suspended/inactive. Contact admin.' });
+      return res.status(401).json({ success: false, message: 'Account is disabled, please contact admin' });
     }
 
     // MFA Check
@@ -281,7 +281,7 @@ router.post('/refresh-token', async (req, res, next) => {
     }
 
     if (user.status !== 'Active') {
-      return res.status(401).json({ success: false, message: 'Account suspended/inactive' });
+      return res.status(401).json({ success: false, message: 'Account is disabled, please contact admin' });
     }
 
     const accessToken = signAccessToken(user._id);

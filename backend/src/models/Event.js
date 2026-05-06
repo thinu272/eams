@@ -36,6 +36,7 @@ const categorySchema = new mongoose.Schema({
   }],
   // Private Ticket System fields
   isPrivate: { type: Boolean, default: false },
+  isVisible: { type: Boolean, default: true }, // Whether to show in public list
   accessCode: { type: String },
   accessCodeHash: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
