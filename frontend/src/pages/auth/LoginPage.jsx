@@ -43,7 +43,7 @@ const LoginPage = () => {
       const result = await login(form.email, form.password, form.mfaToken);
       if (result?.requireMfa) {
         setMfaStep(true);
-        toast('MFA Required — Check your authenticator app');
+        toast('MFA Required | Check your authenticator app');
         return;
       }
       if (result?.requirePasswordChange) {
@@ -51,7 +51,7 @@ const LoginPage = () => {
         navigate('/change-password', { state: { tempToken: result.tempToken } });
         return;
       }
-      toast.success(`Access Granted — Welcome, ${result.name}`);
+      toast.success(`Access Granted | Welcome, ${result.name}`);
       navigate(getDashboardPathForRole(result.role));
     } catch (err) {
       toast.error(getLoginErrorMessage(err));

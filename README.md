@@ -1,4 +1,5 @@
-# ENTRYNEX — Event Access Management System
+<<<<<<< HEAD
+# ENTRYNEX | Event Access Management System
 
 Full-stack event access management platform built with React + Node.js + MongoDB, designed for large-scale sporting events and conferences.
 
@@ -89,3 +90,7 @@ eams/
 │   │   └── pages/           # Admin, Organiser, Public, Checkout
 └── docs/                # Extended documentation
 ```
+=======
+# ENTRYNEX
+EAMS 
+>>>>>>> 794b574fa363cdb7e87ee14f60082ce4f7fb9567

@@ -129,7 +129,7 @@ const BuyerInvitesPage = () => {
 
                       <div className="mt-3 flex items-center justify-between">
                         <p className="text-xs text-slate-500">
-                          Sent {invite.inviteSentAt ? new Date(invite.inviteSentAt).toLocaleString() : '—'}
+                          Sent {invite.inviteSentAt ? new Date(invite.inviteSentAt).toLocaleString() : '-'}
                         </p>
                         {invite.status === 'INVITED' && (
                           <button

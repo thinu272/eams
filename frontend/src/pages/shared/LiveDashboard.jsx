@@ -204,7 +204,7 @@ const LiveDashboard = ({ readOnly = false }) => {
   /* Derived data */
   const zoneData = stats?.zoneOccupancy || [];
   const catData  = (stats?.byCategory || []).map(c => ({ name: c.categoryName || c._id || 'Other', value: c.count }));
-  const wristbandsIssued = stats?.checkedInCount || 0; // proxy — scan path gives wb
+  const wristbandsIssued = stats?.checkedInCount || 0; // proxy - scan path gives wb
 
   return (
     <DashboardLayout>
@@ -216,7 +216,7 @@ const LiveDashboard = ({ readOnly = false }) => {
               Live Dashboard {readOnly && <span className="ml-2 text-xs rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 font-semibold">READ-ONLY</span>}
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Real-time event monitoring — auto-updates via WebSocket
+              Real-time event monitoring | auto-updates via WebSocket
               {lastFetch && <span className="ml-2 text-gray-400">· Last sync {format(lastFetch, 'HH:mm:ss')}</span>}
             </p>
           </div>
@@ -312,7 +312,7 @@ const LiveDashboard = ({ readOnly = false }) => {
           <ChartCard title="Live Activity Feed" subtitle="Last 20 events">
             <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 280 }}>
               {activity.length === 0 && (
-                <div className="py-10 text-center text-sm text-gray-400">No events yet — waiting for first scan…</div>
+                <div className="py-10 text-center text-sm text-gray-400">No events yet | waiting for first scan…</div>
               )}
               {activity.map((log) => (
                 <ActivityItem key={log._id || log.timestamp} log={log} isNew={newIds.has(log._id)} />

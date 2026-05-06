@@ -198,7 +198,7 @@ const ResultOverlay = ({ result, gateId, onDismiss, onIssueWristband, issuingWri
 
       {/* Auto-dismiss bar */}
       {granted && (
-        <p className="mt-5 text-sm text-white/50">Auto-dismisses in 8 seconds — or tap Next Scan</p>
+        <p className="mt-5 text-sm text-white/50">Auto-dismisses in 8 seconds | or tap Next Scan</p>
       )}
     </div>
   );
@@ -581,7 +581,7 @@ const EntryScannerPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Event</span>
-                  <span className="font-semibold text-gray-200 truncate max-w-32">{selectedEventData?.name || '—'}</span>
+                  <span className="font-semibold text-gray-200 truncate max-w-32">{selectedEventData?.name || '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Mode</span>

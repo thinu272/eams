@@ -228,7 +228,7 @@ router.get('/logs', async (req, res, next) => {
   }
 });
 
-// GET /api/dashboard/timeline  — check-ins per hour for today
+// GET /api/dashboard/timeline | check-ins per hour for today
 router.get('/timeline', async (req, res, next) => {
   try {
     const { eventId } = req.query;
@@ -262,7 +262,7 @@ router.get('/timeline', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/dashboard/denied  — denied access entries with pagination
+// GET /api/dashboard/denied | denied access entries with pagination
 router.get('/denied', async (req, res, next) => {
   try {
     const { eventId, page = 1, limit = 20, from, to } = req.query;
@@ -291,7 +291,7 @@ router.get('/denied', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/dashboard/export  — Excel/CSV export
+// GET /api/dashboard/export | Excel/CSV export
 router.get('/export', async (req, res, next) => {
   try {
     const XLSX = require('xlsx');

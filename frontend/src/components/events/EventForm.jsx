@@ -163,7 +163,7 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Main Organiser</label>
                   <select name="mainOrganiser" value={form.mainOrganiser?._id || form.mainOrganiser || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                    <option value="">— Unassigned —</option>
+                    <option value="">- Unassigned -</option>
                     {organisers.map(o => <option key={o._id} value={o._id}>{o.name}</option>)}
                   </select>
                 </div>
