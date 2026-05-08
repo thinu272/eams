@@ -253,7 +253,7 @@ router.get('/manage/:eventId', protect, requireEventAccess, async (req, res, nex
       .populate('subOrganisers', 'name email');
 
     if (!event) {
-      return res.status(404).json({ success: false, message: 'Event not found.' });
+      return res.status(404).json({ success: false, message: `Event not found. (ID: ${req.params.eventId})` });
     }
 
     res.json({ success: true, data: { event } });
@@ -283,6 +283,13 @@ router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.fie
     }
     const eventData = normalizeEventPayload(req.body, req.file, req.files);
     eventData.createdBy = req.user._id;
+
+    // Security: Organisers cannot enable SMS on creation
+    if (req.user.role !== 'main_admin' && eventData.settings?.communicationChannels) {
+      console.log('[POST] Disabling unauthorised SMS channel in new event by organiser.');
+      eventData.settings.communicationChannels.sms = false;
+    }
+
     const event = await Event.create(eventData);
     
     // Auto-assign to creator (admin)
@@ -340,7 +347,8 @@ router.patch('/:eventId/publish', protect, restrictTo('main_admin'), async (req,
 // GET /api/events/:eventId/dashboard - organiser dashboard data
 router.get('/:eventId/dashboard', protect, requireEventAccess, async (req, res, next) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.eventId)) {
+    const { eventId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
     const Attendee = require('../models/Attendee');
@@ -348,19 +356,22 @@ router.get('/:eventId/dashboard', protect, requireEventAccess, async (req, res, 
     const EntryLog = require('../models/EntryLog');
 
     const [event, attendeeStats, orderStats, recentLogs] = await Promise.all([
-      Event.findById(req.params.eventId).populate('mainOrganiser', 'name email').populate('subOrganisers', 'name email'),
+      Event.findById(eventId).populate('mainOrganiser', 'name email').populate('subOrganisers', 'name email'),
       Attendee.aggregate([
-        { $match: { event: new (require('mongoose').Types.ObjectId)(req.params.eventId) } },
+        { $match: { event: new mongoose.Types.ObjectId(eventId) } },
         { $group: { _id: '$confirmationStatus', count: { $sum: 1 } } },
       ]),
       Order.aggregate([
-        { $match: { event: new (require('mongoose').Types.ObjectId)(req.params.eventId) } },
+        { $match: { event: new mongoose.Types.ObjectId(eventId) } },
         { $group: { _id: '$paymentStatus', count: { $sum: 1 }, revenue: { $sum: '$totalAmount' } } },
       ]),
-      EntryLog.find({ event: req.params.eventId }).sort('-timestamp').limit(20).populate('attendee', 'fullName categoryName'),
+      EntryLog.find({ event: eventId }).sort('-timestamp').limit(20).populate('attendee', 'fullName categoryName'),
     ]);
 
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!event) {
+      console.warn('[DASHBOARD] Event not found:', eventId);
+      return res.status(404).json({ success: false, message: `Event not found. (ID: ${eventId})` });
+    }
     res.json({ success: true, data: { event, attendeeStats, orderStats, recentLogs } });
   } catch (err) { next(err); }
 });
@@ -386,23 +397,42 @@ router.patch('/:eventId', protect, upload.fields([
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
     
-    // Check access for non-admin users
+    // 1. Fetch event for access check AND current state
+    const existingEvent = await Event.findById(eventId);
+    if (!existingEvent) {
+      console.warn('[PATCH] Event not found in DB:', eventId);
+      return res.status(404).json({ success: false, message: `Event not found. (ID: ${eventId})` });
+    }
+
+    // 2. Check access for non-admin users
     if (req.user.role !== 'main_admin') {
-      const userHasAccess = req.user.assignedEvents?.some(e => e.toString() === eventId) ||
-        (await Event.findById(eventId).select('createdBy').then(e => e?.createdBy?.toString() === req.user._id.toString()));
-      
-      if (!userHasAccess) {
-        console.log('[PATCH] User does not have access to event:', eventId);
+      const isAssigned = req.user.assignedEvents?.some(e => e.toString() === eventId);
+      const isCreator = existingEvent.createdBy?.toString() === req.user._id.toString();
+      const isMainOrg = existingEvent.mainOrganiser?.toString() === req.user._id.toString();
+
+      if (!isAssigned && !isCreator && !isMainOrg) {
+        console.warn('[PATCH] Unauthorized access attempt:', { user: req.user._id, eventId });
         return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
       }
     }
-    
-    const updateData = normalizeEventPayload(req.body, req.file, req.files);
-    const existingEvent = await Event.findById(eventId).select('mainOrganiser');
-    if (!existingEvent) return res.status(404).json({ success: false, message: 'Event not found.' });
 
-    if (req.user.role !== 'main_admin' && updateData.mainOrganiser && updateData.mainOrganiser.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+    // 3. Process payload
+    const updateData = normalizeEventPayload(req.body, req.file, req.files);
+
+    // 4. Security: Restrict SMS channel control to admins
+    if (req.user.role !== 'main_admin') {
+      if (updateData.settings?.communicationChannels) {
+        const currentSmsStatus = existingEvent.settings?.communicationChannels?.sms ?? false;
+        if (updateData.settings.communicationChannels.sms !== undefined && updateData.settings.communicationChannels.sms !== currentSmsStatus) {
+          console.log('[PATCH] Reverting unauthorised SMS channel change attempt by organiser.');
+          updateData.settings.communicationChannels.sms = currentSmsStatus;
+        }
+      }
+      
+      // Also prevent changing the mainOrganiser field if already set
+      if (updateData.mainOrganiser && updateData.mainOrganiser.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+      }
     }
 
     const event = await Event.findByIdAndUpdate(eventId, updateData, {
@@ -458,7 +488,7 @@ router.get('/:slug', async (req, res, next) => {
       $or: [{ slug: req.params.slug }, { _id: req.params.slug.match(/^[a-f\d]{24}$/i) ? req.params.slug : null }],
     }).populate('mainOrganiser', 'name email');
     if (!event || event.status === 'draft') {
-      return res.status(404).json({ success: false, message: 'Event not found.' });
+      return res.status(404).json({ success: false, message: `Event not found. (Slug/ID: ${req.params.slug})` });
     }
 
     const isExpired = event.endDate && new Date(event.endDate) < new Date();

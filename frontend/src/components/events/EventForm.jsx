@@ -338,6 +338,43 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                   <label htmlFor="autoConf" className="text-sm text-gray-700 font-medium">Auto-confirm Paid Tickets</label>
                 </div>
               </div>
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-gray-900 border-b pb-2">Communication Channels</h4>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    name="settings.communicationChannels.email" 
+                    checked={form.settings?.communicationChannels?.email !== false} 
+                    onChange={handleChange} 
+                    id="emailChannel" 
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <label htmlFor="emailChannel" className="text-sm text-gray-700 font-medium">Enable Email Notifications</label>
+                </div>
+                
+                <div className="flex items-center gap-3 opacity-80">
+                  <input 
+                    type="checkbox" 
+                    name="settings.communicationChannels.sms" 
+                    checked={form.settings?.communicationChannels?.sms === true} 
+                    disabled={!isAdmin}
+                    onChange={handleChange} 
+                    id="smsChannel" 
+                    className={`w-4 h-4 rounded ${isAdmin ? 'text-blue-600' : 'text-gray-400 bg-gray-100'}`}
+                  />
+                  <div className="flex flex-col">
+                    <label htmlFor="smsChannel" className={`text-sm font-medium ${isAdmin ? 'text-gray-700' : 'text-gray-500'}`}>
+                      Enable SMS Notifications (Twilio)
+                    </label>
+                    {!isAdmin && (
+                      <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
+                        Admin Only Setting
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 pt-6 border-t border-gray-100">

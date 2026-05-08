@@ -1,77 +1,58 @@
 # EAMS Documentation Index
 
-## [Icon: Book] Complete Documentation Suite
+This directory contains the main developer and product documentation for ENTRYNEX / EAMS.
 
-This directory contains comprehensive documentation for the EAMS platform, including the latest event lifecycle and branding enhancements.
-
----
-
-## [Icon: Target] Quick Navigation
+## Quick Navigation
 
 | Need | Read This |
 |------|-----------|
-| **Just get it running** | [QUICK_START.md](QUICK_START.md) |
-| **Setup Services & S3** | [SETUP_GUIDE.md](SETUP_GUIDE.md) |
-| **Understand the system** | [SYSTEM_FEATURES_SUMMARY.md](SYSTEM_FEATURES_SUMMARY.md) |
-| **Visual diagrams** | [VISUAL_ARCHITECTURE_DIAGRAMS.md](VISUAL_ARCHITECTURE_DIAGRAMS.md) |
-| **Buyer Portal reference** | [BUYER_CONFIRMATION_PORTAL_GUIDE.md](BUYER_CONFIRMATION_PORTAL_GUIDE.md) |
-| **Photo verification** | [PHOTO_CONFIRMATION_GUIDE.md](PHOTO_CONFIRMATION_GUIDE.md) |
+| Get the app running | [QUICK_START.md](QUICK_START.md) |
+| Configure services, email, storage, payments | [SETUP_GUIDE.md](SETUP_GUIDE.md) |
+| Understand platform capabilities | [SYSTEM_FEATURES_SUMMARY.md](SYSTEM_FEATURES_SUMMARY.md) |
+| Understand dashboards and RBAC | [USER_DASHBOARD_GUIDE.md](USER_DASHBOARD_GUIDE.md) |
+| Review visual architecture | [VISUAL_ARCHITECTURE_DIAGRAMS.md](VISUAL_ARCHITECTURE_DIAGRAMS.md) |
+| Buyer ticket assignment flow | [BUYER_CONFIRMATION_PORTAL_GUIDE.md](BUYER_CONFIRMATION_PORTAL_GUIDE.md) |
+| Checkout system | [CHECKOUT_SYSTEM_README.md](CHECKOUT_SYSTEM_README.md) |
+| Photo verification | [PHOTO_CONFIRMATION_GUIDE.md](PHOTO_CONFIRMATION_GUIDE.md) |
 
----
+## Current Operational Areas
 
-## [Icon: File] Document Descriptions
+- **Public events and checkout:** Public listing, private ticket codes, order confirmation, and buyer assignment.
+- **Admin workspace:** Global events, users, organisations, settings, reports, and `/admin/live`.
+- **Organiser workspace:** Event customization, attendees, tickets, zones, team management, verification, reports, notifications, and `/organiser/live`.
+- **Staff operations:** Entry scan, zone scan, manual search, and activity logs.
+- **Auditor workspace:** Compliance dashboard, logs, and reports.
 
-### 1. QUICK_START.md [Icon: Zap]
-- **Purpose:** 5-minute setup for developers.
-- **Status:** [Icon: Success] Updated for new seed logic.
+## Live Dashboard Reference
 
-### 2. SETUP_GUIDE.md [Icon: Settings]
-- **Purpose:** Configuration instructions for SMTP, Twilio SMS, and AWS S3 Storage.
-- **Status:** [Icon: Success] Updated for Infrastructure 2.0.
+The shared live dashboard is implemented at `frontend/src/pages/shared/LiveDashboard.jsx`.
 
-### 3. SYSTEM_FEATURES_SUMMARY.md [Icon: List]
-- **Purpose:** High-level overview of Draft Workflows, Branding Sync, and Real-Time Seat Availability.
-- **Status:** [Icon: Success] Updated for Real-Time Sync.
+- Admin route: `/admin/live`
+- Organiser route: `/organiser/live`
+- Backend data routes: `backend/src/routes/dashboard.js`
+- Realtime events: `entry_update` and `zone_update`
+- Socket rooms: `dashboard:<eventId>`
 
-### 4. VISUAL_ARCHITECTURE_DIAGRAMS.md [Icon: Chart]
-- **Purpose:** Mermaid diagrams for Lifecycle, Real-Time Sync, and Infrastructure Ecosystem.
-- **Status:** [Icon: Success] Updated for S3 and Twilio flows.
+The page loads all events for MainAdmin and assigned events for organisers. It displays check-in counters, denied entries, category breakdowns, zone occupancy, timelines, and recent activity.
 
-### 5. BUYER_CONFIRMATION_PORTAL_GUIDE.md [Icon: User]
-- **Purpose:** Detailed guide for the ticket assignment and invite system.
-- **Status:** [Icon: Success] Current.
+## Cleanup Policy
 
-### 6. PHOTO_CONFIRMATION_GUIDE.md [Icon: Camera]
-- **Purpose:** Documentation for the AI-ready attendee photo review process.
-- **Status:** [Icon: Success] Current.
+Keep maintained scripts in named source or utility directories. Remove one-off debug files after use, especially scripts that hard-code database IDs or print local data snapshots. Generated folders and environment-specific files are ignored by `.gitignore`.
 
----
+## Project Structure
 
-## [Icon: Folder] Project Structure
-
-```
+```text
 eams/
-├── README.md                      [Icon: Star] (Master Entry Point)
-├── docs/
-│   ├── SETUP_GUIDE.md             [Icon: Settings] (Email & Payments)
-│   ├── SYSTEM_FEATURES_SUMMARY.md [Icon: Star] (Core Capabilities)
-│   ├── VISUAL_ARCHITECTURE.md     [Icon: Chart] (Mermaid Diagrams)
-│   └── ...                        (Specific Feature Guides)
+├── README.md
+├── backend/
+│   ├── src/
+│   └── scratch/
+├── frontend/
+│   └── src/
+└── docs/
 ```
 
----
+## Status
 
-## [Icon: Rocket] Getting Started Path
-
-1. **Setup**: Follow [QUICK_START.md](QUICK_START.md) to get the environment running.
-2. **Configure**: Use [SETUP_GUIDE.md](SETUP_GUIDE.md) to enable email and payments.
-3. **Explore**: Read [SYSTEM_FEATURES_SUMMARY.md](SYSTEM_FEATURES_SUMMARY.md) to understand the workflow.
-4. **Customise**: Log in as an Organiser to test real-time branding and publishing.
-
----
-
-## [Icon: Check] Status & Versioning
-
-- **Version:** 2.0 (Lifecycle & Branding Update)
-- **Status:** [Icon: Success] Stable & Documented
-- **Last Updated:** Current Session
+- **Status:** Active development
+- **Last updated:** 2026-05-08

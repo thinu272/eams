@@ -17,19 +17,26 @@ const { sendWhatsApp } = require('./whatsappService');
 const { deliverAttendeeTicketEmail, sendBuyerPurchaseSummaryEmail } = require('./ticketDeliveryService');
 const SystemConfig = require('../models/SystemConfig');
 
-const parseChannels = async (notificationChannel) => {
+const parseChannels = async (notificationChannel, event = null) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
   const channels = ['email'];
   
-  // Enable SMS if DB says so OR if env credentials exist
-  if (config.sms?.enabled || (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN)) {
+  // SMS Logic: Check Global config and Event settings
+  const smsGloballyEnabled = config.sms?.enabled || (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+  // If event is provided, respect its SMS setting. If not (system level), default to global enable state.
+  const smsEventEnabled = event ? (event.settings?.communicationChannels?.sms ?? false) : true;
+
+  if (smsGloballyEnabled && smsEventEnabled) {
     channels.push('sms');
   }
   
-  // Enable WhatsApp if DB says so
   if (config.whatsapp?.enabled) {
     channels.push('whatsapp');
   }
+  
+  if (notificationChannel === 'email') return channels.filter(c => c === 'email');
+  if (notificationChannel === 'sms') return channels.filter(c => c === 'sms');
+  if (notificationChannel === 'whatsapp') return channels.filter(c => c === 'whatsapp');
   
   return channels;
 };
@@ -47,7 +54,7 @@ const buildShortUrl = async (targetPath, label) => {
 };
 
 const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationChannel }) => {
-  const channels = await parseChannels(notificationChannel);
+  const channels = await parseChannels(notificationChannel, event);
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
   const tasks = [];
 
@@ -76,7 +83,7 @@ const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationC
 };
 
 const notifyInvite = async ({ attendee, event, phone, email, notificationChannel }) => {
-  const channels = await parseChannels(notificationChannel);
+  const channels = await parseChannels(notificationChannel, event);
   const tasks = [];
 
   const inviteData = {
@@ -113,7 +120,7 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
 };
 
 const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, force = false }) => {
-  const channels = await parseChannels(notificationChannel);
+  const channels = await parseChannels(notificationChannel, event);
   let deliveryResult = { delivered: false, skipped: false, reason: null };
 
   if (channels.includes('email')) {
@@ -147,7 +154,7 @@ const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, 
 };
 
 const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
-  const channels = await parseChannels('both');
+  const channels = await parseChannels('both', event);
   const tasks = [];
   const buyerPhone = order.buyerPhone;
 
@@ -182,7 +189,7 @@ const notifyBuyerFinalSummary = async ({ order, event, attendees }) => {
 };
 
 const notifyConfirmationReminder = async ({ attendee, event, phone, email }) => {
-  const channels = await parseChannels('both');
+  const channels = await parseChannels('both', event);
   const tasks = [];
   if (channels.includes('email') && email) {
     tasks.push(sendConfirmationReminder(attendee, event).catch((error) => {
@@ -207,7 +214,7 @@ const notifyConfirmationReminder = async ({ attendee, event, phone, email }) => 
 };
 
 const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
-  const channels = await parseChannels('both');
+  const channels = await parseChannels('both', event);
   const tasks = [];
   if (channels.includes('email') && email) {
     tasks.push(sendSubOrganiserInvite(user, event).catch((error) => {
@@ -231,7 +238,7 @@ const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
 };
 
 const notifyStatusChange = async ({ attendee, event, status, message }) => {
-  const channels = await parseChannels('both');
+  const channels = await parseChannels('both', event);
   const tasks = [];
   if (channels.includes('email') && attendee.email) {
     tasks.push(sendStatusChange(attendee, event, status, message).catch((error) => {

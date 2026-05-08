@@ -11,6 +11,7 @@ The enhanced user dashboard provides a role-aware interface that adapts to the u
 - **Dynamic content loading** based on user role and assigned events/zones
 - **Real-time activity feeds** and notifications
 - **Responsive metrics** and analytics tailored to each role
+- **Dedicated live dashboards** for admin and organiser operational monitoring
 
 ## Architecture
 
@@ -59,6 +60,16 @@ Page wrapper that:
 - Manages error states and loading
 - Provides role-specific header and layout
 
+#### 6. Live Dashboard
+**Location**: `frontend/src/pages/shared/LiveDashboard.jsx`
+
+Shared real-time operations page that:
+- Loads all events for MainAdmin and assigned events for organisers
+- Displays check-ins, current inside count, denied entries, and wristband proxy totals
+- Shows check-in timeline, category breakdown, zone occupancy, and recent scan activity
+- Subscribes to Socket.IO `entry_update` and `zone_update` events for live updates
+- Uses responsive grids so stats and charts remain usable on mobile and desktop
+
 ### Backend Components
 
 #### 1. Role-Based Dashboard Controller
@@ -79,6 +90,16 @@ API endpoints that provide:
 - `/api/dashboard/role-based/activity` - Activity feed
 - `/api/dashboard/role-based/notifications` - Notifications
 
+#### 3. Live Dashboard Routes
+**Location**: `backend/src/routes/dashboard.js`
+
+API endpoints that provide:
+- `/api/dashboard/stats` - Ticket, attendee, denied, zone, and category metrics
+- `/api/dashboard/logs` - Combined entry and zone activity stream
+- `/api/dashboard/timeline` - Hourly check-in timeline for the selected day
+- `/api/dashboard/denied` - Paginated denied-access report
+- `/api/dashboard/export` - CSV/XLSX exports for operational reports
+
 ## Role-Based Features
 
 ### MainAdmin (Super Admin)
@@ -88,6 +109,7 @@ API endpoints that provide:
 - **System Settings**: Configure global settings and features
 - **Reports**: Access to all system-wide reports and analytics
 - **Audit Logs**: View system activity and audit trails
+- **Live Stream**: Monitor all events through `/admin/live`
 
 ### MainOrganiser (Event Organizer)
 - **Event Dashboard**: Overview of assigned events and metrics
@@ -96,6 +118,8 @@ API endpoints that provide:
 - **Verification**: Review and approve photo verifications
 - **Reports**: Event-specific reports and analytics
 - **Notifications**: Send communications to attendees
+- **Live Stream**: Monitor assigned event activity through `/organiser/live`
+- **Event Customization**: Update event details, branding, access rules, payment options, communication channels, and visibility status from the dashboard
 
 ### SubOrganiser (Zone Manager)
 - **Zone Management**: Monitor and manage assigned zones
@@ -498,6 +522,12 @@ describe('UserDashboard', () => {
 3. **Missing Dashboard Data**: Ensure the backend controller handles the user's role correctly.
 
 4. **Navigation Items Missing**: Check the role navigation configuration and permission filtering.
+
+5. **Live Dashboard Empty for Admin**: Confirm the admin account has `MainAdmin` role and `/api/events/admin/all` returns events.
+
+6. **Live Feed Not Updating**: Confirm the backend emits `entry_update` or `zone_update`, the browser is connected to Socket.IO, and the dashboard selected event matches the scan event.
+
+7. **Notification Runtime Error**: Notification timestamps should use `createdAt`, `updatedAt`, or `timestamp`. The topbar now falls back safely when older records have missing dates.
 
 ### Debug Tips
 

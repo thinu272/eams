@@ -23,6 +23,13 @@ const Topbar = ({ onMenuClick }) => {
   const isSuperAdminWorkspace = user?.role === 'MainAdmin';
   const isStaffWorkspace = user?.role === 'Staff';
   const assignedGateText = (user?.assignedGates || []).filter(Boolean).join(', ');
+  const getEventObjectId = (event) => event?._id || event?.id || '';
+  const getNotificationAge = (item) => {
+    const rawDate = item?.timestamp || item?.createdAt || item?.updatedAt;
+    const date = rawDate ? new Date(rawDate) : null;
+    if (!date || Number.isNaN(date.getTime())) return 'Just now';
+    return formatDistanceToNow(date, { addSuffix: true });
+  };
 
   const loadNotifications = async () => {
     try {
@@ -46,9 +53,17 @@ const Topbar = ({ onMenuClick }) => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const fallbackEventId = selectedEventId || nextEvents[0]?._id || '';
+      const storedEventId = localStorage.getItem('lastSelectedEventId') || selectedEventId;
+      const storedEventExists = nextEvents.some((event) => getEventObjectId(event) === storedEventId);
+      const fallbackEventId = storedEventExists ? storedEventId : getEventObjectId(nextEvents[0]);
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
+        localStorage.setItem('lastSelectedEventId', fallbackEventId);
+        if (fallbackEventId !== storedEventId) {
+          window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: fallbackEventId }));
+        }
+      } else {
+        localStorage.removeItem('lastSelectedEventId');
       }
     }).catch(() => {});
   }, [isOrganiserWorkspace]);
@@ -165,7 +180,7 @@ const Topbar = ({ onMenuClick }) => {
                   <div key={item._id} onClick={() => handleItemClick(item)} className={`group cursor-pointer rounded-2xl p-3 transition-all ${item.read ? 'hover:bg-slate-50' : 'bg-brand-main/5 hover:bg-brand-main/10'}`}>
                     <p className={`text-sm font-bold ${item.read ? 'text-slate-600' : 'text-slate-900'}`}>{item.title}</p>
                     <p className="mt-1 text-xs text-slate-500 font-medium leading-relaxed">{item.message}</p>
-                    <p className="mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}</p>
+                    <p className="mt-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">{getNotificationAge(item)}</p>
                   </div>
                 )) : (
                   <div className="py-10 text-center">

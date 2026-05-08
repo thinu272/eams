@@ -123,7 +123,6 @@ const SignupPage = () => {
                   <PhoneIcon className="absolute left-5 top-1/2 h-5 w-4 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
                   <input
                     type="tel"
-                    required
                     value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                     placeholder="+1234567890"

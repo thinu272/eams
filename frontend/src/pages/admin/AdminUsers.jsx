@@ -231,7 +231,7 @@ const AdminUsers = () => {
         <form onSubmit={handleInvite} className="space-y-4">
           <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Full name" value={inviteForm.name} onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))} required />
           <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Email" type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} required />
-          <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Phone" value={inviteForm.phone} onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))} required />
+          <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Phone" value={inviteForm.phone} onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))} />
           <select className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value }))}>
             {[ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR].map((role) => (
               <option key={role} value={role}>{role}</option>

@@ -33,6 +33,7 @@ import {
   assignZoneCategories,
   exportOrganiserEventData,
   resendOrganiserNotification,
+  updateOrganiserSettings,
   updateOrganiserEventCustomization,
 } from '../../api/organiser';
 import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
@@ -83,6 +84,8 @@ const emptySubOrg = {
 const emptyZone = { name: '', description: '', capacity: 0, color: '#0F766E' };
 
 const COLORS = ['#0F766E', '#14B8A6', '#2DD4BF', '#99F6E4', '#CCFBF1'];
+const getEventObjectId = (event) => event?._id || event?.id || '';
+
 const downloadBlob = (blob, fileName) => {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -118,6 +121,35 @@ const OrganiserDashboard = () => {
 
   const activeSection = params.get('section') || 'overview';
 
+  const rememberSelectedEvent = (nextEventId) => {
+    if (!nextEventId) {
+      localStorage.removeItem('lastSelectedEventId');
+      setEventId('');
+      return '';
+    }
+
+    setEventId(nextEventId);
+    localStorage.setItem('lastSelectedEventId', nextEventId);
+    return nextEventId;
+  };
+
+  const getValidEventId = (preferredId) => {
+    const eventIds = events.map(getEventObjectId).filter(Boolean);
+    const candidate = preferredId && preferredId !== 'undefined' ? preferredId : '';
+    const current = eventId && eventId !== 'undefined' ? eventId : '';
+    const nextEventId = eventIds.includes(candidate)
+      ? candidate
+      : eventIds.includes(current)
+        ? current
+        : eventIds[0] || candidate || current;
+
+    if (nextEventId && nextEventId !== eventId) {
+      rememberSelectedEvent(nextEventId);
+    }
+
+    return nextEventId;
+  };
+
   const loadWorkspace = async (selectedEventId = eventId) => {
     if (!selectedEventId) return;
     setLoading(true);
@@ -130,6 +162,10 @@ const OrganiserDashboard = () => {
       });
       const nextData = response.data?.data || null;
       setWorkspace(nextData);
+      const loadedEventId = getEventObjectId(nextData?.event);
+      if (loadedEventId && loadedEventId !== selectedEventId) {
+        rememberSelectedEvent(loadedEventId);
+      }
       const rawSettings = nextData?.settings || {};
       setSettingsForm({
         ...rawSettings,
@@ -165,6 +201,10 @@ const OrganiserDashboard = () => {
           manualApprovalEnabled: nextData?.settings?.manualApprovalEnabled ?? false,
           autoConfirmEnabled: nextData?.settings?.autoConfirmEnabled ?? false,
         },
+        communicationChannels: {
+          email: nextData?.settings?.communicationChannels?.email ?? true,
+          sms: nextData?.settings?.communicationChannels?.sms ?? false,
+        },
         paymentMethods: {
           card: nextData?.settings?.paymentMethods?.card ?? true,
           bank_transfer: nextData?.settings?.paymentMethods?.bank_transfer ?? true,
@@ -185,8 +225,14 @@ const OrganiserDashboard = () => {
       setZoneAssignments(zoneMap);
     } catch (error) {
       if (error.response?.status === 404) {
-        localStorage.removeItem('lastSelectedEventId');
-        setEventId('');
+        const fallbackEventId = events
+          .map(getEventObjectId)
+          .find((id) => id && id !== selectedEventId);
+        if (fallbackEventId) {
+          rememberSelectedEvent(fallbackEventId);
+          return;
+        }
+        rememberSelectedEvent('');
       }
       toast.error(error.response?.data?.message || 'Failed to load organiser workspace');
     } finally {
@@ -198,10 +244,13 @@ const OrganiserDashboard = () => {
     getMyEvents().then((res) => {
       const list = res.data?.data?.events || [];
       setEvents(list);
-      const firstEventId = eventId || list[0]?._id || '';
+      const storedEventId = localStorage.getItem('lastSelectedEventId') || eventId;
+      const storedEventExists = list.some((event) => getEventObjectId(event) === storedEventId);
+      const firstEventId = storedEventExists ? storedEventId : getEventObjectId(list[0]);
       if (firstEventId) {
-        setEventId(firstEventId);
-        localStorage.setItem('lastSelectedEventId', firstEventId);
+        rememberSelectedEvent(firstEventId);
+      } else {
+        rememberSelectedEvent('');
       }
     });
   }, []);
@@ -225,8 +274,7 @@ const OrganiserDashboard = () => {
     const onEvent = (event) => {
       const nextEventId = event.detail ? String(event.detail) : '';
       if (!nextEventId || nextEventId === 'undefined') return;
-      setEventId(nextEventId);
-      localStorage.setItem('lastSelectedEventId', nextEventId);
+      rememberSelectedEvent(nextEventId);
     };
 
     window.addEventListener('entrynex:search', onSearch);
@@ -384,12 +432,19 @@ const OrganiserDashboard = () => {
 
   const saveCustomization = async () => {
     if (!customizationForm) return;
+    const activeEventId = getValidEventId(getEventObjectId(workspace?.event));
+    if (!activeEventId) {
+      toast.error('Select an event before saving customization');
+      return;
+    }
+
     try {
       const formData = new FormData();
-      formData.append('eventId', eventId);
+      formData.append('eventId', activeEventId);
       formData.append('basicInfo', JSON.stringify(customizationForm.basicInfo));
       formData.append('branding', JSON.stringify(customizationForm.branding));
       formData.append('confirmationFlow', JSON.stringify(customizationForm.confirmationFlow));
+      formData.append('communicationChannels', JSON.stringify(customizationForm.communicationChannels));
       formData.append('accessRules', JSON.stringify({
         whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
         entryWindowStart: customizationForm.accessRules.entryWindowStart,
@@ -415,7 +470,7 @@ const OrganiserDashboard = () => {
       setCoverImageFile(null);
       setLogoImageFile(null);
       setBannerImageFile(null);
-      loadWorkspace();
+      loadWorkspace(activeEventId);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
     }
@@ -850,6 +905,32 @@ const OrganiserDashboard = () => {
                     ))}
                   </div>
                 </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Communication Channels</p>
+                  <div className="mt-3 space-y-3 text-sm text-slate-600">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={!!customizationForm.communicationChannels?.email}
+                        onChange={(e) => setCustomizationForm((current) => ({ ...current, communicationChannels: { ...current.communicationChannels, email: e.target.checked } }))}
+                      />
+                      Email notifications
+                    </label>
+                    <div className="flex items-center gap-3 opacity-60">
+                      <input
+                        type="checkbox"
+                        checked={!!customizationForm.communicationChannels?.sms}
+                        disabled={true}
+                        className="cursor-not-allowed"
+                      />
+                      <div className="flex flex-col">
+                        <span>SMS notifications (Twilio)</span>
+                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-tight">Admin-only setting</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
                   <p className="text-sm font-bold text-blue-900">Visibility Status</p>
                   <div className="mt-3 space-y-3 text-sm text-blue-700">
@@ -1145,7 +1226,14 @@ const OrganiserDashboard = () => {
 
         {activeSection === 'settings' && settingsForm && (
           <Card>
-            <CardHeader title="Event Settings" subtitle="Manage event details, templates, and organiser limits" action={<Button onClick={() => updateOrganiserSettings({ eventId, name: selectedEvent?.name, venue: selectedEvent?.venue, settings: settingsForm }).then(() => toast.success('Settings updated'))}>Save</Button>} />
+            <CardHeader title="Event Settings" subtitle="Manage event details, templates, and organiser limits" action={<Button onClick={() => {
+              const activeEventId = getValidEventId(getEventObjectId(selectedEvent));
+              if (!activeEventId) {
+                toast.error('Select an event before saving settings');
+                return;
+              }
+              updateOrganiserSettings({ eventId: activeEventId, name: selectedEvent?.name, venue: selectedEvent?.venue, settings: settingsForm }).then(() => toast.success('Settings updated'));
+            }}>Save</Button>} />
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="space-y-2 text-sm"><span className="text-slate-500">Invite email template</span><textarea rows="5" value={settingsForm.emailTemplates?.invite || ''} onChange={(e) => setSettingsForm((current) => ({ ...current, emailTemplates: { ...(current.emailTemplates || {}), invite: e.target.value } }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>
               <label className="space-y-2 text-sm"><span className="text-slate-500">Invite SMS template</span><textarea rows="5" value={settingsForm.smsTemplates?.invite || ''} onChange={(e) => setSettingsForm((current) => ({ ...current, smsTemplates: { ...(current.smsTemplates || {}), invite: e.target.value } }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>

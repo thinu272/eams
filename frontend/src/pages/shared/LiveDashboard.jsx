@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { format } from 'date-fns';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { getMyEvents } from '../../api/events';
+import { getAllEventsAdmin, getMyEvents } from '../../api/events';
+import { useAuth } from '../../context/AuthContext';
 import {
   getDashboardStats,
   getDashboardLogs,
@@ -32,7 +33,9 @@ const actionColors = {
   'ZONE ENTRY': 'text-purple-400',
   'ZONE EXIT':  'text-gray-400',
   'DENIED ENTRY':'text-red-400',
+  'DENIED EXIT':'text-red-400',
   'ZONE DENIED':'text-red-400',
+  'DUPLICATE SCAN':'text-amber-500',
 };
 
 const actionIcons = {
@@ -41,7 +44,9 @@ const actionIcons = {
   'ZONE ENTRY': MapPinIcon,
   'ZONE EXIT':  ArrowLeftOnRectangleIcon,
   'DENIED ENTRY': XCircleIcon,
+  'DENIED EXIT': XCircleIcon,
   'ZONE DENIED': NoSymbolIcon,
+  'DUPLICATE SCAN': NoSymbolIcon,
 };
 
 /* ─── stat card ───────────────────────────────────────────────── */
@@ -88,6 +93,22 @@ const ChartCard = ({ children, title, subtitle, className = '' }) => (
 );
 
 /* ─── activity item ───────────────────────────────────────────── */
+const updateZoneOccupancy = (zones = [], zoneName, delta) => {
+  if (!zoneName) return zones;
+  const existing = zones.find((zone) => zone.zoneName === zoneName);
+  const nextZones = existing ? zones : [...zones, { zoneName, entries: 0, exits: 0, occupancy: 0 }];
+
+  return nextZones.map((zone) => {
+    if (zone.zoneName !== zoneName) return zone;
+    return {
+      ...zone,
+      entries: Math.max((zone.entries || 0) + (delta.entries || 0), 0),
+      exits: Math.max((zone.exits || 0) + (delta.exits || 0), 0),
+      occupancy: Math.max((zone.occupancy || 0) + (delta.occupancy || 0), 0),
+    };
+  });
+};
+
 const ActivityItem = ({ log, isNew }) => {
   const action = log.action || '';
   const colorClass = actionColors[action] || 'text-gray-500';
@@ -115,6 +136,7 @@ const ActivityItem = ({ log, isNew }) => {
 
 /* ─── main component ──────────────────────────────────────────── */
 const LiveDashboard = ({ readOnly = false }) => {
+  const { isAdmin } = useAuth();
   const [events, setEvents]     = useState([]);
   const [selected, setSelected] = useState('');
   const [stats, setStats]       = useState(null);
@@ -126,12 +148,19 @@ const LiveDashboard = ({ readOnly = false }) => {
 
   /* Load events */
   useEffect(() => {
-    getMyEvents().then(r => {
+    const loadEvents = isAdmin
+      ? getAllEventsAdmin({ limit: 100 })
+      : getMyEvents();
+
+    loadEvents.then(r => {
       const evs = r.data?.data?.events || [];
       setEvents(evs);
       if (evs.length) setSelected(evs[0]._id);
+    }).catch(() => {
+      setEvents([]);
+      setSelected('');
     });
-  }, []);
+  }, [isAdmin]);
 
   const fetchAll = useCallback(async (eventId) => {
     if (!eventId) return;
@@ -162,17 +191,17 @@ const LiveDashboard = ({ readOnly = false }) => {
     socketRef.current = socket;
     socket.emit('join_dashboard', { eventId: selected });
 
-    socket.on('entry_update', (data) => {
+    const handleRealtimeUpdate = (data) => {
+      const incomingEventId = data?.eventId ? String(data.eventId) : '';
+      if (incomingEventId && incomingEventId !== String(selected)) return;
+
       const newEntry = {
         ...data,
-        _id: data._id || `live-${Date.now()}`,
+        _id: data._id || `live-${data.source || 'event'}-${Date.now()}`,
         timestamp: data.timestamp || new Date().toISOString(),
       };
 
-      setActivity(prev => {
-        const updated = [newEntry, ...prev].slice(0, 20);
-        return updated;
-      });
+      setActivity(prev => [newEntry, ...prev].slice(0, 20));
 
       setNewIds(prev => new Set([...prev, newEntry._id]));
       setTimeout(() => {
@@ -185,6 +214,16 @@ const LiveDashboard = ({ readOnly = false }) => {
           ...prev,
           checkedInCount: (prev.checkedInCount || 0) + 1,
         } : prev);
+      } else if (data.accessGranted && data.action === 'ZONE ENTRY') {
+        setStats(prev => prev ? {
+          ...prev,
+          zoneOccupancy: updateZoneOccupancy(prev.zoneOccupancy, data.zoneName, { entries: 1, occupancy: 1 }),
+        } : prev);
+      } else if (data.accessGranted && data.action === 'ZONE EXIT') {
+        setStats(prev => prev ? {
+          ...prev,
+          zoneOccupancy: updateZoneOccupancy(prev.zoneOccupancy, data.zoneName, { exits: 1, occupancy: -1 }),
+        } : prev);
       } else if (!data.accessGranted) {
         setStats(prev => prev ? {
           ...prev,
@@ -196,7 +235,10 @@ const LiveDashboard = ({ readOnly = false }) => {
       getDashboardTimeline({ eventId: selected })
         .then(r => setTimeline(r.data?.data?.timeline || []))
         .catch(() => {});
-    });
+    };
+
+    socket.on('entry_update', handleRealtimeUpdate);
+    socket.on('zone_update', handleRealtimeUpdate);
 
     return () => socket.disconnect();
   }, [selected]);
@@ -238,7 +280,7 @@ const LiveDashboard = ({ readOnly = false }) => {
         </div>
 
         {/* Live counters */}
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <LiveStat label="Checked In"       value={stats?.checkedInCount}       color="green"  icon={<CheckCircleIcon className="h-10 w-10" />} />
           <LiveStat label="Currently Inside" value={Math.max((stats?.checkedInCount || 0) - (stats?.zoneOccupancy?.reduce((a,z) => a + z.exits, 0) || 0), 0)} color="blue" icon={<MapPinIcon className="h-10 w-10" />} />
           <LiveStat label="Denied Entry"     value={stats?.deniedCount}          color="red"    icon={<XCircleIcon className="h-10 w-10" />} />

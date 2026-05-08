@@ -62,6 +62,10 @@ const buildActivityNotification = async ({ userId, eventId, title, message, type
 const slugify = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
 const resolveEventId = (req) => {
+  if (req.resolvedEventId) {
+    console.log(`[resolveEventId] Using middleware resolved event ID: ${req.resolvedEventId}`);
+    return req.resolvedEventId;
+  }
   const id = req.params.eventId || req.body.eventId || req.query.eventId;
   console.log(`[resolveEventId] Resolved from params/body/query: ${id}`);
   if (id && id !== 'undefined') return id;
@@ -104,6 +108,48 @@ const getScopedEvent = async (req) => {
   }
 
   return event;
+};
+
+const getWritableScopedEvent = async (req) => {
+  const requestedId = resolveEventId(req);
+  let event = null;
+
+  if (requestedId && mongoose.Types.ObjectId.isValid(requestedId)) {
+    event = await Event.findById(requestedId);
+  }
+
+  if (event || !req.user) return { event, requestedId };
+
+  const role = normalizeRole(req.user.role);
+  if (![ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) {
+    return { event: null, requestedId };
+  }
+
+  const assignedEventIds = (req.user.assignedEvents || [])
+    .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+  if (assignedEventIds.length) {
+    event = await Event.findOne({ _id: { $in: assignedEventIds } }).sort({ createdAt: -1 });
+  }
+
+  if (!event && role === ROLES.MAIN_ORGANISER) {
+    event = await Event.findOne({
+      $or: [{ createdBy: req.user._id }, { mainOrganiser: req.user._id }],
+    }).sort({ createdAt: -1 });
+  }
+
+  if (!event && role === ROLES.MAIN_ADMIN) {
+    event = await Event.findOne().sort({ createdAt: -1 });
+  }
+
+  if (event) {
+    req.resolvedEventId = event._id;
+    req.body.eventId = String(event._id);
+    req.query.eventId = String(event._id);
+    console.log(`[getWritableScopedEvent] Recovered stale event ID ${requestedId} -> ${event._id}`);
+  }
+
+  return { event, requestedId };
 };
 
 const buildAttendeeFilter = ({ eventId, query = {} }) => {
@@ -209,7 +255,7 @@ const requireScopedEvent = async (req, res, next) => {
 
   if (!event) {
     const resolvedId = resolveEventId(req);
-    return res.status(404).json({ success: false, message: `Scoped event not found for ID: ${resolvedId}` });
+    return res.status(404).json({ success: false, message: `Scoped event not found. (ID: ${resolvedId})` });
   }
 
   req.scopedEvent = event;
@@ -1612,8 +1658,8 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
   { name: 'bannerImage', maxCount: 1 }
 ]), async (req, res, next) => {
   try {
-    const event = await Event.findById(resolveEventId(req));
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const { event, requestedId } = await getWritableScopedEvent(req);
+    if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${requestedId})` });
 
     const parseJson = (val) => {
       if (typeof val === 'string') {
@@ -1630,6 +1676,7 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     const matchDetails = parseJson(req.body.matchDetails);
     const concertDetails = parseJson(req.body.concertDetails);
     const conferenceDetails = parseJson(req.body.conferenceDetails);
+    const communicationChannels = parseJson(req.body.communicationChannels);
 
     if (matchDetails) {
       event.matchDetails = {
@@ -1730,6 +1777,19 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       };
       event.markModified('settings.paymentMethods');
     }
+
+    if (communicationChannels) {
+      // Security: Organisers cannot enable SMS
+      if (normalizeRole(req.user.role) !== ROLES.MAIN_ADMIN && communicationChannels.sms === true) {
+        console.log('[PATCH] Reverting unauthorised SMS channel change by organiser in customization.');
+        communicationChannels.sms = event.settings?.communicationChannels?.sms || false;
+      }
+      event.settings.communicationChannels = {
+        ...(event.settings.communicationChannels?.toObject ? event.settings.communicationChannels.toObject() : event.settings.communicationChannels || {}),
+        ...communicationChannels
+      };
+      event.markModified('settings.communicationChannels');
+    }
     
     if (req.body.status) {
       event.status = req.body.status;
@@ -1768,28 +1828,29 @@ router.get('/settings', requireEventAccess, requireScopedEvent, async (req, res,
 
 router.put('/settings', requireEventAccess, async (req, res, next) => {
   try {
-    const event = await Event.findById(resolveEventId(req));
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const { event, requestedId } = await getWritableScopedEvent(req);
+    if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${requestedId})` });
 
     event.name = req.body.name ?? event.name;
     event.startDate = req.body.startDate ? new Date(req.body.startDate) : event.startDate;
     event.endDate = req.body.endDate ? new Date(req.body.endDate) : event.endDate;
     event.venue = {
-      ...(event.venue || {}),
+      ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
       ...(req.body.venue || {}),
     };
     const incomingSettings = req.body.settings || {};
-    if (incomingSettings.emailTemplates === undefined || incomingSettings.emailTemplates === null) {
-      delete incomingSettings.emailTemplates;
-    }
-    if (incomingSettings.smsTemplates === undefined || incomingSettings.smsTemplates === null) {
-      delete incomingSettings.smsTemplates;
+    
+    // Security: Organisers cannot enable SMS
+    if (normalizeRole(req.user.role) !== ROLES.MAIN_ADMIN && incomingSettings.communicationChannels?.sms === true) {
+      console.log('[SETTINGS] Reverting unauthorised SMS channel change by organiser.');
+      incomingSettings.communicationChannels.sms = event.settings?.communicationChannels?.sms || false;
     }
 
     event.settings = {
-      ...(event.settings || {}),
+      ...(event.settings?.toObject ? event.settings.toObject() : event.settings || {}),
       ...incomingSettings,
     };
+    
     await event.save();
 
     res.json({ success: true, data: { event, settings: event.settings }, message: 'Event settings updated.' });

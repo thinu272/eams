@@ -25,7 +25,7 @@ const SubOrgAttendees = () => {
   const [adding, setAdding] = useState(false);
   const { user } = useAuth();
   
-  const initialAttendee = { fullName: '', email: '', phone: '', categoryId: '', notificationChannel: 'email_sms' };
+  const initialAttendee = { fullName: '', email: '', phone: '', categoryId: '', notificationChannel: 'email' };
   const [newAttendee, setNewAttendee] = useState(initialAttendee);
 
   const load = async (eventId = currentEventId) => {
@@ -204,9 +204,10 @@ const SubOrgAttendees = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Email *</label>
               <input
                 type="email"
+                required
                 value={newAttendee.email}
                 onChange={(e) => setNewAttendee({ ...newAttendee, email: e.target.value })}
                 className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm"

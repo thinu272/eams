@@ -348,6 +348,20 @@ const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, org
                   </label>
                 </div>
               </div>
+
+              <div className="col-span-2 pt-4 border-t border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">Communication Channels</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer opacity-60">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={true} disabled />
+                    <span className="text-sm text-slate-700">Email (Required)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.communicationSms ?? false} onChange={(e) => setForm(prev => ({ ...prev, communicationSms: e.target.checked }))} />
+                    <span className="text-sm text-slate-700">SMS Notifications</span>
+                  </label>
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -426,7 +440,9 @@ const AdminDashboard = () => {
       currency: item?.settings?.currency || 'LKR',
       paymentCard: item?.settings?.paymentMethods?.card ?? true,
       paymentBank: item?.settings?.paymentMethods?.bank_transfer ?? true,
-      paymentCash: item?.settings?.paymentMethods?.cash ?? true
+      paymentCash: item?.settings?.paymentMethods?.cash ?? true,
+      communicationEmail: item?.settings?.communicationChannels?.email ?? true,
+      communicationSms: item?.settings?.communicationChannels?.sms ?? false
     });
     if (type === 'organiser' || type === 'user') setForm({ name: item?.name || '', email: item?.email || '', phone: item?.phone || '', password: '', role: item?.role || (type === 'organiser' ? 'MainOrganiser' : 'Staff'), status: item?.status || 'Active' });
   };

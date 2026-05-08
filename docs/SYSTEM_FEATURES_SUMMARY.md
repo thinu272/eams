@@ -15,18 +15,22 @@ The system delivers a "white-label" feel with live operational data.
 - **Dynamic Theme Colors**: Public pages adapt their accent colors (badges, buttons, icons) to the organizer's chosen theme.
 - **Instant Seat Availability**: Powered by Socket.io, ticket counts and category capacities update instantly across all user sessions.
 - **Inventory Auto-Release**: If a payment fails or is cancelled, seats are immediately released back to the inventory and synced to all browsing users in real-time.
+- **Live Operations Dashboard**: Admins and organisers can monitor check-ins, denials, zone entries/exits, zone occupancy, category breakdowns, and recent scans from `/admin/live` and `/organiser/live`.
+- **Socket Rooms by Event**: Entry and zone scan broadcasts are scoped to event dashboard rooms so the active dashboard receives the correct real-time stream.
 
 ## 3. Resilient Communication Engine
 High-reliability notification delivery for critical event operations.
 - **Decoupled SMS & Email**: Notifications are processed independently. SMS delivery is no longer blocked by email status flags, ensuring attendees receive critical updates.
 - **Forced Delivery Flow**: Organisers can force notification resends (e.g., for manual ticket approvals) to bypass "already sent" logic.
 - **International Normalization**: SMS service automatically handles number formatting for global delivery (e.g., Sri Lankan +94 conversion).
+- **Safe Notification Rendering**: Dashboard notifications tolerate missing or legacy timestamp fields and fall back gracefully instead of breaking the UI.
 
 ## 4. Financial & Payment Control
 Flexible payment options tailored to diverse event needs.
 - **Multi-Currency Support**: Selection from global currencies with localized symbol display.
 - **Granular Payment Methods**: Organizers can toggle Card, Bank Transfer, and Cash options per event.
 - **Integrated Gateways**: Native support for PayHere (Sandbox) with automated order confirmation flows.
+- **Event Customization Recovery**: Organiser customization and settings saves recover from stale cached event IDs by falling back to the valid scoped event.
 
 ## 5. Secure Attendee Management
 End-to-end security for tickets and entry.

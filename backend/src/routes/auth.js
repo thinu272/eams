@@ -143,7 +143,7 @@ router.post('/login', loginLimiter, [
 router.post('/register', [
   body('name').notEmpty().withMessage('Full name required'),
   body('email').isEmail().withMessage('Valid email required'),
-  body('phone').notEmpty().withMessage('Phone number required for SMS security'),
+  body('phone').optional({ checkFalsy: true }),
   body('password').isLength({ min: 8 }).withMessage('Password must be 8+ characters'),
   body('role').equals('Attendee').withMessage('Registration restricted to standard users only'),
 ], async (req, res, next) => {

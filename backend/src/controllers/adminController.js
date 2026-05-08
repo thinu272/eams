@@ -96,7 +96,7 @@ const getEvent = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
     const event = await Event.findById(req.params.id);
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${req.params.id})` });
     res.json({ success: true, data: { event } });
   } catch (err) { next(err); }
 };
@@ -107,7 +107,7 @@ const updateEvent = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
     const event = await Event.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${req.params.id})` });
     res.json({ success: true, data: { event } });
   } catch (err) { next(err); }
 };

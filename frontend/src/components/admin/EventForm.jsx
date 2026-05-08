@@ -52,6 +52,10 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       bank_transfer: true,
       cash: true,
     },
+    communicationChannels: initialData?.settings?.communicationChannels || {
+      email: true,
+      sms: false,
+    },
   });
 
   const zoneOptions = useMemo(() => zones.filter((z) => z.name.trim().length > 0), [zones]);
@@ -344,6 +348,28 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings((s) => ({ ...s, rfidEnabled: e.target.checked }))} />
               RFID Enabled
             </label>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Communication Channels</h3>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-400 bg-slate-50/50 rounded-xl border border-slate-100 p-4">
+                <input type="checkbox" checked={true} disabled />
+                Email (Required)
+              </label>
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-600 rounded-xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={settings.communicationChannels?.sms ?? false} 
+                  onChange={(e) => setSettings((s) => ({ 
+                    ...s, 
+                    communicationChannels: { ...s.communicationChannels, sms: e.target.checked, email: true } 
+                  }))} 
+                />
+                SMS Notifications
+              </label>
+            </div>
+            <p className="mt-2 text-[10px] text-slate-400 font-medium italic">Enforce Email as primary communication while making SMS an optional feature.</p>
           </div>
 
           <div>

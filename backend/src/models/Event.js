@@ -150,6 +150,10 @@ const eventSchema = new mongoose.Schema({
     inviteSystemEnabled: { type: Boolean, default: true },
     manualApprovalEnabled: { type: Boolean, default: false },
     autoConfirmEnabled: { type: Boolean, default: false },
+    communicationChannels: {
+      email: { type: Boolean, default: true },
+      sms: { type: Boolean, default: false },
+    },
     paymentMethods: {
       card: { type: Boolean, default: true },
       bank_transfer: { type: Boolean, default: true },
