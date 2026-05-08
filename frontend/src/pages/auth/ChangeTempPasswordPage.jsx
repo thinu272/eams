@@ -46,7 +46,7 @@ const ChangeTempPasswordPage = () => {
       });
       
       if (response.data.success) {
-        toast.success('Security Update Complete — You can now log in');
+        toast.success('Security Update Complete | You can now log in');
         navigate('/login');
       }
     } catch (err) {

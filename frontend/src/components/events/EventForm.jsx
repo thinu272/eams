@@ -163,7 +163,7 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Main Organiser</label>
                   <select name="mainOrganiser" value={form.mainOrganiser?._id || form.mainOrganiser || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                    <option value="">— Unassigned —</option>
+                    <option value="">- Unassigned -</option>
                     {organisers.map(o => <option key={o._id} value={o._id}>{o.name}</option>)}
                   </select>
                 </div>
@@ -176,13 +176,27 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-semibold text-gray-700">Ticket Categories</h3>
-              <Button type="button" variant="outline" size="sm" onClick={() => addItem('categories', { id: `cat-${Date.now()}`, name: '', price: 0, capacity: 0, allowedZones: [] })}>+ Add Category</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => addItem('categories', { id: `cat-${Date.now()}`, name: '', price: 0, capacity: 0, allowedZones: [], isVisible: true })}>+ Add Category</Button>
             </div>
             {form.categories.map((cat, idx) => (
               <div key={idx} className="p-4 border border-gray-200 rounded-lg bg-gray-50 flex flex-wrap gap-3 items-end">
                 <div className="w-40"><label className="block text-xs text-gray-500 mb-1">Name *</label><input required value={cat.name} onChange={e => { const nc = [...form.categories]; nc[idx].name = e.target.value; setForm({...form, categories: nc})}} className="w-full border border-gray-300 rounded px-2 py-1 text-sm"/></div>
                 <div className="w-24"><label className="block text-xs text-gray-500 mb-1">Price *</label><input type="number" required min="0" value={cat.price} onChange={e => { const nc = [...form.categories]; nc[idx].price = Number(e.target.value); setForm({...form, categories: nc})}} className="w-full border border-gray-300 rounded px-2 py-1 text-sm"/></div>
                 <div className="w-24"><label className="block text-xs text-gray-500 mb-1">Capacity *</label><input type="number" required min="1" value={cat.capacity} onChange={e => { const nc = [...form.categories]; nc[idx].capacity = Number(e.target.value); setForm({...form, categories: nc})}} className="w-full border border-gray-300 rounded px-2 py-1 text-sm"/></div>
+                <div className="flex items-center gap-2 pb-2">
+                  <input 
+                    type="checkbox" 
+                    id={`visible-${idx}`}
+                    checked={cat.isVisible !== false} 
+                    onChange={e => { 
+                      const nc = [...form.categories]; 
+                      nc[idx].isVisible = e.target.checked; 
+                      setForm({...form, categories: nc})
+                    }} 
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <label htmlFor={`visible-${idx}`} className="text-xs text-gray-600 font-medium">Visible to Public</label>
+                </div>
                 <button type="button" onClick={() => removeItem('categories', idx)} className="text-red-500 text-sm pb-1">Remove</button>
               </div>
             ))}
@@ -322,6 +336,43 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <div className="flex items-center gap-3">
                   <input type="checkbox" name="settings.autoConfirmEnabled" checked={form.settings.autoConfirmEnabled} onChange={handleChange} id="autoConf" className="w-4 h-4 text-blue-600 rounded"/>
                   <label htmlFor="autoConf" className="text-sm text-gray-700 font-medium">Auto-confirm Paid Tickets</label>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-gray-900 border-b pb-2">Communication Channels</h4>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    name="settings.communicationChannels.email" 
+                    checked={form.settings?.communicationChannels?.email !== false} 
+                    onChange={handleChange} 
+                    id="emailChannel" 
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <label htmlFor="emailChannel" className="text-sm text-gray-700 font-medium">Enable Email Notifications</label>
+                </div>
+                
+                <div className="flex items-center gap-3 opacity-80">
+                  <input 
+                    type="checkbox" 
+                    name="settings.communicationChannels.sms" 
+                    checked={form.settings?.communicationChannels?.sms === true} 
+                    disabled={!isAdmin}
+                    onChange={handleChange} 
+                    id="smsChannel" 
+                    className={`w-4 h-4 rounded ${isAdmin ? 'text-blue-600' : 'text-gray-400 bg-gray-100'}`}
+                  />
+                  <div className="flex flex-col">
+                    <label htmlFor="smsChannel" className={`text-sm font-medium ${isAdmin ? 'text-gray-700' : 'text-gray-500'}`}>
+                      Enable SMS Notifications (Twilio)
+                    </label>
+                    {!isAdmin && (
+                      <span className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
+                        Admin Only Setting
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

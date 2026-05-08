@@ -10,6 +10,7 @@ const emptyCategory = () => ({
   price: 0,
   capacity: 0,
   allowedZones: [],
+  isVisible: true,
 });
 const emptyCustomField = () => ({ name: '', type: 'text', required: false, options: [] });
 
@@ -50,6 +51,10 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       card: true,
       bank_transfer: true,
       cash: true,
+    },
+    communicationChannels: initialData?.settings?.communicationChannels || {
+      email: true,
+      sms: false,
     },
   });
 
@@ -187,6 +192,14 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
                 <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Price" value={cat.price} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, price: Number(e.target.value) } : c))} />
                 <input type="number" className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Capacity" value={cat.capacity} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, capacity: Number(e.target.value) } : c))} />
                 <input className="rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Description" value={cat.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, description: e.target.value } : c))} />
+                <label className="flex items-center gap-2 px-1">
+                  <input 
+                    type="checkbox" 
+                    checked={cat.isVisible !== false} 
+                    onChange={(e) => setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, isVisible: e.target.checked } : c))} 
+                  />
+                  <span className="text-xs font-semibold text-slate-600">Visible to public</span>
+                </label>
               </div>
               <div className="mt-3">
                 <p className="text-xs font-semibold text-slate-500 mb-2">Allowed Zones</p>
@@ -335,6 +348,28 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings((s) => ({ ...s, rfidEnabled: e.target.checked }))} />
               RFID Enabled
             </label>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Communication Channels</h3>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-400 bg-slate-50/50 rounded-xl border border-slate-100 p-4">
+                <input type="checkbox" checked={true} disabled />
+                Email (Required)
+              </label>
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-600 rounded-xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={settings.communicationChannels?.sms ?? false} 
+                  onChange={(e) => setSettings((s) => ({ 
+                    ...s, 
+                    communicationChannels: { ...s.communicationChannels, sms: e.target.checked, email: true } 
+                  }))} 
+                />
+                SMS Notifications
+              </label>
+            </div>
+            <p className="mt-2 text-[10px] text-slate-400 font-medium italic">Enforce Email as primary communication while making SMS an optional feature.</p>
           </div>
 
           <div>

@@ -93,7 +93,7 @@ router.post('/login', loginLimiter, [
     }
 
     if (user.status !== 'Active') {
-      return res.status(401).json({ success: false, message: 'Account suspended/inactive. Contact admin.' });
+      return res.status(401).json({ success: false, message: 'Account is disabled, please contact admin' });
     }
 
     // MFA Check
@@ -143,7 +143,7 @@ router.post('/login', loginLimiter, [
 router.post('/register', [
   body('name').notEmpty().withMessage('Full name required'),
   body('email').isEmail().withMessage('Valid email required'),
-  body('phone').notEmpty().withMessage('Phone number required for SMS security'),
+  body('phone').optional({ checkFalsy: true }),
   body('password').isLength({ min: 8 }).withMessage('Password must be 8+ characters'),
   body('role').equals('Attendee').withMessage('Registration restricted to standard users only'),
 ], async (req, res, next) => {
@@ -281,7 +281,7 @@ router.post('/refresh-token', async (req, res, next) => {
     }
 
     if (user.status !== 'Active') {
-      return res.status(401).json({ success: false, message: 'Account suspended/inactive' });
+      return res.status(401).json({ success: false, message: 'Account is disabled, please contact admin' });
     }
 
     const accessToken = signAccessToken(user._id);

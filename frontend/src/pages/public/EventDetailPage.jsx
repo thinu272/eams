@@ -143,7 +143,7 @@ const EventDetailPage = () => {
   }
 
   const allZones = event.zones || [];
-  const categories = event.categories || [];
+  const categories = (event.categories || []).filter(c => c.isVisible !== false);
   const totalTickets = Object.values(selectedTickets).reduce((sum, qty) => sum + qty, 0);
   const totalPrice = categories.reduce((sum, category) => {
     return sum + category.price * (selectedTickets[getCategoryId(category)] || 0);
@@ -183,7 +183,7 @@ const EventDetailPage = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-blue-950/40 mix-blend-multiply" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-          <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
             <div>
               <Link
                 to="/events"
@@ -197,7 +197,7 @@ const EventDetailPage = () => {
                     <img src={buildAssetUrl(event.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
                   </div>
                 )}
-                <h1 className="max-w-4xl text-5xl font-black uppercase tracking-tight sm:text-6xl text-white">
+                <h1 className="max-w-4xl text-2xl font-black uppercase tracking-tight sm:text-4xl lg:text-6xl text-white leading-[1.1]">
                   {event.name}
                 </h1>
               </div>
@@ -250,7 +250,7 @@ const EventDetailPage = () => {
               <p className="text-sm font-black uppercase tracking-[0.2em]" style={{ color: isExpired ? '#EF4444' : themeColor }}>
                 {isExpired ? 'Match Concluded' : 'Official Tickets'}
               </p>
-              <h2 className="mt-4 text-3xl font-black text-white leading-tight">
+              <h2 className="mt-4 text-2xl sm:text-3xl font-black text-white leading-tight">
                 {isExpired ? 'This event has ended.' : 'Secure your access today.'}
               </h2>
               <p className="mt-4 text-base text-slate-300 font-medium">
@@ -275,13 +275,13 @@ const EventDetailPage = () => {
 
       <section className="bg-slate-50 min-h-screen pt-12 pb-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid grid-cols-1 gap-12 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-12">
               {/* Event Specific Details */}
               {(event.eventType === 'cricket' && event.matchDetails) && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm overflow-hidden">
                   <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-6">Match Details</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-6">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Team A</p>
                       <p className="text-lg font-bold text-slate-900">{event.matchDetails.teamA || 'TBD'}</p>
@@ -372,8 +372,8 @@ const EventDetailPage = () => {
               
               {/* Ticket Categories Segment */}
                <div>
-                <h2 className="text-3xl font-black uppercase tracking-tight text-slate-900">Ticket Categories</h2>
-                <div className="mt-2 h-1 w-16 rounded-full" style={{ backgroundColor: themeColor }}></div>
+                <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-900">Ticket Categories</h2>
+                <div className="mt-2 h-1 w-12 sm:w-16 rounded-full" style={{ backgroundColor: themeColor }}></div>
                 <p className="mt-4 text-base font-medium text-slate-500 max-w-3xl">
                   Review the packages below to see pricing and the specific stadium zones they grant access to.
                 </p>
@@ -385,7 +385,7 @@ const EventDetailPage = () => {
                   return (
                      <article
                       key={categoryId}
-                      className="group flex flex-col rounded-3xl border border-slate-200 bg-white p-8 shadow-sm transition-all hover:shadow-xl hover:shadow-blue-900/10 relative overflow-hidden"
+                      className="group flex flex-col rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm transition-all hover:shadow-xl hover:shadow-blue-900/10 relative overflow-hidden"
                       style={{ '--hover-border': themeColor }}
                     >
                       <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" style={{ backgroundColor: `${themeColor}1A` }}></div>
@@ -401,7 +401,7 @@ const EventDetailPage = () => {
                         </p>
                         
                         <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <h4 className="text-sm font-bold uppercase tracking-wide text-slate-900 flex items-center gap-2">
                                <CheckCircleIcon className="h-5 w-5" style={{ color: themeColor }} /> Included Zones
                             </h4>
@@ -499,8 +499,8 @@ const EventDetailPage = () => {
             </div>
 
             {/* Sidebar Summary */}
-            <aside className="xl:pt-0">
-              <div className="sticky top-24 rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl shadow-slate-200/50">
+            <aside className="xl:pt-0 w-full max-w-full overflow-hidden">
+              <div className="sticky top-24 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-2xl shadow-slate-200/50">
                  <p className="text-sm font-black uppercase tracking-widest mb-2" style={{ color: themeColor }}>
                   Event Snapshot
                 </p>
@@ -571,7 +571,6 @@ const EventDetailPage = () => {
                 {categories.map((category) => {
                   const categoryId = getCategoryId(category);
                   const capacity = category.defaultCapacity || 0;
-                  // For the public portal without live remaining checks, we'll allow selection up to 10 max per transaction
                   const maxSelectable = Math.min(10, capacity > 0 ? capacity : 10);
                   const selected = selectedTickets[categoryId] || 0;
                   const isLocked = category.isPrivate && !unlockedCategories.includes(categoryId);
@@ -579,13 +578,13 @@ const EventDetailPage = () => {
                   return (
                     <div
                       key={categoryId}
-                      className={`rounded-2xl border p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 transition-all ${
+                      className={`rounded-2xl border p-4 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6 transition-all ${
                         isLocked ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200 bg-white'
                       }`}
                     >
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-xl font-black ${isLocked ? 'text-slate-400' : 'text-slate-900'}`}>{category.name}</h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className={`text-lg sm:text-xl font-black ${isLocked ? 'text-slate-400' : 'text-slate-900'}`}>{category.name}</h3>
                           {category.isPrivate && (
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                               isLocked ? 'bg-slate-200 text-slate-500' : 'bg-emerald-100 text-emerald-700'
@@ -595,7 +594,7 @@ const EventDetailPage = () => {
                             </span>
                           )}
                         </div>
-                        <p className={`mt-2 text-2xl font-black ${isLocked ? 'text-slate-300' : 'text-blue-700'}`}>
+                        <p className={`mt-1 sm:mt-2 text-xl sm:text-2xl font-black ${isLocked ? 'text-slate-300' : 'text-blue-700'}`}>
                           {formatCurrency(category.price)}
                         </p>
                         <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -603,52 +602,54 @@ const EventDetailPage = () => {
                         </p>
                       </div>
 
-                      {isLocked ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveCategoryId(categoryId);
-                            setIsCodeModalOpen(true);
-                          }}
-                          className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 transition-all"
-                        >
-                          Enter Code
-                        </button>
-                      ) : (category.capacity - (category.sold || 0)) <= 0 ? (
-                        <div className="rounded-xl bg-red-50 px-6 py-3 border border-red-100">
-                          <span className="text-sm font-black uppercase tracking-widest text-red-600">Sold Out</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-100/50">
+                      <div className="flex sm:block">
+                        {isLocked ? (
                           <button
                             type="button"
-                            onClick={() => handleQuantityChange(categoryId, selected - 1)}
-                            disabled={selected === 0}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-200 text-xl font-bold text-slate-900 shadow-sm transition-all hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => {
+                              setActiveCategoryId(categoryId);
+                              setIsCodeModalOpen(true);
+                            }}
+                            className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 transition-all"
                           >
-                            -
+                            Enter Code
                           </button>
-                          <div className="w-10 text-center text-xl font-black text-slate-900">
-                            {selected}
+                        ) : (category.capacity - (category.sold || 0)) <= 0 ? (
+                          <div className="w-full sm:w-auto text-center rounded-xl bg-red-50 px-6 py-3 border border-red-100">
+                            <span className="text-sm font-black uppercase tracking-widest text-red-600">Sold Out</span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleQuantityChange(categoryId, Math.min(selected + 1, Math.min(maxSelectable, category.capacity - (category.sold || 0))))
-                            }
-                            disabled={selected >= maxSelectable || selected >= (category.capacity - (category.sold || 0))}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-200 text-xl font-bold text-slate-900 shadow-sm transition-all hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            +
-                          </button>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="flex items-center justify-between sm:justify-end gap-4 bg-slate-50 p-1.5 rounded-xl border border-slate-100/50 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleQuantityChange(categoryId, selected - 1)}
+                              disabled={selected === 0}
+                              className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-200 text-xl font-bold text-slate-900 shadow-sm transition-all hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              -
+                            </button>
+                            <div className="w-10 text-center text-xl font-black text-slate-900">
+                              {selected}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleQuantityChange(categoryId, Math.min(selected + 1, Math.min(maxSelectable, category.capacity - (category.sold || 0))))
+                              }
+                              disabled={selected >= maxSelectable || selected >= (category.capacity - (category.sold || 0))}
+                              className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-slate-200 text-xl font-bold text-slate-900 shadow-sm transition-all hover:border-blue-500 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="border-t border-slate-200 bg-white p-6 lg:w-96 lg:border-l lg:border-t-0 flex flex-col justify-between shadow-[-10px_0_30px_rgba(0,0,0,0.03)] z-10">
+              <div className="border-t border-slate-200 bg-white p-6 lg:w-96 lg:border-l lg:border-t-0 flex flex-col justify-between shadow-[-10px_0_30px_rgba(0,0,0,0.03)] z-10 pb-24 lg:pb-6">
                 <div>
                   <h3 className="text-lg font-black uppercase text-slate-900 mb-6">Order Summary</h3>
                   {selectedCategories.length === 0 ? (
@@ -665,12 +666,12 @@ const EventDetailPage = () => {
                           className="flex items-start justify-between border-b border-slate-100 pb-4 last:border-0 last:pb-0"
                         >
                           <div>
-                            <p className="font-bold text-slate-900">{category.name}</p>
-                            <p className="text-sm font-medium text-slate-500 mt-1">
+                            <p className="font-bold text-slate-900 text-sm sm:text-base">{category.name}</p>
+                            <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
                               {selectedTickets[getCategoryId(category)]} × {formatCurrency(category.price)}
                             </p>
                           </div>
-                          <p className="font-black text-slate-900">
+                          <p className="font-black text-slate-900 text-sm sm:text-base">
                             {formatCurrency(selectedTickets[getCategoryId(category)] * category.price)}
                           </p>
                         </div>
@@ -679,7 +680,7 @@ const EventDetailPage = () => {
                   )}
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-200">
+                <div className="mt-8 pt-6 border-t border-slate-200 hidden lg:block">
                   <div className="flex items-center justify-between text-sm font-bold text-slate-500 mb-3">
                     <span>Total Tickets</span>
                     <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-md">{totalTickets}</span>
@@ -708,6 +709,32 @@ const EventDetailPage = () => {
                   <p className="mt-4 text-center text-xs font-medium text-slate-400">
                     Secure checkout powered by ENTRYNEX.
                   </p>
+                </div>
+
+                {/* Mobile Sticky Bar */}
+                <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-20">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Price</p>
+                      <p className="text-xl font-black text-slate-900">{formatCurrency(totalPrice)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tickets</p>
+                      <p className="text-lg font-black text-slate-900">{totalTickets}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={totalTickets === 0}
+                    onClick={() => {
+                      setIsTicketModalOpen(false);
+                      navigate('/checkout', { state: { selectedTickets, eventId: event._id, event } });
+                    }}
+                    className="w-full flex items-center justify-center rounded-xl px-6 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg disabled:opacity-50 transition-all"
+                    style={{ backgroundColor: themeColor }}
+                  >
+                    Checkout Now
+                  </button>
                 </div>
               </div>
             </div>

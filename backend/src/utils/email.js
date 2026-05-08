@@ -160,7 +160,7 @@ const baseTemplate = (content) => `
   <div class="body">${content}</div>
   <div class="footer">
     This is an automated email. Do not reply to this message.<br>
-    &copy; ${new Date().getFullYear()} ENTRYNEX — Event Access Management System
+    &copy; ${new Date().getFullYear()} ENTRYNEX | Event Access Management System
   </div>
 </div>
 </body>
@@ -301,7 +301,7 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
 
   await sendWithProvider({
     to: attendee.email,
-    subject: config.email?.templates?.inviteSubject || `Invitation: ${event.name} — Action Required`,
+    subject: config.email?.templates?.inviteSubject || `Invitation: ${event.name} - Action Required`,
     html,
     templateId,
     dynamicTemplateData,
@@ -395,7 +395,7 @@ const sendBuyerFinalSummary = async ({
   supportPhone,
 }) => {
   const rows = (attendees || [])
-    .map((a) => `<li>${a.fullName} — ${a.categoryName} (${a.email})</li>`)
+    .map((a) => `<li>${a.fullName} - ${a.categoryName} (${a.email})</li>`)
     .join('');
 
   const html = baseTemplate(`
@@ -412,7 +412,7 @@ const sendBuyerFinalSummary = async ({
 
   await sendWithProvider({
     to: buyerEmail,
-    subject: `Attendee Verification Complete — ${event.name}`,
+    subject: `Attendee Verification Complete - ${event.name}`,
     html,
     templateId: process.env.SENDGRID_BUYER_SUMMARY_TEMPLATE_ID,
     dynamicTemplateData: {
@@ -458,7 +458,7 @@ const sendPhotoRejection = async (attendee, event, reason, resubmitLink) => {
   `);
   await sendWithProvider({
     to: attendee.email,
-    subject: `Photo Rejected — Resubmit for ${event.name}`,
+    subject: `Photo Rejected - Resubmit for ${event.name}`,
     html,
   });
 };

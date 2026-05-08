@@ -238,7 +238,7 @@ const getOverviewData = async () => {
 };
 
 const getEventsData = async (query) => {
-  const events = await Event.find(buildEventFilter(query)).populate('mainOrganiser', 'name email').sort({ startDate: -1 }).limit(parsePositiveInt(query.limit, 50)).lean();
+  const events = await Event.find(buildEventFilter(query)).populate('mainOrganiser', 'name email').sort({ startDate: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   const organiserOptions = await User.find({ role: { $in: ['MainOrganiser', 'SubOrganiser'] } }).select('name email').sort({ name: 1 }).lean();
   return { rows: events.map(serializeEvent), filters: { organiserOptions } };
 };
@@ -250,7 +250,7 @@ const getOrganisersData = async (query) => {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
   }
-  const organisers = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 50)).lean();
+  const organisers = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   const organiserIds = organisers.map((organiser) => organiser._id);
   const eventStats = await Event.aggregate([
     { $match: { mainOrganiser: { $in: organiserIds } } },
@@ -268,7 +268,7 @@ const getUsersData = async (query) => {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
   }
-  const users = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 75)).lean();
+  const users = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   return { rows: users.map(serializeUser), roles: USER_ROLES };
 };
 
@@ -278,7 +278,7 @@ const getTicketsData = async (query) => {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ ticketNumber: regex }, { categoryName: regex }];
   }
-  const tickets = await Ticket.find(filter).populate('event', 'name').populate('attendee', 'fullName email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 100)).lean();
+  const tickets = await Ticket.find(filter).populate('event', 'name').populate('attendee', 'fullName email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   const [overbookedEvents, unassignedTickets] = await Promise.all([
     Event.aggregate([
       { $project: { name: 1, overbookedCategories: { $filter: { input: '$categories', as: 'category', cond: { $gt: ['$$category.sold', '$$category.capacity'] } } } } },
@@ -305,7 +305,7 @@ const getVerificationData = async (query) => {
   if (query.status) filter.photoVerificationStatus = new RegExp(`^${escapeRegex(query.status)}$`, 'i');
   const [summary, rows] = await Promise.all([
     Attendee.aggregate([{ $group: { _id: { $toLower: '$photoVerificationStatus' }, count: { $sum: 1 } } }]),
-    Attendee.find(filter).populate('event', 'name').populate('photoVerifiedBy', 'name').sort({ updatedAt: -1 }).limit(parsePositiveInt(query.limit, 100)).lean(),
+    Attendee.find(filter).populate('event', 'name').populate('photoVerifiedBy', 'name').sort({ updatedAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean(),
   ]);
   const summaryMap = summary.reduce((acc, item) => ({ ...acc, [item._id]: item.count }), {});
   return {
@@ -318,7 +318,7 @@ const getEntryLogsData = async (query) => {
   const filter = { ...parseDateRange(query.from, query.to, 'timestamp') };
   if (query.event && mongoose.Types.ObjectId.isValid(query.event)) filter.event = query.event;
   if (query.gate) filter.$or = [{ gateName: new RegExp(escapeRegex(query.gate), 'i') }, { gateId: new RegExp(escapeRegex(query.gate), 'i') }];
-  const logs = await EntryLog.find(filter).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 100)).lean();
+  const logs = await EntryLog.find(filter).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   return { rows: logs.map((log) => ({ _id: log._id, attendee: log.attendee?.fullName || log.snapshot?.fullName || 'Unknown attendee', event: log.event?.name || 'Unknown event', gate: log.gateName || log.gateId || '-', time: log.timestamp, status: log.accessGranted ? 'Allowed' : 'Denied', action: log.action, denialReason: log.denialReason || '' })) };
 };
 
@@ -335,7 +335,7 @@ const getZoneActivityData = async (query) => {
       { $sort: { entries: -1 } },
       { $limit: 50 },
     ]),
-    ZoneLog.find(filter).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 50)).lean(),
+    ZoneLog.find(filter).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 10)).lean(),
   ]);
   return {
     occupancy: occupancy.map((row) => ({ event: row.event?.name || 'Unknown event', zoneName: row._id.zoneName, occupancy: Math.max((row.entries || 0) - (row.exits || 0), 0), entries: row.entries || 0, exits: row.exits || 0, denied: row.denied || 0 })),
@@ -352,7 +352,7 @@ const getNotificationsData = async (query) => {
   if (query.type) {
     filter.$or = [...(filter.$or || []), { 'metadata.notificationType': new RegExp(escapeRegex(query.type), 'i') }, { type: new RegExp(escapeRegex(query.type), 'i') }];
   }
-  const notifications = await Notification.find(filter).populate('user', 'name email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 100)).lean();
+  const notifications = await Notification.find(filter).populate('user', 'name email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
   return { rows: notifications.map((notification) => ({ _id: notification._id, user: notification.user?.name || 'System', email: notification.user?.email || '', title: notification.title, message: notification.message, channel: notification.metadata?.channel || 'email', type: notification.metadata?.notificationType || notification.type, eventName: notification.metadata?.eventName || '', read: notification.read, createdAt: notification.createdAt })) };
 };
 
@@ -442,7 +442,8 @@ router.post('/events', async (req, res, next) => {
       name, startDate, endDate, organiserId, venueName, 
       status = 'draft', description = '', eventType = 'cricket',
       requirePhotoVerification = true, allowSelfConfirmation = true, rfidEnabled = true,
-      currency = 'LKR', paymentCard = true, paymentBank = true, paymentCash = true 
+      currency = 'LKR', paymentCard = true, paymentBank = true, paymentCash = true,
+      communicationEmail = true, communicationSms = false 
     } = req.body;
 
     const event = await Event.create({ 
@@ -462,6 +463,10 @@ router.post('/events', async (req, res, next) => {
         allowSelfConfirmation,
         rfidEnabled,
         currency,
+        communicationChannels: {
+          email: communicationEmail,
+          sms: communicationSms,
+        },
         paymentMethods: {
           card: paymentCard,
           bank_transfer: paymentBank,
@@ -499,9 +504,11 @@ router.patch('/events/:id', async (req, res, next) => {
     if (req.body.paymentCard !== undefined) updates['settings.paymentMethods.card'] = req.body.paymentCard;
     if (req.body.paymentBank !== undefined) updates['settings.paymentMethods.bank_transfer'] = req.body.paymentBank;
     if (req.body.paymentCash !== undefined) updates['settings.paymentMethods.cash'] = req.body.paymentCash;
+    if (req.body.communicationEmail !== undefined) updates['settings.communicationChannels.email'] = req.body.communicationEmail;
+    if (req.body.communicationSms !== undefined) updates['settings.communicationChannels.sms'] = req.body.communicationSms;
 
     const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true }).populate('mainOrganiser', 'name email');
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${req.params.id})` });
 
     if (req.body.organiserId && mongoose.Types.ObjectId.isValid(req.body.organiserId)) {
       await User.findByIdAndUpdate(req.body.organiserId, { $addToSet: { assignedEvents: event._id } });
@@ -796,8 +803,8 @@ router.patch('/settings', async (req, res, next) => {
 
 router.get('/logs', async (req, res, next) => {
   try {
-    const { type = 'all', from, to, statusCode, path, page = 1, limit = 25 } = req.query;
-    const safeLimit = Math.min(parseInt(limit, 10) || 25, 100);
+    const { type = 'all', from, to, statusCode, path, page = 1, limit = 10 } = req.query;
+    const safeLimit = Math.min(parseInt(limit, 10) || 10, 100);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
     const filter = { ...parseDateRange(from, to) };
     if (type === 'errors') filter.statusCode = { $gte: 400 };

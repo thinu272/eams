@@ -105,7 +105,7 @@ const EventEditPage = () => {
   if (!event) return (
     <DashboardLayout>
       <div className="text-center py-12">
-        <h2 className="text-xl font-bold text-gray-900">Event not found</h2>
+        <h2 className="text-xl font-bold text-gray-900">Event not found (ID: {id})</h2>
         <button onClick={() => navigate(-1)} className="mt-4 text-blue-600 hover:underline">Go Back</button>
       </div>
     </DashboardLayout>

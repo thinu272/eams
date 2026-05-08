@@ -5,6 +5,8 @@ import { CheckBadgeIcon, ShieldCheckIcon, UserPlusIcon, PhotoIcon, InformationCi
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getConfirmInviteInfo, submitConfirmInviteDetails } from '../../api/confirm';
 import { photoQualityChecker, photoEnhancer } from '../../utils/photoQualityChecker';
+import CameraCapture from '../../components/shared/CameraCapture';
+import { CameraIcon } from '@heroicons/react/24/outline';
 
 const AttendeeIdentityConfirmPage = () => {
   const { inviteToken } = useParams();
@@ -29,6 +31,7 @@ const AttendeeIdentityConfirmPage = () => {
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelLoadFailed, setModelLoadFailed] = useState(false);
   const [faceAnalysis, setFaceAnalysis] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
   const imageRef = useRef(null);
   const overlayRef = useRef(null);
   const enhancedCanvasRef = useRef(null);
@@ -404,23 +407,51 @@ const AttendeeIdentityConfirmPage = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Identity Photo (Selfie) *</label>
-                    <label className="group relative flex h-[132px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
-                      {form.photo ? (
-                        <div className="relative h-full w-full">
-                          <img src={enhancedPreview || preview} alt="Preview" ref={imageRef} className="h-full w-full rounded-xl object-cover shadow-md" />
-                          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
-                            <PhotoIcon className="h-6 w-6 text-white" />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center py-4">
-                          <UserPlusIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
-                          <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Tap to Upload Profile Photo</p>
-                        </div>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2">
+                        <label className="flex-1 group relative flex h-[132px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
+                          {form.photo ? (
+                            <div className="relative h-full w-full">
+                              <img src={enhancedPreview || preview} alt="Preview" ref={imageRef} className="h-full w-full rounded-xl object-cover shadow-md" />
+                              <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+                              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
+                                <PhotoIcon className="h-6 w-6 text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center py-4">
+                              <PhotoIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
+                              <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
+                            </div>
+                          )}
+                          <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowCamera(true)}
+                          className="flex-1 group relative flex h-[132px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
+                        >
+                          <CameraIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
+                          <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Take Live Photo</p>
+                        </button>
+                      </div>
+                      
+                      {showCamera && (
+                        <CameraCapture 
+                          onCapture={async (file) => {
+                            const errors = await validatePhoto(file);
+                            setValidationErrors(errors);
+                            setAllowOverride(errors.length > 0);
+                            setEnhancedPreview(null);
+                            setActiveFilter('none');
+                            setForm((prev) => ({ ...prev, photo: file }));
+                            setPreview(URL.createObjectURL(file));
+                          }} 
+                          onClose={() => setShowCamera(false)} 
+                        />
                       )}
-                      <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-                    </label>
+                    </div>
                     {modelLoadFailed && <p className="text-sm text-amber-700">Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.</p>}
                   </div>
                 </div>

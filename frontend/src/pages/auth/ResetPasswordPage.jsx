@@ -27,7 +27,7 @@ const ResetPasswordPage = () => {
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/reset-password/${token}`, { password });
       if (response.data.success) {
-        toast.success('Access Restored — Password Updated Successfully');
+        toast.success('Access Restored | Password Updated Successfully');
         navigate('/login');
       }
     } catch (err) {

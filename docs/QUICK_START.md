@@ -63,6 +63,7 @@ npm start
 3. **Login as Organiser**: Switch to an organiser account.
 4. **Publish**: Go to **Event Customization**, pick a theme color, and click **Publish**.
 5. **Verify**: Visit the public homepage to see your live event with its new branding and **Real-Time Seat Availability**.
+6. **Monitor live operations**: Open `/organiser/live` or `/admin/live` to watch entry scans, denied scans, zone movement, category breakdowns, and live activity.
 
 ---
 
@@ -71,6 +72,9 @@ npm start
 - **Database Connection**: Ensure MongoDB is running and the URI in `.env` is correct.
 - **Port Conflicts**: Ensure ports 5000 (Backend) and 3000 (Frontend) are free.
 - **S3 Uploads**: Verify your AWS credentials have `s3:PutObject` permissions for the configured bucket.
+- **Live dashboard is empty**: Make sure the user has access to at least one event. MainAdmin users load all events; organisers load assigned events.
+- **Live feed is not updating**: Confirm the backend is running, Socket.IO is connected, and scans are being made against the same selected event.
+- **Notification date errors**: Older notification records may not have `timestamp`; the UI supports `createdAt` and `updatedAt`.
 
 ---
 

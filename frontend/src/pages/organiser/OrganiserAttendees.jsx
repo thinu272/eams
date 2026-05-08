@@ -161,7 +161,7 @@ const OrganiserAttendees = () => {
               <div className="mt-2 space-y-2">
                 {logs.map((log) => (
                   <div key={log._id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    {log.action} — {log.gateName || log.zoneName || '-'} — {log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}
+                    {log.action} - {log.gateName || log.zoneName || '-'} - {log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}
                   </div>
                 ))}
                 {logs.length === 0 && <div className="text-xs text-slate-400">No logs for this attendee.</div>}

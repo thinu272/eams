@@ -5,7 +5,7 @@
  */
 
 export const photoQualityChecker = {
-  // File size validation (50KB–5MB)
+  // File size validation (50KB-5MB)
   checkFileSize: (file) => {
     const minSize = 50 * 1024; // 50KB
     const maxSize = 5 * 1024 * 1024; // 5MB

@@ -7,14 +7,19 @@ const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const EntryLog = require('../models/EntryLog');
 const ZoneLog = require('../models/ZoneLog');
+const { normalizeRole, ROLES } = require('../utils/rbac');
 
 const toObjectId = (value) => new mongoose.Types.ObjectId(value);
 
 const getAccessibleEventIds = async (user, requestedEventId) => {
-  if (user.role === 'main_admin') {
-    if (requestedEventId) {
-      const exists = await Event.exists({ _id: requestedEventId });
-      return exists ? [requestedEventId] : [];
+  const role = normalizeRole(user.role);
+  const requestedId = String(requestedEventId || '').trim();
+
+  if (role === ROLES.MAIN_ADMIN) {
+    if (requestedId) {
+      if (!mongoose.Types.ObjectId.isValid(requestedId)) return [];
+      const exists = await Event.exists({ _id: requestedId });
+      return exists ? [requestedId] : [];
     }
 
     const events = await Event.find({}, '_id').lean();
@@ -22,8 +27,8 @@ const getAccessibleEventIds = async (user, requestedEventId) => {
   }
 
   const assigned = (user.assignedEvents || []).map((eventId) => eventId.toString());
-  if (requestedEventId) {
-    return assigned.includes(requestedEventId) ? [requestedEventId] : [];
+  if (requestedId) {
+    return assigned.includes(requestedId) ? [requestedId] : [];
   }
 
   return assigned;
@@ -48,7 +53,7 @@ router.get('/stats', async (req, res, next) => {
     const eventMatch = buildEventMatch(accessibleEventIds);
     const zoneFilter = zone ? { zoneName: zone } : {};
 
-    const [totalTickets, confirmedAttendees, checkedInCount, deniedEntryLogs, deniedZoneLogs, entryTrend, zoneEntryCounts, zoneExitCounts] = await Promise.all([
+    const [totalTickets, confirmedAttendees, checkedInCount, deniedEntryLogs, deniedZoneLogs, entryTrend, zoneEntryCounts, zoneExitCounts, byCategory] = await Promise.all([
       Ticket.countDocuments({ event: eventMatch }),
       Attendee.countDocuments({ event: eventMatch, isConfirmed: true }),
       EntryLog.countDocuments({ event: eventMatch, action: 'check_in', accessGranted: true }),
@@ -91,6 +96,11 @@ router.get('/stats', async (req, res, next) => {
         { $match: { eventId: eventMatch, accessGranted: true, action: 'EXIT', ...zoneFilter } },
         { $group: { _id: '$zoneName', exits: { $sum: 1 } } },
       ]),
+      Attendee.aggregate([
+        { $match: { event: eventMatch, isActive: true } },
+        { $group: { _id: '$categoryName', categoryName: { $first: '$categoryName' }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
     ]);
 
     const exitLookup = new Map(zoneExitCounts.map((item) => [item._id, item.exits]));
@@ -110,6 +120,7 @@ router.get('/stats', async (req, res, next) => {
         deniedCount: deniedEntryLogs + deniedZoneLogs,
         entryTrend,
         zoneOccupancy,
+        byCategory,
       },
     });
   } catch (err) {
@@ -228,7 +239,7 @@ router.get('/logs', async (req, res, next) => {
   }
 });
 
-// GET /api/dashboard/timeline  — check-ins per hour for today
+// GET /api/dashboard/timeline | check-ins per hour for today
 router.get('/timeline', async (req, res, next) => {
   try {
     const { eventId } = req.query;
@@ -262,7 +273,7 @@ router.get('/timeline', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/dashboard/denied  — denied access entries with pagination
+// GET /api/dashboard/denied | denied access entries with pagination
 router.get('/denied', async (req, res, next) => {
   try {
     const { eventId, page = 1, limit = 20, from, to } = req.query;
@@ -291,7 +302,7 @@ router.get('/denied', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/dashboard/export  — Excel/CSV export
+// GET /api/dashboard/export | Excel/CSV export
 router.get('/export', async (req, res, next) => {
   try {
     const XLSX = require('xlsx');

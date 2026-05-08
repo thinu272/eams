@@ -63,12 +63,14 @@ const requireEventAccess = async (req, res, next) => {
     // Root Authority bypass (Admins and Main Organisers have global scope)
     const canonicalRole = normalizeRole(user.role);
     if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {
+      if (eventId) req.resolvedEventId = eventId;
       return next();
     }
     
     // If no ID provided or "undefined" string, fallback to first assigned
     if (!eventId) {
       eventId = user.assignedEvents && user.assignedEvents[0];
+      if (eventId) req.resolvedEventId = eventId;
     }
     
     if (!eventId) {
@@ -81,6 +83,7 @@ const requireEventAccess = async (req, res, next) => {
       // If the provided ID was invalid, try fallback before failing
       const fallback = user.assignedEvents && user.assignedEvents[0];
       if (fallback && mongoose.Types.ObjectId.isValid(fallback)) {
+        req.resolvedEventId = fallback;
         req.query.eventId = fallback; // Update for downstream
         return next();
       }
@@ -89,6 +92,7 @@ const requireEventAccess = async (req, res, next) => {
 
     // Check explicit assignments
     if (user.assignedEvents.some(e => e.toString() === eventId.toString())) {
+      req.resolvedEventId = eventId;
       return next();
     }
 
@@ -96,6 +100,7 @@ const requireEventAccess = async (req, res, next) => {
     const Event = require('../models/Event');
     const event = await Event.findById(eventId).select('createdBy mainOrganiser');
     if (event && (event.createdBy?.toString() === user._id.toString() || event.mainOrganiser?.toString() === user._id.toString())) {
+      req.resolvedEventId = eventId;
       return next();
     }
 
@@ -104,6 +109,7 @@ const requireEventAccess = async (req, res, next) => {
     const finalFallback = user.assignedEvents && user.assignedEvents[0];
     if (finalFallback && finalFallback.toString() !== eventId.toString()) {
       console.log(`[requireEventAccess] Unauthorized scope ${eventId}, falling back to ${finalFallback}`);
+      req.resolvedEventId = finalFallback;
       req.query.eventId = finalFallback; // Inject fallback for downstream handlers
       return next();
     }
