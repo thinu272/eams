@@ -1,10 +1,11 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/auth');
 const { ROLES, hasRolePower, normalizeRole } = require('../utils/rbac');
-const { notifySubOrganiserInvite } = require('../services/notificationService');
+const { notifySubOrganiserInvite, notifyUserCredentials } = require('../services/notificationService');
 
 // All routes require authentication
 router.use(protect);
@@ -90,11 +91,16 @@ router.post('/', restrictTo(ROLES.MAIN_ORGANISER), [
       return res.status(400).json({ success: false, message: 'Identity email already registered in ecosystem.' });
     }
 
+    const tempPassword = req.body.password;
     const user = await User.create({
       ...req.body,
       role: targetRole,
+      isTempPassword: true,
+      isVerified: true,
       createdBy: req.user._id,
     });
+
+    await notifyUserCredentials(user, tempPassword);
 
     if (targetRole === ROLES.SUB_ORGANISER) {
       notifySubOrganiserInvite({ user, event: null, phone: user.phone, email: user.email }).catch(console.error);
@@ -155,6 +161,30 @@ router.patch('/:id', async (req, res, next) => {
 
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
+});
+
+router.post('/:id/resend-credentials', restrictTo(ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER), async (req, res, next) => {
+  try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'Identity not found.' });
+
+    const requesterRole = normalizeRole(req.user.role);
+    const targetRole = normalizeRole(targetUser.role);
+    if (requesterRole !== ROLES.MAIN_ADMIN && hasRolePower(targetRole, requesterRole)) {
+      return res.status(403).json({ success: false, message: 'Insufficient clearance to reset this account.' });
+    }
+
+    const tempPassword = crypto.randomBytes(8).toString('hex');
+    targetUser.password = tempPassword;
+    targetUser.isTempPassword = true;
+    targetUser.isVerified = true;
+    await targetUser.save();
+
+    const delivery = await notifyUserCredentials(targetUser, tempPassword);
+    res.json({ success: true, data: { delivery }, message: 'Login details email sent.' });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**

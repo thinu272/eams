@@ -1248,101 +1248,165 @@ const OrganiserDashboard = () => {
         {attendeeModal && <div className="space-y-3"><input value={attendeeModal.fullName} onChange={(e) => setAttendeeModal((current) => ({ ...current, fullName: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Full name" /><input value={attendeeModal.email || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Email" /><input value={attendeeModal.phone || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Phone" /><select value={attendeeModal.categoryId || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, categoryId: e.target.value }))} className="w-full rounded-xl border px-4 py-2">{attendeeCategoryOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><Button onClick={saveAttendee}>Save Changes</Button></div>}
       </Modal>
 
-      <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Category' : 'Add Category'}>
+      <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Ticket Category' : 'Create New Ticket Category'} size="lg">
         {categoryModal && (
-          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
-            <div className="space-y-3">
-              <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-slate-500">Category Name</span>
-                <input value={categoryModal.name || ''} onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="e.g. VIP Gold" />
-              </label>
+          <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+            {/* Header Info */}
+            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 100-4V7a2 2 0 00-2-2H5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-blue-900">Ticket Category Setup</h3>
+                <p className="text-sm text-blue-700">Configure pricing, capacity, and access rules for this ticket type</p>
+              </div>
+            </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-slate-500">Price ({selectedEvent?.settings?.currency || 'LKR'})</span>
-                  <input type="number" value={categoryModal.price || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Basic Information */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Category Name <span className="text-red-500">*</span>
                 </label>
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-slate-500">Capacity</span>
-                  <input type="number" value={categoryModal.capacity || 0} onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
-                </label>
+                <input 
+                  value={categoryModal.name || ''} 
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="e.g. VIP Gold, General Admission"
+                />
+                <p className="text-xs text-slate-500 mt-1">Choose a clear, descriptive name for this ticket type</p>
               </div>
 
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-                <label className="flex items-center gap-3 cursor-pointer">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Price ({selectedEvent?.settings?.currency || 'LKR'})
+                </label>
+                <input 
+                  type="number" 
+                  value={categoryModal.price || 0} 
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="0"
+                  min="0"
+                  step="0.01"
+                />
+                <p className="text-xs text-slate-500 mt-1">Set to 0 for free tickets</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Capacity
+                </label>
+                <input 
+                  type="number" 
+                  value={categoryModal.capacity || 0} 
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="Unlimited"
+                  min="0"
+                />
+                <p className="text-xs text-slate-500 mt-1">Leave empty for unlimited capacity</p>
+              </div>
+            </div>
+
+            {/* Visibility Settings */}
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-5">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={categoryModal.isVisible !== false}
                     onChange={(e) => setCategoryModal((current) => ({ ...current, isVisible: e.target.checked }))}
-                    className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                    className="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-bold text-emerald-900">Visible to Public</span>
-                    <span className="text-[10px] text-emerald-600/70 leading-tight">Show this ticket in the public event listing.</span>
+                    <span className="text-sm font-semibold text-emerald-900">Visible to Public</span>
+                    <span className="text-xs text-emerald-700 mt-1">Show this ticket category in the public event listing and allow purchases</span>
                   </div>
                 </label>
               </div>
 
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                <label className="flex items-center gap-3 cursor-pointer">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-5">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={!!categoryModal.isPrivate}
                     onChange={(e) => setCategoryModal((current) => ({ ...current, isPrivate: e.target.checked }))}
-                    className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                    className="mt-1 h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-bold text-indigo-900">Private Ticket</span>
-                    <span className="text-[10px] text-indigo-600/70 leading-tight">Requires a special access code to view and purchase.</span>
+                    <span className="text-sm font-semibold text-indigo-900">Private Ticket</span>
+                    <span className="text-xs text-indigo-700 mt-1">Requires a special access code to view and purchase this ticket</span>
                   </div>
                 </label>
 
                 {categoryModal.isPrivate && (
-                  <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-indigo-200">
+                  <div className="mt-4 rounded-lg bg-white p-4 ring-1 ring-indigo-200">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-500 uppercase">Access Code</span>
-                      <span className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-mono font-bold text-white tracking-widest">
-                        {categoryModal.accessCode || 'AUTO-GEN'}
+                      <span className="text-sm font-semibold text-slate-700">Access Code</span>
+                      <span className="rounded-lg bg-indigo-600 px-3 py-1 text-sm font-mono font-bold text-white tracking-widest">
+                        {categoryModal.accessCode || 'AUTO-GENERATED'}
                       </span>
                     </div>
+                    <p className="text-xs text-slate-500 mt-2">Share this code with invited guests to allow access to this private ticket</p>
                   </div>
                 )}
               </div>
+            </div>
 
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <span className="text-xs font-bold uppercase text-slate-500">Management Delegation</span>
-                <p className="mt-1 text-[10px] text-slate-400">Assign specific sub-organisers to manage this category's attendees and private status.</p>
-                
-                <div className="mt-3 space-y-2">
-                  {teamMembers.filter(m => m.role === 'SubOrganiser').map((member) => (
-                    <label key={member._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-2 text-sm hover:bg-slate-50 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={(categoryModal.assignedSubOrganisers || []).includes(member._id)}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...new Set([...(categoryModal.assignedSubOrganisers || []), member._id])]
-                            : (categoryModal.assignedSubOrganisers || []).filter(id => id !== member._id);
-                          setCategoryModal(current => ({ ...current, assignedSubOrganisers: next }));
-                        }}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-700">{member.name}</span>
-                        <span className="text-[10px] text-slate-500">{member.email}</span>
-                      </div>
-                    </label>
-                  ))}
-                  {teamMembers.filter(m => m.role === 'SubOrganiser').length === 0 && (
-                    <p className="text-xs italic text-slate-400 py-2">No sub-organisers found in your team.</p>
-                  )}
-                </div>
+            {/* Management Delegation */}
+            <div className="rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-sm font-semibold text-slate-700">Management Delegation</span>
+              </div>
+              <p className="text-xs text-slate-600 mb-4">Assign specific sub-organisers to manage attendees for this category</p>
+              
+              <div className="space-y-3">
+                {teamMembers.filter(m => m.role === 'SubOrganiser').map((member) => (
+                  <label key={member._id} className="flex items-center gap-3 rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(categoryModal.assignedSubOrganisers || []).includes(member._id)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...new Set([...(categoryModal.assignedSubOrganisers || []), member._id])]
+                          : (categoryModal.assignedSubOrganisers || []).filter(id => id !== member._id);
+                        setCategoryModal(current => ({ ...current, assignedSubOrganisers: next }));
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-700">{member.name}</span>
+                      <span className="text-xs text-slate-500">{member.email}</span>
+                    </div>
+                  </label>
+                ))}
+                {teamMembers.filter(m => m.role === 'SubOrganiser').length === 0 && (
+                  <p className="text-xs italic text-slate-400 py-3 text-center">No sub-organisers available. Add team members first.</p>
+                )}
               </div>
             </div>
 
-            <Button className="w-full shadow-lg shadow-blue-500/20" onClick={saveCategory}>
-              {categoryModal.id ? 'Save Changes' : 'Create Category'}
-            </Button>
+            <div className="border-t pt-6 flex gap-3">
+              <Button 
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3"
+                onClick={saveCategory}
+              >
+                {categoryModal.id ? 'Save Changes' : 'Create Ticket Category'}
+              </Button>
+              <Button 
+                variant="outline" 
+                className="flex-1 py-3"
+                onClick={() => setCategoryModal(null)}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

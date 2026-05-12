@@ -14,6 +14,7 @@ export const deleteSuperAdminOrganiser = (id) => api.delete(`/super-admin/organi
 
 export const createSuperAdminUser = (payload) => api.post('/super-admin/users', payload);
 export const updateSuperAdminUser = (id, payload) => api.patch(`/super-admin/users/${id}`, payload);
+export const resendSuperAdminUserCredentials = (id) => api.post(`/super-admin/users/${id}/resend-credentials`);
 export const updateSuperAdminUserStatus = (id, status) => api.patch(`/super-admin/users/${id}/status`, { status });
 export const deleteSuperAdminUser = (id) => api.delete(`/super-admin/users/${id}`);
 

@@ -5,7 +5,7 @@ const Order = require('../models/Order');
 const EntryLog = require('../models/EntryLog');
 const User = require('../models/User');
 const { normalizeRole } = require('../utils/rbac');
-const { notifySubOrganiserInvite, notifyInvite } = require('../services/notificationService');
+const { notifySubOrganiserInvite, notifyInvite, createNotification } = require('../services/notificationService');
 
 const resolveEventId = (user) => (user.assignedEvents && user.assignedEvents[0]);
 
@@ -110,7 +110,27 @@ const createSubOrganiser = async (req, res, next) => {
       status: 'Active',
     };
     const user = await User.create(payload);
-    await notifySubOrganiserInvite({ user, event: null, phone: user.phone, email: user.email });
+    
+    // Get the event to find the main organiser
+    const event = await Event.findById(eventId).select('mainOrganiser name').lean();
+    
+    // Create notification for main organiser
+    if (event?.mainOrganiser) {
+      await createNotification(
+        event.mainOrganiser,
+        'New Team Member Added',
+        `${req.user.name} added ${user.name} as a Sub-Organiser for ${event.name}`,
+        'info',
+        { 
+          eventId: eventId, 
+          actionType: 'team_member_added',
+          addedBy: req.user._id,
+          newMemberId: user._id 
+        }
+      );
+    }
+    
+    await notifySubOrganiserInvite({ user, event, phone: user.phone, email: user.email });
     res.status(201).json({ success: true, data: { user } });
   } catch (err) { next(err); }
 };

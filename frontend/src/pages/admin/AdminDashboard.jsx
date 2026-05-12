@@ -27,6 +27,7 @@ import {
   updateSuperAdminOrganiser,
   updateSuperAdminSettings,
   updateSuperAdminUser,
+  resendSuperAdminUserCredentials,
   updateSuperAdminUserStatus,
 } from '../../api/superAdmin';
 
@@ -176,6 +177,7 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
           <Table><thead><Tr><Th>Organiser</Th><Th>Status</Th><Th>Events</Th><Th>Tickets Sold</Th><Th>Live Events</Th><Th>Actions</Th></Tr></thead><tbody>
             {organiserRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.stats.eventsCreated}</Td><Td>{row.stats.ticketsSold}</Td><Td>{row.stats.liveEvents}</Td><Td><div className="flex gap-2">
               <Button variant="outline" onClick={() => openModal('organiser', 'edit', row)}>Manage</Button>
+              <Button variant="outline" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend login</Button>
               <Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('Organiser status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button>
               <Button variant="outline" className="text-rose-500" onClick={() => deleteOrganiser(row)}>Delete</Button>
             </div></Td></Tr>)}
@@ -185,7 +187,7 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
       {section === 'users' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
           <Table><thead><Tr><Th>User</Th><Th>Role</Th><Th>Status</Th><Th>Assigned Events</Th><Th>Last Login</Th><Th>Actions</Th></Tr></thead><tbody>
-            {userRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td>{row.role}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.assignedEvents.map((event) => event.name).join(', ') || '-'}</Td><Td>{fmt(row.lastLogin)}</Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('user', 'edit', row)}>Edit</Button><Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('User status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button><Button variant="outline" className="text-rose-500" onClick={() => deleteUser(row)}>Delete</Button></div></Td></Tr>)}
+            {userRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td>{row.role}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.assignedEvents.map((event) => event.name).join(', ') || '-'}</Td><Td>{fmt(row.lastLogin)}</Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('user', 'edit', row)}>Edit</Button><Button variant="outline" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend login</Button><Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('User status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button><Button variant="outline" className="text-rose-500" onClick={() => deleteUser(row)}>Delete</Button></div></Td></Tr>)}
           </tbody></Table>
         </Card>
       )}

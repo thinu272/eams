@@ -10,6 +10,7 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { protect, restrictTo, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
+const { sendAttendeeVerificationConfirmation } = require('../utils/email');
 const { upload, excelUpload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
 const { validatePhoto } = require('../services/photoValidationService');
@@ -118,6 +119,11 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
 
     const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: attendee.event });
     await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: nextTicketStatus });
+
+    // Send attendee verification confirmation email if photo verification is required
+    if (requiresPhotoVerification(attendee.event) && attendee.photoVerificationStatus === 'pending') {
+      await sendAttendeeVerificationConfirmation(attendee, attendee.event).catch(err => console.error('ATTENDEE VERIFICATION EMAIL ERROR:', err));
+    }
 
     // Check if all tickets in the order are now submitted
     if (attendee.order) {
