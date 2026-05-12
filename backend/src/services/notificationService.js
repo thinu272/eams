@@ -10,12 +10,15 @@ const {
   sendPasswordResetEmail,
   sendVerificationEmail,
   sendTempPasswordEmail,
+  sendAttendeePendingVerification,
 } = require('../utils/email');
 const { createShortLink } = require('./shortLinkService');
 const { sendSMS } = require('./smsService');
 const { sendWhatsApp } = require('./whatsappService');
 const { deliverAttendeeTicketEmail, sendBuyerPurchaseSummaryEmail } = require('./ticketDeliveryService');
 const SystemConfig = require('../models/SystemConfig');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 
 const parseChannels = async (notificationChannel, event = null) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
@@ -40,6 +43,29 @@ const parseChannels = async (notificationChannel, event = null) => {
   
   return channels;
 };
+
+// Helper function to create persistent notifications
+const createNotification = async (userId, title, message, type = 'info', metadata = {}) => {
+  try {
+    // Ensure userId is valid
+    if (!userId) return null;
+    
+    const notification = new Notification({
+      user: userId,
+      title,
+      message,
+      type,
+      metadata,
+    });
+    
+    await notification.save();
+    return notification;
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    return null;
+  }
+};
+
 
 const templateReplace = (template, data) => {
   if (!template) return '';
@@ -95,6 +121,18 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
     }
   };
 
+  // Create persistent notification for attendee
+  if (attendee?.userId || attendee?._id) {
+    const userId = attendee.userId || attendee._id;
+    await createNotification(
+      userId,
+      `Ticket Invitation - ${event.name}`,
+      `You are invited to ${event.name} (${attendee.categoryName}). Please confirm your attendance.`,
+      'info',
+      { attendeeId: attendee._id, eventId: event._id, confirmationToken: attendee.confirmationToken }
+    );
+  }
+
   if (channels.includes('email') && email) {
     tasks.push(sendAttendeeInvite(inviteData).catch((error) => {
       console.error('INVITE EMAIL ERROR:', error);
@@ -122,6 +160,18 @@ const notifyInvite = async ({ attendee, event, phone, email, notificationChannel
 const notifyFinalTicket = async ({ attendee, event, phone, notificationChannel, force = false }) => {
   const channels = await parseChannels(notificationChannel, event);
   let deliveryResult = { delivered: false, skipped: false, reason: null };
+
+  // Create persistent notification for attendee
+  if (attendee?.userId || attendee?._id) {
+    const userId = attendee.userId || attendee._id;
+    await createNotification(
+      userId,
+      `Ticket Confirmed - ${event.name}`,
+      `Your ticket for ${event.name} has been confirmed! Your PDF ticket has been sent to your email.`,
+      'success',
+      { attendeeId: attendee._id, eventId: event._id }
+    );
+  }
 
   if (channels.includes('email')) {
     try {
@@ -240,6 +290,19 @@ const notifySubOrganiserInvite = async ({ user, event, phone, email }) => {
 const notifyStatusChange = async ({ attendee, event, status, message }) => {
   const channels = await parseChannels('both', event);
   const tasks = [];
+  
+  // Create persistent notification for attendee if user exists
+  if (attendee?.userId || attendee?.email) {
+    const userId = attendee.userId || attendee._id;
+    await createNotification(
+      userId,
+      `Ticket Status Update`,
+      `Your ticket status has been updated to: ${status}. ${message || ''}`.trim(),
+      'info',
+      { attendeeId: attendee._id, eventId: event._id, status }
+    );
+  }
+  
   if (channels.includes('email') && attendee.email) {
     tasks.push(sendStatusChange(attendee, event, status, message).catch((error) => {
       console.error('STATUS EMAIL ERROR:', error);
@@ -298,15 +361,19 @@ const notifyPhotoRejectionNotification = async ({ attendee, event, reason }) => 
     if (order) {
       const resubmitLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/attendee/resubmit-photo/${resubmitToken}`;
       const buyer = { name: order.buyerName, email: order.buyerEmail, phone: order.buyerPhone };
-      await sendBuyerPhotoRejection(buyer, event, attendee, reason, resubmitLink).catch((error) => {
-        console.error('BUYER PHOTO REJECTION EMAIL ERROR:', error);
-      });
-      if (buyer.phone) {
-        await sendSMS(
-          buyer.phone,
-          `ENTRYNEX: Attendee photo rejected for ${event?.name || 'event'}. Reason: ${reason}. Resubmit: ${resubmitLink}`,
-          { rateKey: `buyer-reject:${buyer.phone}` }
-        ).catch((error) => console.error('BUYER PHOTO REJECTION SMS ERROR:', error));
+      
+      // Only send buyer notification if buyer email is different from attendee email
+      if (buyer.email && buyer.email.toLowerCase() !== attendee.email?.toLowerCase()) {
+        await sendBuyerPhotoRejection(buyer, event, attendee, reason, resubmitLink).catch((error) => {
+          console.error('BUYER PHOTO REJECTION EMAIL ERROR:', error);
+        });
+        if (buyer.phone) {
+          await sendSMS(
+            buyer.phone,
+            `ENTRYNEX: Attendee photo rejected for ${event?.name || 'event'}. Reason: ${reason}. Resubmit: ${resubmitLink}`,
+            { rateKey: `buyer-reject:${buyer.phone}` }
+          ).catch((error) => console.error('BUYER PHOTO REJECTION SMS ERROR:', error));
+        }
       }
     }
   }
@@ -320,6 +387,24 @@ const notifyBuyerTicketProgress = async ({
   stage,
 }) => {
   if (!order?.buyerEmail || !stage) return;
+
+  // Create persistent notification for buyer
+  if (order.buyerId) {
+    const stageMessages = {
+      'invited': `Attendee invitation sent for ${attendee?.fullName || 'Attendee'}`,
+      'confirmed': `Ticket confirmed for ${attendee?.fullName || 'Attendee'}`,
+      'verified': `Photo verified for ${attendee?.fullName || 'Attendee'}`,
+      'completed': `All tickets confirmed and ready!`,
+    };
+    
+    await createNotification(
+      order.buyerId,
+      `Ticket Progress Update - ${event.name}`,
+      stageMessages[stage] || `Ticket status updated: ${stage}`,
+      'info',
+      { orderId: order._id, attendeeId: attendee?._id, eventId: event._id, stage }
+    );
+  }
 
   await sendBuyerTicketProgressUpdate({
     buyer: {
@@ -342,7 +427,7 @@ const notifyUserCredentials = async (user, tempPassword) => {
   const tasks = [];
   const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
 
-  tasks.push(sendTempPasswordEmail(user, tempPassword, loginUrl).catch(err => console.error('CREDENTIALS EMAIL ERROR:', err)));
+  const emailResult = await sendTempPasswordEmail(user, tempPassword, loginUrl);
 
   if (user.phone) {
     tasks.push(sendSMS(
@@ -353,6 +438,7 @@ const notifyUserCredentials = async (user, tempPassword) => {
   }
 
   await Promise.all(tasks);
+  return { email: emailResult, smsQueued: tasks.length > 0 };
 };
 
 const notifyVerification = async (user, verifyUrl) => {
@@ -399,5 +485,34 @@ module.exports = {
   notifyPasswordReset,
   notifyOTP,
   notifyRoleAssignment,
+};
+
+const notifyAttendeePendingVerification = async ({ attendee, event }) => {
+  if (!attendee?.email) return;
+
+  // Send email to attendee
+  await sendAttendeePendingVerification(attendee, event).catch((error) => {
+    console.error('ATTENDEE PENDING VERIFICATION EMAIL ERROR:', error);
+  });
+};
+
+module.exports = {
+  notifyOrderConfirmation,
+  notifyInvite,
+  notifyFinalTicket,
+  notifyBuyerFinalSummary,
+  notifyConfirmationReminder,
+  notifySubOrganiserInvite,
+  notifyStatusChange,
+  notifyPhotoRejection,
+  notifyPhotoRejectionNotification,
+  notifyBuyerTicketProgress,
+  notifyUserCredentials,
+  notifyVerification,
+  notifyPasswordReset,
+  notifyOTP,
+  notifyRoleAssignment,
+  notifyAttendeePendingVerification,
   parseChannels,
+  createNotification,
 };

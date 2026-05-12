@@ -296,53 +296,115 @@ const SubOrgTeam = () => {
         </Card>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={form._id ? 'Edit Team Member' : 'Add New Team Member'}>
-        <div className="space-y-5 max-h-[80vh] overflow-y-auto pr-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Basic Details</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Name</span>
-                <input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Full name" />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Role</span>
-                <select value={form.role} onChange={e => updateRole(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={form._id ? 'Edit Team Member Access' : 'Add New Team Member'} size="lg">
+        <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+          {/* Header Info */}
+          <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-semibold text-blue-900">Team Member Setup</h3>
+              <p className="text-sm text-blue-700">Configure access and permissions for event staff</p>
+            </div>
+          </div>
+
+          {/* Basic Details */}
+          <div className="rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="text-sm font-semibold text-slate-700">Basic Information</span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Full Name <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  value={form.name} 
+                  onChange={e => setForm(f => ({...f, name: e.target.value}))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="Enter full name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select 
+                  value={form.role} 
+                  onChange={e => updateRole(e.target.value)} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                >
                   <option value="Staff">Staff</option>
                   <option value="Volunteer">Volunteer</option>
                   <option value="Auditor">Auditor</option>
                 </select>
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Email</span>
-                <input value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Email address" />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Phone</span>
-                <input value={form.phone} onChange={e => setForm(f => ({...f, phone: e.target.value}))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Phone number" />
-              </label>
-              {!form._id && (
-                <label className="block space-y-1.5 sm:col-span-2">
-                  <span className="text-[10px] font-bold uppercase text-slate-500">Temporary Password</span>
-                  <input value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Initial password" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Email Address <span className="text-red-500">*</span>
                 </label>
+                <input 
+                  value={form.email} 
+                  onChange={e => setForm(f => ({...f, email: e.target.value}))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="staff@example.com"
+                  type="email"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  value={form.phone} 
+                  onChange={e => setForm(f => ({...f, phone: e.target.value}))} 
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                  placeholder="+1 234 567 8900"
+                />
+              </div>
+
+              {!form._id && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Temporary Password <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    value={form.password} 
+                    onChange={e => setForm(f => ({...f, password: e.target.value}))} 
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                    placeholder="Create a secure temporary password"
+                    type="password"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Member will be asked to change this on first login</p>
+                </div>
               )}
             </div>
           </div>
 
           {isCheckpointRole && (
             <>
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-500">Checkpoint Assignment</span>
-                    <p className="mt-1 text-sm text-slate-500">Choose whether this team member works at gates, zones, or both.</p>
-                  </div>
-                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-700">
-                    {form.role}
-                  </span>
+              {/* Checkpoint Assignment */}
+              <div className="rounded-xl border border-slate-200 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-700">Checkpoint Assignment</span>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                
+                <p className="text-sm text-slate-600 mb-4">Choose whether this team member works at gates, zones, or both</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                   {[
                     ['entry', 'Entry Point Staff'],
                     ['zone', 'Zone Checkpoint'],
@@ -352,68 +414,79 @@ const SubOrgTeam = () => {
                       key={value}
                       type="button"
                       onClick={() => setScope(value)}
-                      className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition ${
+                      className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
                         form.operationScope === value
-                          ? 'border-indigo-600 bg-indigo-600 text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'
+                          ? 'border-blue-600 bg-blue-600 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50'
                       }`}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-sm text-slate-500">{scopeDescriptions[form.operationScope]}</p>
+                
+                <div className="rounded-lg bg-blue-50 p-3 border border-blue-200">
+                  <p className="text-sm text-blue-800">{scopeDescriptions[form.operationScope]}</p>
+                </div>
 
                 {(form.operationScope === 'entry' || form.operationScope === 'both') && (
-                  <div className="mt-4 space-y-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-500">Entry Point / Gate</span>
-                    {(form.assignedGates || []).map((gate, index) => (
-                      <div key={`${index}-${gate}`} className="flex flex-col gap-2 sm:flex-row">
-                        <input
-                          value={gate}
-                          onChange={(e) => updateGateAt(index, e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
-                          placeholder="e.g. Main Gate"
-                        />
-                        {(form.assignedGates || []).length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setForm((curr) => ({ ...curr, assignedGates: curr.assignedGates.filter((_, idx) => idx !== index) }))}
-                            className="rounded-xl border border-rose-200 px-4 py-3 text-xs font-bold text-rose-600"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setForm((curr) => ({ ...curr, assignedGates: [...(curr.assignedGates || []), ''] }))}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-600"
-                    >
-                      Add Entry Point
-                    </button>
+                  <div className="mt-5">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                      Entry Points / Gates
+                    </label>
+                    <div className="space-y-3">
+                      {(form.assignedGates || []).map((gate, index) => (
+                        <div key={`${index}-${gate}`} className="flex gap-3">
+                          <input
+                            value={gate}
+                            onChange={(e) => updateGateAt(index, e.target.value)}
+                            className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                            placeholder="e.g. Main Gate"
+                          />
+                          {(form.assignedGates || []).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setForm((curr) => ({ ...curr, assignedGates: curr.assignedGates.filter((_, idx) => idx !== index) }))}
+                              className="rounded-lg border border-red-300 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setForm((curr) => ({ ...curr, assignedGates: [...(curr.assignedGates || []), ''] }))}
+                        className="rounded-lg border border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        + Add Entry Point
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div>
-                  <span className="text-[10px] font-bold uppercase text-slate-500">
-                    {form.operationScope === 'zone' || form.operationScope === 'both' ? 'Zone Access To Allow' : 'Zone Assignment (My Scope)'}
-                  </span>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {form.operationScope === 'entry'
-                      ? 'Zone selection is disabled because this member is assigned only to entry points.'
-                      : 'Select the zones this member is allowed to check or control.'}
-                  </p>
+              {/* Zone Access */}
+              <div className="rounded-xl border border-slate-200 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  <span className="text-sm font-semibold text-slate-700">Zone Access</span>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                
+                <p className="text-sm text-slate-600 mb-4">
+                  {form.operationScope === 'entry'
+                    ? 'Zone selection is disabled because this member is assigned only to entry points.'
+                    : 'Select the zones this member is allowed to check or control.'}
+                </p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {myZones.map((zone) => (
-                    <label key={zone.id} className={`flex items-center gap-3 rounded-xl border p-3 text-sm transition ${
+                    <label key={zone.id} className={`flex items-center gap-3 rounded-lg border p-3 text-sm transition-colors cursor-pointer ${
                       form.operationScope === 'entry'
-                        ? 'border-slate-100 bg-slate-50 text-slate-400'
-                        : 'border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/40'
+                        ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                        : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'
                     }`}>
                       <input
                         type="checkbox"
@@ -430,31 +503,47 @@ const SubOrgTeam = () => {
                             responsibilities: { ...curr.responsibilities, zoneIds: next },
                           }));
                         }}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="font-medium">{zone.name}</span>
                     </label>
                   ))}
-                  {myZones.length === 0 && <p className="text-[10px] text-slate-400 italic">No zones assigned to you yet.</p>}
+                  {myZones.length === 0 && (
+                    <p className="text-xs italic text-slate-400 py-3 col-span-2 text-center">No zones assigned to you yet.</p>
+                  )}
                 </div>
               </div>
             </>
           )}
 
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <span className="text-[10px] font-bold uppercase text-slate-500">Capabilities</span>
-            <p className="mt-1 text-sm text-slate-500">Choose the actions this team member can perform inside your event scope.</p>
-            <div className="mt-3 grid gap-2">
+          {/* Capabilities */}
+          <div className="rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span className="text-sm font-semibold text-slate-700">Capabilities</span>
+            </div>
+            
+            <p className="text-sm text-slate-600 mb-4">Choose the actions this team member can perform</p>
+            
+            <div className="space-y-3">
               {[
                 ['canVerifyPhotos', 'Verify Attendee Photos'],
                 ['canEntryAccess', 'Process Gate Entry'],
                 ['canInviteAttendees', 'Send Invites'],
               ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 text-sm text-slate-700">
+                <label key={key} className={`flex items-center gap-3 rounded-lg border p-3 text-sm transition-colors cursor-pointer ${
+                  key === 'canEntryAccess' && isCheckpointRole && form.operationScope === 'zone'
+                    ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                    : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'
+                }`}>
                   <input 
                     type="checkbox" 
                     disabled={key === 'canEntryAccess' && isCheckpointRole && form.operationScope === 'zone'}
                     checked={!!form.permissions[key]} 
                     onChange={(e) => setForm((curr) => ({ ...curr, permissions: { ...curr.permissions, [key]: e.target.checked } }))} 
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                   {label}
                 </label>
@@ -462,12 +551,19 @@ const SubOrgTeam = () => {
             </div>
           </div>
 
-          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button className="sm:min-w-[220px]" onClick={saveMember}>
+          <div className="border-t pt-6 flex gap-3">
+            <Button 
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3"
+              onClick={saveMember}
+            >
               {form._id ? 'Update Team Member' : 'Create Team Member'}
+            </Button>
+            <Button 
+              variant="outline" 
+              className="flex-1 py-3"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancel
             </Button>
           </div>
         </div>

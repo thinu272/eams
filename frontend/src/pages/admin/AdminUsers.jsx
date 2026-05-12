@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { getUsers, createUser, updateUser, deleteUser } from '../../api/users';
+import { getUsers, createUser, updateUser, deleteUser, resendUserCredentials } from '../../api/users';
 import { getAllEventsAdmin } from '../../api/events';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
@@ -118,6 +118,15 @@ const AdminUsers = () => {
     }
   };
 
+  const handleResendCredentials = async (userId) => {
+    try {
+      await resendUserCredentials(userId);
+      toast.success('Login details email sent');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send login details');
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -199,6 +208,12 @@ const AdminUsers = () => {
                         className={`text-xs ${user.status === 'Active' ? 'text-amber-600 hover:text-amber-700' : 'text-emerald-600 hover:text-emerald-700'} flex items-center gap-1`}
                       >
                         {user.status === 'Active' ? 'Disable' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => handleResendCredentials(user._id)}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                      >
+                        Resend login
                       </button>
                       <button
                         onClick={() => handleDelete(user._id)}

@@ -10,7 +10,6 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
     }
     if (!token) {
-      console.log('PROTECT_FAILED: No token found for', req.url);
       return res.status(401).json({ success: false, message: 'Not authorised. No token.' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -108,13 +107,11 @@ const requireEventAccess = async (req, res, next) => {
     // Let's try one last fallback to the first assigned event.
     const finalFallback = user.assignedEvents && user.assignedEvents[0];
     if (finalFallback && finalFallback.toString() !== eventId.toString()) {
-      console.log(`[requireEventAccess] Unauthorized scope ${eventId}, falling back to ${finalFallback}`);
       req.resolvedEventId = finalFallback;
       req.query.eventId = finalFallback; // Inject fallback for downstream handlers
       return next();
     }
 
-    console.log(`[requireEventAccess] DENIED: User ${user._id} attempting scope ${eventId}`);
     return res.status(403).json({ success: false, message: 'Target event is outside your authorized scope.' });
   } catch (error) {
     next(error);

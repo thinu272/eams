@@ -51,7 +51,7 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
   
   console.log(`EMAIL_SEND: Attempting send to ${to} from ${from} (Provider: ${preferredProvider}, Mode: ${templateMode})`);
   
-  const sendGrid = preferredProvider === 'sendgrid' ? getSendGridClient(config) : null;
+  const sendGrid = getSendGridClient(config);
 
   // Add Logo as CID attachment for all emails
   const path = require('path');
@@ -72,7 +72,8 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
     attachments.push(logoAttachment);
   }
 
-  if (sendGrid) {
+  const sendViaSendGrid = async () => {
+    if (!sendGrid) return false;
     try {
       const msg = {
         to,
@@ -94,39 +95,55 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
 
       await sendGrid.send(msg);
       console.log(`EMAIL_SUCCESS: Sent via SendGrid to ${to}`);
-      return;
+      return true;
     } catch (error) {
       console.error('EMAIL_SENDGRID_ERROR: Falling back to SMTP if available', error);
-      // Fall through to SMTP
+      return false;
     }
+  };
+
+  if (preferredProvider === 'sendgrid' && await sendViaSendGrid()) {
+    return { provider: 'sendgrid' };
   }
 
   const transporter = await createTransporter(config);
-  if (!transporter) {
-    console.error(`EMAIL_FATAL: No email provider available for ${to}. Checked SendGrid and SMTP.`);
-    return;
+  if (transporter) {
+    try {
+      const smtpAttachments = attachments.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+        encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
+        cid: attachment.contentId || attachment.cid,
+        contentType: attachment.type || attachment.contentType,
+        disposition: attachment.disposition,
+      }));
+      await transporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+        attachments: smtpAttachments,
+      });
+      console.log(`EMAIL_SUCCESS: Sent via SMTP to ${to}`);
+      return { provider: preferredProvider === 'mock' ? 'mock' : 'smtp' };
+    } catch (error) {
+      console.error(`EMAIL_SMTP_ERROR: Failed to send to ${to}`, error);
+    }
   }
-  
-  try {
-    const smtpAttachments = attachments.map((attachment) => ({
-      filename: attachment.filename,
-      content: attachment.content,
-      encoding: attachment.content && typeof attachment.content === 'string' ? 'base64' : attachment.encoding,
-      cid: attachment.contentId || attachment.cid,
-      contentType: attachment.type || attachment.contentType,
-      disposition: attachment.disposition,
-    }));
-    await transporter.sendMail({
-      from,
-      to,
-      subject,
-      html,
-      attachments: smtpAttachments,
-    });
-    console.log(`EMAIL_SUCCESS: Sent via SMTP to ${to}`);
-  } catch (error) {
-    console.error(`EMAIL_SMTP_ERROR: Failed to send to ${to}`, error);
+
+  if (preferredProvider !== 'sendgrid' && await sendViaSendGrid()) {
+    return { provider: 'sendgrid' };
   }
+
+  if (process.env.NODE_ENV !== 'production') {
+    const mockTransporter = await createTransporter({ email: { provider: 'mock' } });
+    await mockTransporter.sendMail({ from, to, subject, html, attachments: [] });
+    return { provider: 'mock' };
+  }
+
+  const error = new Error(`No email provider available for ${to}. Configure SMTP or SendGrid.`);
+  console.error('EMAIL_FATAL:', error.message);
+  throw error;
 };
 
 const baseTemplate = (content) => `
@@ -332,21 +349,29 @@ const sendFinalConfirmation = async (payload) => {
   const templateMode = config.email?.templateMode || 'code';
   const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.ticket : null;
 
+  let qrDataUrl = attendee.qrCode;
+  if (!qrDataUrl && attendee.qrToken) {
+    const QRCode = require('qrcode');
+    qrDataUrl = await QRCode.toDataURL(attendee.qrToken);
+  }
+
   const html = baseTemplate(`
     <h2 class="h2">Your Ticket is Ready!</h2>
-    <div class="alert">Your ticket is confirmed. Please present the attached PDF with the embedded QR code at entry.</div>
+    <div class="alert">Your ticket is confirmed. Please present this email or the attached PDF with the QR code at entry.</div>
     <p>Dear <strong>${attendee.fullName}</strong>,</p>
     <p>Your ticket for <strong>${event.name}</strong> is now fully confirmed.</p>
     
     <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event.name}</span></div>
     <div class="info-row"><span class="info-label">Date & Time</span><span class="info-value">${eventDate} at ${eventTime}</span></div>
     <div class="info-row"><span class="info-label">Venue</span><span class="info-value">${event.venue?.name || 'TBD'}, ${event.venue?.city || ''}</span></div>
+    <div class="info-row"><span class="info-label">Attendee Name</span><span class="info-value">${attendee.fullName}</span></div>
     <div class="info-row"><span class="info-label">Category</span><span class="info-value">${ticketCategory || attendee.categoryName}</span></div>
     <div class="info-row"><span class="info-label">Zones</span><span class="info-value">${zonesHtml || 'General Access'}</span></div>
     
     <div class="qr-section">
-      <p style="font-weight:700; color: #0a1128; margin-bottom:16px;">ATTACHED PDF TICKET</p>
-      <p style="font-size:12px; color: #64748b; margin-top:16px;">The attached PDF includes your event details and the same QR used in your attendee dashboard.</p>
+      ${qrDataUrl ? `<img src="${qrDataUrl}" alt="Entry QR Code" style="width: 180px; height: 180px; margin-bottom: 16px;" />` : ''}
+      <p style="font-weight:700; color: #0a1128; margin-bottom:8px;">ENTRY QR CODE</p>
+      <p style="font-size:12px; color: #64748b; margin-top:8px;">Present this QR code at the entrance for scanning. A PDF copy is also attached for your convenience.</p>
     </div>
     
     <div style="margin-top: 32px; padding: 20px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b; text-align: center;">
@@ -675,9 +700,9 @@ const sendTempPasswordEmail = async (user, tempPassword, loginUrl) => {
     </div>
   `);
 
-  await sendWithProvider({
+  return sendWithProvider({
     to: user.email,
-    subject: 'ENTRYNEX: Your Account and Temporary Password',
+    subject: 'ENTRYNEX: Your Dashboard Login Details',
     html,
   });
 };
@@ -710,6 +735,91 @@ const sendRoleAssignmentEmail = async (user, newRole, assignedEvents = []) => {
   });
 };
 
+const sendAttendeeVerificationConfirmation = async (attendee, event) => {
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+  
+  const html = baseTemplate(`
+    <h2 class="h2">Details Received - Verification in Progress</h2>
+    <div class="alert">Thank you for submitting your details! Your ticket is being verified.</div>
+
+    <p>Dear <strong>${attendee.fullName || 'Attendee'}</strong>,</p>
+    <p>We have successfully received your identity details and photo for <strong>${event?.name || 'the event'}</strong>. Thank you!</p>
+
+    <div style="margin-top: 24px; padding: 20px; background: #f1f5f9; border-radius: 12px; border: 1px solid #e2e8f0;">
+      <span class="info-label">WHAT'S NEXT?</span>
+      <p style="margin-top: 8px; color: #475569;">
+        Our event team is now verifying your submitted details. Once your information is approved, you will receive your entry ticket with QR code via email.
+      </p>
+      <p style="margin-top: 16px; font-size: 12px; color: #64748b;">
+        <strong>Note:</strong> Typical verification time is 24-48 hours. You can check your ticket status in the event portal.
+      </p>
+    </div>
+
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event?.name || 'Event'}</span></div>
+    <div class="info-row"><span class="info-label">Date</span><span class="info-value">${eventDate}</span></div>
+    <div class="info-row"><span class="info-label">Category</span><span class="info-value">${attendee.categoryName || 'Ticket'}</span></div>
+
+    <div style="margin-top: 32px; padding: 20px; background: #f0fdf4; border-radius: 12px; border: 1px solid #bbf7d0;">
+      <h3 style="margin-top: 0; color: #166534; font-size: 14px;">✓ REQUIREMENTS MET</h3>
+      <ul style="margin: 8px 0; padding-left: 20px; color: #166534; font-size: 13px;">
+        <li>Personal information submitted</li>
+        <li>ID details provided</li>
+        <li>Photo uploaded successfully</li>
+      </ul>
+    </div>
+
+    <p style="font-size: 12px; color: #64748b; margin-top: 24px; text-align: center;">
+      If you have any questions, please contact the event organizer.
+    </p>
+  `);
+
+  await sendWithProvider({
+    to: attendee.email,
+    subject: `We've Received Your Details - ${event?.name || 'Event'}`,
+    html,
+  });
+};
+
+const sendAttendeePendingVerification = async (attendee, event) => {
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+
+  const html = baseTemplate(`
+    <h2 class="h2">Details Received - Verification Pending</h2>
+    <div class="alert">Thank you for submitting your information. Your details are now being reviewed by the event organizers.</div>
+    
+    <p>Dear <strong>${attendee.fullName}</strong>,</p>
+    <p>We've received your confirmation details for <strong>${event?.name || 'the event'}</strong>. Your information has been submitted successfully and is now pending verification by the event organizers.</p>
+    
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event?.name || 'Event'}</span></div>
+    <div class="info-row"><span class="info-label">Date</span><span class="info-value">${eventDate}</span></div>
+    <div class="info-row"><span class="info-label">Category</span><span class="info-value">${attendee.categoryName || 'Ticket'}</span></div>
+    <div class="info-row"><span class="info-label">Status</span><span class="info-value">Pending Verification</span></div>
+
+    <div style="margin-top: 32px; padding: 20px; background: #fef3c7; border-radius: 12px; border: 1px solid #f59e0b;">
+      <h3 style="margin-top: 0; color: #92400e; font-size: 14px;">⏳ WHAT HAPPENS NEXT?</h3>
+      <ul style="margin: 8px 0; padding-left: 20px; color: #92400e; font-size: 13px;">
+        <li>Event organizers will review your photo and details</li>
+        <li>You will receive an email once verification is complete</li>
+        <li>Your final ticket with QR code will be sent after approval</li>
+      </ul>
+    </div>
+
+    <p style="font-size: 12px; color: #64748b; margin-top: 24px; text-align: center;">
+      If you have any questions, please contact the event organizer.
+    </p>
+  `);
+
+  await sendWithProvider({
+    to: attendee.email,
+    subject: `Details Submitted - ${event?.name || 'Event'}`,
+    html,
+  });
+};
+
 module.exports = {
   sendOrderConfirmation,
   sendAttendeeInvite,
@@ -725,4 +835,6 @@ module.exports = {
   sendVerificationEmail,
   sendTempPasswordEmail,
   sendRoleAssignmentEmail,
+  sendAttendeeVerificationConfirmation,
+  sendAttendeePendingVerification,
 };

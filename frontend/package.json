@@ -5,9 +5,10 @@
   "dependencies": {
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^2.0.18",
-    "axios": "^1.6.2",
+    "axios": "^1.16.0",
     "date-fns": "^2.30.0",
     "html5-qrcode": "^2.3.8",
+    "lodash": "^4.18.1",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

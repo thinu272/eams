@@ -11,6 +11,7 @@ const jwt = require("jsonwebtoken");
 const requestLogger = require("./middleware/requestLogger");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
+const maintenanceMode = require("./middleware/maintenanceMode");
 const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
 
 // Load environment variables
@@ -38,6 +39,7 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(requestLogger);
+app.use(maintenanceMode);
 // Note: File uploads now go to S3 via s3Upload middleware
 // Local uploads folder kept for backward compatibility
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

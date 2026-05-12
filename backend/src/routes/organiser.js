@@ -18,7 +18,7 @@ const Notification = require('../models/Notification');
 const Role = require('../models/Role');
 const Order = require('../models/Order');
 const { protect, checkRole, requireEventAccess, requirePermission } = require('../middleware/auth');
-const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite } = require('../services/notificationService');
+const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite, notifyUserCredentials } = require('../services/notificationService');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rbac');
 
@@ -1019,6 +1019,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
 
       let existing = await User.findOne({ email: String(req.body.email || '').toLowerCase().trim() });
     let isNewUser = false;
+    let tempPassword = null;
     let user;
 
     if (existing) {
@@ -1065,13 +1066,16 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
       await user.save();
     } else {
       isNewUser = true;
+      tempPassword = req.body.password || crypto.randomBytes(8).toString('hex');
         user = await User.create({
         name: req.body.name,
         email: String(req.body.email || '').toLowerCase().trim(),
         phone: req.body.phone,
-        password: req.body.password || 'ChangeMe123!',
+        password: tempPassword,
         role: targetRole,
         status: req.body.status || 'Active',
+        isTempPassword: true,
+        isVerified: true,
           assignedEvents: [event._id],
           assignedGates: Array.from(new Set(requestedAssignedGates)),
           assignedZones: Array.from(new Set(requestedAssignedZones)),
@@ -1106,6 +1110,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
     await event.save();
 
     if (isNewUser) {
+      await notifyUserCredentials(user, tempPassword);
       await notifySubOrganiserInvite({ user, event, phone: user.phone, email: user.email });
     }
 
@@ -1210,6 +1215,16 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
 
     await user.save();
     res.json({ success: true, data: { user }, message: 'Sub-organiser updated.' });
+
+    // Create notification for team member update
+    await buildActivityNotification({
+      userId: req.user._id,
+      eventId: eventId || req.user.assignedEvents?.[0],
+      title: 'Team member updated',
+      message: `${user.name} (${user.role}) details were updated.`,
+      type: 'info',
+      metadata: { actionType: 'team_member_update', subOrganiserId: String(user._id) },
+    });
   } catch (err) {
     next(err);
   }

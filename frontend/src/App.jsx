@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuth } from './context/AuthContext';
+import { useMaintenanceMode } from './context/MaintenanceModeContext';
 import { hasAnyRole } from './utils/rbac';
 import { getPublicConfig } from './api/events';
 
@@ -200,6 +201,7 @@ const AppRoutes = () => (
 );
 const App = () => {
   const { user, loading: authLoading, isAdmin, isOrganiser, isSubOrg, isStaff, isAuditor } = useAuth();
+  const { maintenanceMode, loading: maintenanceLoading } = useMaintenanceMode();
   const [sysConfig, setSysConfig] = useState({ maintenanceMode: false, currency: 'LKR' });
   const [configLoading, setConfigLoading] = useState(true);
 
@@ -229,7 +231,7 @@ const App = () => {
     return () => window.removeEventListener('unhandledrejection', handleUnhandledRejection);
   }, []);
 
-  if (authLoading || configLoading) {
+  if (authLoading || configLoading || maintenanceLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/>
@@ -237,13 +239,16 @@ const App = () => {
     );
   }
 
+  // Use the maintenanceMode from context
+  const isInMaintenance = maintenanceMode;
+  
   // Bypass maintenance mode for all authenticated internal roles
   const canBypassMaintenance = isAdmin || isOrganiser || isSubOrg || isStaff || isAuditor;
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: '14px' } }} />
-      {sysConfig.maintenanceMode && !canBypassMaintenance ? (
+      {isInMaintenance && !canBypassMaintenance ? (
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<MaintenancePage />} />

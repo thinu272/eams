@@ -195,6 +195,13 @@ router.post(
             ticket,
             stage: 'pending_verification',
           });
+          
+          // Send pending verification email to attendee
+          const { notifyAttendeePendingVerification } = require('../services/notificationService');
+          await notifyAttendeePendingVerification({
+            attendee,
+            event: ticket.event,
+          }).catch((err) => console.error('ATTENDEE PENDING VERIFICATION EMAIL ERROR:', err));
         }
 
         const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');

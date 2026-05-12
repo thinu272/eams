@@ -640,6 +640,24 @@ router.patch('/users/:id', async (req, res, next) => {
   }
 });
 
+router.post('/users/:id/resend-credentials', async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const tempPassword = crypto.randomBytes(8).toString('hex');
+    user.password = tempPassword;
+    user.isTempPassword = true;
+    user.isVerified = true;
+    await user.save();
+
+    const delivery = await notificationService.notifyUserCredentials(user, tempPassword);
+    res.json({ success: true, data: { delivery }, message: 'Login details email sent.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete('/users/:id', async (req, res, next) => {
   try {
     if (String(req.user._id) === String(req.params.id)) {
@@ -781,6 +799,19 @@ router.patch('/settings', async (req, res, next) => {
       { $setOnInsert: { key: 'global' }, $set: setQuery },
       { new: true, upsert: true },
     );
+    
+    // Broadcast maintenance mode change to all connected clients
+    if (req.body.general?.systemStatus !== undefined) {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('system:maintenance-mode-changed', {
+          maintenanceMode: current.general.systemStatus === 'Maintenance',
+          systemStatus: current.general.systemStatus,
+          timestamp: new Date(),
+          changedBy: req.user.email,
+        });
+      }
+    }
     
     // Log the audit event
     await AuditLog.create({

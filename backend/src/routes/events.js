@@ -134,12 +134,14 @@ const normalizeEventPayload = (body, file, files) => {
 // GET /api/events/config/public - public system config
 router.get('/config/public', async (req, res, next) => {
   try {
-    const config = await SystemConfig.findOne();
+    const config = await SystemConfig.findOne({ key: 'global' });
     res.json({
       success: true,
       data: {
-        currency: config?.currency || 'LKR',
-        maintenanceMode: !!config?.maintenanceMode,
+        currency: config?.regional?.defaultCurrency || config?.payment?.defaultCurrency || 'LKR',
+        maintenanceMode: config?.general?.systemStatus === 'Maintenance',
+        platformName: config?.general?.platformName || 'ENTRYNEX',
+        systemStatus: config?.general?.systemStatus || 'Active',
       },
     });
   } catch (err) { next(err); }
