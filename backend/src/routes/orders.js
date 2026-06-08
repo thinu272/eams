@@ -9,13 +9,14 @@ const Attendee = require('../models/Attendee');
 const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
 const { generatePayHereData } = require('../services/paymentService');
 const { sendBuyerOrderCreatedEmail } = require('../services/ticketDeliveryService');
+const SystemConfig = require('../models/SystemConfig');
 const { optionalProtect } = require('../middleware/auth'); // I'll assume optionalProtect might be useful or I'll just use req.user if present
 
 // POST /api/orders - Create new order
 router.post('/', [
   body('eventId').notEmpty().withMessage('Event ID is required'),
   body('buyerName').notEmpty().withMessage('Buyer name is required'),
-  body('buyerEmail').isEmail().withMessage('Valid email is required'),
+  body('buyerEmail').optional({ checkFalsy: true }).isEmail().withMessage('Valid email is required'),
   body('buyerPhone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
   body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
   body('tickets').isArray({ min: 1 }).withMessage('At least one ticket is required'),
@@ -51,6 +52,24 @@ router.post('/', [
       return res.status(400).json({
         success: false,
         message: 'Event is not available for ticket purchase'
+      });
+    }
+
+    // Enforce communication-channel-based requirements configured on the event
+    const smsRequired = !!(event.settings?.communicationChannels?.sms);
+    const emailRequired = !!(event.settings?.communicationChannels?.email);
+
+    if (smsRequired && !buyerPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required for this event because SMS notifications are enabled'
+      });
+    }
+
+    if (emailRequired && !buyerEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required for this event because email notifications are enabled'
       });
     }
 
@@ -311,6 +330,9 @@ const getOrderByTokenHandler = async (req, res) => {
       .populate('attendee', 'fullName email confirmationToken')
       .sort({ slotIndex: 1 });
 
+    const config = await SystemConfig.findOne({ key: 'global' });
+    const smsEnabled = config ? !!config.sms?.enabled : false;
+
     // Format response with proper event structure
     const response = {
       success: true,
@@ -327,7 +349,8 @@ const getOrderByTokenHandler = async (req, res) => {
             categories: order.eventId.categories
           } : null
         },
-        tickets
+        tickets,
+        smsEnabled
       }
     };
 

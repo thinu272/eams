@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { getApiBase } from '../../utils/backend';
 import toast from 'react-hot-toast';
 import { 
   EnvelopeIcon, 
@@ -18,7 +19,7 @@ const ForgotPasswordPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/forgot-password`, { email });
+      const response = await axios.post(`${getApiBase()}/auth/forgot-password`, { email });
       if (response.data.success) {
         toast.success('Reset link dispatched to your email.');
         setSubmitted(true);

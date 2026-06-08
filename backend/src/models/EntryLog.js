@@ -56,4 +56,30 @@ entryLogSchema.index({ event: 1, timestamp: -1 });
 entryLogSchema.index({ attendee: 1, event: 1 });
 entryLogSchema.index({ event: 1, gateId: 1, timestamp: -1 });
 
+entryLogSchema.post('save', async function(doc) {
+  try {
+    const SystemLog = mongoose.model('SystemLog');
+    const User = mongoose.model('User');
+    const operator = doc.processedBy ? await User.findById(doc.processedBy).lean() : null;
+
+    await SystemLog.create({
+      userId: doc.processedBy || undefined,
+      userEmail: operator?.email || 'system@entrynex.com',
+      userRole: operator?.role || 'Staff',
+      action: 'ticket_scan',
+      eventId: doc.event,
+      details: {
+        message: `${doc.snapshot?.fullName || 'Attendee'} scanned at gate ${doc.gateName || doc.gateId}. Result: ${doc.accessGranted ? 'Granted' : `Denied (${doc.denialReason || 'Unknown reason'})`}`,
+        action: doc.action,
+        method: doc.method,
+        gateName: doc.gateName || doc.gateId,
+        accessGranted: doc.accessGranted,
+        denialReason: doc.denialReason
+      }
+    });
+  } catch (err) {
+    console.error('Failed to log scan activity to SystemLog:', err);
+  }
+});
+
 module.exports = mongoose.model('EntryLog', entryLogSchema);

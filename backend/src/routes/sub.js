@@ -599,9 +599,9 @@ router.post('/scan-entry', async (req, res, next) => {
     let accessGranted = true;
     let denialReason = '';
 
-    if (!attendee.isActive) {
+    if (!attendee.isActive || attendee.isDisabled) {
       accessGranted = false;
-      denialReason = 'Attendee is inactive';
+      denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Attendee is inactive';
     } else if (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
       accessGranted = false;
       denialReason = 'Attendee is not confirmed';
@@ -694,9 +694,9 @@ router.post('/scan-zone', async (req, res, next) => {
     let accessGranted = true;
     let denialReason = '';
 
-    if (!attendee.isActive || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
+    if (!attendee.isActive || attendee.isDisabled || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
       accessGranted = false;
-      denialReason = 'Ticket is not confirmed for venue access';
+      denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Ticket is not confirmed for venue access';
     } else if (!isAttendeeAllowedInZone(attendee, activeZone)) {
       accessGranted = false;
       denialReason = 'Zone not included in ticket';

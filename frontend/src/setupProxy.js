@@ -4,7 +4,7 @@ module.exports = function(app) {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'http://localhost:5000',
+      target: (process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace(/\/api$/, '') : 'http://localhost:5000'),
       changeOrigin: true,
       secure: false,
     })
@@ -12,7 +12,7 @@ module.exports = function(app) {
   app.use(
     '/socket.io',
     createProxyMiddleware({
-      target: 'http://localhost:5000',
+      target: (process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace(/\/api$/, '') : 'http://localhost:5000'),
       changeOrigin: true,
       secure: false,
       ws: true,

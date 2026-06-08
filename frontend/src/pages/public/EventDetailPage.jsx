@@ -14,13 +14,7 @@ import {
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent, validateEventAccessCode } from '../../api/events';
 import { io } from 'socket.io-client';
-
-const buildAssetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-  return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
-};
+import { getSocketUrl, getAssetUrl } from '../../utils/backend';
 
 const getCategoryId = (category) => category?.id || category?._id || category?.name;
 const getZoneId = (zone) => zone?.id || zone?._id || zone?.name;
@@ -46,7 +40,10 @@ const EventDetailPage = () => {
         setEvent(res.data?.data?.event);
         setIsExpired(res.data?.data?.isExpired || false);
       })
-      .catch(() => setEvent(null))
+      .catch((err) => {
+        console.error('FETCH_EVENT_ERROR:', err);
+        setEvent(null);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -56,7 +53,7 @@ const EventDetailPage = () => {
 
   useEffect(() => {
     if (!id) return undefined;
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    const socket = io(getSocketUrl());
     
     // Join a room for this specific event
     socket.emit('join_event', { eventId: id });
@@ -162,20 +159,40 @@ const EventDetailPage = () => {
           maximumFractionDigits: 0,
         }).format(value);
 
-  const eventDate = event.startDate ? new Date(event.startDate).toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-  }) : 'TBD';
+  let eventDate = 'TBD';
+  try {
+    if (event.startDate) {
+      const options = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+      if (event.timezone) {
+        options.timeZone = event.timezone;
+      }
+      eventDate = new Date(event.startDate).toLocaleDateString('en-US', options);
+    }
+  } catch (err) {
+    console.error('Timezone date rendering error:', err);
+    eventDate = event.startDate ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD';
+  }
 
-  const eventTime = event.startDate ? new Date(event.startDate).toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit'
-  }) : 'TBD';
+  let eventTime = 'TBD';
+  try {
+    if (event.startDate) {
+      const options = { hour: '2-digit', minute: '2-digit' };
+      if (event.timezone) {
+        options.timeZone = event.timezone;
+      }
+      eventTime = new Date(event.startDate).toLocaleTimeString('en-US', options);
+    }
+  } catch (err) {
+    console.error('Timezone time rendering error:', err);
+    eventTime = event.startDate ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'TBD';
+  }
 
   return (
     <PublicLayout>
       <section className="relative overflow-hidden bg-slate-950 text-white">
         {heroImage && (
           <img
-            src={buildAssetUrl(heroImage)}
+            src={getAssetUrl(heroImage)}
             alt={event.name}
             className="absolute inset-0 h-full w-full object-cover opacity-25"
           />
@@ -194,7 +211,7 @@ const EventDetailPage = () => {
               <div className="flex flex-col sm:flex-row sm:items-center gap-6 mt-8">
                 {event.branding?.logoImage && (
                   <div className="h-20 w-20 flex-shrink-0 rounded-2xl bg-white p-2 shadow-2xl ring-4 ring-white/10 overflow-hidden">
-                    <img src={buildAssetUrl(event.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
+                    <img src={getAssetUrl(event.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
                   </div>
                 )}
                 <h1 className="max-w-4xl text-2xl font-black uppercase tracking-tight sm:text-4xl lg:text-6xl text-white leading-[1.1]">
@@ -233,7 +250,7 @@ const EventDetailPage = () => {
                     <ClockIcon className="h-6 w-6" />
                     <span className="text-sm font-bold uppercase tracking-wider">Time</span>
                   </div>
-                  <p className="font-medium text-white">{eventTime}</p>
+                  <p className="font-medium text-white">{eventTime} <span className="text-xs text-sky-400 font-bold">({event.timezone || 'Asia/Colombo'})</span></p>
                 </div>
 
                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur shadow-xl">
@@ -369,9 +386,9 @@ const EventDetailPage = () => {
                   </div>
                 </div>
               )}
-              
+
               {/* Ticket Categories Segment */}
-               <div>
+               <div className="pt-12">
                 <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-900">Ticket Categories</h2>
                 <div className="mt-2 h-1 w-12 sm:w-16 rounded-full" style={{ backgroundColor: themeColor }}></div>
                 <p className="mt-4 text-base font-medium text-slate-500 max-w-3xl">
@@ -379,7 +396,7 @@ const EventDetailPage = () => {
                 </p>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-6 md:grid-cols-2 mt-8">
                 {categories.map((category) => {
                   const categoryId = getCategoryId(category);
                   return (
@@ -496,6 +513,57 @@ const EventDetailPage = () => {
                   </div>
                 </div>
               )}
+
+              {/* Sponsor Packages Segment */}
+              {(event.sponsorPackages || []).filter(p => p.isVisible).length > 0 && (
+                <div className="pt-12">
+                  <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-900">Sponsor Packages</h2>
+                  <div className="mt-2 h-1 w-12 sm:w-16 rounded-full bg-amber-500"></div>
+                  <p className="mt-4 text-base font-medium text-slate-500 max-w-3xl">
+                    Join us as a partner. These premium packages offer exclusive benefits and high-impact brand visibility.
+                  </p>
+                  <div className="mt-8 grid gap-6 md:grid-cols-2">
+                    {event.sponsorPackages.filter(p => p.isVisible).map((pkg) => (
+                      <article
+                        key={pkg.id}
+                        className="flex flex-col rounded-3xl border border-amber-100 bg-white p-6 sm:p-8 shadow-sm transition-all hover:shadow-xl hover:shadow-amber-900/10 relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full bg-amber-50 opacity-50"></div>
+                        <div className="relative z-10 flex flex-col h-full">
+                          <p className="text-sm font-black uppercase tracking-widest text-amber-600 mb-2">Sponsorship</p>
+                          <h3 className="text-2xl font-black text-slate-900 mb-4">{pkg.name}</h3>
+                          
+                          <div className="flex-1">
+                            {pkg.benefits && pkg.benefits.length > 0 && (
+                              <ul className="space-y-2 mb-6">
+                                {pkg.benefits.map((benefit, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                                    <CheckCircleIcon className="h-5 w-5 text-amber-500 shrink-0" />
+                                    <span>{benefit}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+
+                          <div className="mt-6 pt-6 border-t border-slate-100">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">To purchase this package</p>
+                            <a 
+                              href={`tel:${pkg.contactNumber || event.organiser?.phone}`}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-6 py-4 text-sm font-black text-white hover:bg-amber-600 transition-colors shadow-lg shadow-amber-900/20"
+                            >
+                              Contact Organizer
+                            </a>
+                            {pkg.contactNumber && (
+                              <p className="mt-3 text-center text-sm font-bold text-slate-900">{pkg.contactNumber}</p>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Sidebar Summary */}
@@ -512,7 +580,7 @@ const EventDetailPage = () => {
                   </div>
                   <div className="flex items-start gap-4">
                     <ClockIcon className="mt-0.5 h-6 w-6 text-blue-600" />
-                    <span>{eventTime}</span>
+                    <span>{eventTime} <span className="text-xs text-blue-600 font-bold">({event.timezone || 'Asia/Colombo'})</span></span>
                   </div>
                    <div className="flex items-start gap-4">
                     <MapPinIcon className="mt-0.5 h-6 w-6" style={{ color: themeColor }} />

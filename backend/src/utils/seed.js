@@ -2,6 +2,8 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Event = require('../models/Event');
+const Sponsor = require('../models/Sponsor');
+const Attendee = require('../models/Attendee');
 
 const connectDB = async () => {
   await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/entrynex');
@@ -12,6 +14,8 @@ const seed = async () => {
   await connectDB();
   await User.deleteMany({});
   await Event.deleteMany({});
+  await Sponsor.deleteMany({});
+  await Attendee.deleteMany({});
   console.log('Cleared existing data.');
 
   const admin = await User.create({
@@ -69,6 +73,30 @@ const seed = async () => {
       { id: 'media-center', name: 'Media Centre', capacity: 200, color: '#DC2626' },
       { id: 'press-box', name: 'Press Box', capacity: 50, color: '#9333EA' },
     ],
+    sponsorPackages: [
+      {
+        id: 'sponsor-platinum-001',
+        name: 'Platinum Sponsor',
+        level: 'Platinum',
+        description: 'Top-tier sponsor package with premium access passes.',
+        capacity: 8,
+        price: 750000,
+        benefits: ['Main stage branding', 'VIP lounge access', 'Media mentions', 'Premium passes'],
+        contactNumber: '+94777777777',
+        isVisible: true,
+      },
+      {
+        id: 'sponsor-gold-001',
+        name: 'Gold Sponsor',
+        level: 'Gold',
+        description: 'Mid-tier sponsor package with event branding and team passes.',
+        capacity: 5,
+        price: 420000,
+        benefits: ['Ground branding', 'Event mentions', 'Gold passes'],
+        contactNumber: '+94788888888',
+        isVisible: true,
+      },
+    ],
     mainOrganiser: organiser._id, subOrganisers: [subOrg._id], staff: [staff._id],
     settings: { 
       currency: 'LKR',
@@ -98,7 +126,48 @@ const seed = async () => {
     phone: '+94766666666', isVerified: true
   });
 
-  await User.updateMany({ _id: { $in: [organiser._id, subOrg._id, staff._id, auditor._id] } }, { $addToSet: { assignedEvents: event._id } });
+  const sponsorUser = await User.create({
+    name: 'Nuwan Holdings Sponsor',
+    email: 'sponsor@stadium.entrynex.com',
+    password: 'Sponsor@Matrix.Reset',
+    role: 'Sponsor',
+    isActive: true,
+    createdBy: organiser._id,
+    phone: '+94777777777',
+    isVerified: true,
+    assignedEvents: [event._id],
+  });
+
+  const seededSponsor = await Sponsor.create({
+    eventId: event._id,
+    packageId: 'sponsor-platinum-001',
+    companyName: 'Nuwan Holdings (Pvt) Ltd',
+    contactPerson: 'Nuwan Perera',
+    email: sponsorUser.email,
+    phone: sponsorUser.phone,
+    userId: sponsorUser._id,
+    status: 'Active',
+    notes: 'Seeded sponsor account for QA lab access.',
+  });
+
+  await Attendee.create({
+    event: event._id,
+    sponsorPackageId: 'sponsor-platinum-001',
+    sponsorId: seededSponsor._id,
+    fullName: 'Nuwan Perera',
+    email: sponsorUser.email,
+    phone: sponsorUser.phone,
+    categoryId: 'sponsor-platinum-001-pass',
+    categoryName: 'Platinum Sponsor Pass',
+    isPass: true,
+    confirmationStatus: 'invited',
+    isConfirmed: false,
+    addedVia: 'sponsor',
+    addedBy: sponsorUser._id,
+    allowedZones: ['vvip-suite', 'vip-lounge', 'premium-stand'],
+  });
+
+  await User.updateMany({ _id: { $in: [organiser._id, subOrg._id, staff._id, auditor._id, sponsorUser._id] } }, { $addToSet: { assignedEvents: event._id } });
 
   console.log('\n=== SEED COMPLETE ===');
   console.log(`  Main Admin:     ${process.env.SEED_ADMIN_EMAIL || 'admin@stadium.entrynex.com'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@Matrix.Reset'}`);
@@ -106,6 +175,7 @@ const seed = async () => {
   console.log('  Sub Organiser:  suborg@stadium.entrynex.com    / SubOrg@Matrix.Reset');
   console.log('  Staff:          staff@stadium.entrynex.com     / Staff@Matrix.Reset');
   console.log('  Auditor:        auditor@stadium.entrynex.com   / Auditor@Matrix.Reset');
+  console.log('  Sponsor:        sponsor@stadium.entrynex.com   / Sponsor@Matrix.Reset');
   console.log('  Attendee:       attendee@stadium.entrynex.com  / Attendee@Matrix.Reset');
   process.exit(0);
 };

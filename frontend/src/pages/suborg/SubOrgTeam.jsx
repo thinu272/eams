@@ -24,11 +24,7 @@ const emptyTeamMember = {
     canBulkUpload: false, 
     canEntryAccess: true 
   },
-  responsibilities: {
-    zoneIds: [],
-    verificationAccess: false,
-    entryAccess: true
-  }
+  
 };
 
 const scopeDescriptions = {
@@ -44,6 +40,10 @@ const SubOrgTeam = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyTeamMember);
   const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const pages = Math.max(1, Math.ceil(team.length / pageSize));
+  const pagedTeam = team.slice((page - 1) * pageSize, page * pageSize);
   const isCheckpointRole = ['Staff', 'Volunteer'].includes(form.role);
 
   const loadData = async (eventId = currentEventId) => {
@@ -55,6 +55,7 @@ const SubOrgTeam = () => {
       ]);
       setTeam(teamRes.data?.data?.users || []);
       setMyZones(zonesRes.data?.data?.zones || []);
+      setPage(1);
     } catch (err) {
       toast.error('Failed to load team data');
     } finally {
@@ -90,7 +91,7 @@ const SubOrgTeam = () => {
               : 'entry')
         : 'entry',
       assignedGates: ['Staff', 'Volunteer'].includes(member.role) && member.assignedGates?.length ? member.assignedGates : ['Main Gate'],
-      assignedZones: ['Staff', 'Volunteer'].includes(member.role) ? (member.assignedZones || member.responsibilities?.zoneIds || []) : [],
+      assignedZones: ['Staff', 'Volunteer'].includes(member.role) ? (member.assignedZones || []) : [],
       _id: member._id
     });
     setModalOpen(true);
@@ -114,11 +115,6 @@ const SubOrgTeam = () => {
             ...current.permissions,
             canEntryAccess: false,
           },
-          responsibilities: {
-            ...current.responsibilities,
-            zoneIds: [],
-            entryAccess: false,
-          },
         };
       }
 
@@ -140,11 +136,7 @@ const SubOrgTeam = () => {
         ...current.permissions,
         canEntryAccess: scope === 'entry' || scope === 'both',
       },
-      responsibilities: {
-        ...current.responsibilities,
-        zoneIds: scope === 'entry' ? [] : current.responsibilities?.zoneIds || [],
-        entryAccess: scope === 'entry' || scope === 'both',
-      },
+      assignedZones: scope === 'entry' ? [] : current.assignedZones,
     }));
   };
 
@@ -177,11 +169,6 @@ const SubOrgTeam = () => {
             ...form.permissions,
             canEntryAccess: ['Staff', 'Volunteer'].includes(form.role) && (form.operationScope === 'entry' || form.operationScope === 'both'),
           },
-          responsibilities: {
-            ...form.responsibilities,
-            zoneIds: assignedZones,
-            entryAccess: ['Staff', 'Volunteer'].includes(form.role) && (form.operationScope === 'entry' || form.operationScope === 'both'),
-          },
         });
         toast.success('Member updated');
       } else {
@@ -193,11 +180,6 @@ const SubOrgTeam = () => {
           permissions: {
             ...form.permissions,
             canEntryAccess: ['Staff', 'Volunteer'].includes(form.role) && (form.operationScope === 'entry' || form.operationScope === 'both'),
-          },
-          responsibilities: {
-            ...form.responsibilities,
-            zoneIds: assignedZones,
-            entryAccess: ['Staff', 'Volunteer'].includes(form.role) && (form.operationScope === 'entry' || form.operationScope === 'both'),
           },
         });
         toast.success('Member created');
@@ -242,7 +224,7 @@ const SubOrgTeam = () => {
               </tr>
             </thead>
             <tbody>
-              {team.map((user) => (
+              {pagedTeam.map((user) => (
                 <Tr key={user._id}>
                   <Td><div className="font-semibold">{user.name}</div></Td>
                   <Td>
@@ -272,10 +254,10 @@ const SubOrgTeam = () => {
                   </Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
-                      {(user.assignedZones || user.responsibilities?.zoneIds || []).map(zid => (
+                      {(user.assignedZones || []).map(zid => (
                         <span key={zid} className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] text-indigo-700 font-medium">{zid}</span>
                       ))}
-                      {(!(user.assignedZones || user.responsibilities?.zoneIds)?.length) && <span className="text-xs text-slate-400 italic">No specific zone</span>}
+                      {(!(user.assignedZones || []).length) && <span className="text-xs text-slate-400 italic">No specific zone</span>}
                     </div>
                   </Td>
                   <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
@@ -293,6 +275,32 @@ const SubOrgTeam = () => {
               )}
             </tbody>
           </Table>
+          {pages > 1 && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-500">
+                Showing {pagedTeam.length} of {team.length} team members
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-slate-500">
+                  Page {page} of {pages}
+                </span>
+                <Button
+                  variant="outline"
+                  disabled={page >= pages}
+                  onClick={() => setPage((current) => Math.min(pages, current + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -500,7 +508,6 @@ const SubOrgTeam = () => {
                           setForm(curr => ({ 
                             ...curr,
                             assignedZones: next,
-                            responsibilities: { ...curr.responsibilities, zoneIds: next },
                           }));
                         }}
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"

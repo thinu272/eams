@@ -64,6 +64,15 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
     }
 
     const { fullName, email, phone, dateOfBirth, nationalId, passportNumber, nationality } = req.body;
+    // Enforce phone/email based on event-level communication settings
+    const smsRequired = attendee.event?.settings?.communicationChannels?.sms === true;
+    const emailRequired = attendee.event?.settings?.communicationChannels?.email === true;
+    if (smsRequired && (!phone || String(phone).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Phone number is required for this event.' });
+    }
+    if (emailRequired && (!email || String(email).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Email is required for this event.' });
+    }
     attendee.fullName = fullName;
     attendee.email = email;
     attendee.phone = phone;
@@ -283,6 +292,16 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
 
     const allowedZones = category ? category.allowedZones : [];
 
+    // Enforce phone/email presence based on event-level settings
+    const smsRequired = event.settings?.communicationChannels?.sms === true;
+    const emailRequired = event.settings?.communicationChannels?.email === true;
+    if (smsRequired && (!attendeeData.phone || String(attendeeData.phone).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Phone number is required for this event.' });
+    }
+    if (emailRequired && (!attendeeData.email || String(attendeeData.email).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Email is required for this event.' });
+    }
+
     const attendee = await Attendee.create({
       ...attendeeData,
       event: eventId,
@@ -343,6 +362,9 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
     const category = (event.categories || []).find(c => c.id === categoryId);
     if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
 
+    const smsRequired = event.settings?.communicationChannels?.sms === true;
+    const emailRequired = event.settings?.communicationChannels?.email === true;
+
     // Zone validation for Sub-Organisers (Overlap logic)
     if (role === ROLES.SUB_ORGANISER) {
       const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
@@ -365,8 +387,12 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        if (!row['Full Name'] || !row['Email']) {
-          results.errors.push({ row: i + 2, message: 'Full Name and Email are required.' });
+        if (!row['Full Name'] || (emailRequired && !row['Email'])) {
+          results.errors.push({ row: i + 2, message: `Full Name${emailRequired ? ' and Email' : ''} are required.` });
+          continue;
+        }
+        if (smsRequired && !row['Phone']) {
+          results.errors.push({ row: i + 2, message: 'Phone is required for this event.' });
           continue;
         }
         const attendee = await Attendee.create({

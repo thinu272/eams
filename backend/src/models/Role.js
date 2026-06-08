@@ -22,6 +22,9 @@ const roleSchema = new mongoose.Schema({
     required: true,
   },
   permissions: {
+    canViewDashboard: { type: Boolean, default: false },
+    canManageEvents: { type: Boolean, default: false },
+    canManageTickets: { type: Boolean, default: false },
     canViewAttendees: { type: Boolean, default: false },
     canEditAttendees: { type: Boolean, default: false },
     canVerifyPhotos: { type: Boolean, default: false },
@@ -29,6 +32,11 @@ const roleSchema = new mongoose.Schema({
     canManageZones: { type: Boolean, default: false },
     canInviteAttendees: { type: Boolean, default: false },
     canBulkUpload: { type: Boolean, default: false },
+    canViewReports: { type: Boolean, default: false },
+    canViewLogs: { type: Boolean, default: false },
+    canManageSponsors: { type: Boolean, default: false },
+    canViewTransactions: { type: Boolean, default: false },
+    canManageSettings: { type: Boolean, default: false },
   },
   zoneIds: [{ type: String }],
   createdBy: {

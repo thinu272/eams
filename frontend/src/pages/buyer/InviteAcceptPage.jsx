@@ -96,10 +96,16 @@ const InviteAcceptPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.fullName || !form.nicPassport || !form.phone || !form.dateOfBirth) {
-      return toast.error('Name, ID, phone, and date of birth are required');
+    if (!form.fullName) {
+      return toast.error('Full Name is required');
     }
-    if (!phoneRegex.test(form.phone.trim())) {
+    if (!form.email) {
+      return toast.error('Email is required');
+    }
+    if (!photo) {
+      return toast.error('Identity Verification Photo is required');
+    }
+    if (form.phone && !phoneRegex.test(form.phone.trim())) {
       return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     }
 
@@ -246,27 +252,27 @@ const InviteAcceptPage = () => {
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
-                      <input type="email" value={form.email} onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Email *</label>
+                      <input type="email" value={form.email} readOnly className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-500 outline-none cursor-not-allowed" required />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Phone *</label>
-                      <input value={form.phone} onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+                      <input value={form.phone} onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="+1234567890 (Optional)" />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">NIC / Passport *</label>
-                      <input value={form.nicPassport} onChange={(e) => setForm((current) => ({ ...current, nicPassport: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                      <label className="mb-1 block text-sm font-medium text-slate-700">NIC / Passport</label>
+                      <input value={form.nicPassport} onChange={(e) => setForm((current) => ({ ...current, nicPassport: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="(Optional)" />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Date of Birth *</label>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Date of Birth</label>
                       <input type="date" value={form.dateOfBirth} onChange={(e) => setForm((current) => ({ ...current, dateOfBirth: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">Identity Verification Photo</label>
+                      <label className="mb-2 block text-sm font-medium text-slate-700">Identity Verification Photo *</label>
                       <div className="flex flex-col gap-3">
                         <div className="flex gap-2">
                           <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">

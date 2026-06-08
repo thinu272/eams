@@ -22,25 +22,27 @@ const User = require('../models/User');
 
 const parseChannels = async (notificationChannel, event = null) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
-  const channels = ['email'];
-  
+  const channels = [];
+
+  // Email: only include if global email sending is enabled
+  const emailGloballyEnabled = config.email?.enabled !== false; // default true
+  if (emailGloballyEnabled) channels.push('email');
+
   // SMS Logic: Check Global config and Event settings
   const smsGloballyEnabled = config.sms?.enabled || (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
-  // If event is provided, respect its SMS setting. If not (system level), default to global enable state.
   const smsEventEnabled = event ? (event.settings?.communicationChannels?.sms ?? false) : true;
-
   if (smsGloballyEnabled && smsEventEnabled) {
     channels.push('sms');
   }
-  
+
   if (config.whatsapp?.enabled) {
     channels.push('whatsapp');
   }
-  
+
   if (notificationChannel === 'email') return channels.filter(c => c === 'email');
   if (notificationChannel === 'sms') return channels.filter(c => c === 'sms');
   if (notificationChannel === 'whatsapp') return channels.filter(c => c === 'whatsapp');
-  
+
   return channels;
 };
 
@@ -469,24 +471,6 @@ const notifyRoleAssignment = async (user, newRole, assignedEvents = []) => {
   }
 };
 
-module.exports = {
-  notifyOrderConfirmation,
-  notifyInvite,
-  notifyFinalTicket,
-  notifyBuyerFinalSummary,
-  notifyConfirmationReminder,
-  notifySubOrganiserInvite,
-  notifyStatusChange,
-  notifyPhotoRejection,
-  notifyPhotoRejectionNotification,
-  notifyBuyerTicketProgress,
-  notifyUserCredentials,
-  notifyVerification,
-  notifyPasswordReset,
-  notifyOTP,
-  notifyRoleAssignment,
-};
-
 const notifyAttendeePendingVerification = async ({ attendee, event }) => {
   if (!attendee?.email) return;
 
@@ -513,6 +497,29 @@ module.exports = {
   notifyOTP,
   notifyRoleAssignment,
   notifyAttendeePendingVerification,
+  notifySponsorWelcome: async (user, tempPassword, event, pkg, confirmationToken) => {
+    const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+    // 1. Send Login Credentials Email
+    await sendTempPasswordEmail(user, tempPassword, loginUrl);
+    
+    if (confirmationToken) {
+      await notifyInvite({
+        attendee: { fullName: user.name, email: user.email, confirmationToken, categoryName: `${pkg.name} Pass` },
+        event,
+        email: user.email,
+        notificationChannel: 'email'
+      });
+    }
+  },
+  notifySponsorPassInvite: async (attendee, event, pkg) => {
+    await notifyInvite({
+      attendee,
+      event,
+      email: attendee.email,
+      phone: attendee.phone,
+      notificationChannel: 'both'
+    });
+  },
   parseChannels,
   createNotification,
 };

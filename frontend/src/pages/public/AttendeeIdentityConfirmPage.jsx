@@ -32,6 +32,7 @@ const AttendeeIdentityConfirmPage = () => {
   const [modelLoadFailed, setModelLoadFailed] = useState(false);
   const [faceAnalysis, setFaceAnalysis] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
+  const smsEnabled = !!inviteInfo?.event?.smsEnabled;
   const imageRef = useRef(null);
   const overlayRef = useRef(null);
   const enhancedCanvasRef = useRef(null);
@@ -272,8 +273,8 @@ const AttendeeIdentityConfirmPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.fullName || !form.idNumber || !form.dateOfBirth || !form.email || !form.phone) {
-      toast.error('Please fill all required fields.');
+    if (!form.fullName || !form.email) {
+      toast.error('Full name and email are required.');
       return;
     }
     if (!form.photo) {
@@ -351,7 +352,9 @@ const AttendeeIdentityConfirmPage = () => {
             <CheckBadgeIcon className="h-10 w-10" />
           </div>
           <h1 className="text-4xl font-black uppercase tracking-tight text-slate-950">Submission Received</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg font-medium text-slate-500">Your identity details are under verification. You'll receive your final ticket email once approved.</p>
+          <p className="mx-auto mt-6 max-w-2xl text-lg font-medium text-slate-500">
+            Your identity details are under verification. You'll receive your final {inviteInfo?.attendee?.isPass ? 'Pass QR' : 'Ticket QR'} email once approved.
+          </p>
         </div>
       </PublicLayout>
     );
@@ -365,7 +368,7 @@ const AttendeeIdentityConfirmPage = () => {
             <p className="mb-4 text-sm font-black uppercase tracking-[0.3em] text-blue-500">Identity Verification</p>
             <h1 className="text-4xl font-black uppercase tracking-tight text-white sm:text-6xl">Secure Attendance</h1>
             <p className="mt-6 text-lg font-medium text-slate-400">
-              Confirming entry for <span className="font-bold text-white">{inviteInfo.event?.name}</span>
+              Confirming {inviteInfo?.attendee?.isPass ? 'Pass' : 'Entry'} for <span className="font-bold text-white">{inviteInfo.event?.name}</span>
             </p>
           </div>
         </div>
@@ -387,23 +390,23 @@ const AttendeeIdentityConfirmPage = () => {
                     <input type="text" value={form.fullName} onChange={(e) => handleChange('fullName', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="Current full name" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">NIC / Passport Number *</label>
-                    <input type="text" value={form.idNumber} onChange={(e) => handleChange('idNumber', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="For gate verification" required />
+                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">NIC / Passport Number</label>
+                    <input type="text" value={form.idNumber} onChange={(e) => handleChange('idNumber', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="For gate verification (Optional)" />
                   </div>
                   <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Date of Birth *</label>
-                    <input type="date" value={form.dateOfBirth} onChange={(e) => handleChange('dateOfBirth', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" required />
+                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Date of Birth</label>
+                    <input type="date" value={form.dateOfBirth} onChange={(e) => handleChange('dateOfBirth', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" />
                   </div>
                 </div>
 
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Contact Email *</label>
-                    <input type="email" value={form.email} onChange={(e) => handleChange('email', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" required />
+                    <input type="email" value={form.email} readOnly className="w-full rounded-2xl border-2 border-slate-100 bg-slate-100 px-5 py-4 font-bold text-slate-500 cursor-not-allowed focus:outline-none" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Phone Number *</label>
-                    <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="+1234567890" required />
+                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Phone Number {smsEnabled ? '*' : '(Optional)'}</label>
+                    <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} required={smsEnabled} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder={smsEnabled ? '+1234567890' : '+1234567890 (Optional)'} />
                   </div>
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Identity Photo (Selfie) *</label>

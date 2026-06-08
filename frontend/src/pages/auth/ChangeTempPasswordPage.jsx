@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { getApiBase } from '../../utils/backend';
 import toast from 'react-hot-toast';
 import { 
   LockClosedIcon, 
@@ -40,7 +41,7 @@ const ChangeTempPasswordPage = () => {
     
     setLoading(true);
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/change-temp-password`, { 
+      const response = await axios.post(`${getApiBase()}/auth/change-temp-password`, { 
         tempToken, 
         newPassword: password 
       });

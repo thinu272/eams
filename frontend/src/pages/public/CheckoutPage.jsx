@@ -7,6 +7,7 @@ import { createOrder } from '../../api/orders';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 
 const CheckoutPage = () => {
   const location = useLocation();
@@ -33,7 +34,7 @@ const CheckoutPage = () => {
 
   useEffect(() => {
     if (!eventId) return undefined;
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    const socket = io(getSocketUrl());
     
     socket.emit('join_event', { eventId });
 

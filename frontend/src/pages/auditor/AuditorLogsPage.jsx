@@ -31,6 +31,7 @@ const AuditorLogsPage = () => {
   const [to, setTo] = useState('');
   const [zone, setZone] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -59,28 +60,34 @@ const AuditorLogsPage = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedEventId, logType, from, to, zone, categoryId]);
+  }, [selectedEventId, logType, from, to, zone, categoryId, search]);
 
   useEffect(() => {
     if (!selectedEventId) return;
-    setLoading(true);
-    getAuditLogs({
-      eventId: selectedEventId,
-      type: logType,
-      from: from || undefined,
-      to: to || undefined,
-      zone: zone || undefined,
-      categoryId: categoryId || undefined,
-      page,
-      limit: 10,
-    })
-      .then((response) => {
-        setLogs(response.data?.data?.logs || []);
-        setTotal(response.data?.data?.total || 0);
-        setPages(response.data?.data?.pages || 1);
+    
+    const delayDebounceFn = setTimeout(() => {
+      setLoading(true);
+      getAuditLogs({
+        eventId: selectedEventId,
+        type: logType,
+        from: from || undefined,
+        to: to || undefined,
+        zone: zone || undefined,
+        categoryId: categoryId || undefined,
+        search: search.trim() || undefined,
+        page,
+        limit: 10,
       })
-      .finally(() => setLoading(false));
-  }, [selectedEventId, logType, from, to, zone, categoryId, page]);
+        .then((response) => {
+          setLogs(response.data?.data?.logs || []);
+          setTotal(response.data?.data?.total || 0);
+          setPages(response.data?.data?.pages || 1);
+        })
+        .finally(() => setLoading(false));
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [selectedEventId, logType, from, to, zone, categoryId, search, page]);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
@@ -104,6 +111,7 @@ const AuditorLogsPage = () => {
         to: to || undefined,
         zone: zone || undefined,
         categoryId: categoryId || undefined,
+        search: search.trim() || undefined,
       });
       const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
@@ -142,7 +150,7 @@ const AuditorLogsPage = () => {
         </section>
 
         <Card className="rounded-[28px] border-slate-200 bg-white">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
             <select value={selectedEventId} onChange={(event) => handleEventChange(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
               {events.map((event) => (
                 <option key={event._id} value={event._id}>{event.name}</option>
@@ -152,6 +160,12 @@ const AuditorLogsPage = () => {
               <option value="entry">Entry logs</option>
               <option value="zone">Zone logs</option>
             </select>
+            <input 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              placeholder="Search attendee..." 
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" 
+            />
             <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
             <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
             <select value={zone} onChange={(event) => setZone(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">

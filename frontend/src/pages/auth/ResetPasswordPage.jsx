@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { getApiBase } from '../../utils/backend';
 import toast from 'react-hot-toast';
 import { 
   LockClosedIcon, 
@@ -25,7 +26,7 @@ const ResetPasswordPage = () => {
     }
     setLoading(true);
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/reset-password/${token}`, { password });
+      const response = await axios.post(`${getApiBase()}/auth/reset-password/${token}`, { password });
       if (response.data.success) {
         toast.success('Access Restored | Password Updated Successfully');
         navigate('/login');

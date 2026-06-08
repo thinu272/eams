@@ -150,6 +150,19 @@ const createUser = async (req, res, next) => {
     payload.isTempPassword = true;
     payload.isVerified = true;
 
+    // Enforce phone/email if assigned events require SMS/Email
+    if (payload.assignedEvents && Array.isArray(payload.assignedEvents) && payload.assignedEvents.length > 0) {
+      const events = await Event.find({ _id: { $in: payload.assignedEvents } }).lean();
+      const smsRequired = events.some(e => e.settings?.communicationChannels?.sms === true);
+      const emailRequired = events.some(e => e.settings?.communicationChannels?.email === true);
+      if (smsRequired && (!payload.phone || String(payload.phone).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Phone number is required for users assigned to these events.' });
+      }
+      if (emailRequired && (!payload.email || String(payload.email).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Email is required for users assigned to these events.' });
+      }
+    }
+
     const user = await User.create(payload);
 
     await notificationService.notifyUserCredentials(user, tempPassword);
@@ -182,6 +195,52 @@ const updateUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const duplicateEvent = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+    const { newName, newStartDate, newEndDate, status = 'draft' } = req.body;
+    
+    if (!newName || !newStartDate || !newEndDate) {
+      return res.status(400).json({ success: false, message: 'New name, start date, and end date are required.' });
+    }
+
+    const sourceEvent = await Event.findById(req.params.id).lean();
+    if (!sourceEvent) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    delete sourceEvent._id;
+    delete sourceEvent.slug;
+    delete sourceEvent.revenue;
+    delete sourceEvent.publishedAt;
+    delete sourceEvent.createdAt;
+    delete sourceEvent.updatedAt;
+    delete sourceEvent.__v;
+    
+    sourceEvent.mainOrganiser = null;
+    sourceEvent.subOrganisers = [];
+    sourceEvent.staff = [];
+    sourceEvent.volunteers = [];
+    sourceEvent.auditors = [];
+
+    if (sourceEvent.categories) {
+      sourceEvent.categories.forEach(cat => {
+        cat.sold = 0;
+        cat.usageCount = 0;
+      });
+    }
+
+    sourceEvent.name = newName;
+    sourceEvent.startDate = newStartDate;
+    sourceEvent.endDate = newEndDate;
+    sourceEvent.status = status;
+
+    const newEvent = await Event.create(sourceEvent);
+
+    res.status(201).json({ success: true, data: { event: newEvent }, message: 'Event duplicated successfully.' });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   getStats,
   getDashboardStats,
@@ -193,4 +252,5 @@ module.exports = {
   listUsers,
   createUser,
   updateUser,
+  duplicateEvent,
 };

@@ -56,24 +56,41 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   });
 
   // 2. Fetch Attendee Photo if available
-  let photoBuffer = null;
-  if (attendee.photo) {
-    try {
-      const response = await axios.get(attendee.photo, { responseType: 'arraybuffer' });
-      photoBuffer = Buffer.from(response.data);
-    } catch (error) {
-      console.error('PDF_PHOTO_FETCH_ERROR:', error.message);
-    }
-  }
+  // Removed as per request to make ticket details with QR only
+
+  const path = require('path');
+  const fs = require('fs');
+  const logoPath = path.resolve(process.cwd(), '../frontend/public/logo.png');
+  const hasLogo = fs.existsSync(logoPath);
 
   // Header Section
-  doc.rect(0, 0, doc.page.width, 100).fill(primaryColor);
-  doc.fillColor('#ffffff').fontSize(24).text('ENTRYNEX TICKET', 50, 40);
-  doc.fontSize(10).text('Verified Event Entry Pass', 50, 70);
+  const headerHeight = 120;
+  doc.rect(0, 0, doc.page.width, headerHeight).fill(primaryColor);
+  
+  let textStartX = 50;
+  let textY = 45;
+  if (hasLogo) {
+    // Draw a white rounded box for the logo to stand out against the dark header
+    doc.fillColor('#ffffff').roundedRect(40, 20, 80, 80, 20).fill();
+    // Draw the logo centered inside the white box
+    doc.image(logoPath, 45, 25, { width: 70, height: 70, fit: [70, 70], align: 'center', valign: 'center' });
+    textStartX = 140; 
+  } else {
+    doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('ENTRYNEX', 50, 45);
+    textStartX = 180;
+  }
+  
+  let scenarioTitle = 'ENTRYNEX Event Entry Confirmation';
+  const catName = String(ticketCategory).toLowerCase();
+  if (catName.includes('pass') || catName.includes('vip') || catName.includes('sponsor') || catName.includes('access') || catName.includes('staff')) {
+    scenarioTitle = 'Your ENTRYNEX Access Details';
+  }
+  
+  doc.fillColor('#ffffff').fontSize(15).font('Helvetica-Bold').text(scenarioTitle, textStartX, textY);
+  doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1').text('Verified Security Access Pass', textStartX, textY + 22);
 
   // Main Content
-  doc.moveDown(4);
-  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event Ticket', { align: 'center' });
+  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event Ticket', 0, 135, { width: doc.page.width, align: 'center' });
   doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
 
   // Left Column: Details
@@ -91,21 +108,8 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   doc.fillColor(secondaryColor).fontSize(10).text('VENUE', 50, 345);
   doc.fillColor('#000000').fontSize(12).text(formatVenue(event.venue), 50, 360, { width: 230 });
 
-  // Right Column: Photo and QR
-  if (photoBuffer) {
-    // Circle or rounded rect for photo
-    doc.save();
-    doc.roundedRect(365, 180, 140, 140, 15).clip();
-    doc.image(photoBuffer, 365, 180, { width: 140, height: 140, cover: [140, 140] });
-    doc.restore();
-    doc.roundedRect(365, 180, 140, 140, 15).stroke('#e2e8f0');
-    
-    // QR Code below photo
-    doc.image(qrBuffer, 385, 335, { width: 100 });
-  } else {
-    // QR Code centered in right col if no photo
-    doc.image(qrBuffer, 345, 190, { width: 180 });
-  }
+  // Right Column: QR Code Only
+  doc.image(qrBuffer, 345, 190, { width: 180 });
 
   doc.fillColor(secondaryColor).fontSize(9).text('Present this QR at entry for scanning.', 325, 450, {
     align: 'center',
@@ -113,25 +117,66 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   });
 
   // Footer / Instructions
-  const footerHeight = 90;
+  const footerHeight = 145;
   const footerY = doc.page.height - footerHeight;
   doc.rect(0, footerY, doc.page.width, footerHeight).fill('#f8fafc');
-  doc.fillColor(secondaryColor).fontSize(9).text('IMPORTANT INSTRUCTIONS', 50, footerY + 15);
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(0, footerY).lineTo(doc.page.width, footerY).stroke();
+  doc.restore();
+
+  // Left Column: Instructions
+  doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('IMPORTANT INSTRUCTIONS', 50, footerY + 15);
+  doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
   doc.text('- Please present this PDF at the entrance gate.', 50, footerY + 32);
-  doc.text('- This ticket is valid only for the confirmed attendee.', 50, footerY + 46);
-  doc.text('- Entry is subject to event security and organiser rules.', 50, footerY + 60);
+  doc.text('- This ticket is valid only for the confirmed attendee.', 50, footerY + 44);
+  doc.text('- Entry is subject to event security and organiser rules.', 50, footerY + 56);
+  doc.text('- QR Validation Notice: This QR code is secure and will be validated at the venue gates.', 50, footerY + 68);
+
+  // Divider inside footer
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, footerY + 88).lineTo(545, footerY + 88).stroke();
+  doc.restore();
+
+  // Right/Bottom Column: Brand details
+  const orgName = event.organiser?.name || event.organiserName || 'Authorized Event Organizer';
+  doc.fillColor(secondaryColor).fontSize(8).font('Helvetica').text(`Event Organizer: ${orgName}`, 50, footerY + 98);
+  doc.text('Support Contact: support@entrynex.com', 50, footerY + 110);
+  
+  doc.fillColor(accentColor).fontSize(8).font('Helvetica-Bold').text('Powered by ENTRYNEX', doc.page.width - 170, footerY + 98, { align: 'right', width: 120 });
 });
 
 const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) => {
   const primaryColor = '#0a1128';
+  const secondaryColor = '#64748b';
+  const accentColor = '#2684ff';
   const ticketRows = order.tickets || [];
 
-  doc.rect(0, 0, doc.page.width, 100).fill(primaryColor);
-  doc.fillColor('#ffffff').fontSize(24).text('PURCHASE SUMMARY', 50, 40);
-  doc.fontSize(10).text('Event Access Management System', 50, 70);
+  const path = require('path');
+  const fs = require('fs');
+  const logoPath = path.resolve(process.cwd(), '../frontend/public/logo.png');
+  const hasLogo = fs.existsSync(logoPath);
 
-  doc.moveDown(4);
-  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event', { align: 'center' });
+  // Header Section
+  const headerHeight = 120;
+  doc.rect(0, 0, doc.page.width, headerHeight).fill(primaryColor);
+  
+  let textStartX = 50;
+  let textY = 45;
+  if (hasLogo) {
+    // Draw a white rounded box for the logo to stand out against the dark header
+    doc.fillColor('#ffffff').roundedRect(40, 20, 80, 80, 20).fill();
+    // Draw the logo centered inside the white box
+    doc.image(logoPath, 45, 25, { width: 70, height: 70, fit: [70, 70], align: 'center', valign: 'center' });
+    textStartX = 140;
+  } else {
+    doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('ENTRYNEX', 50, 45);
+    textStartX = 180;
+  }
+  
+  doc.fillColor('#ffffff').fontSize(15).font('Helvetica-Bold').text('ENTRYNEX Event Confirmation', textStartX, textY);
+  doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1').text('Official Purchase & Order Summary', textStartX, textY + 22);
+
+  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event', 0, 135, { width: doc.page.width, align: 'center' });
   doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
 
   doc.fillColor('#64748b').fontSize(10).text('BUYER', 50, 180);
@@ -161,14 +206,37 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
     y += 24;
   });
 
-  if (y > 780) {
+  if (y > 720) {
     doc.addPage();
     y = 50;
   }
-  doc.moveTo(50, y + 8).lineTo(545, y + 8).stroke('#e2e8f0');
-  doc.fillColor(primaryColor).fontSize(14).text(`Total: LKR ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, y + 8).lineTo(545, y + 8).stroke();
+  doc.restore();
+  
+  doc.fillColor(primaryColor).fontSize(14).font('Helvetica-Bold').text(`Total: LKR ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
+  doc.fillColor(secondaryColor).fontSize(9).font('Helvetica').text('Assign attendees to activate each ticket.', 50, y + 46);
 
-  doc.fillColor('#64748b').fontSize(10).text('Assign attendees to activate each ticket.', 50, y + 60);
+  const orgName = event.organiser?.name || event.organiserName || 'Authorized Event Organizer';
+  y += 75;
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+  
+  // Outer Box
+  doc.fillColor('#f8fafc').rect(50, y, 495, 110).fill();
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).roundedRect(50, y, 495, 110, 8).stroke();
+  doc.restore();
+  
+  doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('ORDER INFORMATION & SUPPORT', 65, y + 15);
+  doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
+  doc.text(`Event Organizer: ${orgName}`, 65, y + 34);
+  doc.text('Support Contact: support@entrynex.com', 65, y + 48);
+  doc.text('QR Validation Notice: Tickets in this order are secure and must be assigned to attendees for gate entry.', 65, y + 62, { width: 465 });
+  
+  doc.fillColor(accentColor).fontSize(8).font('Helvetica-Bold').text('Powered by ENTRYNEX', 380, y + 15, { align: 'right', width: 150 });
 });
 
 module.exports = {

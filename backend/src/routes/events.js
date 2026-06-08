@@ -9,6 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
+const { logActivity } = require('../utils/logger');
 
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -92,12 +93,16 @@ const normalizeEventPayload = (body, file, files) => {
     }
   }
 
-  if (payload.mainOrganiser && typeof payload.mainOrganiser === 'object') {
-    payload.mainOrganiser = payload.mainOrganiser._id || payload.mainOrganiser.id || payload.mainOrganiser;
+  if (payload.organiserIds) {
+    payload.mainOrganisers = Array.isArray(payload.organiserIds) ? payload.organiserIds : [payload.organiserIds];
+    delete payload.organiserIds;
   }
 
-  if (payload.mainOrganiser === '' || payload.mainOrganiser === null || payload.mainOrganiser === undefined) {
-    delete payload.mainOrganiser;
+  if (payload.mainOrganisers) {
+    payload.mainOrganisers = payload.mainOrganisers
+      .filter(id => id && id !== '' && id !== 'null')
+      .map(id => (typeof id === 'object' ? (id._id || id.id || id) : id))
+      .slice(0, 2);
   }
 
   if (file) {
@@ -152,11 +157,12 @@ router.get('/', async (req, res, next) => {
   try {
     const { status, page = 1, limit = 12, search, date, category } = req.query;
     
-    // Default to showing published and ongoing events
     const filter = {
       status: status ? status : { $in: ['published', 'ongoing'] },
       endDate: { $gte: new Date(new Date().getTime() - 60 * 60 * 1000) } // Lenient expiry (1 hour grace)
     };
+
+    console.log('[PUBLIC_LISTING] Querying events with filter:', JSON.stringify(filter));
 
     if (search) {
       filter.$or = [
@@ -184,6 +190,7 @@ router.get('/', async (req, res, next) => {
         .limit(parseInt(limit)),
       Event.countDocuments(filter),
     ]);
+    console.log(`[PUBLIC_LISTING] Found ${total} events matching criteria.`);
     res.json({ success: true, data: { events, total, page: parseInt(page), pages: Math.ceil(total / limit) } });
   } catch (err) { next(err); }
 });
@@ -215,7 +222,7 @@ router.get('/admin/all', protect, restrictTo('main_admin'), async (req, res, nex
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [events, total] = await Promise.all([
-      Event.find(filter).populate('mainOrganiser', 'name email').sort('-createdAt').skip(skip).limit(parseInt(limit)),
+      Event.find(filter)      .populate('mainOrganisers', 'name email').sort('-createdAt').skip(skip).limit(parseInt(limit)),
       Event.countDocuments(filter),
     ]);
     const Attendee = require('../models/Attendee');
@@ -241,7 +248,7 @@ router.get('/admin/all', protect, restrictTo('main_admin'), async (req, res, nex
 router.get('/my/events', protect, restrictTo('main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor'), async (req, res, next) => {
   try {
     const events = await Event.find({ _id: { $in: req.user.assignedEvents } })
-      .populate('mainOrganiser', 'name email')
+            .populate('mainOrganisers', 'name email')
       .sort('-startDate');
     res.json({ success: true, data: { events } });
   } catch (err) { next(err); }
@@ -251,7 +258,7 @@ router.get('/my/events', protect, restrictTo('main_organiser', 'sub_organiser', 
 router.get('/manage/:eventId', protect, requireEventAccess, async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.eventId)
-      .populate('mainOrganiser', 'name email')
+            .populate('mainOrganisers', 'name email')
       .populate('subOrganisers', 'name email');
 
     if (!event) {
@@ -293,17 +300,29 @@ router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.fie
     }
 
     const event = await Event.create(eventData);
+    await logActivity({
+      req,
+      action: 'event_update',
+      eventId: event._id,
+      details: { message: `Created event: ${event.name}` }
+    });
     
     // Auto-assign to creator (admin)
     const User = require('../models/User');
     await User.findByIdAndUpdate(req.user._id, { $addToSet: { assignedEvents: event._id } });
     
-    // Auto-assign to main organiser if provided
-    if (req.body.mainOrganiser) {
-      if (req.user.role !== 'main_admin' && req.body.mainOrganiser !== req.user._id.toString()) {
-        return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+    // Auto-assign to main organisers if provided
+    if (eventData.mainOrganisers && eventData.mainOrganisers.length > 0) {
+      if (req.user.role !== 'main_admin') {
+        const otherOrgs = eventData.mainOrganisers.filter(id => id.toString() !== req.user._id.toString());
+        if (otherOrgs.length > 0) {
+          return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+        }
       }
-      await User.findByIdAndUpdate(req.body.mainOrganiser, { $addToSet: { assignedEvents: event._id } });
+      await User.updateMany(
+        { _id: { $in: eventData.mainOrganisers } },
+        { $addToSet: { assignedEvents: event._id } }
+      );
     }
     
     res.status(201).json({ success: true, data: { event } });
@@ -316,16 +335,26 @@ router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.fie
 // PATCH /api/events/:eventId/assign-organiser
 router.patch('/:eventId/assign-organiser', protect, restrictTo('main_admin'), async (req, res, next) => {
   try {
-    const { organiserId } = req.body;
+    const { organiserIds } = req.body;
     if (!mongoose.Types.ObjectId.isValid(req.params.eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
+    
+    const ids = Array.isArray(organiserIds) ? organiserIds : (organiserIds ? [organiserIds] : []);
+    if (ids.length > 2) return res.status(400).json({ success: false, message: 'Maximum 2 organisers allowed.' });
+
     const User = require('../models/User');
-    const [event, organiser] = await Promise.all([
-      Event.findByIdAndUpdate(req.params.eventId, { mainOrganiser: organiserId }, { new: true }),
-      User.findByIdAndUpdate(organiserId, { $addToSet: { assignedEvents: req.params.eventId } }, { new: true }),
+    const existingEvent = await Event.findById(req.params.eventId);
+    if (!existingEvent) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const oldIds = existingEvent.mainOrganisers || [];
+    
+    const [event] = await Promise.all([
+      Event.findByIdAndUpdate(req.params.eventId, { mainOrganisers: ids }, { new: true }),
+      User.updateMany({ _id: { $in: oldIds } }, { $pull: { assignedEvents: req.params.eventId } }),
+      User.updateMany({ _id: { $in: ids } }, { $addToSet: { assignedEvents: req.params.eventId } }),
     ]);
-    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    
     res.json({ success: true, data: { event } });
   } catch (err) { next(err); }
 });
@@ -410,7 +439,7 @@ router.patch('/:eventId', protect, upload.fields([
     if (req.user.role !== 'main_admin') {
       const isAssigned = req.user.assignedEvents?.some(e => e.toString() === eventId);
       const isCreator = existingEvent.createdBy?.toString() === req.user._id.toString();
-      const isMainOrg = existingEvent.mainOrganiser?.toString() === req.user._id.toString();
+      const isMainOrg = existingEvent.mainOrganisers?.some(id => id.toString() === req.user._id.toString());
 
       if (!isAssigned && !isCreator && !isMainOrg) {
         console.warn('[PATCH] Unauthorized access attempt:', { user: req.user._id, eventId });
@@ -431,26 +460,106 @@ router.patch('/:eventId', protect, upload.fields([
         }
       }
       
-      // Also prevent changing the mainOrganiser field if already set
-      if (updateData.mainOrganiser && updateData.mainOrganiser.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+      // Also prevent changing the mainOrganisers field if already set
+      if (updateData.mainOrganisers && updateData.mainOrganisers.length > 0) {
+        const isOnlySelf = updateData.mainOrganisers.every(id => id.toString() === req.user._id.toString());
+        if (!isOnlySelf) {
+          return res.status(403).json({ success: false, message: 'You can only assign yourself as the organiser.' });
+        }
       }
+    }
+
+    // 5. Admin-only feature controls and audit logging
+    const adminOnlyFeaturePaths = [
+      'communicationChannels.email',
+      'communicationChannels.sms',
+      'requirePhotoVerification',
+      'rfidEnabled',
+      'mfaEnforced'
+    ];
+
+    const getNested = (obj, path) => {
+      if (!obj) return undefined;
+      return path.split('.').reduce((acc, p) => (acc && Object.prototype.hasOwnProperty.call(acc, p) ? acc[p] : undefined), obj);
+    };
+
+    const setNested = (obj, path, value) => {
+      const parts = path.split('.');
+      let cur = obj;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (!cur[p]) cur[p] = {};
+        cur = cur[p];
+      }
+      cur[parts[parts.length - 1]] = value;
+    };
+
+    // Ensure settings object exists
+    updateData.settings = updateData.settings || {};
+
+    for (const path of adminOnlyFeaturePaths) {
+      const incoming = getNested(updateData.settings, path);
+      const existing = getNested(existingEvent.settings, path);
+      if (incoming === undefined) continue;
+
+      if (req.user.role !== 'main_admin') {
+        // Non-admin cannot change these
+        if (incoming !== existing) {
+          setNested(updateData.settings, path, existing);
+          console.log('[PATCH] Reverted non-admin change to admin-only feature:', path);
+        }
+      } else {
+        // Admin changed a feature: log the change
+        if (incoming !== existing) {
+          await logActivity({
+            req,
+            action: 'feature_toggle',
+            eventId,
+            details: { setting: path, oldValue: existing, newValue: incoming }
+          });
+        }
+      }
+    }
+
+    // Log any other settings changes by admin for audit purposes
+    if (req.user.role === 'main_admin' && updateData.settings) {
+      const incomingSettings = updateData.settings;
+      Object.keys(incomingSettings).forEach((key) => {
+        const oldVal = existingEvent.settings ? existingEvent.settings[key] : undefined;
+        const newVal = incomingSettings[key];
+        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+          // Non-blocking log (don't await multiple logs in loop)
+          logActivity({ req, action: 'settings_change', eventId, details: { setting: `settings.${key}`, oldValue: oldVal, newValue: newVal } }).catch(err => console.error('LOG_ACTIVITY_ERROR:', err));
+        }
+      });
     }
 
     const event = await Event.findByIdAndUpdate(eventId, updateData, {
       new: true, runValidators: true,
     });
 
-    if (req.user.role === 'main_admin' && Object.prototype.hasOwnProperty.call(updateData, 'mainOrganiser')) {
-      const User = require('../models/User');
-      const oldOrganiserId = existingEvent.mainOrganiser?.toString();
-      const newOrganiserId = updateData.mainOrganiser ? updateData.mainOrganiser.toString() : null;
+    await logActivity({
+      req,
+      action: 'event_update',
+      eventId: event._id,
+      details: { message: `Updated event: ${event.name}` }
+    });
 
-      if (oldOrganiserId && oldOrganiserId !== newOrganiserId) {
-        await User.findByIdAndUpdate(oldOrganiserId, { $pull: { assignedEvents: event._id } });
+    if (req.user.role === 'main_admin' && Object.prototype.hasOwnProperty.call(updateData, 'mainOrganisers')) {
+      const User = require('../models/User');
+      const oldOrganiserIds = existingEvent.mainOrganisers || [];
+      const newOrganiserIds = updateData.mainOrganisers || [];
+
+      // Find organisers to remove
+      const toRemove = oldOrganiserIds.filter(id => !newOrganiserIds.some(nid => nid.toString() === id.toString()));
+      // Find organisers to add
+      const toAdd = newOrganiserIds.filter(id => !oldOrganiserIds.some(oid => oid.toString() === id.toString()));
+
+      if (toRemove.length > 0) {
+        await User.updateMany({ _id: { $in: toRemove } }, { $pull: { assignedEvents: event._id } });
       }
-      if (newOrganiserId) {
-        await User.findByIdAndUpdate(newOrganiserId, { $addToSet: { assignedEvents: event._id } });
+      if (toAdd.length > 0) {
+        await User.updateMany({ _id: { $in: toAdd } }, { $addToSet: { assignedEvents: event._id } });
       }
     }
 
@@ -487,10 +596,20 @@ router.delete('/:eventId', protect, restrictTo('main_admin'), async (req, res, n
 router.get('/:slug', async (req, res, next) => {
   try {
     const event = await Event.findOne({
-      $or: [{ slug: req.params.slug }, { _id: req.params.slug.match(/^[a-f\d]{24}$/i) ? req.params.slug : null }],
-    }).populate('mainOrganiser', 'name email');
-    if (!event || event.status === 'draft') {
+      $or: [
+        { slug: req.params.slug },
+        { _id: req.params.slug.match(/^[a-f\d]{24}$/i) ? req.params.slug : null }
+      ],
+    }).populate('mainOrganisers', 'name email');
+
+    if (!event) {
+      console.warn('[PUBLIC_EVENT] Event not found for slug/id:', req.params.slug);
       return res.status(404).json({ success: false, message: `Event not found. (Slug/ID: ${req.params.slug})` });
+    }
+
+    if (event.status === 'draft') {
+      console.warn('[PUBLIC_EVENT] Attempted to access draft event:', event._id);
+      return res.status(404).json({ success: false, message: 'This event is not yet available to the public.' });
     }
 
     const isExpired = event.endDate && new Date(event.endDate) < new Date();

@@ -59,7 +59,7 @@ const BulkUploadPage = () => {
     
     // Sub-organisers can only see categories where they management at least one of the required zones
     if (user?.role === 'SubOrganiser') {
-      const myZones = (user.responsibilities?.zoneIds || []).map(String);
+      const myZones = (user.assignedZones || user.responsibilities?.zoneIds || []).map(String);
       return selectedEventData.categories.filter(cat => {
         const catZones = (cat.allowedZones || []).map(String);
         // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
@@ -154,7 +154,7 @@ const BulkUploadPage = () => {
                     const selected = events.find((item) => item._id === value);
                     // Find first available category instead of first absolute category
                     if (selected?.categories) {
-                      const myZones = (user?.responsibilities?.zoneIds || []).map(String);
+                      const myZones = (user?.assignedZones || user?.responsibilities?.zoneIds || []).map(String);
                       const available = selected.categories.filter(cat => {
                         const catZones = (cat.allowedZones || []).map(String);
                         return catZones.length === 0 || catZones.some(z => myZones.includes(z));

@@ -2,6 +2,14 @@ const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
 const SystemConfig = require('../models/SystemConfig');
 
+const renderTemplate = (template, data = {}) => {
+  if (!template) return '';
+  return String(template).replace(/{{\s*([^}]+)\s*}}/g, (_, key) => {
+    const v = data[key.trim()];
+    return v == null ? '' : v;
+  });
+};
+
 const createTransporter = async (config) => {
   const smtpHost = config?.email?.smtpHost || process.env.SMTP_HOST;
   const smtpPort = config?.email?.smtpPort || process.env.SMTP_PORT || 587;
@@ -45,6 +53,10 @@ const getSendGridClient = (config) => {
 
 const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplateData, attachments = [] }) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  if (config.email?.enabled === false) {
+    console.log('EMAIL_BLOCKED: Global email sending is disabled by SystemConfig.email.enabled=false');
+    throw new Error('Global email sending is disabled');
+  }
   const from = process.env.EMAIL_FROM || config.email?.senderEmail || config.general?.supportEmail || 'noreply@entrynex.com';
   const preferredProvider = config.email?.provider || (process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp');
   const templateMode = config.email?.templateMode || 'code';
@@ -146,40 +158,88 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
   throw error;
 };
 
-const baseTemplate = (content) => `
-<!DOCTYPE html>
-<html>
+const baseTemplate = (content, scenarioTitle = '', eventOrganiser = 'Authorized Event Organizer') => `
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; margin: 0; padding: 0; background: #f8fafc; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; margin-top: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
-    .header { background: #0a1128; background: linear-gradient(135deg, #0a1128 0%, #2684ff 100%); color: #ffffff; padding: 40px 32px; text-align: center; }
-    .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em; }
-    .body { padding: 40px 32px; line-height: 1.6; }
-    .footer { background: #f1f5f9; padding: 24px 32px; font-size: 12px; color: #64748b; text-align: center; }
-    .btn { display: inline-block; background: #2684ff; color: #ffffff !important; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 700; margin: 24px 0; box-shadow: 0 10px 15px -3px rgba(38, 132, 255, 0.3); }
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style type="text/css">
+    body { margin: 0; padding: 0; min-width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; color: #1e293b; }
+    table { border-spacing: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; }
+    td { padding: 0; }
+    img { border: 0; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f8fafc; padding-bottom: 40px; }
+    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .header { padding: 32px; background-color: #0a1128; color: #ffffff; text-align: left; }
+    .subtitle { font-size: 14px; font-weight: 700; color: #cbd5e1; margin-top: 8px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .content-body { padding: 40px 32px; line-height: 1.6; }
+    .footer { background-color: #f1f5f9; padding: 24px 32px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }
+    .btn { display: inline-block; background-color: #2684ff; color: #ffffff !important; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 700; margin: 24px 0; }
     .info-row { padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
     .info-label { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; display: block; }
     .info-value { font-size: 16px; font-weight: 600; color: #0f172a; }
-    .badge { display: inline-block; background: #cce3fd; color: #0a1128; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; margin: 2px; }
-    .qr-section { text-align: center; padding: 32px; background: #f8fafc; border-radius: 24px; border: 2px dashed #e2e8f0; margin: 24px 0; }
-    .alert { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 16px; border-radius: 8px; margin-bottom: 24px; color: #166534; font-weight: 500; }
+    .badge { display: inline-block; background-color: #cce3fd; color: #0a1128; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; margin: 2px; }
+    .qr-section { text-align: center; padding: 32px; background-color: #f8fafc; border-radius: 24px; border: 2px dashed #e2e8f0; margin: 24px 0; }
+    .alert { background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 16px; border-radius: 8px; margin-bottom: 24px; color: #166534; font-weight: 500; }
     .h2 { font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 16px; }
   </style>
 </head>
-<body>
-<div class="container">
-  <div class="header">
-    <img src="cid:logo" alt="ENTRYNEX" style="height: 60px; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;">
-    <h1 style="display: none;">ENTRYNEX</h1>
-  </div>
-  <div class="body">${content}</div>
-  <div class="footer">
-    This is an automated email. Do not reply to this message.<br>
-    &copy; ${new Date().getFullYear()} ENTRYNEX | Event Access Management System
-  </div>
-</div>
+<body style="margin: 0; padding: 0; background-color: #f8fafc;">
+  <center class="wrapper">
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding-top: 20px; padding-bottom: 20px;">
+      <tr>
+        <td align="center" valign="top">
+          <!--[if (gte mso 9)|(IE)]>
+          <table width="600" align="center" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+          <td align="center" valign="top">
+          <![endif]-->
+          <table class="main" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; margin: 0 auto;">
+            <tr>
+              <td class="header" style="background-color: #0a1128; padding: 32px; border-top-left-radius: 16px; border-top-right-radius: 16px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td width="72" valign="middle" style="padding-right: 16px;">
+                      <table width="72" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 16px; text-align: center;">
+                        <tr>
+                          <td align="center" valign="middle" style="padding: 8px; height: 72px;">
+                            <img src="cid:logo" alt="ENTRYNEX" style="width: 56px; max-height: 56px; display: block; border: 0;" width="56" />
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td valign="middle">
+                      <div style="font-size: 20px; font-weight: 800; color: #ffffff; margin: 0; line-height: 1.2;">ENTRYNEX</div>
+                      ${scenarioTitle ? `<div class="subtitle" style="font-size: 14px; font-weight: 700; color: #cbd5e1; margin-top: 4px; text-transform: uppercase; line-height: 1.4;">${scenarioTitle}</div>` : ''}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="content-body" style="padding: 40px 32px; color: #1e293b; line-height: 1.6;">
+                ${content}
+              </td>
+            </tr>
+            <tr>
+              <td class="footer" style="background-color: #f1f5f9; padding: 24px 32px; font-size: 12px; color: #64748b; text-align: center; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;">
+                <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">Event Organizer: ${eventOrganiser}</p>
+                <p style="margin: 0 0 12px 0; color: #64748b;">Support Contact: support@entrynex.com</p>
+                <p style="margin: 0 0 16px 0; font-size: 10px; color: #94a3b8; line-height: 1.4;">QR Validation Notice: This QR code is secure and will be validated at the venue gates.</p>
+                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase;">Powered by ENTRYNEX</div>
+              </td>
+            </tr>
+          </table>
+          <!--[if (gte mso 9)|(IE)]>
+          </td>
+          </tr>
+          </table>
+          <![endif]-->
+        </td>
+      </tr>
+    </table>
+  </center>
 </body>
 </html>`;
 
@@ -208,10 +268,9 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
   const templateMode = config.email?.templateMode || 'code';
   const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.order : null;
 
-  const subject = config.email?.templates?.ticketSubject || (isPaid
-    ? `Order Confirmed - ${event.name} (${order.orderNumber})`
-    : `Order Received - ${event.name} (${order.orderNumber})`);
+  
 
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">${title}</h2>
     <div class="alert">${alert}</div>
@@ -235,7 +294,7 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
         ? 'Note: Each ticket holder must provide their details and photo for verification before entry is granted.'
         : 'Note: Ticket assignment and attendee confirmation continue after payment is completed.'}
     </p>
-  `);
+  `, 'ENTRYNEX Event Confirmation', orgName);
 
   const dynamicTemplateData = {
     title,
@@ -251,6 +310,11 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
     cta,
     isPaid
   };
+
+  const subjectTemplate = config.email?.templates?.ticketSubject;
+  const subject = renderTemplate(subjectTemplate, dynamicTemplateData) || (isPaid
+    ? `Order Confirmed - ${event.name} (${order.orderNumber})`
+    : `Order Received - ${event.name} (${order.orderNumber})`);
 
   await sendWithProvider({
     to: order.buyerEmail,
@@ -282,6 +346,13 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
   const templateMode = config.email?.templateMode || 'code';
   const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.invite : null;
 
+  let scenarioTitle = 'ENTRYNEX Event Entry Confirmation';
+  const catName = String(ticketDetails?.categoryName || '').toLowerCase();
+  if (catName.includes('pass') || catName.includes('vip') || catName.includes('sponsor') || catName.includes('access') || catName.includes('staff')) {
+    scenarioTitle = 'Your ENTRYNEX Access Details';
+  }
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
+
   const html = baseTemplate(`
     <h2 class="h2">You've Been Invited!</h2>
     <p>Great news! You have been invited to attend <strong>${event.name}</strong>.</p>
@@ -304,7 +375,7 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
     <p style="font-size:13px;color:#64748b; margin-top: 24px; text-align: center;">
       You will need to provide your full name, ID details, and a clear photo for verification.
     </p>
-  `);
+  `, scenarioTitle, orgName);
 
   const dynamicTemplateData = {
     attendeeEmail: attendee.email,
@@ -316,9 +387,12 @@ const sendAttendeeInvite = async ({ attendee, event, ticketDetails }) => {
     confirmUrl
   };
 
+  const inviteSubjectTemplate = config.email?.templates?.inviteSubject;
+  const inviteSubject = renderTemplate(inviteSubjectTemplate, dynamicTemplateData) || `Invitation: ${event.name} - Action Required`;
+
   await sendWithProvider({
     to: attendee.email,
-    subject: config.email?.templates?.inviteSubject || `Invitation: ${event.name} - Action Required`,
+    subject: inviteSubject,
     html,
     templateId,
     dynamicTemplateData,
@@ -355,6 +429,13 @@ const sendFinalConfirmation = async (payload) => {
     qrDataUrl = await QRCode.toDataURL(attendee.qrToken);
   }
 
+  let scenarioTitle = 'ENTRYNEX Event Entry Confirmation';
+  const catName = String(ticketCategory || attendee.categoryName || '').toLowerCase();
+  if (catName.includes('pass') || catName.includes('vip') || catName.includes('sponsor') || catName.includes('access') || catName.includes('staff')) {
+    scenarioTitle = 'Your ENTRYNEX Access Details';
+  }
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
+
   const html = baseTemplate(`
     <h2 class="h2">Your Ticket is Ready!</h2>
     <div class="alert">Your ticket is confirmed. Please present this email or the attached PDF with the QR code at entry.</div>
@@ -378,7 +459,7 @@ const sendFinalConfirmation = async (payload) => {
       Need help? Contact us at <br>
       <strong>${supportEmail || 'support@entrynex.com'}</strong> ${supportPhone ? `| <strong>${supportPhone}</strong>` : ''}
     </div>
-  `);
+  `, scenarioTitle, orgName);
 
   const dynamicTemplateData = {
     attendeeName: attendee.fullName,
@@ -392,10 +473,12 @@ const sendFinalConfirmation = async (payload) => {
     supportEmail: supportEmail || 'support@entrynex.com',
     supportPhone: supportPhone || 'N/A',
   };
+  const finalSubjectTemplate = config.email?.templates?.ticketSubject;
+  const finalSubject = renderTemplate(finalSubjectTemplate, dynamicTemplateData) || `Confirmed: Your entry ticket for ${event.name}`;
 
   await sendWithProvider({
     to: attendee.email,
-    subject: config.email?.templates?.ticketSubject || `Confirmed: Your entry ticket for ${event.name}`,
+    subject: finalSubject,
     html,
     templateId: templateId || process.env.SENDGRID_FINAL_CONFIRMATION_TEMPLATE_ID,
     dynamicTemplateData,
@@ -423,6 +506,7 @@ const sendBuyerFinalSummary = async ({
     .map((a) => `<li>${a.fullName} - ${a.categoryName} (${a.email})</li>`)
     .join('');
 
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2>All Attendees Verified</h2>
     <p>Dear <strong>${buyerName || 'Buyer'}</strong>,</p>
@@ -433,7 +517,7 @@ const sendBuyerFinalSummary = async ({
     <p style="margin-top:16px;font-weight:bold">Confirmed Attendees</p>
     <ul>${rows || '<li>No attendees found.</li>'}</ul>
     <p style="font-size:13px;color:#555;">Support: ${supportEmail || 'support@entrynex.com'} | ${supportPhone || 'N/A'}</p>
-  `);
+  `, 'ENTRYNEX Event Confirmation', orgName);
 
   await sendWithProvider({
     to: buyerEmail,
@@ -453,6 +537,7 @@ const sendBuyerFinalSummary = async ({
 };
 
 const sendPhotoRejection = async (attendee, event, reason, resubmitLink) => {
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">Photo Verification Failed</h2>
     <div class="alert" style="background:#fef2f2; border-left-color:#ef4444; color:#991b1b;">Your photo was not accepted for verification.</div>
@@ -480,7 +565,7 @@ const sendPhotoRejection = async (attendee, event, reason, resubmitLink) => {
     <p style="font-size:13px; color:#64748b; margin-top: 24px; text-align: center;">
       If you have any questions, please contact the event organiser.
     </p>
-  `);
+  `, 'ENTRYNEX Event Entry Confirmation', orgName);
   await sendWithProvider({
     to: attendee.email,
     subject: `Photo Rejected - Resubmit for ${event.name}`,
@@ -491,13 +576,14 @@ const sendPhotoRejection = async (attendee, event, reason, resubmitLink) => {
 const sendConfirmationReminder = async (attendee, event) => {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   const confirmUrl = `${frontendUrl}/invite/${attendee.confirmationToken}`;
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2>Action Required: Confirm Your Identity</h2>
     <p>Dear <strong>${attendee.fullName || 'Attendee'}</strong>,</p>
     <p>This is a reminder to complete your identity confirmation for <strong>${event.name}</strong>.</p>
     <a class="btn" href="${confirmUrl}">Confirm My Identity</a>
     <p style="font-size:13px;color:#888;">Please complete before the deadline to avoid ticket cancellation.</p>
-  `);
+  `, 'ENTRYNEX Event Entry Confirmation', orgName);
   await sendWithProvider({
     to: attendee.email,
     subject: `Reminder - Confirm your ticket for ${event.name}`,
@@ -506,6 +592,7 @@ const sendConfirmationReminder = async (attendee, event) => {
 };
 
 const sendSubOrganiserInvite = async (user, event) => {
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">Sub-Organiser Invitation</h2>
     <div class="alert">You have been selected to help manage event operations.</div>
@@ -524,7 +611,7 @@ const sendSubOrganiserInvite = async (user, event) => {
     <div style="text-align: center; margin-top: 32px;">
       <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login">Log In to Dashboard</a>
     </div>
-  `);
+  `, 'Your ENTRYNEX Access Details', orgName);
   await sendWithProvider({
     to: user.email,
     subject: `ENTRYNEX: Sub-Organiser Invite ${event?.name ? `- ${event.name}` : ''}`,
@@ -533,6 +620,7 @@ const sendSubOrganiserInvite = async (user, event) => {
 };
 
 const sendStatusChange = async (attendee, event, status, message) => {
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">Ticket Status Updated</h2>
     <div class="alert" style="background: #eff6ff; border-left-color: #3b82f6; color: #1e40af;">The status of your ticket for ${event?.name || 'the event'} has changed.</div>
@@ -551,7 +639,7 @@ const sendStatusChange = async (attendee, event, status, message) => {
     </div>` : ''}
 
     <p style="margin-top: 24px;">Please visit the ENTRYNEX portal to view your updated ticket details.</p>
-  `);
+  `, 'ENTRYNEX Event Entry Confirmation', orgName);
   await sendWithProvider({
     to: attendee.email,
     subject: `ENTRYNEX: Ticket Status Update - ${event?.name || 'Event'}`,
@@ -560,6 +648,7 @@ const sendStatusChange = async (attendee, event, status, message) => {
 };
 
 const sendBuyerPhotoRejection = async (buyer, event, attendee, reason, resubmitLink) => {
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">Attendee Photo Rejected</h2>
     <div class="alert" style="background:#fef2f2; border-left-color:#ef4444; color:#991b1b;">An attendee in your order has their photo rejected.</div>
@@ -575,7 +664,7 @@ const sendBuyerPhotoRejection = async (buyer, event, attendee, reason, resubmitL
     <div style="text-align: center; margin-top: 16px;">
       <a href="${resubmitLink}" class="btn" style="background: #dc2626;">Resubmit Photo Link</a>
     </div>
-  `);
+  `, 'ENTRYNEX Event Confirmation', orgName);
   await sendWithProvider({
     to: buyer.email,
     subject: `ENTRYNEX: Photo Rejected for ${attendee.fullName || 'Attendee'} - ${event?.name || 'Event'}`,
@@ -614,6 +703,7 @@ const sendBuyerTicketProgressUpdate = async ({
   const config = stageConfig[stage];
   if (!config || !buyer?.email) return;
 
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   const html = baseTemplate(`
     <h2 class="h2">${config.title}</h2>
     <div class="alert">${config.alert}</div>
@@ -629,7 +719,7 @@ const sendBuyerTicketProgressUpdate = async ({
     <div style="text-align: center; margin-top: 32px;">
       <a class="btn" href="${orderUrl}">View Ticket Progress</a>
     </div>
-  `);
+  `, 'ENTRYNEX Event Confirmation', orgName);
 
   await sendWithProvider({
     to: buyer.email,
@@ -651,11 +741,15 @@ const sendPasswordResetEmail = async (user, resetUrl) => {
     <p style="font-size:13px; color: #64748b; margin-top: 24px;">
       This link is valid for **1 hour**. If you did not request this, please ignore this email and your password will remain unchanged.
     </p>
-  `);
+  `, 'Your ENTRYNEX Access Details');
+
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const resetSubjectTemplate = config.email?.templates?.resetSubject;
+  const resetSubject = renderTemplate(resetSubjectTemplate, { userName: user.name }) || 'ENTRYNEX: Password Reset Request';
 
   await sendWithProvider({
     to: user.email,
-    subject: 'ENTRYNEX: Password Reset Request',
+    subject: resetSubject,
     html,
   });
 };
@@ -673,7 +767,7 @@ const sendVerificationEmail = async (user, verifyUrl) => {
     <p style="font-size:13px; color: #64748b; margin-top: 24px;">
       This link is valid for **24 hours**. If you did not create an account, please ignore this email.
     </p>
-  `);
+  `, 'Your ENTRYNEX Access Details');
 
   await sendWithProvider({
     to: user.email,
@@ -698,7 +792,7 @@ const sendTempPasswordEmail = async (user, tempPassword, loginUrl) => {
     <div style="text-align: center; margin-top: 32px;">
       <a class="btn" href="${loginUrl}">Log In Now</a>
     </div>
-  `);
+  `, 'Your ENTRYNEX Access Details');
 
   return sendWithProvider({
     to: user.email,
@@ -726,7 +820,7 @@ const sendRoleAssignmentEmail = async (user, newRole, assignedEvents = []) => {
     <div style="text-align: center; margin-top: 32px;">
       <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login">Go to Dashboard</a>
     </div>
-  `);
+  `, 'Your ENTRYNEX Access Details');
 
   await sendWithProvider({
     to: user.email,
@@ -739,6 +833,7 @@ const sendAttendeeVerificationConfirmation = async (attendee, event) => {
   const eventDate = event?.startDate
     ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'TBD';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
   
   const html = baseTemplate(`
     <h2 class="h2">Details Received - Verification in Progress</h2>
@@ -773,7 +868,7 @@ const sendAttendeeVerificationConfirmation = async (attendee, event) => {
     <p style="font-size: 12px; color: #64748b; margin-top: 24px; text-align: center;">
       If you have any questions, please contact the event organizer.
     </p>
-  `);
+  `, 'ENTRYNEX Event Entry Confirmation', orgName);
 
   await sendWithProvider({
     to: attendee.email,
@@ -786,6 +881,7 @@ const sendAttendeePendingVerification = async (attendee, event) => {
   const eventDate = event?.startDate
     ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'TBD';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
 
   const html = baseTemplate(`
     <h2 class="h2">Details Received - Verification Pending</h2>
@@ -811,7 +907,7 @@ const sendAttendeePendingVerification = async (attendee, event) => {
     <p style="font-size: 12px; color: #64748b; margin-top: 24px; text-align: center;">
       If you have any questions, please contact the event organizer.
     </p>
-  `);
+  `, 'ENTRYNEX Event Entry Confirmation', orgName);
 
   await sendWithProvider({
     to: attendee.email,

@@ -49,6 +49,14 @@ router.post('/assign', upload.single('photo'), [
       });
     }
 
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Identity Verification Photo is required',
+        errors: [{ msg: 'Identity Verification Photo is required', param: 'photo' }]
+      });
+    }
+
     const { ticketId, fullName, email, phone, dateOfBirth, nationalId, passportNumber } = req.body;
 
     // Find ticket
@@ -286,6 +294,14 @@ router.post('/:id/attendee', upload.single('photo'), [
       });
     }
 
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Identity Verification Photo is required',
+        errors: [{ msg: 'Identity Verification Photo is required', param: 'photo' }]
+      });
+    }
+
     const ticketId = req.params.id;
     const { fullName, email, phone, dateOfBirth, nationalId, passportNumber } = req.body;
     const ticket = await Ticket.findById(ticketId).populate('order').populate('event');
@@ -474,6 +490,15 @@ router.get('/download/:token', protect, async (req, res, next) => {
     if (!isAllowed && attendee.order) {
       const order = await Order.findById(attendee.order).select('buyerEmail');
       isAllowed = order?.buyerEmail?.toLowerCase?.() === requesterEmail;
+    }
+
+    // Allow Sponsor to download their team members' tickets
+    if (!isAllowed && req.user.role === 'Sponsor') {
+      const Sponsor = require('../models/Sponsor');
+      const sponsor = await Sponsor.findOne({ userId: req.user._id });
+      if (sponsor && attendee.sponsorId?.toString() === sponsor._id.toString()) {
+        isAllowed = true;
+      }
     }
 
     if (!isAllowed) {

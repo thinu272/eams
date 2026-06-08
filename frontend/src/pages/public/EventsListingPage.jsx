@@ -3,6 +3,7 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvents } from '../../api/events';
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 import PublicEventCard from '../../components/events/PublicEventCard';
 
 const EventsListingPage = () => {
@@ -20,7 +21,6 @@ const EventsListingPage = () => {
   const fetchEvents = () => {
     setLoading(true);
     getEvents({ 
-      status: 'published',
       limit: 50,
       search: filters.search || undefined,
       date: filters.date || undefined,
@@ -36,7 +36,10 @@ const EventsListingPage = () => {
            setAvailableCategories(types.length > 0 ? types : ['Cricket Match', 'Tournament', 'VIP Event']);
         }
       })
-      .catch(() => setEvents([]))
+      .catch((err) => {
+        console.error('FETCH_EVENTS_ERROR:', err);
+        setEvents([]);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -49,7 +52,7 @@ const EventsListingPage = () => {
   }, [filters]);
 
   useEffect(() => {
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    const socket = io(getSocketUrl());
     
     socket.on('event_update', (data) => {
       console.log('Listing update received:', data);

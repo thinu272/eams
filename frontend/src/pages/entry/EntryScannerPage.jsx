@@ -4,6 +4,7 @@ import { getMyEvents } from '../../api/events';
 import { checkInAttendee, getEntryStats, lookupEntry, scanEntry } from '../../api/entry';
 import QRScannerComponent from '../../components/events/QRScannerComponent';
 import toast from 'react-hot-toast';
+import { getAssetUrl } from '../../utils/backend';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -32,7 +33,7 @@ const parseScannedValue = (value) => {
 const buildAssetUrl = (photoPath) => {
   if (!photoPath) return '';
   if (photoPath.startsWith('http')) return photoPath;
-  return `http://localhost:5000/${photoPath}`;
+  return getAssetUrl(photoPath);
 };
 
 const playBeep = (granted) => {

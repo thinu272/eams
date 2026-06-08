@@ -392,13 +392,17 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
     }
 
     const { fullName, email, phone, dateOfBirth, nationalId, passportNumber, nationality } = req.body;
-    if (!fullName || !email || !phone) {
-      return res.status(400).json({ success: false, message: 'fullName, email, and phone are required.' });
+    const smsEnabled = !!attendee.event?.settings?.communicationChannels?.sms;
+    if (!fullName || !email) {
+      return res.status(400).json({ success: false, message: 'fullName and email are required.' });
+    }
+    if (smsEnabled && !String(phone || '').trim()) {
+      return res.status(400).json({ success: false, message: 'Phone number is required when SMS notifications are enabled for this event.' });
     }
 
     attendee.fullName = String(fullName).trim();
     attendee.email = String(email).trim().toLowerCase();
-    attendee.phone = String(phone).trim();
+    attendee.phone = phone ? String(phone).trim() : undefined;
     if (dateOfBirth) attendee.dateOfBirth = new Date(dateOfBirth);
     if (nationalId) attendee.nationalId = nationalId;
     if (passportNumber) attendee.passportNumber = passportNumber;

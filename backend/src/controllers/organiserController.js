@@ -112,22 +112,24 @@ const createSubOrganiser = async (req, res, next) => {
     const user = await User.create(payload);
     
     // Get the event to find the main organiser
-    const event = await Event.findById(eventId).select('mainOrganiser name').lean();
+    const event = await Event.findById(eventId).select('mainOrganisers name').lean();
     
-    // Create notification for main organiser
-    if (event?.mainOrganiser) {
-      await createNotification(
-        event.mainOrganiser,
-        'New Team Member Added',
-        `${req.user.name} added ${user.name} as a Sub-Organiser for ${event.name}`,
-        'info',
-        { 
-          eventId: eventId, 
-          actionType: 'team_member_added',
-          addedBy: req.user._id,
-          newMemberId: user._id 
-        }
-      );
+    // Create notification for all main organisers
+    if (event?.mainOrganisers?.length) {
+      await Promise.all(event.mainOrganisers.map(orgId => 
+        createNotification(
+          orgId,
+          'New Team Member Added',
+          `${req.user.name} added ${user.name} as a Sub-Organiser for ${event.name}`,
+          'info',
+          { 
+            eventId: eventId, 
+            actionType: 'team_member_added',
+            addedBy: req.user._id,
+            newMemberId: user._id 
+          }
+        )
+      ));
     }
     
     await notifySubOrganiserInvite({ user, event, phone: user.phone, email: user.email });

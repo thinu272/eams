@@ -45,6 +45,20 @@ const categorySchema = new mongoose.Schema({
   maxUsage: { type: Number },
 }, { _id: false });
 
+const sponsorPackageSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  name: { type: String, required: true },
+  level: { type: String, enum: ['Platinum', 'Gold', 'Silver', 'Custom'], default: 'Custom' },
+  description: { type: String },
+  capacity: { type: Number, default: 1 }, // Number of Passes (NOP) per sponsor
+  price: { type: Number, default: 0 },
+  zones: [{ type: String }],
+  benefits: [{ type: String }],
+  contactNumber: { type: String },
+  isVisible: { type: Boolean, default: true },
+  expiryDate: { type: Date },
+}, { _id: false, timestamps: true });
+
 const eventSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -74,6 +88,7 @@ const eventSchema = new mongoose.Schema({
     enum: ['draft', 'published', 'ongoing', 'completed', 'cancelled'],
     default: 'draft',
   },
+  timezone: { type: String, default: 'Asia/Colombo' },
   coverImage: { type: String },
   bannerImage: { type: String },
   logoImage: { type: String },
@@ -86,6 +101,9 @@ const eventSchema = new mongoose.Schema({
 
   // Ticket categories (e.g., VIP, General, School, Media)
   categories: [categorySchema],
+
+  // Sponsor packages
+  sponsorPackages: [sponsorPackageSchema],
 
   // Physical zones inside the venue
   zones: [zoneSchema],
@@ -122,11 +140,12 @@ const eventSchema = new mongoose.Schema({
   },
 
   // Assigned personnel
-  mainOrganiser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  subOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  staff: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  volunteers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  auditors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company' },
+  mainOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+  subOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+  staff: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+  volunteers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+  auditors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
 
   // Settings
   settings: {
@@ -154,6 +173,11 @@ const eventSchema = new mongoose.Schema({
       email: { type: Boolean, default: true },
       sms: { type: Boolean, default: false },
     },
+    // New feature flags
+    mfaEnforced: { type: Boolean, default: false },
+    sponsorModuleEnabled: { type: Boolean, default: true },
+    publicRegistrationEnabled: { type: Boolean, default: true },
+    ticketTransfersEnabled: { type: Boolean, default: false },
     paymentMethods: {
       card: { type: Boolean, default: true },
       bank_transfer: { type: Boolean, default: true },

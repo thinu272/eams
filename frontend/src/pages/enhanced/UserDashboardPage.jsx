@@ -24,8 +24,8 @@ const UserDashboardPage = () => {
         'MainAdmin': '/admin/dashboard',
         'MainOrganiser': '/organiser/dashboard',
         'SubOrganiser': '/suborg/dashboard',
-        'Staff': (user?.responsibilities?.entryAccess || user?.assignedGates?.length > 0) ? '/staff/scan' : '/staff/zone-access',
-        'Volunteer': '/entry',
+        'Staff': '/staff/dashboard',
+        'Volunteer': '/staff/dashboard',
         'Auditor': '/auditor/dashboard',
       };
 

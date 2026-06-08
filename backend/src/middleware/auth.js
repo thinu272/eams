@@ -13,13 +13,28 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Not authorised. No token.' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(decoded.id).select('-password').populate('customRole');
     if (!user) {
       return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
     }
     const status = String(user.status || 'Active');
     if (status !== 'Active') {
       return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
+    }
+
+    if (user.customRole) {
+      const customPerms = user.customRole.permissions?.toObject ? user.customRole.permissions.toObject() : user.customRole.permissions;
+      user.permissions = {
+        ...(customPerms || {}),
+        ...(user.permissions || {}),
+      };
+      if (user.customRole.zoneIds && user.customRole.zoneIds.length > 0) {
+        if (!user.responsibilities) user.responsibilities = {};
+        user.responsibilities.zoneIds = Array.from(new Set([
+          ...(user.responsibilities.zoneIds || []).map(String),
+          ...user.customRole.zoneIds.map(String)
+        ]));
+      }
     }
     
     // Normalize role for robust RBAC
@@ -97,8 +112,8 @@ const requireEventAccess = async (req, res, next) => {
 
     // Check creator status (for organisers who haven't been 'assigned' yet)
     const Event = require('../models/Event');
-    const event = await Event.findById(eventId).select('createdBy mainOrganiser');
-    if (event && (event.createdBy?.toString() === user._id.toString() || event.mainOrganiser?.toString() === user._id.toString())) {
+    const event = await Event.findById(eventId).select('createdBy mainOrganisers');
+    if (event && (event.createdBy?.toString() === user._id.toString() || event.mainOrganisers?.some(id => id.toString() === user._id.toString()))) {
       req.resolvedEventId = eventId;
       return next();
     }
@@ -129,11 +144,14 @@ const requirePermission = (permission) => {
     // Full authority roles bypass specific flag checks
     if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) return next();
     
-    // Check specific JSON flag
-    if (!req.user.permissions || !req.user.permissions[permission]) {
+    // Check specific JSON flag (supports string or array of strings)
+    const permissionsToCheck = Array.isArray(permission) ? permission : [permission];
+    const hasPermission = permissionsToCheck.some(p => req.user.permissions && req.user.permissions[p]);
+    
+    if (!hasPermission) {
       return res.status(403).json({
         success: false,
-        message: `Target operation requires specific clearance: ${permission}`,
+        message: `Target operation requires specific clearance: ${permissionsToCheck.join(' or ')}`,
       });
     }
     next();

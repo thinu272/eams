@@ -74,11 +74,14 @@ import StaffZoneAccessPage from './pages/staff/StaffZoneAccessPage';
 import StaffManualSearchPage from './pages/staff/StaffManualSearchPage';
 import StaffZoneManualSearchPage from './pages/staff/StaffZoneManualSearchPage';
 import StaffActivityLogPage from './pages/staff/StaffActivityLogPage';
+import StaffDashboardPage from './pages/staff/StaffDashboardPage';
 
 // Auditor
 import AuditorDashboard from './pages/auditor/AuditorDashboard';
 import AuditorLogsPage from './pages/auditor/AuditorLogsPage';
+import AuditorSystemLogsPage from './pages/auditor/AuditorSystemLogsPage';
 import AuditorReportsPage from './pages/auditor/AuditorReportsPage';
+import SponsorDashboard from './pages/sponsor/SponsorDashboard';
 
 // Shared real-time dashboard + reports
 import LiveDashboard from './pages/shared/LiveDashboard';
@@ -179,22 +182,27 @@ const AppRoutes = () => (
     <Route path="/suborganiser/verify-photos" element={<Protected roles={['SubOrganiser','MainOrganiser','MainAdmin']}><SubOrgVerificationPage /></Protected>} />
 
     {/* Entry / Staff */}
-    <Route path="/staff/scan" element={<Protected roles={['Staff']}><StaffScanPage /></Protected>} />
-    <Route path="/staff/zone-access" element={<Protected roles={['Staff']}><StaffZoneAccessPage /></Protected>} />
-    <Route path="/staff/search" element={<Protected roles={['Staff']}><StaffManualSearchPage /></Protected>} />
-    <Route path="/staff/zone-search" element={<Protected roles={['Staff']}><StaffZoneManualSearchPage /></Protected>} />
-    <Route path="/staff/activity" element={<Protected roles={['Staff']}><StaffActivityLogPage /></Protected>} />
-    <Route path="/staff/verification" element={<Protected roles={['Staff']}><SubOrgVerificationPage /></Protected>} />
-    <Route path="/staff/upload" element={<Protected roles={['Staff']}><BulkUploadPage /></Protected>} />
+    <Route path="/staff/dashboard" element={<Protected roles={['Staff', 'Volunteer']}><StaffDashboardPage /></Protected>} />
+    <Route path="/staff/scan" element={<Protected roles={['Staff', 'Volunteer']}><StaffScanPage /></Protected>} />
+    <Route path="/staff/zone-access" element={<Protected roles={['Staff', 'Volunteer']}><StaffZoneAccessPage /></Protected>} />
+    <Route path="/staff/search" element={<Protected roles={['Staff', 'Volunteer']}><StaffManualSearchPage /></Protected>} />
+    <Route path="/staff/zone-search" element={<Protected roles={['Staff', 'Volunteer']}><StaffZoneManualSearchPage /></Protected>} />
+    <Route path="/staff/activity" element={<Protected roles={['Staff', 'Volunteer']}><StaffActivityLogPage /></Protected>} />
+    <Route path="/staff/verification" element={<Protected roles={['Staff', 'Volunteer']}><SubOrgVerificationPage /></Protected>} />
+    <Route path="/staff/upload" element={<Protected roles={['Staff', 'Volunteer']}><BulkUploadPage /></Protected>} />
     <Route path="/entry" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/entry-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/zone-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><ZoneScannerPage /></Protected>} />
-    <Route path="/entry/logs" element={<Protected roles={['MainAdmin','MainOrganiser','Staff']}><EntryLogsPage /></Protected>} />
+    <Route path="/entry/logs" element={<Protected roles={['MainAdmin','MainOrganiser','Staff', 'Volunteer']}><EntryLogsPage /></Protected>} />
 
     {/* Auditor */}
     <Route path="/auditor/dashboard" element={<Protected roles={['Auditor']}><AuditorDashboard /></Protected>} />
     <Route path="/auditor/reports"   element={<Protected roles={['Auditor']}><AuditorReportsPage /></Protected>} />
     <Route path="/auditor/logs"      element={<Protected roles={['Auditor']}><AuditorLogsPage /></Protected>} />
+    <Route path="/auditor/system-logs" element={<Protected roles={['Auditor']}><AuditorSystemLogsPage /></Protected>} />
+
+    {/* Sponsor */}
+    <Route path="/sponsor/dashboard" element={<Protected roles={['Sponsor']}><SponsorDashboard /></Protected>} />
 
     <Route path="*" element={<NotFoundPage />} />
   </Routes>

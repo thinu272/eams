@@ -125,7 +125,9 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, reason: 'GATE_ACCESS_DENIED', message: `You are not assigned to ${resolvedGate}.` });
     }
 
-    if (!attendee.isActive) {
+    if (!attendee.isActive || attendee.isDisabled) {
+      const denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Attendee is deactivated';
+      const reasonCode = attendee.isDisabled ? 'TICKET_DISABLED' : 'DEACTIVATED';
       const log = await EntryLog.create(buildLogPayload({
         attendee,
         gateId: resolvedGate,
@@ -136,7 +138,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         method,
         deviceId,
         accessGranted: false,
-        denialReason: 'Attendee is deactivated',
+        denialReason,
         processedBy: req.user._id,
       }));
       emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
@@ -148,7 +150,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         timestamp: log.timestamp,
         accessGranted: false,
       });
-      return res.status(403).json({ success: false, reason: 'DEACTIVATED', message: 'Attendee is deactivated.', data: { log } });
+      return res.status(403).json({ success: false, reason: reasonCode, message: denialReason + '.', data: { log } });
     }
 
     // --- DATE VALIDATION ---
@@ -302,6 +304,8 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       zoneName: zoneName || resolvedGate || 'Main Entry',
       timestamp: logEntry.timestamp,
       accessGranted,
+      categoryName: attendee.categoryName,
+      processedByName: req.user.name || req.user.email,
     });
 
     res.json({
@@ -589,6 +593,8 @@ router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub
       zoneName: resolvedGate,
       timestamp: logEntry.timestamp,
       accessGranted: true,
+      categoryName: attendee.categoryName,
+      processedByName: req.user.name || req.user.email,
     });
 
     res.json({
@@ -652,6 +658,8 @@ router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'su
       zoneName: resolvedGate,
       timestamp: logEntry.timestamp,
       accessGranted: true,
+      categoryName: attendee.categoryName,
+      processedByName: req.user.name || req.user.email,
     });
 
     res.json({

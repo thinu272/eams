@@ -208,6 +208,7 @@ const LoginPage = () => {
                   { r: 'Sub-Org', e: 'suborg@stadium.entrynex.com', p: 'SubOrg@Matrix.Reset' },
                   { r: 'Staff', e: 'staff@stadium.entrynex.com', p: 'Staff@Matrix.Reset' },
                   { r: 'Auditor', e: 'auditor@stadium.entrynex.com', p: 'Auditor@Matrix.Reset' },
+                  { r: 'Sponsor', e: 'sponsor@stadium.entrynex.com', p: 'Sponsor@Matrix.Reset' },
                   { r: 'Attendee', e: 'attendee@stadium.entrynex.com', p: 'Attendee@Matrix.Reset' },
                 ].map((item, idx) => (
                   <div key={idx} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100 text-[9px] font-bold tracking-wider">

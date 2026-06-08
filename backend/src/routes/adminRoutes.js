@@ -22,6 +22,7 @@ const {
   listUsers,
   createUser,
   updateUser,
+  duplicateEvent,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -404,6 +405,7 @@ router.post('/events', createEvent);
 router.get('/events/:id', getEvent);
 router.patch('/events/:id', updateEvent);
 router.delete('/events/:id', deleteEvent);
+router.post('/events/:id/duplicate', duplicateEvent);
 
 router.get('/users', listUsers);
 router.post('/users', createUser);

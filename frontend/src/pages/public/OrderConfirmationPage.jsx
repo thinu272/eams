@@ -149,6 +149,10 @@ const OrderConfirmationPage = () => {
       toast.error('Full name and email are required.');
       return;
     }
+    if (!form.photo) {
+      toast.error('Identity Verification Photo is required.');
+      return;
+    }
 
     const body = new FormData();
     body.append('fullName', form.fullName);
@@ -183,18 +187,24 @@ const OrderConfirmationPage = () => {
       toast.error('Please enter an invite email address.');
       return;
     }
-    if (!phone) {
-      toast.error('Please enter a phone number for SMS.');
+
+    if (payload?.smsEnabled && !phone) {
+      toast.error('Please enter a phone number for SMS invite.');
       return;
     }
-    if (!/^\+?[1-9]\d{1,14}$/.test(phone.trim().replace(/\s+/g, ''))) {
+
+    if (phone && !/^\+?[1-9]\d{1,14}$/.test(phone.trim().replace(/\s+/g, ''))) {
       toast.error('Please enter a valid international phone number');
       return;
     }
 
     setSubmittingTicketId(ticketId);
     try {
-      await sendTicketInvite(ticketId, { email, phone, notificationChannel: 'both' });
+      await sendTicketInvite(ticketId, { 
+        email, 
+        phone: phone || undefined, 
+        notificationChannel: (payload?.smsEnabled && phone) ? 'both' : 'email' 
+      });
       toast.success('Secure invite link sent via Email & SMS.');
       await loadOrder();
     } catch (err) {
@@ -413,6 +423,8 @@ const OrderConfirmationPage = () => {
                                                     </div>
 
                                                     {/* Photo Upload Area */}
+                                                    <div>
+                                                        <label className="mb-2 block text-xs font-bold text-slate-700">Identity Verification Photo *</label>
                                                         <div className="flex flex-col gap-3">
                                                             <div className="flex gap-2">
                                                                 <label className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 cursor-pointer group">
@@ -462,6 +474,7 @@ const OrderConfirmationPage = () => {
                                                                 />
                                                             )}
                                                         </div>
+                                                    </div>
 
                                                     <button
                                                         type="button"
@@ -500,7 +513,7 @@ const OrderConfirmationPage = () => {
                                                             type="tel"
                                                             value={invitePhoneByTicket[ticket._id] || ''}
                                                             onChange={(e) => setInvitePhoneByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
-                                                            placeholder="Guest Phone (+1234567890)"
+                                                            placeholder={`Guest Phone ${payload?.smsEnabled ? '*' : '(Optional)'}`}
                                                             className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                         />
                                                     </div>

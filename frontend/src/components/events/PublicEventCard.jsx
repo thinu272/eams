@@ -3,12 +3,8 @@ import { Link } from 'react-router-dom';
 import { CalendarDaysIcon, MapPinIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import Badge from '../ui/Badge';
 
-const buildAssetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-};
+import { getAssetUrl } from '../../utils/backend';
+const buildAssetUrl = (path) => getAssetUrl(path);
 
 const PublicEventCard = ({ event }) => {
   const categories = event.categories || [];
@@ -92,13 +88,21 @@ const PublicEventCard = ({ event }) => {
                <CalendarDaysIcon className="h-5 w-5" />
             </div>
             <span className="text-slate-600">
-              {event.startDate
-                ? new Date(event.startDate).toLocaleDateString('en-US', {
-                    month: 'long',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })
-                : 'Date to be announced'}
+              {(() => {
+                let formatted = 'Date to be announced';
+                try {
+                  if (event.startDate) {
+                    const options = { month: 'long', day: 'numeric', year: 'numeric' };
+                    if (event.timezone) {
+                      options.timeZone = event.timezone;
+                    }
+                    formatted = new Date(event.startDate).toLocaleDateString('en-US', options) + (event.timezone ? ` (${event.timezone})` : ' (Asia/Colombo)');
+                  }
+                } catch (err) {
+                  formatted = event.startDate ? new Date(event.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Date to be announced';
+                }
+                return formatted;
+              })()}
             </span>
           </div>
 

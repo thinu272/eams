@@ -24,8 +24,8 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
 
     if (location.pathname !== targetPath) return false;
     if (targetSection) return currentSection === targetSection;
-    if (targetPath === '/admin/dashboard' || targetPath === '/organiser/dashboard') return currentSection === '';
-    return true;
+    // Base path items (without section query) should only be active on pure base route.
+    return currentSection === '';
   };
 
   return (
@@ -65,13 +65,13 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
               ...section,
               items: section.items.filter((item) => {
                 if (['Verification'].includes(item.label)) {
-                  return user?.responsibilities?.verificationAccess === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
+                  return user?.permissions?.canVerifyPhotos === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
                 }
                 if (['Entry Scanner', 'Scan Entry', 'Manual Search'].includes(item.label)) {
-                  return user?.responsibilities?.entryAccess || (user?.assignedGates?.length > 0);
+                  return user?.permissions?.canEntryAccess === true || (user?.assignedGates?.length > 0);
                 }
                 if (['Zone Scanner', 'Zone Access', 'My Zones', 'Zone Manual Search'].includes(item.label)) {
-                  return (user?.responsibilities?.zoneIds?.length > 0) || (user?.assignedZones?.length > 0);
+                  return (user?.assignedZones?.length > 0);
                 }
                 if (['Bulk Upload'].includes(item.label)) {
                   return user?.permissions?.canBulkUpload === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));

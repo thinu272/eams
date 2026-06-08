@@ -206,7 +206,9 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(denied.status).json(denied.body);
     }
 
-    if (!attendee.isActive || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
+    if (!attendee.isActive || attendee.isDisabled || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
+      const denialReason = attendee.isDisabled ? 'TICKET_DISABLED' : 'INVALID_TICKET';
+      const message = attendee.isDisabled ? 'Ticket has been disabled' : 'Invalid ticket';
       const denied = await buildDeniedResponse({
         attendee,
         zoneName,
@@ -214,9 +216,9 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         scanMethod: qrToken ? 'QR' : 'RFID',
         userId: req.user._id,
         io,
-        denialReason: 'INVALID_TICKET',
+        denialReason,
         httpStatus: 403,
-        message: 'Invalid ticket',
+        message,
       });
 
       return res.status(denied.status).json(denied.body);
@@ -262,6 +264,8 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       zoneName,
       timestamp: zoneLog.timestamp,
       accessGranted: true,
+      categoryName: attendee.categoryName,
+      processedByName: req.user.name || req.user.email,
     });
 
     res.json({

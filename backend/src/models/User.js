@@ -13,6 +13,7 @@ const normalizeRoleForStorage = (role) => {
   if (normalized === 'STAFF') return 'Staff';
   if (normalized === 'VOLUNTEER') return 'Volunteer';
   if (normalized === 'AUDITOR') return 'Auditor';
+  if (normalized === 'SPONSOR') return 'Sponsor';
   if (normalized === 'ATTENDEE' || normalized === 'USER' || normalized === 'BUYER') return 'Attendee';
 
   return String(role || '').trim();
@@ -41,7 +42,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee'],
+    enum: ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Sponsor', 'Attendee'],
     required: true,
     set: normalizeRoleForStorage,
   },
@@ -57,6 +58,7 @@ const userSchema = new mongoose.Schema({
 
   // Scoped Event Assignments
   assignedEvents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Event' }],
+  company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company' },
   assignedGates: [{ type: String }],
   assignedZones: [{ type: String }],
 

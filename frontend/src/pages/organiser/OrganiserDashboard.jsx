@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 import { formatDistanceToNow } from 'date-fns';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import toast from 'react-hot-toast';
@@ -11,6 +12,7 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
+import { useAuth } from '../../context/AuthContext';
 import { getMyEvents } from '../../api/events';
 import {
   getOrganiserWorkspace,
@@ -24,6 +26,10 @@ import {
   deleteTicketCategory,
   createSubOrganiser,
   updateSubOrganiser,
+  getCustomRoles,
+  createCustomRole,
+  updateCustomRole,
+  deleteCustomRole,
   updateVerificationStatus,
   resendInvite,
   cancelInvite,
@@ -35,6 +41,11 @@ import {
   resendOrganiserNotification,
   updateOrganiserSettings,
   updateOrganiserEventCustomization,
+  createSponsorPackage,
+  updateSponsorPackage,
+  deleteSponsorPackage,
+  createSponsor,
+  deleteSponsor,
 } from '../../api/organiser';
 import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 
@@ -75,13 +86,52 @@ const emptySubOrg = {
     canBulkUpload: false, 
     canEntryAccess: false 
   },
-  responsibilities: {
-    zoneIds: [],
-    verificationAccess: false,
-    entryAccess: false
-  }
+  assignedZones: [],
 };
 const emptyZone = { name: '', description: '', capacity: 0, color: '#0F766E' };
+const emptyCustomRole = {
+  name: '',
+  description: '',
+  permissions: {
+    canViewDashboard: false,
+    canManageEvents: false,
+    canManageTickets: false,
+    canViewAttendees: false,
+    canEditAttendees: false,
+    canVerifyPhotos: false,
+    canScanEntry: false,
+    canManageZones: false,
+    canInviteAttendees: false,
+    canBulkUpload: false,
+    canViewReports: false,
+    canViewLogs: false,
+    canManageSponsors: false,
+    canViewTransactions: false,
+    canManageSettings: false,
+  },
+  zoneIds: []
+};
+
+const emptySponsorPackage = {
+  name: '',
+  level: 'Custom',
+  description: '',
+  capacity: 1,
+  price: 0,
+  benefits: [],
+  contactNumber: '',
+  isVisible: true,
+  expiryDate: '',
+};
+
+const emptySponsor = {
+  companyName: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  packageId: '',
+  notes: '',
+};
 
 const COLORS = ['#0F766E', '#14B8A6', '#2DD4BF', '#99F6E4', '#CCFBF1'];
 const getEventObjectId = (event) => event?._id || event?.id || '';
@@ -97,7 +147,54 @@ const downloadBlob = (blob, fileName) => {
   window.URL.revokeObjectURL(url);
 };
 
+const clampPage = (value, pages = 1) => {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) return 1;
+  return Math.min(Math.max(parsed, 1), Math.max(pages, 1));
+};
+
+const Pagination = ({ page = 1, pages = 1, total, pageKey = 'page', updateQuery }) => {
+  if (!pages || pages <= 1) return null;
+
+  const currentPage = clampPage(page, pages);
+  const visiblePages = [];
+  const maxVisible = 5;
+  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let end = Math.min(pages, start + maxVisible - 1);
+  if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
+  for (let i = start; i <= end; i += 1) visiblePages.push(i);
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+        Page {currentPage} of {pages}{Number.isFinite(total) ? ` · ${total} rows` : ''}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => updateQuery(pageKey, currentPage - 1)}>
+          Prev
+        </Button>
+        {visiblePages.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => updateQuery(pageKey, item)}
+            className={`h-8 min-w-8 rounded-lg px-2 text-xs font-bold transition ${
+              item === currentPage ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {item}
+          </button>
+        ))}
+        <Button variant="outline" size="sm" disabled={currentPage >= pages} onClick={() => updateQuery(pageKey, currentPage + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const OrganiserDashboard = () => {
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
@@ -112,12 +209,22 @@ const OrganiserDashboard = () => {
   const [zoneModal, setZoneModal] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [subOrgForm, setSubOrgForm] = useState(emptySubOrg);
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamRoleFilter, setTeamRoleFilter] = useState('');
+  const [teamStatusFilter, setTeamStatusFilter] = useState('');
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [settingsForm, setSettingsForm] = useState(null);
   const [customizationForm, setCustomizationForm] = useState(null);
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [logoImageFile, setLogoImageFile] = useState(null);
   const [bannerImageFile, setBannerImageFile] = useState(null);
+  
+  const [customRoles, setCustomRoles] = useState([]);
+  const [customRoleModal, setCustomRoleModal] = useState(null);
+  const [customRolesLoading, setCustomRolesLoading] = useState(false);
+  const [activeTeamTab, setActiveTeamTab] = useState('members');
+  const [sponsorPackageModal, setSponsorPackageModal] = useState(null);
+  const [sponsorModal, setSponsorModal] = useState(null);
 
   const activeSection = params.get('section') || 'overview';
 
@@ -150,15 +257,37 @@ const OrganiserDashboard = () => {
     return nextEventId;
   };
 
+  const loadCustomRoles = async (selectedEventId = eventId) => {
+    if (!selectedEventId) return;
+    setCustomRolesLoading(true);
+    try {
+      const res = await getCustomRoles({ eventId: selectedEventId });
+      setCustomRoles(res.data?.data?.roles || []);
+    } catch (err) {
+      console.error('Failed to load custom roles:', err);
+    } finally {
+      setCustomRolesLoading(false);
+    }
+  };
+
   const loadWorkspace = async (selectedEventId = eventId) => {
     if (!selectedEventId) return;
     setLoading(true);
+    loadCustomRoles(selectedEventId);
     try {
       const response = await getOrganiserWorkspace({
         eventId: selectedEventId,
         search: params.get('search') || undefined,
         status: params.get('status') || undefined,
         category: params.get('category') || undefined,
+        page: params.get('page') || undefined,
+        invitesPage: params.get('invitesPage') || undefined,
+        entryLogsPage: params.get('entryLogsPage') || undefined,
+        notificationsPage: params.get('notificationsPage') || undefined,
+        zoneLogsPage: params.get('zoneLogsPage') || undefined,
+        teamPage: params.get('teamPage') || undefined,
+        verificationPage: params.get('verificationPage') || undefined,
+        limit: params.get('limit') || undefined,
       });
       const nextData = response.data?.data || null;
       setWorkspace(nextData);
@@ -176,7 +305,7 @@ const OrganiserDashboard = () => {
         basicInfo: {
           name: nextData?.event?.name || '',
           description: nextData?.event?.description || '',
-          eventType: nextData?.event?.eventType || 'cricket',
+          eventType: nextData?.event?.eventType || '',
           customEventType: nextData?.event?.customEventType || '',
           venue: {
             name: nextData?.event?.venue?.name || '',
@@ -287,7 +416,7 @@ const OrganiserDashboard = () => {
 
   useEffect(() => {
     if (!eventId) return undefined;
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    const socket = io(getSocketUrl());
     socket.emit('join_dashboard', { eventId });
     const refresh = () => loadWorkspace(eventId);
     socket.on('entry_update', refresh);
@@ -300,6 +429,9 @@ const OrganiserDashboard = () => {
       const next = new URLSearchParams(current);
       if (value) next.set(key, value);
       else next.delete(key);
+      if (['search', 'status', 'category', 'limit'].includes(key)) {
+        ['page', 'invitesPage', 'entryLogsPage', 'notificationsPage', 'zoneLogsPage', 'teamPage', 'verificationPage', 'ticketsPage', 'sponsorPackagesPage', 'sponsorsPage', 'customRolesPage', 'activityFeedPage'].forEach((pageKey) => next.delete(pageKey));
+      }
       return next;
     });
   };
@@ -313,17 +445,85 @@ const OrganiserDashboard = () => {
   const notifications = workspace?.notifications || [];
   const stats = workspace?.overview || {};
   const teamMembers = workspace?.teamMembers || workspace?.subOrganisers || [];
+  const sponsorPackages = selectedEvent?.sponsorPackages || [];
+  const sponsors = workspace?.sponsors || [];
+  const totalTicketsCount = Number(stats.totalTickets || 0);
+  const ticketsSoldCount = Number(stats.ticketsSold || 0);
+  const confirmedAttendeesCount = Number(stats.confirmedAttendees || 0);
+  const checkedInCount = Number(stats.checkedInCount || 0);
+  const clampPercent = (value) => Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
+  const soldProgress = totalTicketsCount > 0 ? clampPercent((ticketsSoldCount / totalTicketsCount) * 100) : 0;
+  const checkInProgressBase = confirmedAttendeesCount > 0 ? confirmedAttendeesCount : ticketsSoldCount;
+  const checkInProgress = checkInProgressBase > 0 ? clampPercent((checkedInCount / checkInProgressBase) * 100) : 0;
+  const pageSize = Math.min(Math.max(parseInt(params.get('limit') || '10', 10) || 10, 1), 50);
+  const paginateLocal = (rows, pageKey) => {
+    const pages = Math.ceil((rows?.length || 0) / pageSize) || 1;
+    const page = clampPage(params.get(pageKey), pages);
+    return {
+      rows: (rows || []).slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pages,
+      total: rows?.length || 0,
+      pageKey,
+    };
+  };
+  const ticketPage = paginateLocal(categories, 'ticketsPage');
+  const sponsorPackagePage = paginateLocal(sponsorPackages, 'sponsorPackagesPage');
+  const sponsorPage = paginateLocal(sponsors, 'sponsorsPage');
+  const customRolePage = paginateLocal(customRoles, 'customRolesPage');
+  const activityFeedPage = paginateLocal(workspace?.activityFeed || [], 'activityFeedPage');
+  const canViewPrivateTicketCode = (ticket) => {
+    if (!ticket?.isPrivate) return false;
+    if (user?.role === 'MainOrganiser') return true;
+    const ticketCreatorId = String(ticket?.createdBy?._id || ticket?.createdBy || '');
+    const currentUserId = String(user?._id || '');
+    return !!ticketCreatorId && !!currentUserId && ticketCreatorId === currentUserId;
+  };
+  const getTicketCreatorLabel = (ticket) => {
+    const creatorId = String(ticket?.createdBy?._id || ticket?.createdBy || '');
+    if (!creatorId) return 'Unknown';
+    if (creatorId === String(user?._id || '')) return `${user?.name || 'You'} (You)`;
+    const teamMember = teamMembers.find((member) => String(member?._id || '') === creatorId);
+    if (teamMember?.name) return teamMember.name;
+    return 'Unknown';
+  };
+
+  const teamCounts = useMemo(() => {
+    const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, total: teamMembers.length };
+    teamMembers.forEach(m => {
+      if (counts[m.role] !== undefined) {
+        counts[m.role]++;
+      }
+    });
+    return counts;
+  }, [teamMembers]);
+
+  const filteredTeamMembers = useMemo(() => {
+    return teamMembers.filter((member) => {
+      const searchStr = teamSearch.toLowerCase();
+      const nameMatch = !teamSearch || 
+        member.name?.toLowerCase().includes(searchStr) || 
+        member.email?.toLowerCase().includes(searchStr) || 
+        member.phone?.includes(teamSearch);
+      const roleMatch = !teamRoleFilter || member.role === teamRoleFilter;
+      const statusMatch = !teamStatusFilter || member.status === teamStatusFilter;
+      return nameMatch && roleMatch && statusMatch;
+    });
+  }, [teamMembers, teamSearch, teamRoleFilter, teamStatusFilter]);
+
   const groupedTeamMembers = useMemo(() => {
     const groups = new Map();
     const directMembers = [];
 
-    teamMembers.forEach((member) => {
+    // Filtered sub-organisers
+    filteredTeamMembers.forEach((member) => {
       if (member.role === 'SubOrganiser') {
         groups.set(String(member._id), { lead: member, members: [] });
       }
     });
 
-    teamMembers.forEach((member) => {
+    // Children and direct members
+    filteredTeamMembers.forEach((member) => {
       if (member.role === 'SubOrganiser') return;
       const ownerId = member.createdBy?._id || member.createdBy;
       if (ownerId && groups.has(String(ownerId))) {
@@ -337,7 +537,7 @@ const OrganiserDashboard = () => {
       groups: Array.from(groups.values()),
       directMembers,
     };
-  }, [teamMembers]);
+  }, [filteredTeamMembers]);
   const attendeeCategoryOptions = useMemo(() => categories.map((item) => ({ value: item.id, label: item.name })), [categories]);
 
   const saveAttendee = async () => {
@@ -350,6 +550,14 @@ const OrganiserDashboard = () => {
   const removeAttendee = async (id) => {
     await deleteOrganiserAttendee(id, eventId);
     toast.success('Attendee removed');
+    loadWorkspace();
+  };
+  const toggleAttendeeDisabled = async (attendee) => {
+    await updateOrganiserAttendee(attendee._id, {
+      eventId,
+      isDisabled: !attendee.isDisabled,
+    });
+    toast.success(attendee.isDisabled ? 'Ticket enabled' : 'Ticket disabled');
     loadWorkspace();
   };
 
@@ -398,7 +606,7 @@ const OrganiserDashboard = () => {
       ...member,
       role: member.role || 'SubOrganiser',
       permissions: { ...emptySubOrg.permissions, ...(member.permissions || {}) },
-      responsibilities: { ...emptySubOrg.responsibilities, ...(member.responsibilities || {}) },
+      assignedZones: member.assignedZones || [],
       _id: member._id
     });
     setSubOrgModal(true);
@@ -418,6 +626,46 @@ const OrganiserDashboard = () => {
       loadWorkspace();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Update failed');
+    }
+  };
+
+  const saveCustomRole = async () => {
+    if (!eventId) {
+      toast.error('Select an event first');
+      return;
+    }
+    if (!customRoleModal.name.trim()) {
+      toast.error('Role name is required');
+      return;
+    }
+
+    try {
+      const payload = {
+        ...customRoleModal,
+        eventId,
+      };
+      if (customRoleModal._id) {
+        await updateCustomRole(customRoleModal._id, payload);
+        toast.success('Custom role updated successfully');
+      } else {
+        await createCustomRole(payload);
+        toast.success('Custom role created successfully');
+      }
+      setCustomRoleModal(null);
+      loadCustomRoles(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save custom role');
+    }
+  };
+
+  const handleDeleteCustomRole = async (roleId) => {
+    if (!window.confirm('Are you sure you want to delete this custom role?')) return;
+    try {
+      await deleteCustomRole(roleId, eventId);
+      toast.success('Custom role deleted successfully');
+      loadCustomRoles(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete custom role');
     }
   };
 
@@ -476,6 +724,80 @@ const OrganiserDashboard = () => {
     }
   };
 
+  const saveSponsorPackage = async () => {
+    if (!eventId) {
+      toast.error('Select an event before saving sponsor package');
+      return;
+    }
+    if (!sponsorPackageModal?.name?.trim()) {
+      toast.error('Sponsor package name is required');
+      return;
+    }
+    try {
+      const payload = {
+        ...sponsorPackageModal,
+        capacity: Number(sponsorPackageModal.capacity || 1),
+        price: Number(sponsorPackageModal.price || 0),
+        benefits: (sponsorPackageModal.benefits || []).filter(Boolean),
+      };
+      if (sponsorPackageModal.id) {
+        await updateSponsorPackage(sponsorPackageModal.id, payload);
+        toast.success('Sponsor package updated');
+      } else {
+        await createSponsorPackage(payload);
+        toast.success('Sponsor package created');
+      }
+      setSponsorPackageModal(null);
+      loadWorkspace(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save sponsor package');
+    }
+  };
+
+  const saveSponsor = async () => {
+    if (!eventId) {
+      toast.error('Select an event before creating sponsor');
+      return;
+    }
+    if (!sponsorModal?.companyName?.trim() || !sponsorModal?.contactPerson?.trim() || !sponsorModal?.email?.trim() || !sponsorModal?.packageId) {
+      toast.error('Company, contact person, email, and package are required');
+      return;
+    }
+    try {
+      const payload = {
+        ...sponsorModal,
+      };
+      await createSponsor(payload);
+      toast.success('Sponsor created');
+      setSponsorModal(null);
+      loadWorkspace(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create sponsor');
+    }
+  };
+
+  const removeSponsorPackage = async (packageId) => {
+    if (!window.confirm('Delete this sponsor package?')) return;
+    try {
+      await deleteSponsorPackage(packageId, eventId);
+      toast.success('Sponsor package deleted');
+      loadWorkspace(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete sponsor package');
+    }
+  };
+
+  const removeSponsor = async (id) => {
+    if (!window.confirm('Delete this sponsor?')) return;
+    try {
+      await deleteSponsor(id, eventId);
+      toast.success('Sponsor deleted');
+      loadWorkspace(eventId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete sponsor');
+    }
+  };
+
   if (loading && !workspace) {
     return <DashboardLayout><LoadingSkeleton /></DashboardLayout>;
   }
@@ -530,7 +852,7 @@ const OrganiserDashboard = () => {
                   </div>
                   <p className="text-3xl font-black text-slate-900 tracking-tight">{value || 0}</p>
                   <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-main rounded-full animate-shimmer" style={{ width: label === 'Tickets Sold' ? `${(stats.ticketsSold / stats.totalTickets) * 100}%` : '40%' }}></div>
+                    <div className="h-full bg-brand-main rounded-full animate-shimmer" style={{ width: `${label === 'Total Tickets' ? (totalTicketsCount > 0 ? 100 : 0) : label === 'Tickets Sold' ? soldProgress : label === 'Checked-In' ? checkInProgress : soldProgress}%` }}></div>
                   </div>
                 </div>
               ))}
@@ -677,8 +999,8 @@ const OrganiserDashboard = () => {
                   <span className="text-slate-500">Event name</span>
                   <input
                     value={customizationForm.basicInfo.name}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, name: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                    readOnly
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
                   />
                 </label>
                 <label className="space-y-2 text-sm">
@@ -692,26 +1014,11 @@ const OrganiserDashboard = () => {
                 </label>
                 <label className="space-y-2 text-sm">
                   <span className="text-slate-500">Event type</span>
-                  <div className="space-y-2">
-                    <select
-                      value={customizationForm.basicInfo.eventType}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, eventType: e.target.value } }))}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    >
-                      <option value="cricket">Cricket</option>
-                      <option value="concert">Concert</option>
-                      <option value="conference">Conference</option>
-                      <option value="other">Other</option>
-                    </select>
-                    {customizationForm.basicInfo.eventType === 'other' && (
-                      <input 
-                        value={customizationForm.basicInfo.customEventType || ''} 
-                        onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, customEventType: e.target.value } }))} 
-                        placeholder="Specify type (e.g. Festival)" 
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                      />
-                    )}
-                  </div>
+                  <input
+                    value={customizationForm.basicInfo.eventType || customizationForm.basicInfo.customEventType || 'Not set'}
+                    readOnly
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
+                  />
                 </label>
 
                 {customizationForm.basicInfo.eventType === 'cricket' && (
@@ -803,7 +1110,7 @@ const OrganiserDashboard = () => {
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</span>
                   {customizationForm.branding.logoImage && !logoImageFile && (
                     <div className="h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
-                      <img src={customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : `http://localhost:5000${customizationForm.branding.logoImage}`} alt="logo" className="h-full w-full object-contain" />
+                      <img src={customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : getAssetUrl(customizationForm.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
                     </div>
                   )}
                   <input
@@ -817,7 +1124,7 @@ const OrganiserDashboard = () => {
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cover Image (Card View)</span>
                   {customizationForm.branding.coverImage && !coverImageFile && (
                     <div className="h-24 w-full max-w-xs overflow-hidden rounded-xl border border-slate-200">
-                      <img src={customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : `http://localhost:5000${customizationForm.branding.coverImage}`} alt="cover" className="h-full w-full object-cover" />
+                      <img src={customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : getAssetUrl(customizationForm.branding.coverImage)} alt="cover" className="h-full w-full object-cover" />
                     </div>
                   )}
                   <input
@@ -831,7 +1138,7 @@ const OrganiserDashboard = () => {
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hero Banner Image</span>
                   {customizationForm.branding.bannerImage && !bannerImageFile && (
                     <div className="h-32 w-full overflow-hidden rounded-2xl border border-slate-200">
-                      <img src={customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : `http://localhost:5000${customizationForm.branding.bannerImage}`} alt="banner" className="h-full w-full object-cover" />
+                      <img src={customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : getAssetUrl(customizationForm.branding.bannerImage)} alt="banner" className="h-full w-full object-cover" />
                     </div>
                   )}
                   <input
@@ -848,8 +1155,8 @@ const OrganiserDashboard = () => {
                   <span className="text-slate-500">Venue name</span>
                   <input
                     value={customizationForm.basicInfo.venue.name}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, venue: { ...current.basicInfo.venue, name: e.target.value } } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                    readOnly
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
                   />
                 </label>
                 <label className="space-y-2 text-sm">
@@ -952,44 +1259,6 @@ const OrganiserDashboard = () => {
                   </div>
                 </div>
 
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Who can enter</span>
-                  <input
-                    value={customizationForm.accessRules.whoCanEnter}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, accessRules: { ...current.accessRules, whoCanEnter: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    placeholder="VIP, General, Staff"
-                  />
-                </label>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-2 text-sm">
-                    <span className="text-slate-500">Entry window start</span>
-                    <input
-                      value={customizationForm.accessRules.entryWindowStart}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, accessRules: { ...current.accessRules, entryWindowStart: e.target.value } }))}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                      placeholder="08:00"
-                    />
-                  </label>
-                  <label className="space-y-2 text-sm">
-                    <span className="text-slate-500">Entry window end</span>
-                    <input
-                      value={customizationForm.accessRules.entryWindowEnd}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, accessRules: { ...current.accessRules, entryWindowEnd: e.target.value } }))}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                      placeholder="10:30"
-                    />
-                  </label>
-                </div>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Restricted zones</span>
-                  <input
-                    value={customizationForm.accessRules.restrictedZones}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, accessRules: { ...current.accessRules, restrictedZones: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    placeholder="media-center, vip-lounge"
-                  />
-                </label>
               </div>
             </div>
           </Card>
@@ -1005,25 +1274,53 @@ const OrganiserDashboard = () => {
                 downloadBlob(res.data, `attendees-template-${eventId}.xlsx`);
               }}>Download Template</Button><label className="inline-flex cursor-pointer items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"><input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && handleBulkUpload(e.target.files[0])} />Upload Excel</label></div>}
             />
-            <div className="mb-4 grid gap-3 md:grid-cols-3">
+            <div className="mb-4 grid gap-3 md:grid-cols-4">
               <input value={search} onChange={(e) => { setSearch(e.target.value); setQuery('search', e.target.value); }} placeholder="Search by name, email, phone" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" />
               <select value={status} onChange={(e) => { setStatus(e.target.value); setQuery('status', e.target.value); }} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All statuses</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option></select>
               <select value={category} onChange={(e) => { setCategory(e.target.value); setQuery('category', e.target.value); }} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All categories</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select>
+              <select value={params.get('limit') || '10'} onChange={(e) => setQuery('limit', e.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm">
+                <option value="10">10 rows</option>
+                <option value="20">20 rows</option>
+                <option value="50">50 rows</option>
+              </select>
             </div>
             <Table>
               <thead><tr><Th>Name</Th><Th>Category</Th><Th>Status</Th><Th>Photo</Th><Th>Actions</Th></tr></thead>
               <tbody>
-                {attendees.map((attendee) => (
+                {attendees.map((attendee) => {
+                  const isBulkUploadAttendee = attendee?.addedVia === 'bulk_upload';
+                  return (
                   <Tr key={attendee._id}>
                     <Td><div><p className="font-semibold">{attendee.fullName}</p><p className="text-xs text-slate-500">{attendee.email || attendee.phone || '-'}</p></div></Td>
                     <Td>{attendee.categoryName || '-'}</Td>
-                    <Td><Badge color={statusColor[attendee.confirmationStatus] || 'gray'}>{attendee.confirmationStatus}</Badge></Td>
+                    <Td>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge color={statusColor[attendee.confirmationStatus] || 'gray'}>{attendee.confirmationStatus}</Badge>
+                        {attendee.isDisabled && <Badge color="red">disabled</Badge>}
+                      </div>
+                    </Td>
                     <Td><Badge color={statusColor[attendee.photoVerificationStatus] || 'gray'}>{attendee.photoVerificationStatus}</Badge></Td>
-                    <Td className="space-x-2"><button className="text-blue-600" onClick={() => setAttendeeModal({ ...emptyAttendee, ...attendee })}>Edit</button><button className="text-rose-600" onClick={() => removeAttendee(attendee._id)}>Delete</button><button className="text-teal-700" onClick={() => inviteOrganiserAttendee(attendee._id, eventId).then(() => { toast.success('Invite resent'); loadWorkspace(); })}>Resend Invite</button></Td>
+                    <Td className="space-x-2">
+                      <button className="text-blue-600" onClick={() => setAttendeeModal({ ...emptyAttendee, ...attendee })}>Edit</button>
+                      <button className="text-amber-700" onClick={() => toggleAttendeeDisabled(attendee)}>
+                        {attendee.isDisabled ? 'Enable' : 'Disable'}
+                      </button>
+                      {isBulkUploadAttendee && (
+                        <button className="text-rose-600" onClick={() => removeAttendee(attendee._id)}>Delete</button>
+                      )}
+                      <button className="text-teal-700" onClick={() => inviteOrganiserAttendee(attendee._id, eventId).then(() => { toast.success('Invite resent'); loadWorkspace(); })}>Resend Invite</button>
+                    </Td>
                   </Tr>
-                ))}
+                )})}
               </tbody>
             </Table>
+            <Pagination
+              page={workspace?.attendees?.page}
+              pages={workspace?.attendees?.pages}
+              total={workspace?.attendees?.total}
+              pageKey="page"
+              updateQuery={setQuery}
+            />
           </Card>
         )}
 
@@ -1031,110 +1328,472 @@ const OrganiserDashboard = () => {
           <Card>
             <CardHeader title="Ticket Management" subtitle="Manage categories, capacity, pricing, and assignments" action={<Button onClick={() => setCategoryModal({ ...emptyCategory })}>Add Category</Button>} />
             <Table>
-              <thead><tr><Th>Name</Th><Th>Price</Th><Th>Capacity</Th><Th>Sold</Th><Th>Assigned / Unassigned</Th><Th>Actions</Th></tr></thead>
+              <thead><tr><Th>Name</Th><Th>Price</Th><Th>Capacity</Th><Th>Sold</Th><Th>Assigned / Unassigned</Th><Th>Created By</Th><Th>Private Code</Th><Th>Actions</Th></tr></thead>
               <tbody>
-                {categories.map((ticket) => (
+                {ticketPage.rows.map((ticket) => (
                   <Tr key={ticket.id}>
                     <Td>{ticket.name}</Td><Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(ticket.price || 0).toLocaleString()}</Td><Td>{ticket.capacity}</Td><Td>{ticket.soldCount}</Td><Td>{ticket.assignedCount} / {ticket.unassignedCount}</Td>
+                    <Td>{getTicketCreatorLabel(ticket)}</Td>
+                    <Td>
+                      {ticket.isPrivate
+                        ? (canViewPrivateTicketCode(ticket) ? (ticket.accessCode || 'AUTO-GENERATED') : 'Hidden')
+                        : '-'}
+                    </Td>
                     <Td className="space-x-2"><button className="text-blue-600" onClick={() => setCategoryModal(ticket)}>Edit</button><button className="text-rose-600" onClick={() => deleteTicketCategory(ticket.id, eventId).then(() => { toast.success('Category deleted'); loadWorkspace(); })}>Delete</button></Td>
                   </Tr>
                 ))}
               </tbody>
             </Table>
+            <Pagination {...ticketPage} updateQuery={setQuery} />
           </Card>
+        )}
+
+        {activeSection === 'sponsor-packages' && (
+          <div className="space-y-6 animate-fade-in">
+            <Card>
+              <CardHeader
+                title="Sponsor Packages"
+                subtitle="Create and manage sponsor packages for this event"
+                action={<Button onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}>Add Sponsor Package</Button>}
+              />
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Name</Th>
+                    <Th>Level</Th>
+                    <Th>Price</Th>
+                    <Th>Capacity</Th>
+                    <Th>Visible</Th>
+                    <Th>Actions</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sponsorPackages.length === 0 ? (
+                    <Tr><Td colSpan={6} className="text-center text-slate-500">No sponsor packages configured yet.</Td></Tr>
+                  ) : sponsorPackagePage.rows.map((pkg) => (
+                    <Tr key={pkg.id}>
+                      <Td>{pkg.name}</Td>
+                      <Td>{pkg.level || 'Custom'}</Td>
+                      <Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(pkg.price || 0).toLocaleString()}</Td>
+                      <Td>{pkg.capacity}</Td>
+                      <Td>{pkg.isVisible ? 'Yes' : 'No'}</Td>
+                      <Td className="space-x-2">
+                        <button className="text-blue-600" onClick={() => setSponsorPackageModal(pkg)}>Edit</button>
+                        <button className="text-rose-600" onClick={() => removeSponsorPackage(pkg.id)}>Delete</button>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+              <Pagination {...sponsorPackagePage} updateQuery={setQuery} />
+            </Card>
+          </div>
+        )}
+
+        {activeSection === 'sponsors' && (
+          <div className="space-y-6 animate-fade-in">
+            <Card>
+              <CardHeader
+                title="Manage Sponsors"
+                subtitle="Onboard sponsors and assign sponsor packages"
+                action={<Button onClick={() => setSponsorModal({ ...emptySponsor, packageId: sponsorPackages?.[0]?.id || '' })}>Add Sponsor</Button>}
+              />
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Company</Th>
+                    <Th>Contact</Th>
+                    <Th>Email</Th>
+                    <Th>Phone</Th>
+                    <Th>Package</Th>
+                    <Th>Actions</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sponsors.length === 0 ? (
+                    <Tr><Td colSpan={6} className="text-center text-slate-500">No sponsors assigned yet.</Td></Tr>
+                  ) : sponsorPage.rows.map((sponsor) => (
+                    <Tr key={sponsor._id}>
+                      <Td>{sponsor.companyName}</Td>
+                      <Td>{sponsor.contactPerson}</Td>
+                      <Td>{sponsor.email}</Td>
+                      <Td>{sponsor.phone}</Td>
+                      <Td>{sponsorPackages.find((pkg) => pkg.id === sponsor.packageId)?.name || sponsor.packageId}</Td>
+                      <Td className="space-x-2"><button className="text-rose-600" onClick={() => removeSponsor(sponsor._id)}>Delete</button></Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+              <Pagination {...sponsorPage} updateQuery={setQuery} />
+            </Card>
+          </div>
         )}
 
         {activeSection === 'suborganisers' && (
-          <Card>
-            <CardHeader title="Team Management" subtitle="Create and permission event team members" action={<Button onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}>Create Team Member</Button>} />
-            <div className="space-y-6">
-              {groupedTeamMembers.groups.map(({ lead, members }) => (
-                <div key={lead._id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Sub Organiser</p>
-                      <h3 className="mt-2 text-xl font-black text-slate-900">{lead.name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">{lead.email} · {lead.phone}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
-                        <Badge color="blue">{members.length} members</Badge>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button variant="outline" onClick={() => handleEditTeamMember(lead)}>Control Sub Organiser</Button>
-                      <Button variant="outline" onClick={() => updateSubOrganiser(lead._id, { eventId, status: lead.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</Button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                    <Table>
-                      <thead><tr><Th>Member</Th><Th>Role</Th><Th>Scope</Th><Th>Zones / Gates</Th><Th>Actions</Th></tr></thead>
-                      <tbody>
-                        {members.map((user) => (
-                          <Tr key={user._id}>
-                            <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
-                            <Td><div className="text-xs font-bold uppercase tracking-wider text-blue-600">{user.role}</div><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
-                            <Td>
-                              <div className="flex flex-wrap gap-1">
-                                {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
-                                {(user.assignedZones || user.responsibilities?.zoneIds || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
-                                {!(user.assignedGates || []).length && !(user.assignedZones || user.responsibilities?.zoneIds || []).length && <span className="text-xs text-slate-400">General</span>}
-                              </div>
-                            </Td>
-                            <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || user.responsibilities?.zoneIds || [])].join(', ') || 'General event scope'}</Td>
-                            <Td>
-                              <div className="flex flex-col gap-1">
-                                <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
-                                <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
-                              </div>
-                            </Td>
-                          </Tr>
-                        ))}
-                        {members.length === 0 && (
-                          <tr><td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">No team members assigned under this sub organiser yet.</td></tr>
-                        )}
-                      </tbody>
-                    </Table>
-                  </div>
+          <div className="space-y-6 animate-fade-in">
+            {/* Team Overview Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {[
+                { label: 'Total Strength', value: teamCounts.total, color: 'text-slate-900', bg: 'bg-slate-100/70 border-slate-200/60' },
+                { label: 'Sub-Organisers', value: teamCounts.SubOrganiser, color: 'text-indigo-600', bg: 'bg-indigo-50/30 border-indigo-100' },
+                { label: 'Staff', value: teamCounts.Staff, color: 'text-blue-600', bg: 'bg-blue-50/30 border-blue-100' },
+                { label: 'Volunteers', value: teamCounts.Volunteer, color: 'text-cyan-600', bg: 'bg-cyan-50/30 border-cyan-100' },
+                { label: 'Auditors', value: teamCounts.Auditor, color: 'text-teal-600', bg: 'bg-teal-50/30 border-teal-100' },
+              ].map(({ label, value, color, bg }) => (
+                <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className={`mt-2 text-3xl font-black ${color}`}>{value || 0}</p>
                 </div>
               ))}
+            </div>
 
-              {groupedTeamMembers.directMembers.length > 0 && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                  <h3 className="text-lg font-black text-slate-900">Direct Event Team</h3>
-                  <p className="mt-1 text-sm text-slate-500">Members assigned directly by the Main Organiser.</p>
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-                    <Table>
-                      <thead><tr><Th>Name</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
-                      <tbody>
-                        {groupedTeamMembers.directMembers.map((user) => (
-                          <Tr key={user._id}>
-                            <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email}</div></Td>
-                            <Td>{user.role}</Td>
-                            <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
-                            <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || user.responsibilities?.zoneIds || [])].join(', ') || 'General event scope'}</Td>
-                            <Td><button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Control</button></Td>
-                          </Tr>
-                        ))}
-                      </tbody>
-                    </Table>
+            {/* Tabs for switching between Team Members and Custom Roles */}
+            <div className="flex border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
+              <button 
+                onClick={() => setActiveTeamTab('members')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTeamTab === 'members' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                Team Members
+              </button>
+              <button 
+                onClick={() => setActiveTeamTab('roles')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTeamTab === 'roles' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                Custom Roles & Permissions
+              </button>
+            </div>
+
+            {activeTeamTab === 'members' && (
+              <>
+                {/* Smart Role Guidance Card */}
+                <div className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white p-5 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">ℹ</div>
+                    <div>
+                      <h4 className="font-bold text-slate-900">Understanding Team Roles & Scopes</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">Scopes determine if a user can approve tickets, scan entries, or edit event zones.</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-600">
+                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-indigo-600">Sub-Organiser:</strong> Full Admin Access</span>
+                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-blue-600">Staff:</strong> Operations & Verification</span>
+                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-cyan-600">Volunteer:</strong> Scanner Only</span>
+                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-teal-600">Auditor:</strong> Read-Only Audit logs</span>
                   </div>
                 </div>
-              )}
-            </div>
-          </Card>
+
+                {/* Filters and Search Bar */}
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900">Team Control Centre</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Audit roles, assign entry scopes, and delegate ticket categories</p>
+                    </div>
+                    <Button onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}>Create Team Member</Button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input 
+                      value={teamSearch} 
+                      onChange={(e) => setTeamSearch(e.target.value)} 
+                      placeholder="Search by name, email, phone..." 
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
+                    />
+                    <select 
+                      value={teamRoleFilter} 
+                      onChange={(e) => setTeamRoleFilter(e.target.value)} 
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
+                    >
+                      <option value="">All Roles</option>
+                      <option value="SubOrganiser">Sub-Organisers</option>
+                      <option value="Staff">Staff</option>
+                      <option value="Volunteer">Volunteers</option>
+                      <option value="Auditor">Auditors</option>
+                    </select>
+                    <select 
+                      value={teamStatusFilter} 
+                      onChange={(e) => setTeamStatusFilter(e.target.value)} 
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
+                    >
+                      <option value="">All Statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Main Render List */}
+                {filteredTeamMembers.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
+                    <p className="text-slate-500 font-medium">No team members match your active filters.</p>
+                    {(teamSearch || teamRoleFilter || teamStatusFilter) && (
+                      <button onClick={() => { setTeamSearch(''); setTeamRoleFilter(''); setTeamStatusFilter(''); }} className="mt-3 text-sm font-bold text-blue-600 hover:underline">Reset Filters</button>
+                    )}
+                  </div>
+                ) : (teamSearch || teamRoleFilter || teamStatusFilter) ? (
+                  // Search Results Unified List
+                  <Card>
+                    <CardHeader title="Search Results" subtitle={`Found ${filteredTeamMembers.length} matching team members`} />
+                    <div className="overflow-hidden rounded-2xl border border-slate-100">
+                      <Table>
+                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                        <tbody>
+                          {filteredTeamMembers.map((user) => {
+                            const ownerName = user.role !== 'SubOrganiser' && teamMembers.find(m => m._id === (user.createdBy?._id || user.createdBy))?.name;
+                            return (
+                              <Tr key={user._id}>
+                                <Td>
+                                  <div className="font-semibold text-slate-900">{user.name}</div>
+                                  <div className="text-xs text-slate-500">{user.email} · {user.phone}</div>
+                                  {ownerName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">Lead: {ownerName}</div>}
+                                </Td>
+                                <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span></Td>
+                                <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
+                                <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General Scope'}</Td>
+                                <Td>
+                                  <div className="flex gap-2">
+                                    <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit</button>
+                                    <button className="text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle</button>
+                                  </div>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </tbody>
+                      </Table>
+                    </div>
+                  </Card>
+                ) : (
+                  // Grouped Hierarchical View
+                  <div className="space-y-6">
+                    {groupedTeamMembers.groups.map(({ lead, members }) => (
+                      <div key={lead._id} className="rounded-3xl border border-slate-200 bg-slate-50/50 p-6 space-y-4 hover:shadow-md transition-all">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">Sub-Organiser Node</span>
+                            <h3 className="mt-3 text-2xl font-black text-slate-900">{lead.name}</h3>
+                            <p className="mt-1 text-sm text-slate-500">{lead.email} · {lead.phone}</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
+                              <Badge color="indigo">{members.length} Assigned Members</Badge>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={() => handleEditTeamMember(lead)}>Edit Node</Button>
+                            <Button variant="outline" onClick={() => updateSubOrganiser(lead._id, { eventId, status: lead.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</Button>
+                          </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                          <Table>
+                            <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Scope</Th><Th>Zones / Gates</Th><Th>Actions</Th></tr></thead>
+                            <tbody>
+                              {members.map((user) => (
+                                <Tr key={user._id}>
+                                  <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
+                                  <Td>
+                                    <div className="flex flex-col gap-1 items-start">
+                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                      <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
+                                    </div>
+                                  </Td>
+                                  <Td>
+                                    <div className="flex flex-wrap gap-1">
+                                      {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
+                                      {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
+                                      {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
+                                    </div>
+                                  </Td>
+                                  <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General event scope'}</Td>
+                                  <Td>
+                                    <div className="flex flex-col gap-1.5">
+                                      <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
+                                      <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
+                                    </div>
+                                  </Td>
+                                </Tr>
+                              ))}
+                              {members.length === 0 && (
+                                <tr><td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">No team members assigned under this sub organiser yet.</td></tr>
+                              )}
+                            </tbody>
+                          </Table>
+                        </div>
+                      </div>
+                    ))}
+
+                    {groupedTeamMembers.directMembers.length > 0 && (
+                      <div className="rounded-3xl border border-slate-200 bg-white p-6 space-y-4 hover:shadow-md transition-all">
+                        <div>
+                          <h3 className="text-xl font-black text-slate-900">Direct Event Team</h3>
+                          <p className="mt-1 text-sm text-slate-500">Members assigned directly by the Main Organiser.</p>
+                        </div>
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                          <Table>
+                            <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                            <tbody>
+                              {groupedTeamMembers.directMembers.map((user) => (
+                                <Tr key={user._id}>
+                                  <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
+                                  <Td>
+                                    <div className="flex flex-col gap-1 items-start">
+                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                      <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
+                                    </div>
+                                  </Td>
+                                  <Td>
+                                    <div className="flex flex-wrap gap-1">
+                                      {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
+                                      {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
+                                      {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
+                                    </div>
+                                  </Td>
+                                  <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General event scope'}</Td>
+                                  <Td>
+                                    <div className="flex flex-col gap-1.5">
+                                      <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
+                                      <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
+                                    </div>
+                                  </Td>
+                                </Tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Pagination
+                  page={workspace?.teamPage}
+                  pages={workspace?.teamPages}
+                  total={workspace?.teamTotal}
+                  pageKey="teamPage"
+                  updateQuery={setQuery}
+                />
+              </>
+            )}
+
+            {activeTeamTab === 'roles' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">Custom Role Registry</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Define granular access rules for your sub-organisers and staff</p>
+                  </div>
+                  <Button onClick={() => setCustomRoleModal({ ...emptyCustomRole })}>Create Custom Role</Button>
+                </div>
+
+                {customRolesLoading ? (
+                  <div className="text-center py-8 text-slate-400 text-sm">Loading custom roles...</div>
+                ) : customRoles.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
+                    <p className="text-slate-500 font-medium">No custom roles created for this event yet.</p>
+                    <button onClick={() => setCustomRoleModal({ ...emptyCustomRole })} className="mt-3 text-sm font-bold text-blue-600 hover:underline">
+                      Create one now
+                    </button>
+                  </div>
+                ) : (
+                  <Card>
+                    <div className="overflow-hidden rounded-2xl border border-slate-100">
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th>Role Name</Th>
+                            <Th>Description</Th>
+                            <Th>Permissions Enabled</Th>
+                            <Th>Zone Scope</Th>
+                            <Th>Actions</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {customRolePage.rows.map((role) => {
+                            const enabledPerms = Object.entries(role.permissions || {})
+                              .filter(([_, enabled]) => !!enabled)
+                              .map(([name]) => name.replace('can', ''));
+                            return (
+                              <Tr key={role._id}>
+                                <Td>
+                                  <div className="font-bold text-slate-900">{role.name}</div>
+                                  <div className="text-[10px] font-mono text-slate-400">slug: {role.slug}</div>
+                                </Td>
+                                <Td className="text-xs text-slate-600 max-w-xs truncate">{role.description || '-'}</Td>
+                                <Td>
+                                  <div className="flex flex-wrap gap-1 max-w-sm">
+                                    {enabledPerms.length === 0 ? (
+                                      <span className="text-[10px] text-slate-400">None</span>
+                                    ) : (
+                                      enabledPerms.map((p) => (
+                                        <span key={p} className="bg-slate-100 text-slate-700 text-[10px] font-medium px-2 py-0.5 rounded-full">
+                                          {p}
+                                        </span>
+                                      ))
+                                    )}
+                                  </div>
+                                </Td>
+                                <Td className="text-xs text-slate-600">
+                                  {(role.zoneIds || []).length === 0 
+                                    ? 'Global' 
+                                    : (role.zoneIds || []).map(zid => {
+                                        const zoneObj = selectedEvent?.zones?.find(z => z.id === zid || z.name === zid);
+                                        return zoneObj?.name || zid;
+                                      }).join(', ')
+                                  }
+                                </Td>
+                                <Td>
+                                  <div className="flex gap-2.5">
+                                    <button 
+                                      className="text-xs font-semibold text-blue-600 hover:underline" 
+                                      onClick={() => setCustomRoleModal({
+                                        ...emptyCustomRole,
+                                        ...role,
+                                        permissions: { ...emptyCustomRole.permissions, ...(role.permissions || {}) },
+                                        zoneIds: role.zoneIds || []
+                                      })}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button 
+                                      className="text-xs font-semibold text-rose-600 hover:underline" 
+                                      onClick={() => handleDeleteCustomRole(role._id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </tbody>
+                      </Table>
+                    </div>
+                    <Pagination {...customRolePage} updateQuery={setQuery} />
+                  </Card>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {activeSection === 'verification' && (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {verificationQueue.map((attendee) => (
-              <Card key={attendee._id}>
-                <div className="h-48 overflow-hidden rounded-2xl bg-slate-100">{attendee.photo ? <img src={attendee.photo} alt={attendee.fullName} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No photo</div>}</div>
-                <h3 className="mt-4 font-semibold text-slate-900">{attendee.fullName}</h3>
-                <p className="text-sm text-slate-500">{attendee.email || attendee.phone || '-'}</p>
-                <div className="mt-4 flex gap-2"><Button className="flex-1" onClick={() => updateVerificationStatus(attendee._id, { eventId, status: 'verified' }).then(() => { toast.success('Photo approved'); loadWorkspace(); })}>Approve</Button><Button variant="danger" className="flex-1" onClick={() => setRejecting(attendee)}>Reject</Button></div>
-              </Card>
-            ))}
+          <div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {verificationQueue.map((attendee) => (
+                <Card key={attendee._id}>
+                  <div className="h-48 overflow-hidden rounded-2xl bg-slate-100">{attendee.photo ? <img src={attendee.photo} alt={attendee.fullName} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No photo</div>}</div>
+                  <h3 className="mt-4 font-semibold text-slate-900">{attendee.fullName}</h3>
+                  <p className="text-sm text-slate-500">{attendee.email || attendee.phone || '-'}</p>
+                  <div className="mt-4 flex gap-2"><Button className="flex-1" onClick={() => updateVerificationStatus(attendee._id, { eventId, status: 'verified' }).then(() => { toast.success('Photo approved'); loadWorkspace(); })}>Approve</Button><Button variant="danger" className="flex-1" onClick={() => setRejecting(attendee)}>Reject</Button></div>
+                </Card>
+              ))}
+            </div>
+            <Pagination
+              page={workspace?.verificationPage}
+              pages={workspace?.verificationPages}
+              total={workspace?.verificationTotal}
+              pageKey="verificationPage"
+              updateQuery={setQuery}
+            />
           </div>
         )}
 
@@ -1155,6 +1814,12 @@ const OrganiserDashboard = () => {
                 ))}
               </tbody>
             </Table>
+            <Pagination
+              page={workspace?.invitesPage}
+              pages={workspace?.invitesPages}
+              pageKey="invitesPage"
+              updateQuery={setQuery}
+            />
           </Card>
         )}
 
@@ -1169,6 +1834,31 @@ const OrganiserDashboard = () => {
                 ))}
               </tbody>
             </Table>
+            <Pagination
+              page={workspace?.entryLogsPage}
+              pages={workspace?.entryLogsPages}
+              pageKey="entryLogsPage"
+              updateQuery={setQuery}
+            />
+          </Card>
+        )}
+
+        {activeSection === 'system-logs' && (
+          <Card>
+            <CardHeader title="Activity Logs" subtitle="All recent operations and system events" />
+            <Table>
+              <thead><tr><Th>Event</Th><Th>Details</Th><Th>Time</Th></tr></thead>
+              <tbody>
+                {activityFeedPage.rows.map((item) => (
+                  <Tr key={item.id}>
+                    <Td>{item.title}</Td>
+                    <Td>{item.message}</Td>
+                    <Td>{new Date(item.timestamp).toLocaleString()}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <Pagination {...activityFeedPage} updateQuery={setQuery} />
           </Card>
         )}
 
@@ -1197,6 +1887,12 @@ const OrganiserDashboard = () => {
                   {zoneLogs.map((log) => <Tr key={log._id}><Td>{log.attendeeId?.fullName || '-'}</Td><Td>{log.zoneName}</Td><Td><Badge color={log.action === 'ENTRY' ? 'blue' : 'gray'}>{log.action}</Badge></Td><Td>{new Date(log.timestamp).toLocaleString()}</Td></Tr>)}
                 </tbody>
               </Table>
+              <Pagination
+                page={workspace?.zoneLogsPage}
+                pages={workspace?.zoneLogsPages}
+                pageKey="zoneLogsPage"
+                updateQuery={setQuery}
+              />
             </Card>
           </div>
         )}
@@ -1221,6 +1917,12 @@ const OrganiserDashboard = () => {
                 {notifications.map((item) => <Tr key={item._id}><Td>{item.title}</Td><Td>{item.message}</Td><Td>{item.metadata?.channel || 'email_sms'}</Td><Td><button className="text-blue-600" onClick={() => resendOrganiserNotification(item._id, eventId).then(() => toast.success('Notification re-queued'))}>Resend</button></Td></Tr>)}
               </tbody>
             </Table>
+            <Pagination
+              page={workspace?.notificationsPage}
+              pages={workspace?.notificationsPages}
+              pageKey="notificationsPage"
+              updateQuery={setQuery}
+            />
           </Card>
         )}
 
@@ -1250,7 +1952,7 @@ const OrganiserDashboard = () => {
 
       <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Ticket Category' : 'Create New Ticket Category'} size="lg">
         {categoryModal && (
-          <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+          <div className="space-y-6">
             {/* Header Info */}
             <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -1347,7 +2049,9 @@ const OrganiserDashboard = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-slate-700">Access Code</span>
                       <span className="rounded-lg bg-indigo-600 px-3 py-1 text-sm font-mono font-bold text-white tracking-widest">
-                        {categoryModal.accessCode || 'AUTO-GENERATED'}
+                        {canViewPrivateTicketCode(categoryModal)
+                          ? (categoryModal.accessCode || 'AUTO-GENERATED')
+                          : 'Hidden'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-2">Share this code with invited guests to allow access to this private ticket</p>
@@ -1411,8 +2115,8 @@ const OrganiserDashboard = () => {
         )}
       </Modal>
 
-      <Modal open={subOrgModal} onClose={() => setSubOrgModal(false)} title={subOrgForm._id ? 'Manage Team Member Access' : 'Create Team Member'}>
-        <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
+      <Modal open={subOrgModal} onClose={() => setSubOrgModal(false)} title={subOrgForm._id ? 'Manage Team Member Access' : 'Create Team Member'} size="lg">
+        <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 block">
               <span className="text-xs font-bold uppercase text-slate-500">Name</span>
@@ -1420,7 +2124,62 @@ const OrganiserDashboard = () => {
             </label>
             <label className="space-y-1 block">
               <span className="text-xs font-bold uppercase text-slate-500">Role</span>
-              <select value={subOrgForm.role} onChange={(e) => setSubOrgForm((current) => ({ ...current, role: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm">
+                  <select 
+                value={subOrgForm.role} 
+                onChange={(e) => {
+                  const role = e.target.value;
+                  let permissions = { 
+                    canAddAttendees: false, 
+                    canVerifyPhotos: false, 
+                    canInviteAttendees: false, 
+                    canBulkUpload: false, 
+                    canEntryAccess: false 
+                  };
+                  let assignedZones = subOrgForm.assignedZones || [];
+
+                  if (role === 'SubOrganiser') {
+                    permissions = {
+                      canAddAttendees: true,
+                      canVerifyPhotos: true,
+                      canInviteAttendees: true,
+                      canBulkUpload: true,
+                      canEntryAccess: true
+                    };
+                    // full sub-organiser default
+                    assignedZones = assignedZones || [];
+                  } else if (role === 'Staff') {
+                    permissions = {
+                      canAddAttendees: true,
+                      canVerifyPhotos: true,
+                      canInviteAttendees: true,
+                      canBulkUpload: false,
+                      canEntryAccess: true
+                    };
+                    assignedZones = assignedZones || [];
+                  } else if (role === 'Volunteer') {
+                    permissions = {
+                      canAddAttendees: false,
+                      canVerifyPhotos: false,
+                      canInviteAttendees: false,
+                      canBulkUpload: false,
+                      canEntryAccess: true
+                    };
+                    assignedZones = assignedZones || [];
+                  } else if (role === 'Auditor') {
+                    permissions = {
+                      canAddAttendees: false,
+                      canVerifyPhotos: false,
+                      canInviteAttendees: false,
+                      canBulkUpload: false,
+                      canEntryAccess: false
+                    };
+                    assignedZones = assignedZones || [];
+                  }
+
+                  setSubOrgForm(curr => ({ ...curr, role, permissions, assignedZones }));
+                }} 
+                className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white"
+              >
                 <option value="SubOrganiser">Sub-Organiser</option>
                 <option value="Staff">Staff</option>
                 <option value="Volunteer">Volunteer</option>
@@ -1435,6 +2194,58 @@ const OrganiserDashboard = () => {
               <span className="text-xs font-bold uppercase text-slate-500">Phone</span>
               <input value={subOrgForm.phone} onChange={(e) => setSubOrgForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
             </label>
+            {['SubOrganiser', 'Staff'].includes(subOrgForm.role) && (
+              <label className="space-y-1 block sm:col-span-2">
+                <span className="text-xs font-bold uppercase text-slate-500">Custom Role Profile</span>
+                <select
+                  value={subOrgForm.customRole || ''}
+                  onChange={(e) => {
+                    const selectedRoleId = e.target.value || null;
+                    if (!selectedRoleId) {
+                      let permissions = {};
+                      if (subOrgForm.role === 'SubOrganiser') {
+                        permissions = {
+                          canAddAttendees: true,
+                          canVerifyPhotos: true,
+                          canInviteAttendees: true,
+                          canBulkUpload: true,
+                          canEntryAccess: true
+                        };
+                      } else {
+                        permissions = {
+                          canAddAttendees: true,
+                          canVerifyPhotos: true,
+                          canInviteAttendees: true,
+                          canBulkUpload: false,
+                          canEntryAccess: true
+                        };
+                      }
+                      setSubOrgForm(curr => ({ 
+                        ...curr, 
+                        customRole: null, 
+                        permissions: { ...curr.permissions, ...permissions } 
+                      }));
+                    } else {
+                      const matchedRole = customRoles.find(r => r._id === selectedRoleId);
+                      if (matchedRole) {
+                        setSubOrgForm(curr => ({ 
+                          ...curr, 
+                          customRole: selectedRoleId, 
+                          permissions: { ...curr.permissions, ...(matchedRole.permissions || {}) },
+                          assignedZones: matchedRole.zoneIds || curr.assignedZones || [] 
+                        }));
+                      }
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white"
+                >
+                  <option value="">Default Permissions (No Custom Role)</option>
+                  {customRoles.map((role) => (
+                    <option key={role._id} value={role._id}>{role.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!subOrgForm._id && (
               <label className="space-y-1 block sm:col-span-2">
                 <span className="text-xs font-bold uppercase text-slate-500">Temporary Password</span>
@@ -1444,49 +2255,302 @@ const OrganiserDashboard = () => {
           </div>
 
           <div className="rounded-2xl border border-slate-200 p-4">
-            <span className="text-xs font-bold uppercase text-slate-500">Zone Access</span>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {(selectedEvent?.zones || []).map((zone) => (
-                <label key={zone.id} className="flex items-center gap-2 rounded-lg border border-slate-100 p-2 text-xs hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={(subOrgForm.responsibilities?.zoneIds || []).includes(zone.id || zone.name)}
-                    onChange={(e) => {
-                      const zid = zone.id || zone.name;
-                      const next = e.target.checked 
-                        ? [...new Set([...(subOrgForm.responsibilities?.zoneIds || []), zid])]
-                        : (subOrgForm.responsibilities?.zoneIds || []).filter(item => item !== zid);
-                      setSubOrgForm(curr => ({ ...curr, responsibilities: { ...curr.responsibilities, zoneIds: next } }));
-                    }}
-                  />
-                  {zone.name}
-                </label>
-              ))}
+            <span className="text-xs font-bold uppercase text-slate-500">Zone Access Scope</span>
+            <p className="text-[11px] text-slate-500 mt-1 mb-3">Allow checking attendees in/out of specific zones</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(selectedEvent?.zones || []).map((zone) => {
+                const zid = zone.id || zone.name;
+                const isChecked = (subOrgForm.assignedZones || []).includes(zid);
+                return (
+                  <label key={zone.id} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        const next = e.target.checked 
+                          ? [...new Set([...(subOrgForm.assignedZones || []), zid])]
+                          : (subOrgForm.assignedZones || []).filter(item => item !== zid);
+                        setSubOrgForm(curr => ({ ...curr, assignedZones: next }));
+                      }}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    {zone.name}
+                  </label>
+                );
+              })}
+              {(selectedEvent?.zones || []).length === 0 && (
+                <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No custom zones configured yet.</div>
+              )}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <span className="text-xs font-bold uppercase text-slate-500">Permissions</span>
-            <div className="mt-3 space-y-2">
-              {Object.keys(subOrgForm.permissions).map((key) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <input 
-                    type="checkbox" 
-                    checked={!!subOrgForm.permissions[key]} 
-                    onChange={(e) => setSubOrgForm((current) => ({ ...current, permissions: { ...current.permissions, [key]: e.target.checked } }))} 
-                  />
-                  {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                </label>
-              ))}
+          <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+            <span className="text-xs font-bold uppercase text-slate-500 block">Permissions Scope</span>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { key: 'canAddAttendees', label: 'Add Attendees', desc: 'Register guests directly' },
+                { key: 'canVerifyPhotos', label: 'Photo Verification', desc: 'Approve attendee photo uploads' },
+                { key: 'canInviteAttendees', label: 'Send Invitations', desc: 'Resend confirmation emails' },
+                { key: 'canBulkUpload', label: 'Excel Bulk Imports', desc: 'Upload large spreadsheets' },
+                { key: 'canEntryAccess', label: 'Gate Scan Access', desc: 'Scan check-ins at entry' }
+              ].map(({ key, label, desc }) => {
+                const isChecked = !!subOrgForm.permissions?.[key];
+                return (
+                  <label key={key} className={`flex items-start gap-3 rounded-2xl border p-3.5 transition-all cursor-pointer ${isChecked ? 'border-emerald-200 bg-emerald-50/20 shadow-sm' : 'border-slate-100 bg-slate-50/30 hover:border-slate-200'}`}>
+                    <input 
+                      type="checkbox" 
+                      checked={isChecked} 
+                      onChange={(e) => setSubOrgForm((current) => ({ ...current, permissions: { ...current.permissions, [key]: e.target.checked } }))} 
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-800">{label}</span>
+                      <span className="text-[11px] text-slate-500 mt-0.5 leading-snug">{desc}</span>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
           <div className="pt-2">
-            <Button className="w-full" onClick={saveTeamMemberAccess}>
+            <Button className="w-full py-3" onClick={saveTeamMemberAccess}>
               {subOrgForm._id ? 'Update Access' : 'Create Team Member'}
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal open={!!customRoleModal} onClose={() => setCustomRoleModal(null)} title={customRoleModal?._id ? 'Edit Custom Role' : 'Create Custom Role'} size="lg">
+        {customRoleModal && (
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 block">
+                <span className="text-xs font-bold uppercase text-slate-500">Role Name</span>
+                <input 
+                  value={customRoleModal.name || ''} 
+                  onChange={(e) => setCustomRoleModal((current) => ({ ...current, name: e.target.value }))} 
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" 
+                  placeholder="e.g. Operations Coordinator" 
+                />
+              </label>
+              <label className="space-y-1 block">
+                <span className="text-xs font-bold uppercase text-slate-500">Description</span>
+                <input 
+                  value={customRoleModal.description || ''} 
+                  onChange={(e) => setCustomRoleModal((current) => ({ ...current, description: e.target.value }))} 
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" 
+                  placeholder="e.g. Manages sponsors and event settings" 
+                />
+              </label>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <span className="text-xs font-bold uppercase text-slate-500">Zone Access Scope</span>
+              <p className="text-[11px] text-slate-500 mt-1 mb-3">Limit this role's operations/scans to specific zones (Optional)</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(selectedEvent?.zones || []).map((zone) => {
+                  const zid = zone.id || zone.name;
+                  const isChecked = (customRoleModal.zoneIds || []).includes(zid);
+                  return (
+                    <label key={zone.id} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const next = e.target.checked 
+                            ? [...new Set([...(customRoleModal.zoneIds || []), zid])]
+                            : (customRoleModal.zoneIds || []).filter(item => item !== zid);
+                          setCustomRoleModal(curr => ({ ...curr, zoneIds: next }));
+                        }}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {zone.name}
+                    </label>
+                  );
+                })}
+                {(selectedEvent?.zones || []).length === 0 && (
+                  <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No custom zones configured yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 p-4 space-y-4">
+              <span className="text-xs font-bold uppercase text-slate-500 block">Permissions Scope</span>
+              
+              {[
+                {
+                  category: 'Dashboard & Configuration',
+                  items: [
+                    { key: 'canViewDashboard', label: 'Access Dashboard', desc: 'Allows viewing dashboard and overall stats' },
+                    { key: 'canManageSettings', label: 'Manage Settings', desc: 'Allows modifying event parameters and setup' },
+                    { key: 'canViewLogs', label: 'Access Activity Logs', desc: 'Allows auditing organizer log history' }
+                  ]
+                },
+                {
+                  category: 'Operations',
+                  items: [
+                    { key: 'canManageEvents', label: 'Manage Event Details', desc: 'Allows updating venue, artist, and type information' },
+                    { key: 'canManageZones', label: 'Manage Zones', desc: 'Allows creating and structuring zones' },
+                    { key: 'canManageSponsors', label: 'Manage Sponsors', desc: 'Allows onboarding and allocating sponsor packages' }
+                  ]
+                },
+                {
+                  category: 'Attendee & Ticketing',
+                  items: [
+                    { key: 'canManageTickets', label: 'Manage Ticket Types', desc: 'Allows defining prices, capacities, and restrictions' },
+                    { key: 'canViewAttendees', label: 'View Attendees', desc: 'Allows browsing registered attendees list' },
+                    { key: 'canEditAttendees', label: 'Register/Edit Attendees', desc: 'Allows adding and modifying attendee registry' },
+                    { key: 'canInviteAttendees', label: 'Resend Invitation Emails', desc: 'Allows sending notifications and tickets' },
+                    { key: 'canBulkUpload', label: 'Excel Bulk Import', desc: 'Allows mass importing guests' }
+                  ]
+                },
+                {
+                  category: 'Access Control',
+                  items: [
+                    { key: 'canScanEntry', label: 'Scan Gate Entry', desc: 'Allows scanning gate QR codes' },
+                    { key: 'canVerifyPhotos', label: 'Verify Photos', desc: 'Allows validating attendee photo uploads' }
+                  ]
+                },
+                {
+                  category: 'Finance & Reports',
+                  items: [
+                    { key: 'canViewReports', label: 'View Reports', desc: 'Allows downloading CSV/XLSX data sheets' },
+                    { key: 'canViewTransactions', label: 'View Transactions', desc: 'Allows auditing orders and payouts' }
+                  ]
+                }
+              ].map((cat) => (
+                <div key={cat.category} className="space-y-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block border-b border-slate-100 pb-1">{cat.category}</span>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {cat.items.map(({ key, label, desc }) => {
+                      const isChecked = !!customRoleModal.permissions?.[key];
+                      return (
+                        <label key={key} className={`flex items-start gap-2.5 rounded-xl border p-2.5 transition-all cursor-pointer ${isChecked ? 'border-indigo-200 bg-indigo-50/10 shadow-sm' : 'border-slate-100 bg-slate-50/30 hover:border-slate-200'}`}>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={(e) => setCustomRoleModal((current) => ({ 
+                              ...current, 
+                              permissions: { ...current.permissions, [key]: e.target.checked } 
+                            }))} 
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-800">{label}</span>
+                            <span className="text-[10px] text-slate-500 mt-0.5 leading-normal">{desc}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2">
+              <Button className="w-full py-3" onClick={saveCustomRole}>
+                {customRoleModal._id ? 'Update Custom Role' : 'Create Custom Role'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!sponsorPackageModal} onClose={() => setSponsorPackageModal(null)} title={sponsorPackageModal?.id ? 'Edit Sponsor Package' : 'Create Sponsor Package'} size="lg">
+        {sponsorPackageModal && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Package Name</span>
+                <input value={sponsorPackageModal.name || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Package name" />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Level</span>
+                <select value={sponsorPackageModal.level || 'Custom'} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, level: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white">
+                  <option value="Platinum">Platinum</option>
+                  <option value="Gold">Gold</option>
+                  <option value="Silver">Silver</option>
+                  <option value="Custom">Custom</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-sm block">
+                <span className="text-slate-500">Price</span>
+                <input type="number" min="0" value={sponsorPackageModal.price || 0} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="0" />
+              </label>
+              <label className="space-y-2 text-sm block">
+                <span className="text-slate-500">Capacity</span>
+                <input type="number" min="1" value={sponsorPackageModal.capacity || 1} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="1" />
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-600">Visible</span>
+                <input type="checkbox" checked={!!sponsorPackageModal.isVisible} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, isVisible: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+              </div>
+              <label className="space-y-2 text-sm block">
+                <span className="text-slate-500">Expiry Date</span>
+                <input type="date" value={sponsorPackageModal.expiryDate || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, expiryDate: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
+              </label>
+            </div>
+            <label className="space-y-2 text-sm block">
+              <span className="text-slate-500">Contact Number</span>
+              <input value={sponsorPackageModal.contactNumber || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, contactNumber: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Contact phone" />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="text-slate-500">Benefits</span>
+              <input value={(sponsorPackageModal.benefits || []).join(', ')} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, benefits: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Benefit1, Benefit2" />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="text-slate-500">Description</span>
+              <textarea value={sponsorPackageModal.description || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, description: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Description" rows={4} />
+            </label>
+            <Button onClick={saveSponsorPackage}>{sponsorPackageModal.id ? 'Save Changes' : 'Create Package'}</Button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!sponsorModal} onClose={() => setSponsorModal(null)} title="Create Sponsor" size="lg">
+        {sponsorModal && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Company Name</span>
+                <input value={sponsorModal.companyName || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, companyName: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Company name" />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Contact Person</span>
+                <input value={sponsorModal.contactPerson || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, contactPerson: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Full name" />
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Email</span>
+                <input type="email" value={sponsorModal.email || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Email address" />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-slate-500">Phone</span>
+                <input value={sponsorModal.phone || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
+              </label>
+            </div>
+            <label className="space-y-2 text-sm">
+              <span className="text-slate-500">Sponsor Package</span>
+              <select value={sponsorModal.packageId || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, packageId: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white">
+                <option value="">Select package</option>
+                {sponsorPackages.map((pkg) => (
+                  <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="text-slate-500">Notes</span>
+              <textarea value={sponsorModal.notes || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, notes: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Notes" rows={4} />
+            </label>
+            <Button onClick={saveSponsor}>Create Sponsor</Button>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!zoneModal} onClose={() => setZoneModal(null)} title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'}>

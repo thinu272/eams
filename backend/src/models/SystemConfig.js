@@ -23,6 +23,7 @@ const systemConfigSchema = new mongoose.Schema({
     applyToUi: { type: Boolean, default: true },
   },
   email: {
+    enabled: { type: Boolean, default: true },
     provider: { type: String, enum: ['smtp', 'sendgrid', 'mock'], default: 'smtp' },
     templateMode: { type: String, enum: ['code', 'sendgrid'], default: 'code' },
     smtpHost: { type: String, default: '' },

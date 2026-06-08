@@ -5,10 +5,10 @@ const ticketSchema = new mongoose.Schema({
   order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
   attendee: { type: mongoose.Schema.Types.ObjectId, ref: 'Attendee' },
 
-  categoryId: { type: String, required: true },
+  categoryId: { type: String },
   categoryName: { type: String, required: true },
   allowedZones: [{ type: String }],
-  price: { type: Number, required: true },
+  price: { type: Number, default: 0 },
   slotIndex: { type: Number, required: true }, // 1-based index within the order
 
   status: {

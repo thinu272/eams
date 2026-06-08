@@ -28,7 +28,7 @@ router.get('/:inviteToken', async (req, res, next) => {
   try {
     const { inviteToken } = req.params;
     const ticket = await Ticket.findOne({ inviteToken })
-      .populate('event', 'name startDate venue')
+      .populate('event', 'name startDate venue settings')
       .populate('attendee', 'fullName email phone');
 
     if (!ticket) {
@@ -52,6 +52,7 @@ router.get('/:inviteToken', async (req, res, next) => {
           name: ticket.event?.name,
           date: ticket.event?.startDate,
           venue: ticket.event?.venue,
+          smsEnabled: !!ticket.event?.settings?.communicationChannels?.sms,
         },
         ticket: {
           id: ticket._id,
@@ -83,10 +84,10 @@ router.post(
   handleS3Upload('attendee-photos'),
   [
     body('fullName').notEmpty().withMessage('Full name is required'),
-    body('idNumber').notEmpty().withMessage('National ID / Passport number is required'),
-    body('dateOfBirth').notEmpty().isISO8601().withMessage('Valid date of birth is required'),
+    body('idNumber').optional({ checkFalsy: true }),
+    body('dateOfBirth').optional({ checkFalsy: true }).isISO8601().withMessage('Valid date of birth is required'),
     body('email').isEmail().withMessage('Valid email is required'),
-    body('phone').notEmpty().withMessage('Phone is required'),
+    body('phone').optional({ checkFalsy: true }),
   ],
   async (req, res, next) => {
     try {
@@ -114,6 +115,10 @@ router.post(
       if (isInviteExpired(ticket)) {
         return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
       }
+      const smsEnabled = !!ticket.event?.settings?.communicationChannels?.sms;
+      if (smsEnabled && !String(phone || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Phone number is required when SMS notifications are enabled for this event.' });
+      }
 
       const attendee =
         (ticket.attendee && (await Attendee.findById(ticket.attendee))) ||
@@ -129,18 +134,22 @@ router.post(
 
       attendee.fullName = fullName;
       attendee.email = email;
-      attendee.phone = phone;
-      attendee.dateOfBirth = new Date(dateOfBirth);
+      attendee.phone = phone || undefined;
+      if (dateOfBirth) {
+        attendee.dateOfBirth = new Date(dateOfBirth);
+      }
       attendee.confirmationStatus = 'pending';
       attendee.photoVerificationStatus = 'pending';
 
       // Save incoming id number into one of the existing schema fields.
-      if (idNumber.toUpperCase().startsWith('P')) {
-        attendee.passportNumber = idNumber;
-        attendee.nationalId = undefined;
-      } else {
-        attendee.nationalId = idNumber;
-        attendee.passportNumber = undefined;
+      if (idNumber) {
+        if (idNumber.toUpperCase().startsWith('P')) {
+          attendee.passportNumber = idNumber;
+          attendee.nationalId = undefined;
+        } else {
+          attendee.nationalId = idNumber;
+          attendee.passportNumber = undefined;
+        }
       }
 
       if (req.s3Data) {
