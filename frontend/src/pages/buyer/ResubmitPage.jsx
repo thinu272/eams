@@ -427,7 +427,7 @@ const ResubmitPage = () => {
           <div className="mb-6">
             <h3 className="font-medium text-gray-900 mb-2">Previous Photo</h3>
             <img
-              src={`http://localhost:5000/${attendee.photo}`}
+              src={getAssetUrl(attendee.photo)}
               alt="Previous"
               className="w-full h-48 object-cover rounded-md border"
             />

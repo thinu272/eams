@@ -1,9 +1,6 @@
-export const buildAssetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  const baseUrl = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:5000';
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-};
+import { getAssetUrl } from '../../utils/backend';
+
+export const buildAssetUrl = (path) => getAssetUrl(path);
 
 export const parseScannedValue = (value) => {
   const raw = String(value || '').trim();

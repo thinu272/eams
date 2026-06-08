@@ -25,11 +25,11 @@ export const usePermissions = () => {
     canBulkUpload: hasRolePower(user?.role, 'SubOrganiser'),
     
     // Ticket permissions
-    canViewTickets: hasRolePower(user?.role, 'Staff'),
+    canViewTickets: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
     canCreateTickets: hasRolePower(user?.role, 'MainOrganiser'),
     canEditTickets: hasRolePower(user?.role, 'MainOrganiser'),
     canDeleteTickets: hasRolePower(user?.role, 'MainAdmin'),
-    canScanTickets: hasRolePower(user?.role, 'Staff'),
+    canScanTickets: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
     
     // Verification permissions
     canViewVerifications: hasRolePower(user?.role, 'SubOrganiser'),
@@ -38,16 +38,16 @@ export const usePermissions = () => {
     canRejectVerifications: hasRolePower(user?.role, 'SubOrganiser'),
     
     // Zone permissions
-    canViewZones: hasRolePower(user?.role, 'Staff'),
+    canViewZones: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
     canManageZones: hasRolePower(user?.role, 'SubOrganiser'),
     canCreateZones: hasRolePower(user?.role, 'MainOrganiser'),
     canEditZones: hasRolePower(user?.role, 'SubOrganiser'),
     canDeleteZones: hasRolePower(user?.role, 'MainAdmin'),
     
     // Scanning permissions
-    canScanEntry: hasRolePower(user?.role, 'Staff'),
-    canScanZones: hasRolePower(user?.role, 'Staff'),
-    canManualSearch: hasRolePower(user?.role, 'Staff'),
+    canScanEntry: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
+    canScanZones: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
+    canManualSearch: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
     
     // Reports permissions
     canViewReports: hasRolePower(user?.role, 'Auditor'),
@@ -75,7 +75,7 @@ export const usePermissions = () => {
     
     // Activity permissions
     canViewActivityLogs: hasRolePower(user?.role, 'SubOrganiser'),
-    canViewEntryLogs: hasRolePower(user?.role, 'Staff'),
+    canViewEntryLogs: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
     canViewZoneActivity: hasRolePower(user?.role, 'SubOrganiser'),
     
     // Financial permissions

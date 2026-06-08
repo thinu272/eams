@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 import { format } from 'date-fns';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getAllEventsAdmin, getMyEvents } from '../../api/events';
@@ -187,7 +188,7 @@ const LiveDashboard = ({ readOnly = false }) => {
   useEffect(() => {
     if (!selected) return;
 
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+    const socket = io(getSocketUrl());
     socketRef.current = socket;
     socket.emit('join_dashboard', { eventId: selected });
 

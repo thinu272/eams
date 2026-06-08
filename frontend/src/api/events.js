@@ -17,3 +17,5 @@ export const validateEventAccessCode = (slug, payload) =>
   api.post(`/events/${slug}/validate-code`, payload, { skipAuthRedirect: true });
 
 export const getPublicConfig = () => api.get('/events/config/public', { skipAuthRedirect: true });
+
+export const duplicateAdminEvent = (id, data) => api.post(`/admin/events/${id}/duplicate`, data);

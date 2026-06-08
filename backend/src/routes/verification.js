@@ -8,6 +8,7 @@ const { protect, requirePermission } = require('../middleware/auth');
 const { triggerCleanupNow } = require('../utils/s3Cleanup');
 const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 const { notifyPhotoRejectionNotification } = require('../services/notificationService');
+const { logActivity } = require('../utils/logger');
 
 // Check organiser event access
 const hasEventAccess = async (user, eventId) => {
@@ -142,6 +143,13 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
     // Trigger final confirmation email workflow for order context
     const finalConfirmation = await processOrderFinalConfirmation({ orderId: updated.order });
 
+    await logActivity({
+      req,
+      action: 'qr_verification',
+      eventId: updated.event._id || updated.event,
+      details: { message: `Photo APPROVED for attendee: ${updated.fullName}` }
+    });
+
     res.json({
       success: true,
       message: 'Photo approved successfully.',
@@ -189,6 +197,13 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
       reason,
     }).catch((error) => {
       console.error('PHOTO REJECTION NOTIFY ERROR:', error);
+    });
+
+    await logActivity({
+      req,
+      action: 'qr_verification',
+      eventId: updated.event._id || updated.event,
+      details: { message: `Photo REJECTED for attendee: ${updated.fullName}. Reason: ${reason}` }
     });
 
     res.json({ success: true, message: 'Photo rejected successfully.', data: { attendee: updated } });

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Button from '../ui/Button';
+import { getAssetUrl } from '../../utils/backend';
 
 const emptyZone = () => ({ id: `${Date.now()}-${Math.random()}`, name: '', description: '', capacity: 0 });
 const emptyCategory = () => ({
@@ -14,15 +15,17 @@ const emptyCategory = () => ({
 });
 const emptyCustomField = () => ({ name: '', type: 'text', required: false, options: [] });
 
-const tabs = ['Basic Info', 'Ticket Categories', 'Zones', 'Customization', 'Advanced Settings'];
+const tabs = ['Basic Info', 'Ticket Categories', 'Zones', 'Customization', 'Event Features & Integrations', 'Advanced Settings'];
 
-const EventForm = ({ initialData, onSubmit, loading }) => {
+const EventForm = ({ initialData, onSubmit, loading, companyOptions = [], organiserOptions = [] }) => {
   const [tab, setTab] = useState('Basic Info');
   const [form, setForm] = useState({
     name: initialData?.name || '',
     slug: initialData?.slug || '',
     description: initialData?.description || '',
     eventType: initialData?.eventType || 'cricket',
+    companyId: initialData?.company?._id || initialData?.company || '',
+    organiserIds: Array.isArray(initialData?.organiser) ? initialData.organiser.map(o => o._id) : (initialData?.organiser?._id ? [initialData.organiser._id] : []),
     startDate: initialData?.startDate ? new Date(initialData.startDate).toISOString().slice(0, 16) : '',
     endDate: initialData?.endDate ? new Date(initialData.endDate).toISOString().slice(0, 16) : '',
     venueName: initialData?.venue?.name || '',
@@ -31,6 +34,7 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
     venueCountry: initialData?.venue?.country || '',
     venueMapUrl: initialData?.venue?.mapUrl || '',
     publish: initialData?.status === 'published',
+    timezone: initialData?.timezone || 'Asia/Colombo',
     branding: {
       themeColor: initialData?.branding?.themeColor || '#2563EB',
     }
@@ -56,6 +60,10 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       email: true,
       sms: false,
     },
+    mfaEnforced: initialData?.settings?.mfaEnforced ?? false,
+    sponsorModuleEnabled: initialData?.settings?.sponsorModuleEnabled ?? true,
+    publicRegistrationEnabled: initialData?.settings?.publicRegistrationEnabled ?? true,
+    ticketTransfersEnabled: initialData?.settings?.ticketTransfersEnabled ?? false,
   });
 
   const zoneOptions = useMemo(() => zones.filter((z) => z.name.trim().length > 0), [zones]);
@@ -81,6 +89,8 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       slug: form.slug || undefined,
       description: form.description,
       eventType: form.eventType,
+      companyId: form.companyId,
+      organiserIds: form.organiserIds,
       startDate: form.startDate,
       endDate: form.endDate,
       venue: {
@@ -95,6 +105,7 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
       customFields,
       settings,
       branding: form.branding,
+      timezone: form.timezone,
       status: form.publish ? 'published' : 'draft',
     };
     onSubmit(payload, { coverImage: coverImageFile, logoImage: logoImageFile, bannerImage: bannerImageFile });
@@ -140,6 +151,62 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <option value="other">Other</option>
             </select>
           </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Company/Organization *</label>
+            <select className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" required value={form.companyId} onChange={(e) => setForm((f) => ({ ...f, companyId: e.target.value, organiserIds: [] }))}>
+              <option value="">Select Company</option>
+              {companyOptions.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Event Timezone *</label>
+            <select 
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold"
+              required 
+              value={form.timezone || 'Asia/Colombo'} 
+              onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
+            >
+              <option value="Asia/Colombo">Asia/Colombo (Sri Lanka Time)</option>
+              <option value="Asia/Kolkata">Asia/Kolkata (India Standard Time)</option>
+              <option value="Asia/Singapore">Asia/Singapore (Singapore Time)</option>
+              <option value="Europe/London">Europe/London (GMT/BST)</option>
+              <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+              <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+              <option value="America/New_York">America/New_York (US Eastern)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
+              <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+              <option value="UTC">UTC (Coordinated Universal Time)</option>
+            </select>
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-xs font-semibold text-slate-500">Main Organisers (Max 2) *</label>
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap gap-2 min-h-[44px] p-2 rounded-xl border border-slate-200 bg-slate-50">
+                {form.organiserIds.map(id => {
+                  const org = organiserOptions.find(o => o._id === id);
+                  return (
+                    <div key={id} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200">
+                      {org?.name || id}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, organiserIds: f.organiserIds.filter(oid => oid !== id) }))} className="hover:text-blue-900 font-black">×</button>
+                    </div>
+                  );
+                })}
+                {form.organiserIds.length === 0 && <span className="text-slate-400 text-xs py-1.5 px-2 font-medium">Select organisers assigned to this company</span>}
+              </div>
+              <select className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" value="" onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                if (form.organiserIds.length >= 2) { toast.error('Max 2 organisers allowed'); return; }
+                if (form.organiserIds.includes(id)) return;
+                setForm(f => ({ ...f, organiserIds: [...f.organiserIds, id] }));
+              }} disabled={!form.companyId || form.organiserIds.length >= 2}>
+                <option value="">{!form.companyId ? 'Select a company first' : 'Add Organiser...'}</option>
+                {organiserOptions.filter(o => o.company === form.companyId && !form.organiserIds.includes(o._id)).map((option) => (
+                  <option key={option._id} value={option._id}>{option.name} ({option.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div className="lg:col-span-2">
             <label className="text-xs font-semibold text-slate-500">Description</label>
             <textarea className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" rows="4" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
@@ -171,6 +238,66 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
           <div className="flex items-center gap-3 lg:col-span-2">
             <input type="checkbox" checked={form.publish} onChange={(e) => setForm((f) => ({ ...f, publish: e.target.checked }))} />
             <span className="text-sm font-semibold text-slate-600">Publish immediately</span>
+          </div>
+        </div>
+      )}
+
+      {tab === 'Event Features & Integrations' && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <h3 className="text-sm font-semibold text-slate-700">Communication</h3>
+            <div className="mt-2 flex gap-4 items-center">
+              <label className="flex items-center gap-3">
+                <input type="checkbox" checked={settings.communicationChannels.email} onChange={(e) => setSettings(s => ({ ...s, communicationChannels: { ...s.communicationChannels, email: e.target.checked } }))} />
+                <span className="text-sm">Enable Email Notifications</span>
+              </label>
+              <label className="flex items-center gap-3">
+                <input type="checkbox" checked={settings.communicationChannels.sms} onChange={(e) => setSettings(s => ({ ...s, communicationChannels: { ...s.communicationChannels, sms: e.target.checked } }))} />
+                <span className="text-sm">Enable SMS Notifications</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.requirePhotoVerification} onChange={(e) => setSettings(s => ({ ...s, requirePhotoVerification: e.target.checked }))} />
+              <span className="text-sm">Enable Photo Verification</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings(s => ({ ...s, rfidEnabled: e.target.checked }))} />
+              <span className="text-sm">Enable RFID Support</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.mfaEnforced} onChange={(e) => setSettings(s => ({ ...s, mfaEnforced: e.target.checked }))} />
+              <span className="text-sm">Enable MFA Enforcement</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.sponsorModuleEnabled} onChange={(e) => setSettings(s => ({ ...s, sponsorModuleEnabled: e.target.checked }))} />
+              <span className="text-sm">Enable Sponsor Module</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.publicRegistrationEnabled} onChange={(e) => setSettings(s => ({ ...s, publicRegistrationEnabled: e.target.checked }))} />
+              <span className="text-sm">Enable Public Registration</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.ticketTransfersEnabled} onChange={(e) => setSettings(s => ({ ...s, ticketTransfersEnabled: e.target.checked }))} />
+              <span className="text-sm">Enable Ticket Transfers</span>
+            </label>
           </div>
         </div>
       )}
@@ -278,7 +405,7 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</label>
               {initialData?.branding?.logoImage && !logoImageFile && (
                 <div className="mt-2 h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
-                  <img src={initialData.branding.logoImage.startsWith('http') ? initialData.branding.logoImage : `http://localhost:5000${initialData.branding.logoImage}`} alt="current logo" className="h-full w-full object-contain" />
+                  <img src={initialData.branding.logoImage.startsWith('http') ? initialData.branding.logoImage : getAssetUrl(initialData.branding.logoImage)} alt="current logo" className="h-full w-full object-contain" />
                 </div>
               )}
               <input 
@@ -294,7 +421,7 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cover Image (Card View)</label>
               {initialData?.coverImage && !coverImageFile && (
                 <div className="mt-2 h-32 w-full max-w-md overflow-hidden rounded-xl border border-slate-200">
-                  <img src={initialData.coverImage.startsWith('http') ? initialData.coverImage : `http://localhost:5000${initialData.coverImage}`} alt="current cover" className="h-full w-full object-cover" />
+                  <img src={initialData.coverImage.startsWith('http') ? initialData.coverImage : getAssetUrl(initialData.coverImage)} alt="current cover" className="h-full w-full object-cover" />
                 </div>
               )}
               <input 
@@ -310,7 +437,7 @@ const EventForm = ({ initialData, onSubmit, loading }) => {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hero Banner Image</label>
               {initialData?.branding?.bannerImage && !bannerImageFile && (
                 <div className="mt-2 h-32 w-full overflow-hidden rounded-xl border border-slate-200">
-                  <img src={initialData.branding.bannerImage.startsWith('http') ? initialData.branding.bannerImage : `http://localhost:5000${initialData.branding.bannerImage}`} alt="current banner" className="h-full w-full object-cover" />
+                  <img src={initialData.branding.bannerImage.startsWith('http') ? initialData.branding.bannerImage : getAssetUrl(initialData.branding.bannerImage)} alt="current banner" className="h-full w-full object-cover" />
                 </div>
               )}
               <input 

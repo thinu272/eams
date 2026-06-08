@@ -10,7 +10,7 @@ const HomePage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getEvents({ limit: 3, status: 'published' })
+    getEvents({ limit: 3 })
       .then((res) => {
         setEvents(res.data?.data?.events || []);
       })

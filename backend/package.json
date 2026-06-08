@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/utils/seed.js",
+    "migrate:seed-email": "node scripts/migrations/seed_email_and_event_defaults.js",
     "clear": "node src/utils/clear.js"
   },
   "dependencies": {

@@ -1,16 +1,28 @@
 import React from 'react';
 
-export const Table = ({ children, className = '' }) => (
-  <div className={`overflow-x-auto rounded-lg border border-gray-200 ${className}`}>
-    <table className="min-w-full divide-y divide-gray-200">{children}</table>
+export const Table = ({ children, className = '', wrapperClassName = '' }) => (
+  <div className={`overflow-x-auto ${wrapperClassName}`}>
+    <table className={`min-w-full divide-y divide-slate-200 ${className}`}>{children}</table>
   </div>
 );
+
 export const Th = ({ children, className = '' }) => (
-  <th className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 ${className}`}>{children}</th>
+  <th className={`bg-slate-50/50 px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 ${className}`}>
+    {children}
+  </th>
 );
+
 export const Td = ({ children, className = '' }) => (
-  <td className={`px-4 py-3 text-sm text-gray-700 ${className}`}>{children}</td>
+  <td className={`px-6 py-4 text-sm text-slate-600 ${className}`}>
+    {children}
+  </td>
 );
+
 export const Tr = ({ children, className = '', onClick }) => (
-  <tr className={`border-t border-gray-100 ${onClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${className}`} onClick={onClick}>{children}</tr>
+  <tr 
+    className={`border-b border-slate-50 transition-colors ${onClick ? 'cursor-pointer hover:bg-slate-50' : ''} ${className}`} 
+    onClick={onClick}
+  >
+    {children}
+  </tr>
 );

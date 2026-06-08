@@ -87,6 +87,7 @@ router.get('/logs', async (req, res, next) => {
       categoryId,
       page = 1,
       limit = 25,
+      search,
     } = req.query;
 
     if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
@@ -106,12 +107,29 @@ router.get('/logs', async (req, res, next) => {
     const safeLimit = Math.min(parseInt(limit, 10) || 25, 100);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
 
+    let searchAttendeeIds = null;
+    if (search) {
+      const matchingAttendees = await Attendee.find({
+        event: eventId,
+        $or: [
+          { fullName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+          { ticketCode: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+      searchAttendeeIds = matchingAttendees.map(a => a._id);
+    }
+
     if (type === 'zone') {
       const filter = { eventId };
       if (timeRange) filter.timestamp = timeRange;
       if (zoneFilter) filter.zoneName = zoneFilter.name;
       if (category) {
         filter['attendeeSnapshot.categoryName'] = category.name;
+      }
+      if (searchAttendeeIds !== null) {
+        filter.attendeeId = { $in: searchAttendeeIds };
       }
 
       const [logs, total] = await Promise.all([
@@ -134,6 +152,9 @@ router.get('/logs', async (req, res, next) => {
     }
     if (category) {
       filter['snapshot.categoryId'] = category.id;
+    }
+    if (searchAttendeeIds !== null) {
+      filter.attendee = { $in: searchAttendeeIds };
     }
 
     const [logs, total] = await Promise.all([
@@ -271,7 +292,7 @@ router.get('/reports', async (req, res, next) => {
 // GET /api/audit/export
 router.get('/export', async (req, res, next) => {
   try {
-    const { eventId, report = 'entry_logs', from, to, zone, categoryId } = req.query;
+    const { eventId, report = 'entry_logs', from, to, zone, categoryId, search } = req.query;
 
     if (!eventId) return res.status(400).json({ success: false, message: 'eventId required.' });
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
@@ -291,11 +312,28 @@ router.get('/export', async (req, res, next) => {
     let csv = '';
     let filename = `${report}-${eventId}.csv`;
 
+    let searchAttendeeIds = null;
+    if (search) {
+      const matchingAttendees = await Attendee.find({
+        event: eventId,
+        $or: [
+          { fullName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+          { ticketCode: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+      searchAttendeeIds = matchingAttendees.map(a => a._id);
+    }
+
     if (report === 'zone_logs') {
       const filter = { eventId };
       if (timeRange) filter.timestamp = timeRange;
       if (zoneFilter) filter.zoneName = zoneFilter.name;
       if (category) filter['attendeeSnapshot.categoryName'] = category.name;
+      if (searchAttendeeIds !== null) {
+        filter.attendeeId = { $in: searchAttendeeIds };
+      }
 
       const logs = await ZoneLog.find(filter).sort({ timestamp: -1 });
       csv = buildCsv([
@@ -382,6 +420,9 @@ router.get('/export', async (req, res, next) => {
       if (timeRange) filter.timestamp = timeRange;
       if (category) filter['snapshot.categoryId'] = category.id;
       if (zoneFilter) filter.$or = [{ zoneId: zoneFilter.id }, { zoneName: zoneFilter.name }];
+      if (searchAttendeeIds !== null) {
+        filter.attendee = { $in: searchAttendeeIds };
+      }
 
       const logs = await EntryLog.find(filter).sort({ timestamp: -1 });
       csv = buildCsv([
@@ -403,6 +444,95 @@ router.get('/export', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/audit/system-logs
+router.get('/system-logs', async (req, res, next) => {
+  try {
+    const {
+      eventId,
+      action,
+      search,
+      from,
+      to,
+      page = 1,
+      limit = 25,
+    } = req.query;
+
+    const role = normalizeRole(req.user.role);
+    const filter = {};
+
+    // 1. Enforce strict role-based access scoping
+    if (role === ROLES.MAIN_ADMIN || role === ROLES.AUDITOR) {
+      // Admins and Auditors can view everything.
+      if (eventId) {
+        filter.eventId = eventId;
+      }
+    } else if (role === ROLES.MAIN_ORGANISER) {
+      // Main Organisers are strictly scoped to their assigned events.
+      const assigned = (req.user.assignedEvents || []).map((item) => item.toString());
+      
+      if (eventId) {
+        if (!assigned.includes(eventId.toString())) {
+          return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+        }
+        filter.eventId = eventId;
+      } else {
+        filter.eventId = { $in: req.user.assignedEvents };
+      }
+    } else {
+      // Sub-organisers or other roles see only logs scoped to their assigned events.
+      filter.eventId = { $in: req.user.assignedEvents || [] };
+    }
+
+    // 2. Add action type filter
+    if (action && action !== 'all') {
+      filter.action = action;
+    }
+
+    // 3. Add date range filter
+    const timeRange = parseDateRange(from, to);
+    if (timeRange) {
+      filter.createdAt = timeRange;
+    }
+
+    // 4. Add search filter (searches userEmail or fullName or details message)
+    if (search && search.trim() !== '') {
+      const escapedSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      filter.$or = [
+        { userEmail: { $regex: escapedSearch, $options: 'i' } },
+        { userRole: { $regex: escapedSearch, $options: 'i' } },
+        { 'details.message': { $regex: escapedSearch, $options: 'i' } }
+      ];
+    }
+
+    const safeLimit = Math.min(parseInt(limit, 10) || 25, 100);
+    const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
+
+    const SystemLog = require('../models/SystemLog');
+
+    const [logs, total] = await Promise.all([
+      SystemLog.find(filter)
+        .populate('eventId', 'name')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit),
+      SystemLog.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        logs,
+        total,
+        page: Math.floor(skip / safeLimit) + 1,
+        pages: Math.ceil(total / safeLimit),
+        limit: safeLimit
+      }
+    });
   } catch (err) {
     next(err);
   }

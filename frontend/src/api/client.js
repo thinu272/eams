@@ -1,9 +1,8 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { getApiBase } from '../utils/backend';
 
-const apiBase =
-  process.env.REACT_APP_API_URL ||
-  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5000/api');
+const apiBase = getApiBase();
 
 const api = axios.create({
   baseURL: apiBase,

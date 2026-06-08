@@ -33,6 +33,9 @@ const attendeeSchema = new mongoose.Schema({
   },
   categoryId: { type: String },
   categoryName: { type: String },
+  isPass: { type: Boolean, default: false },
+  sponsorPackageId: { type: String },
+  sponsorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Sponsor' },
   allowedZones: [{ type: String }],
 
   // QR code
@@ -92,7 +95,7 @@ const attendeeSchema = new mongoose.Schema({
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   addedVia: {
     type: String,
-    enum: ['self_purchase', 'manual', 'bulk_upload', 'invite'],
+    enum: ['self_purchase', 'manual', 'bulk_upload', 'invite', 'sponsor'],
     default: 'self_purchase',
   },
 
@@ -110,6 +113,7 @@ const attendeeSchema = new mongoose.Schema({
   checkedIn: { type: Boolean, default: false },
   checkedInAt: { type: Date },
   isActive: { type: Boolean, default: true },
+  isDisabled: { type: Boolean, default: false },
 }, {
   timestamps: true,
 });

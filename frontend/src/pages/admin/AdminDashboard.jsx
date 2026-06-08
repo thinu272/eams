@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 import { BuildingOffice2Icon, CreditCardIcon, ShieldCheckIcon, TicketIcon, UsersIcon, CheckBadgeIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -12,10 +12,15 @@ import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
 import AdminSettingsPanel from './AdminSettingsPanel';
 import toast from 'react-hot-toast';
+import { duplicateAdminEvent } from '../../api/events';
+import { getSystemLogs } from '../../api/audit';
 import {
   createSuperAdminEvent,
   createSuperAdminOrganiser,
   createSuperAdminUser,
+  createSuperAdminCompany,
+  updateSuperAdminCompany,
+  deleteSuperAdminCompany,
   deleteSuperAdminEvent,
   deleteSuperAdminOrganiser,
   deleteSuperAdminUser,
@@ -34,7 +39,8 @@ import {
 const SECTION_LABELS = {
   overview: 'Overview',
   events: 'Events',
-  organisations: 'Organisations / Organisers',
+  organisations: 'Organizations',
+  organisers: 'Organisers',
   users: 'Users',
   tickets: 'Tickets',
   verification: 'Verification',
@@ -42,10 +48,11 @@ const SECTION_LABELS = {
   'zone-activity': 'Zone Activity',
   notifications: 'Notifications',
   reports: 'Reports',
+  'system-logs': 'System Logs',
   settings: 'System Settings',
 };
 
-const statusTone = { Active: 'green', Inactive: 'red', Live: 'green', Upcoming: 'blue', Completed: 'gray', Allowed: 'green', Denied: 'red', pending: 'amber', rejected: 'red', verified: 'green' };
+const statusTone = { Active: 'green', Inactive: 'red', Live: 'green', Upcoming: 'blue', Completed: 'gray', Allowed: 'green', Denied: 'red', pending: 'amber', rejected: 'red', verified: 'green', login: 'green', logout: 'blue', ticket_creation: 'cyan', ticket_scan: 'teal', event_update: 'purple', user_creation: 'indigo', qr_verification: 'violet', sponsor_action: 'orange', mfa_activity: 'fuchsia' };
 
 const downloadBlob = (blob, fallbackName) => {
   const url = window.URL.createObjectURL(blob);
@@ -70,7 +77,20 @@ const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
 );
 const Field = ({ label, children }) => <label className="space-y-2"><span className="text-sm font-medium text-slate-700">{label}</span>{children}</label>;
 const Input = (props) => <input {...props} className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 ${props.className || ''}`} />;
-const Select = (props) => <select {...props} className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none ${props.className || ''}`} />;
+const Select = (props) => <select {...props} className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed disabled:pointer-events-none ${props.className || ''}`} />;
+const normalizeEntityId = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    if (typeof value._id === 'string') return value._id;
+    if (typeof value.id === 'string') return value.id;
+    if (typeof value.toString === 'function') {
+      const asString = value.toString();
+      if (asString && asString !== '[object Object]') return asString;
+    }
+  }
+  return '';
+};
 
 const SectionFilters = ({ section, params, updateQuery, organiserOptions = [] }) => {
   if (section === 'overview' || section === 'settings') return null;
@@ -89,7 +109,7 @@ const SectionFilters = ({ section, params, updateQuery, organiserOptions = [] })
             </Select>
           </>
         )}
-        {(section === 'organisations' || section === 'users') && (
+        {(section === 'organisations' || section === 'organisers' || section === 'users') && (
           <Select value={params.get('status') || ''} onChange={(e) => updateQuery('status', e.target.value)}>
             <option value="">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option>
           </Select>
@@ -104,22 +124,108 @@ const SectionFilters = ({ section, params, updateQuery, organiserOptions = [] })
             <option value="">All verification states</option><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option>
           </Select>
         )}
-        {(section === 'entry-logs' || section === 'zone-activity' || section === 'reports') && (
+        {(section === 'entry-logs' || section === 'zone-activity' || section === 'reports' || section === 'system-logs') && (
           <>
             <Input type="date" value={params.get('from') || ''} onChange={(e) => updateQuery('from', e.target.value)} />
             <Input type="date" value={params.get('to') || ''} onChange={(e) => updateQuery('to', e.target.value)} />
           </>
         )}
+        {section === 'system-logs' && (
+          <Select value={params.get('action') || ''} onChange={(e) => updateQuery('action', e.target.value)}>
+            <option value="">All actions</option>
+            <option value="login">Login</option>
+            <option value="logout">Logout</option>
+            <option value="ticket_creation">Ticket Creation</option>
+            <option value="ticket_scan">Ticket Scan</option>
+            <option value="event_update">Event Update</option>
+            <option value="user_creation">User Creation</option>
+            <option value="qr_verification">QR Photo Verification</option>
+            <option value="sponsor_action">Sponsor Action</option>
+            <option value="mfa_activity">MFA Activity</option>
+          </Select>
+        )}
+          <Select value={params.get('limit') || '1000'} onChange={(e) => updateQuery('limit', e.target.value)}>
+            <option value="20">20 rows</option>
+            <option value="50">50 rows</option>
+            <option value="100">100 rows</option>
+            <option value="200">200 rows</option>
+            <option value="1000">All</option>
+          </Select>
       </div>
     </Card>
   );
 };
 
-const SectionContent = ({ section, workspace, params, updateQuery, openModal, loadWorkspace, deleteOrganiser, deleteUser }) => {
+const Pagination = ({ pagination, updateQuery }) => {
+  if (!pagination || pagination.pages <= 1) return null;
+  const { page, pages } = pagination;
+  
+  const getPageNumbers = () => {
+    const nums = [];
+    const maxVisible = 5;
+    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+    let end = Math.min(pages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
+    for (let i = start; i <= end; i++) nums.push(i);
+    return nums;
+  };
+
+  return (
+    <div className="mt-auto flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            disabled={page <= 1} 
+            onClick={() => updateQuery('page', page - 1)}
+            className="h-8 rounded-lg px-3 text-xs"
+          >
+            Prev
+          </Button>
+          <div className="flex items-center gap-1 mx-1">
+            {getPageNumbers().map((n) => (
+              <button
+                key={n}
+                onClick={() => updateQuery('page', n)}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-all ${
+                  page === n 
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-200' 
+                    : 'text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            disabled={page >= pages} 
+            onClick={() => updateQuery('page', page + 1)}
+            className="h-8 rounded-lg px-3 text-xs"
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Page</span>
+        <span className="text-sm font-bold text-slate-900">{page}</span>
+        <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">of</span>
+        <span className="text-sm font-bold text-slate-900">{pages}</span>
+      </div>
+    </div>
+  );
+};
+
+const SectionContent = ({ section, workspace, params, updateQuery, openModal, loadWorkspace, deleteOrganiser, deleteUser, setDuplicateModal, systemLogsData, sysLoading }) => {
   const overview = workspace?.overview;
   const eventRows = workspace?.events?.rows || [];
-  const organiserRows = workspace?.organisations?.rows || [];
-  const userRows = workspace?.users?.rows || [];
+  const companyRows = workspace?.organisations?.rows || [];
+  const allUserRows = workspace?.users?.rows || [];
+  const onlyOrganiserRows = allUserRows.filter(u => ['MainOrganiser', 'SubOrganiser'].includes(u.role));
+  const otherUserRows = allUserRows.filter(u => !['MainOrganiser', 'SubOrganiser'].includes(u.role));
   const ticketRows = workspace?.tickets?.rows || [];
   const verification = workspace?.verification;
   const entryRows = workspace?.entryLogs?.rows || [];
@@ -127,6 +233,8 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
   const notificationRows = workspace?.notifications?.rows || [];
   const reports = workspace?.reports;
   const organiserOptions = workspace?.events?.filters?.organiserOptions || [];
+  
+  const renderPagination = (data) => <Pagination pagination={data?.pagination} updateQuery={updateQuery} />;
 
   return (
     <>
@@ -142,61 +250,215 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
             <MetricCard title="Verification Rate" value={`${overview?.metrics?.verificationRate || 0}%`} subtitle="Attendees with verified photos" icon={CheckBadgeIcon} />
             <MetricCard title="Avg Ticket Price" value={money(overview?.metrics?.avgTicketPrice, workspace?.settings?.currency)} subtitle="Mean price per sold ticket" icon={CurrencyDollarIcon} />
           </div>
-          <div className="grid gap-6 xl:grid-cols-[1.7fr,1fr]">
-            <Card className="rounded-[28px] border-slate-200">
-              <CardHeader title="Ticket Sales Over Time" subtitle="Global ticket demand over the last 30 days" />
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={overview?.ticketSalesOverTime || []}>
-                    <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0f766e" stopOpacity={0.28} /><stop offset="95%" stopColor="#0f766e" stopOpacity={0} /></linearGradient></defs>
-                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                    <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="ticketsSold" stroke="#0f766e" strokeWidth={2.5} fill="url(#salesFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+          <div className="grid gap-6 xl:grid-cols-[1.7fr,1fr] items-start">
+            <div className="space-y-6">
+              <Card className="rounded-[28px] border-slate-200">
+                <CardHeader title="Ticket Sales Over Time" subtitle="Global ticket demand over the last 30 days" />
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={overview?.ticketSalesOverTime || []}>
+                      <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0f766e" stopOpacity={0.28} /><stop offset="95%" stopColor="#0f766e" stopOpacity={0} /></linearGradient></defs>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} />
+                      <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        itemStyle={{ fontSize: '12px', fontWeight: '600' }}
+                      />
+                      <Area type="monotone" dataKey="ticketsSold" stroke="#0f766e" strokeWidth={2.5} fill="url(#salesFill)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card className="rounded-[28px] border-slate-200">
+                  <CardHeader title="Revenue by Event" subtitle="Top performing events" />
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={overview?.distributions?.revenue || []} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                        <Tooltip 
+                          cursor={{ fill: '#f8fafc' }}
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="value" fill="#0f766e" radius={[0, 4, 4, 0]} barSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                <Card className="rounded-[28px] border-slate-200">
+                  <CardHeader title="Verification Health" subtitle="Attendee verification status" />
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={overview?.distributions?.verification || []}
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {(overview?.distributions?.verification || []).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={['#10b981', '#f59e0b', '#ef4444', '#94a3b8'][index % 4]} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap justify-center gap-4 mt-2">
+                      {(overview?.distributions?.verification || []).map((entry, index) => (
+                        <div key={entry.name} className="flex items-center gap-1.5">
+                          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#94a3b8'][index % 4] }} />
+                          <span className="text-[10px] font-medium text-slate-500 uppercase">{entry.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
               </div>
-            </Card>
-            <Card className="rounded-[28px] border-slate-200">
-              <CardHeader title="Latest System Activity" subtitle="Recent scans and platform actions" />
-              <div className="space-y-3">{(overview?.activity || []).map((item) => <div key={item._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-slate-900">{item.title}</p><span className="text-xs text-slate-400">{fmt(item.createdAt)}</span></div><p className="mt-1 text-sm text-slate-500">{item.subtitle}</p></div>)}</div>
+            </div>
+            <Card className="rounded-[28px] border-slate-200" padding={false}>
+              <CardHeader title="Latest System Activity" subtitle="Recent scans and platform actions" className="px-6 pt-6" />
+              <Table>
+                <thead><Tr><Th>Activity</Th><Th>Context</Th><Th className="text-right">Time</Th></Tr></thead>
+                <tbody>
+                  {(overview?.activity?.rows || []).map((item) => (
+                    <Tr key={item._id}>
+                      <Td>
+                        {item.title.includes('/api/') ? (
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${item.title.startsWith('GET') ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+                              {item.title.split(' ')[0]}
+                            </span>
+                            <span className="text-xs font-medium text-slate-600 truncate max-w-[150px]">{item.title.split(' ')[1]}</span>
+                          </div>
+                        ) : (
+                          <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                        )}
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-1.5 w-1.5 rounded-full ${String(item.subtitle).startsWith('200') || String(item.subtitle).includes('scanned in') || String(item.subtitle).includes('entered') ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                          <p className="text-xs text-slate-500">{item.subtitle}</p>
+                        </div>
+                      </Td>
+                      <Td className="text-right"><span className="text-[11px] font-medium text-slate-400">{fmt(item.createdAt)}</span></Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+              {renderPagination(overview?.activity)}
             </Card>
           </div>
         </>
       )}
       {section === 'events' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <Table><thead><Tr><Th>Event</Th><Th>Organiser</Th><Th>Date</Th><Th>Status</Th><Th>Tickets</Th><Th>Actions</Th></Tr></thead><tbody>
-            {eventRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.venue}</p></div></Td><Td>{row.organiser?.name || 'Unassigned'}</Td><Td>{fmt(row.date)}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.ticketsSold} / {row.ticketCapacity}</Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('event', 'edit', row)}>Edit</Button><Button variant="outline" className="text-rose-500" onClick={async () => { await deleteSuperAdminEvent(row._id); toast.success('Event deleted'); loadWorkspace(); }}>Delete</Button></div></Td></Tr>)}
-          </tbody></Table>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[800px]"><thead><Tr><Th>Event</Th><Th>Organization</Th><Th>Category</Th><Th>Venue</Th><Th>Date</Th><Th>Tickets</Th><Th>Status</Th><Th>Actions</Th></Tr></thead><tbody>
+              {eventRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.description?.slice(0, 40)}...</p></div></Td><Td>{row.company?.name || 'Legacy'}</Td><Td><Badge variant="outline">{row.eventType}</Badge></Td><Td>{row.venue}</Td><Td>{fmt(row.date)}</Td><Td><div><p className="text-sm">{row.ticketsSold} / {row.ticketCapacity}</p><div className="mt-1 h-1 w-full rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min((row.ticketsSold / row.ticketCapacity) * 100, 100)}%` }} /></div></div></Td><Td><Badge variant={statusTone[row.lifecycleStatus] || 'gray'}>{row.status}</Badge></Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('event', 'edit', row)}>Edit</Button><Button variant="outline" onClick={() => {
+                setDuplicateModal({ isOpen: true, eventId: row._id, name: `${row.name} (Copy)`, startDate: row.date });
+              }}>Duplicate</Button><Button variant="outline" className="text-rose-500" onClick={async () => { await deleteSuperAdminEvent(row._id); toast.success('Event deleted'); loadWorkspace(); }}>Delete</Button></div></Td></Tr>)}
+            </tbody></Table>
+          </div>
+          {renderPagination(workspace?.events)}
         </Card>
       )}
       {section === 'organisations' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <Table><thead><Tr><Th>Organiser</Th><Th>Status</Th><Th>Events</Th><Th>Tickets Sold</Th><Th>Live Events</Th><Th>Actions</Th></Tr></thead><tbody>
-            {organiserRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.stats.eventsCreated}</Td><Td>{row.stats.ticketsSold}</Td><Td>{row.stats.liveEvents}</Td><Td><div className="flex gap-2">
-              <Button variant="outline" onClick={() => openModal('organiser', 'edit', row)}>Manage</Button>
-              <Button variant="outline" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend login</Button>
-              <Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('Organiser status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button>
-              <Button variant="outline" className="text-rose-500" onClick={() => deleteOrganiser(row)}>Delete</Button>
-            </div></Td></Tr>)}
-          </tbody></Table>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[800px]"><thead><Tr><Th>Organization</Th><Th>Type</Th><Th>Contact</Th><Th>Organisers</Th><Th>Events</Th><Th>Tickets</Th><Th>Status</Th><Th>Actions</Th></Tr></thead><tbody>
+              {companyRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.registeredBusinessName}</p></div></Td><Td><Badge variant={row.isProfitable ? 'blue' : 'emerald'}>{row.organizationType}</Badge></Td><Td><div><p className="text-sm">{row.primaryContactPerson}</p><p className="text-xs text-slate-500">{row.officialEmail}</p></div></Td><Td>{row.stats?.organisers || 0}</Td><Td>{row.stats?.events || 0}</Td><Td>{row.stats?.ticketsSold || 0}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td><div className="flex gap-2">
+                <Button variant="outline" onClick={() => openModal('organiser', 'create', { companyId: row._id, _locked: true })}>Add Organiser</Button>
+                <Button variant="outline" onClick={() => openModal('company', 'edit', row)}>Edit</Button>
+                <Button variant="outline" className="text-rose-500" onClick={async () => { if(window.confirm('Delete company?')) { await deleteSuperAdminCompany(row._id); toast.success('Company deleted'); loadWorkspace(); } }}>Delete</Button>
+              </div></Td></Tr>)}
+            </tbody></Table>
+          </div>
+          {renderPagination(workspace?.organisations)}
+        </Card>
+      )}
+      {section === 'organisers' && (
+        <Card className="rounded-[28px] border-slate-200" padding={false}>
+          <CardHeader title="Organizer Management" subtitle="Manage organizers and staff accounts" className="px-6 pt-6" />
+          <Table>
+            <thead><Tr><Th>Organiser</Th><Th>Organization</Th><Th>Role</Th><Th>Tickets</Th><Th>Status</Th><Th>Actions</Th></Tr></thead>
+            <tbody>
+              {onlyOrganiserRows.map((row) => (
+                <Tr key={row._id}>
+                  <Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td>
+                  <Td>{row.company?.name || 'Unassigned'}</Td>
+                  <Td>{row.role}</Td>
+                  <Td>{row.stats?.ticketsSold || 0}</Td>
+                  <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                  <Td>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => openModal('organiser', 'edit', row)}>Edit</Button>
+                      <Button variant="outline" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend login</Button>
+                      <Button variant="outline" className="text-rose-500" onClick={() => deleteUser(row)}>Delete</Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+          {renderPagination(workspace?.users)}
         </Card>
       )}
       {section === 'users' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <Table><thead><Tr><Th>User</Th><Th>Role</Th><Th>Status</Th><Th>Assigned Events</Th><Th>Last Login</Th><Th>Actions</Th></Tr></thead><tbody>
-            {userRows.map((row) => <Tr key={row._id}><Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td>{row.role}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.assignedEvents.map((event) => event.name).join(', ') || '-'}</Td><Td>{fmt(row.lastLogin)}</Td><Td><div className="flex gap-2"><Button variant="outline" onClick={() => openModal('user', 'edit', row)}>Edit</Button><Button variant="outline" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend login</Button><Button variant="outline" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('User status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button><Button variant="outline" className="text-rose-500" onClick={() => deleteUser(row)}>Delete</Button></div></Td></Tr>)}
-          </tbody></Table>
+          <CardHeader title="System Users" subtitle="Global platform administrators and staff" className="px-6 pt-6" />
+          <Table>
+            <thead><Tr><Th>User</Th><Th>Role</Th><Th>Status</Th><Th>Assigned Events</Th><Th>Last Login</Th><Th className="text-right">Actions</Th></Tr></thead>
+            <tbody>
+              {otherUserRows.map((row) => (
+                <Tr key={row._id}>
+                  <Td><div><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td>
+                  <Td>{row.role}</Td>
+                  <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                  <Td>{row.assignedEvents.map((event) => event.name).join(', ') || '-'}</Td>
+                  <Td>{fmt(row.lastLogin)}</Td>
+                  <Td className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openModal('user', 'edit', row)}>Edit</Button>
+                      <Button variant="outline" size="sm" onClick={async () => { await resendSuperAdminUserCredentials(row._id); toast.success('Login details email sent'); }}>Resend</Button>
+                      <Button variant="outline" size="sm" onClick={async () => { await updateSuperAdminUserStatus(row._id, row.status === 'Active' ? 'Inactive' : 'Active'); toast.success('User status updated'); loadWorkspace(); }}>{row.status === 'Active' ? 'Disable' : 'Activate'}</Button>
+                      <Button variant="outline" size="sm" className="text-rose-500 border-rose-100 hover:bg-rose-50" onClick={() => deleteUser(row)}>Delete</Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+          {renderPagination(workspace?.users)}
         </Card>
       )}
       {section === 'tickets' && (
         <div className="grid gap-5 xl:grid-cols-[1.2fr,1fr]">
           <Card className="rounded-[28px] border-slate-200" padding={false}>
-            <Table><thead><Tr><Th>Ticket</Th><Th>Event</Th><Th>Attendee</Th><Th>Category</Th><Th>Status</Th></Tr></thead><tbody>
-              {ticketRows.map((row) => <Tr key={row._id}><Td>{row.ticketNumber}</Td><Td>{row.event}</Td><Td><div><p>{row.attendee}</p><p className="text-xs text-slate-500">{row.attendeeEmail}</p></div></Td><Td>{row.categoryName}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td></Tr>)}
-            </tbody></Table>
+            <CardHeader title="All Tickets" subtitle="Global ticket issuance and status" className="px-6 pt-6" />
+            <Table>
+              <thead><Tr><Th>#</Th><Th>Ticket</Th><Th>Event</Th><Th>Attendee</Th><Th>Category</Th><Th>Status</Th></Tr></thead>
+              <tbody>
+                {ticketRows.map((row, idx) => (
+                  <Tr key={row._id}>
+                    <Td>{idx + 1 + ((workspace?.tickets?.pagination?.page - 1) * workspace?.tickets?.pagination?.limit || 0)}</Td>
+                    <Td><span className="font-mono text-xs font-bold">{row.ticketNumber}</span></Td>
+                    <Td>{row.event}</Td>
+                    <Td><div><p className="font-medium text-slate-900">{row.attendee}</p><p className="text-xs text-slate-500">{row.attendeeEmail}</p></div></Td>
+                    <Td>{row.categoryName}</Td>
+                    <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderPagination(workspace?.tickets)}
           </Card>
           <Card className="rounded-[28px] border-slate-200">
             <CardHeader title="Anomaly Detection" subtitle="Overbooking and assignment gaps" />
@@ -215,45 +477,249 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
             <MetricCard title="Verified" value={verification?.summary?.verified || 0} subtitle="Ready for access" icon={ShieldCheckIcon} />
           </div>
           <Card className="rounded-[28px] border-slate-200" padding={false}>
-            <Table><thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Status</Th><Th>Rejection</Th><Th>Verified By</Th><Th>Updated</Th></Tr></thead><tbody>
-              {(verification?.rows || []).map((row) => <Tr key={row._id}><Td><div><p>{row.attendee}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td>{row.event}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.rejectionReason || '-'}</Td><Td>{row.verifiedBy || '-'}</Td><Td>{fmt(row.updatedAt)}</Td></Tr>)}
-            </tbody></Table>
+            <CardHeader title="Verification Requests" subtitle="Review and approve attendee identities" className="px-6 pt-6" />
+            <Table>
+              <thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Status</Th><Th>Rejection</Th><Th>Verified By</Th><Th className="text-right">Updated</Th></Tr></thead>
+              <tbody>
+                {(verification?.rows || []).map((row) => (
+                  <Tr key={row._id}>
+                    <Td><div><p className="font-medium text-slate-900">{row.attendee}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td>
+                    <Td>{row.event}</Td>
+                    <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                    <Td>{row.rejectionReason || '-'}</Td>
+                    <Td>{row.verifiedBy || '-'}</Td>
+                    <Td className="text-right"><span className="text-[11px] font-medium text-slate-400">{fmt(row.updatedAt)}</span></Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderPagination(workspace?.verification)}
           </Card>
         </div>
       )}
       {section === 'entry-logs' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <Table><thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Gate</Th><Th>Time</Th><Th>Status</Th><Th>Action</Th></Tr></thead><tbody>
-            {entryRows.map((row) => <Tr key={row._id}><Td>{row.attendee}</Td><Td>{row.event}</Td><Td>{row.gate}</Td><Td>{fmt(row.time)}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{row.action}</Td></Tr>)}
-          </tbody></Table>
+          <CardHeader title="Global Entry Logs" subtitle="Live scan history across all events" className="px-6 pt-6" />
+          <Table>
+            <thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Gate</Th><Th>Action</Th><Th>Status</Th><Th className="text-right">Time</Th></Tr></thead>
+            <tbody>
+              {entryRows.map((row) => (
+                <Tr key={row._id}>
+                  <Td>{row.attendee}</Td>
+                  <Td>{row.event}</Td>
+                  <Td>{row.gate}</Td>
+                  <Td><span className="text-xs font-medium uppercase tracking-wider">{row.action}</span></Td>
+                  <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                  <Td className="text-right"><span className="text-[11px] font-medium text-slate-400">{fmt(row.time)}</span></Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+          {renderPagination(workspace?.entryLogs)}
         </Card>
       )}
       {section === 'zone-activity' && (
-        <div className="grid gap-6 xl:grid-cols-[1fr,1.1fr]">
-          <Card className="rounded-[28px] border-slate-200">
-            <CardHeader title="Zone Occupancy" subtitle="Live occupancy and movement totals" />
-            <div className="space-y-3">{(zoneActivity?.occupancy || []).map((row) => <div key={`${row.event}-${row.zoneName}`} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><div><p className="font-medium text-slate-900">{row.zoneName}</p><p className="text-sm text-slate-500">{row.event}</p></div><p className="text-2xl font-semibold text-slate-900">{row.occupancy}</p></div><p className="mt-2 text-xs text-slate-500">Entries {row.entries} • Exits {row.exits} • Denied {row.denied}</p></div>)}</div>
+        <div className="grid gap-6 xl:grid-cols-[1.5fr,1fr]">
+          <Card className="rounded-[28px] border-slate-200" padding={false}>
+            <CardHeader title="Recent Movements" subtitle="Detailed entry and exit logs" className="px-6 pt-6" />
+            <Table>
+              <thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Zone</Th><Th>Action</Th><Th>Status</Th><Th className="text-right">Time</Th></Tr></thead>
+              <tbody>
+                {(zoneActivity?.movements?.rows || []).map((row) => (
+                  <Tr key={row._id}>
+                    <Td><p className="font-medium text-slate-900">{row.attendee}</p></Td>
+                    <Td><p className={`text-xs ${row.event === 'Unknown event' ? 'text-slate-300 italic' : 'text-slate-500'}`}>{row.event}</p></Td>
+                    <Td><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{row.zoneName}</span></Td>
+                    <Td><span className="text-xs font-medium uppercase tracking-wider">{row.action}</span></Td>
+                    <Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td>
+                    <Td className="text-right"><span className="text-[11px] font-medium text-slate-400">{fmt(row.timestamp)}</span></Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderPagination(workspace?.zoneActivity?.movements)}
           </Card>
           <Card className="rounded-[28px] border-slate-200" padding={false}>
-            <Table><thead><Tr><Th>Attendee</Th><Th>Event</Th><Th>Zone</Th><Th>Action</Th><Th>Status</Th><Th>Time</Th></Tr></thead><tbody>
-              {(zoneActivity?.movements || []).map((row) => <Tr key={row._id}><Td>{row.attendee}</Td><Td>{row.event}</Td><Td>{row.zoneName}</Td><Td>{row.action}</Td><Td><Badge variant={statusTone[row.status] || 'gray'}>{row.status}</Badge></Td><Td>{fmt(row.timestamp)}</Td></Tr>)}
-            </tbody></Table>
+            <CardHeader title="Zone Occupancy" subtitle="Live occupancy totals" className="px-6 pt-6" />
+            <Table>
+              <thead><Tr><Th>Zone</Th><Th>Occupancy</Th><Th className="text-right">Activity</Th></Tr></thead>
+              <tbody>
+                {(zoneActivity?.occupancy?.rows || []).map((row) => (
+                  <Tr key={`${row.event}-${row.zoneName}`}>
+                    <Td>
+                      <div>
+                        <p className="font-semibold text-slate-900">{row.zoneName}</p>
+                        <p className={`text-[10px] ${row.event === 'Unknown event' ? 'text-slate-300' : 'text-slate-500'}`}>{row.event}</p>
+                      </div>
+                    </Td>
+                    <Td><p className="text-lg font-bold text-slate-900">{row.occupancy}</p></Td>
+                    <Td className="text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] font-medium text-emerald-600">In: {row.entries}</span>
+                        <span className="text-[10px] font-medium text-blue-600">Out: {row.exits}</span>
+                      </div>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderPagination(workspace?.zoneActivity?.occupancy)}
           </Card>
         </div>
       )}
       {section === 'notifications' && (
         <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <Table><thead><Tr><Th>Recipient</Th><Th>Message</Th><Th>Type</Th><Th>Channel</Th><Th>Event</Th><Th>Created</Th><Th>Action</Th></Tr></thead><tbody>
-            {notificationRows.map((row) => <Tr key={row._id}><Td><div><p>{row.user}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td><Td><div><p className="font-medium text-slate-900">{row.title}</p><p className="text-xs text-slate-500">{row.message}</p></div></Td><Td>{row.type}</Td><Td>{row.channel}</Td><Td>{row.eventName || '-'}</Td><Td>{fmt(row.createdAt)}</Td><Td><Button variant="outline" onClick={async () => { await resendSuperAdminNotification(row._id); toast.success('Notification marked for resend'); }}>Resend</Button></Td></Tr>)}
-          </tbody></Table>
+          <CardHeader title="Platform Notifications" subtitle="History of sent emails and system alerts" className="px-6 pt-6" />
+          <Table>
+            <thead><Tr><Th>Recipient</Th><Th>Message</Th><Th>Type</Th><Th>Channel</Th><Th>Event</Th><Th>Created</Th><Th className="text-right">Action</Th></Tr></thead>
+            <tbody>
+              {notificationRows.map((row) => (
+                <Tr key={row._id}>
+                  <Td><div><p className="font-medium text-slate-900">{row.user}</p><p className="text-xs text-slate-500">{row.email}</p></div></Td>
+                  <Td><div><p className="font-medium text-slate-900">{row.title}</p><p className="text-xs text-slate-500 line-clamp-1">{row.message}</p></div></Td>
+                  <Td><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase">{row.type}</span></Td>
+                  <Td>{row.channel}</Td>
+                  <Td>{row.eventName || '-'}</Td>
+                  <Td><span className="text-[11px] font-medium text-slate-400">{fmt(row.createdAt)}</span></Td>
+                  <Td className="text-right"><Button variant="outline" size="sm" onClick={async () => { await resendSuperAdminNotification(row._id); toast.success('Notification marked for resend'); }}>Resend</Button></Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+          {renderPagination(workspace?.notifications)}
         </Card>
       )}
       {section === 'reports' && (
-        <div className="grid gap-6 xl:grid-cols-3">
-          <Card className="rounded-[28px] border-slate-200"><CardHeader title="Revenue Reports" subtitle="Revenue and ticket sales by event" /><div className="space-y-3">{(reports?.revenue || []).map((row) => <div key={row._id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-medium text-slate-900">{row.eventName}</p><p className="text-sm font-semibold text-slate-700">{money(row.revenue, workspace?.settings?.currency)}</p></div><p className="mt-1 text-xs text-slate-500">{row.ticketsSold} tickets • {row.orders} orders</p></div>)}</div></Card>
-          <Card className="rounded-[28px] border-slate-200"><CardHeader title="Attendance Reports" subtitle="Allowed vs denied entries per event" /><div className="space-y-3">{(reports?.attendance || []).map((row) => <div key={row._id} className="rounded-2xl border border-slate-200 p-4"><p className="font-medium text-slate-900">{row.eventName}</p><p className="mt-1 text-xs text-slate-500">Allowed {row.allowedEntries} • Denied {row.deniedEntries}</p></div>)}</div></Card>
-          <Card className="rounded-[28px] border-slate-200"><CardHeader title="Organiser Analytics" subtitle="Top organisers by event throughput" /><div className="space-y-3">{(reports?.organisers || []).map((row) => <div key={row.organiser} className="rounded-2xl border border-slate-200 p-4"><p className="font-medium text-slate-900">{row.organiser}</p><p className="mt-1 text-xs text-slate-500">{row.events} events • {row.ticketsSold} tickets sold</p></div>)}</div></Card>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard title="Report Revenue" value={money(reports?.summary?.totalRevenue, workspace?.settings?.currency)} subtitle="Total for selected period" icon={CurrencyDollarIcon} />
+            <MetricCard title="Report Tickets" value={reports?.summary?.totalTickets || 0} subtitle="Tickets issued in report" icon={TicketIcon} />
+            <MetricCard title="Report Entry" value={reports?.summary?.totalAttendance || 0} subtitle="Successful entries logged" icon={CheckBadgeIcon} />
+            <MetricCard title="Avg Verification" value={`${reports?.summary?.avgVerificationRate || 0}%`} subtitle="Mean security compliance" icon={ShieldCheckIcon} />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.5fr,1fr]">
+            <Card className="rounded-[28px] border-slate-200" padding={false}>
+              <CardHeader 
+                title="Detailed Revenue Report" 
+                subtitle="Financial breakdown per event" 
+                className="px-6 pt-6"
+                action={<Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('revenue', params)}>Export CSV</Button>}
+              />
+              <Table>
+                <thead><Tr><Th>Event Name</Th><Th>Tickets</Th><Th>Orders</Th><Th className="text-right">Revenue</Th></Tr></thead>
+                <tbody>
+                  {(reports?.revenue || []).map((row) => (
+                    <Tr key={row._id}>
+                      <Td><p className="font-medium text-slate-900">{row.eventName}</p></Td>
+                      <Td>{row.ticketsSold}</Td>
+                      <Td>{row.orders}</Td>
+                      <Td className="text-right font-semibold text-slate-900">{money(row.revenue, workspace?.settings?.currency)}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+
+            <Card className="rounded-[28px] border-slate-200" padding={false}>
+              <CardHeader 
+                title="Organizer Performance" 
+                subtitle="Top throughput leaders" 
+                className="px-6 pt-6"
+                action={<Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('organisers', params)}>Export CSV</Button>}
+              />
+              <Table>
+                <thead><Tr><Th>Organizer</Th><Th>Events</Th><Th className="text-right">Tickets Sold</Th></Tr></thead>
+                <tbody>
+                  {(reports?.organisers || []).map((row) => (
+                    <Tr key={row.organiser}>
+                      <Td><p className="font-medium text-slate-900">{row.organiser}</p></Td>
+                      <Td>{row.events}</Td>
+                      <Td className="text-right font-bold text-slate-900">{row.ticketsSold}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          </div>
+
+          <Card className="rounded-[28px] border-slate-200" padding={false}>
+            <CardHeader 
+              title="Attendance & Security Audit" 
+              subtitle="Entry validation metrics per event" 
+              className="px-6 pt-6"
+              action={<Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('attendance', params)}>Export CSV</Button>}
+            />
+            <Table>
+              <thead><Tr><Th>Event Name</Th><Th>Allowed</Th><Th>Denied</Th><Th>Compliance</Th><Th className="text-right">Total Scans</Th></Tr></thead>
+              <tbody>
+                {(reports?.attendance || []).map((row) => {
+                  const total = row.allowedEntries + row.deniedEntries;
+                  const rate = total > 0 ? (row.allowedEntries / total * 100).toFixed(1) : 0;
+                  return (
+                    <Tr key={row._id}>
+                      <Td><p className="font-medium text-slate-900">{row.eventName}</p></Td>
+                      <Td className="text-emerald-600 font-medium">{row.allowedEntries}</Td>
+                      <Td className="text-rose-600 font-medium">{row.deniedEntries}</Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 rounded-full bg-slate-100 overflow-hidden">
+                            <div className="h-full bg-emerald-500" style={{ width: `${rate}%` }} />
+                          </div>
+                          <span className="text-xs font-semibold text-slate-600">{rate}%</span>
+                        </div>
+                      </Td>
+                      <Td className="text-right font-medium text-slate-500">{total}</Td>
+                    </Tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </Card>
         </div>
+      )}
+      {section === 'system-logs' && (
+        <Card className="rounded-[28px] border-slate-200" padding={false}>
+          <CardHeader title="System Audit Logs" subtitle="Comprehensive platform-level log of actions" className="px-6 pt-6" />
+          <Table>
+            <thead>
+              <Tr>
+                <Th>Timestamp</Th>
+                <Th>Operator</Th>
+                <Th>Role</Th>
+                <Th>Event Scope</Th>
+                <Th>Action</Th>
+                <Th>Message</Th>
+                <Th>IP Address</Th>
+              </Tr>
+            </thead>
+            <tbody>
+              {sysLoading ? (
+                <tr>
+                  <td colSpan="7" className="px-4 py-8 text-center text-slate-400">Loading system logs...</td>
+                </tr>
+              ) : (
+                (systemLogsData?.logs || []).map((log) => (
+                  <Tr key={log._id}>
+                    <Td>{fmt(log.createdAt)}</Td>
+                    <Td><span className="font-semibold text-slate-900">{log.userEmail || 'system'}</span></Td>
+                    <Td><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase">{log.userRole || 'System'}</span></Td>
+                    <Td>{log.eventId?.name || 'Global Platform'}</Td>
+                    <Td><Badge variant={statusTone[log.action] || 'gray'}>{String(log.action).replace('_', ' ')}</Badge></Td>
+                    <Td><p className="max-w-md text-sm font-medium text-slate-800 break-words">{log.details?.message}</p></Td>
+                    <Td><span className="font-mono text-xs text-slate-500">{log.ipAddress || '-'}</span></Td>
+                  </Tr>
+                ))
+              )}
+              {!sysLoading && (!systemLogsData?.logs || systemLogsData.logs.length === 0) && (
+                <tr>
+                  <td colSpan="7" className="px-4 py-8 text-center text-slate-400">No system logs found matching filters.</td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Pagination pagination={{ page: systemLogsData?.page || 1, pages: systemLogsData?.pages || 1 }} updateQuery={updateQuery} />
+        </Card>
       )}
       {section === 'settings' && (
         <AdminSettingsPanel />
@@ -262,118 +728,227 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
   );
 };
 
-const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, organiserOptions }) => {
-  if (!modal.type) return null;
+const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, organiserOptions, companyOptions = [] }) => {
+  if (!modal.isOpen) return null;
+
+  const isProfitable = [
+    'Sole Proprietorship', 
+    'Partnership', 
+    'Incorporated Company', 
+    'State Company'
+  ].includes(form.organizationType);
+
   return (
-    <Modal open onClose={closeModal} title={`${modal.mode === 'create' ? 'Create' : 'Edit'} ${modal.type}`} size="lg">
-      <form className="space-y-4" onSubmit={saveEntity}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Name"><Input value={form.name || ''} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} /></Field>
-          {modal.type !== 'event' && (
-            <Field label="Email Address">
-              <Input value={form.email || ''} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} />
-            </Field>
-          )}
-          {modal.type === 'event' ? (
+    <Modal open onClose={closeModal} title={`${modal.mode === 'create' ? 'Create' : 'Edit'} ${modal.type === 'event' ? 'Event' : modal.type === 'organiser' ? 'Organiser' : modal.type === 'company' ? 'Organization' : 'User'}`} size={modal.type === 'company' ? 'xl' : 'lg'}>
+      <form onSubmit={saveEntity}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-[60vh] overflow-y-auto px-1">
+          {modal.type === 'company' ? (
             <>
-              <Field label="Description">
-                <textarea 
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  rows="3"
-                  value={form.description || ''} 
-                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} 
-                />
-              </Field>
-              <Field label="Event Type">
-                <Select value={form.eventType || 'cricket'} onChange={(e) => setForm((prev) => ({ ...prev, eventType: e.target.value }))}>
-                  <option value="cricket">Cricket Match</option>
-                  <option value="concert">Concert</option>
-                  <option value="conference">Conference</option>
-                  <option value="other">Other</option>
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Basic Information</h3>
+              </div>
+              <Field label="Organization Name *"><Input value={form.name || ''} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} required /></Field>
+              <Field label="Registered Business Name *"><Input value={form.registeredBusinessName || ''} onChange={(e) => setForm((prev) => ({ ...prev, registeredBusinessName: e.target.value }))} required /></Field>
+              <Field label="Organization Type *">
+                <Select value={form.organizationType || ''} onChange={(e) => setForm((prev) => ({ ...prev, organizationType: e.target.value }))} required>
+                  <option value="">Select Type</option>
+                  <optgroup label="Profitable">
+                    <option value="Sole Proprietorship">Sole Proprietorship</option>
+                    <option value="Partnership">Partnership</option>
+                    <option value="Incorporated Company">Incorporated Company</option>
+                    <option value="State Company">State Company</option>
+                  </optgroup>
+                  <optgroup label="Non-Profitable">
+                    <option value="NGO">NGO</option>
+                    <option value="Cooperative Society">Cooperative Society</option>
+                    <option value="Government Department">Government Department</option>
+                    <option value="Association">Association</option>
+                  </optgroup>
                 </Select>
               </Field>
-              <Field label="Start date"><Input type="datetime-local" value={form.startDate || ''} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} /></Field>
-              <Field label="End date"><Input type="datetime-local" value={form.endDate || ''} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} /></Field>
-              <Field label="Venue"><Input value={form.venueName || ''} onChange={(e) => setForm((prev) => ({ ...prev, venueName: e.target.value }))} /></Field>
+              <Field label="Organization Code"><Input value={form.organizationCode || ''} onChange={(e) => setForm((prev) => ({ ...prev, organizationCode: e.target.value }))} /></Field>
+              <Field label="Establishment Date"><Input type="date" value={form.establishmentDate?.split('T')[0] || ''} onChange={(e) => setForm((prev) => ({ ...prev, establishmentDate: e.target.value }))} /></Field>
+              
+              {isProfitable && (
+                <>
+                  <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Tax & Registration</h3>
+                  </div>
+                  <Field label="BR Number *"><Input value={form.brNumber || ''} onChange={(e) => setForm((prev) => ({ ...prev, brNumber: e.target.value }))} required /></Field>
+                  <Field label="TIN Number *"><Input value={form.tinNumber || ''} onChange={(e) => setForm((prev) => ({ ...prev, tinNumber: e.target.value }))} required /></Field>
+                  <Field label="VAT Number *"><Input value={form.vatNumber || ''} onChange={(e) => setForm((prev) => ({ ...prev, vatNumber: e.target.value }))} required /></Field>
+                </>
+              )}
+
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Contact Information</h3>
+              </div>
+              <Field label="Primary Contact Person *"><Input value={form.primaryContactPerson || ''} onChange={(e) => setForm((prev) => ({ ...prev, primaryContactPerson: e.target.value }))} required /></Field>
+              <Field label="Designation *"><Input value={form.designation || ''} onChange={(e) => setForm((prev) => ({ ...prev, designation: e.target.value }))} required /></Field>
+              <Field label="Official Email Address *"><Input type="email" value={form.officialEmail || ''} onChange={(e) => setForm((prev) => ({ ...prev, officialEmail: e.target.value }))} required /></Field>
+              <Field label="Contact Number *"><Input value={form.contactNumber || ''} onChange={(e) => setForm((prev) => ({ ...prev, contactNumber: e.target.value }))} required /></Field>
+              <Field label="Website URL"><Input value={form.websiteUrl || ''} onChange={(e) => setForm((prev) => ({ ...prev, websiteUrl: e.target.value }))} /></Field>
+
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Address Information</h3>
+              </div>
+              <Field label="Registered Address *"><Input value={form.registeredAddress || ''} onChange={(e) => setForm((prev) => ({ ...prev, registeredAddress: e.target.value }))} required /></Field>
+              <Field label="Operational Address"><Input value={form.operationalAddress || ''} onChange={(e) => setForm((prev) => ({ ...prev, operationalAddress: e.target.value }))} /></Field>
+              <Field label="City"><Input value={form.city || ''} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} /></Field>
+              <Field label="District"><Input value={form.district || ''} onChange={(e) => setForm((prev) => ({ ...prev, district: e.target.value }))} /></Field>
+              <Field label="Province"><Input value={form.province || ''} onChange={(e) => setForm((prev) => ({ ...prev, province: e.target.value }))} /></Field>
+              <Field label="Postal Code"><Input value={form.postalCode || ''} onChange={(e) => setForm((prev) => ({ ...prev, postalCode: e.target.value }))} /></Field>
+              <Field label="Country"><Input value={form.country || ''} onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))} /></Field>
+
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Financial Information</h3>
+              </div>
+              <Field label="Bank Details *"><Input value={form.bankDetails || ''} onChange={(e) => setForm((prev) => ({ ...prev, bankDetails: e.target.value }))} required /></Field>
+              <Field label="Billing Address"><Input value={form.billingAddress || ''} onChange={(e) => setForm((prev) => ({ ...prev, billingAddress: e.target.value }))} /></Field>
+              <Field label="Payment Contact *"><Input value={form.paymentContact || ''} onChange={(e) => setForm((prev) => ({ ...prev, paymentContact: e.target.value }))} required /></Field>
+              <Field label="Invoice Email *"><Input type="email" value={form.invoiceEmail || ''} onChange={(e) => setForm((prev) => ({ ...prev, invoiceEmail: e.target.value }))} required /></Field>
+            </>
+          ) : modal.type === 'event' ? (
+            <>
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Basic Information</h3>
+              </div>
+              <Field label="Event Name *"><Input value={form.name || ''} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} required /></Field>
+              <Field label="Event Type *">
+                <Select value={form.eventType || 'cricket'} onChange={(e) => setForm((prev) => ({ ...prev, eventType: e.target.value }))} required>
+                  <option value="cricket">Cricket Match</option>
+                  <option value="concert">Concert / Musical</option>
+                  <option value="conference">Conference / Exhibition</option>
+                  <option value="other">Other Event</option>
+                </Select>
+              </Field>
+              <Field label="Organization"><Select value={form.companyId || ''} onChange={(e) => setForm((prev) => ({ ...prev, companyId: e.target.value }))}><option value="">None / Unassigned</option>{companyOptions.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}</Select></Field>
+              <Field label="Main Organisers (Max 2)">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2 min-h-[40px] p-2 rounded-xl border border-slate-200 bg-slate-50">
+                    {(form.organiserIds || []).map(id => {
+                      const org = organiserOptions.find(o => o._id === id);
+                      return (
+                        <div key={id} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200">
+                          {org?.name || id}
+                          <button type="button" onClick={() => setForm(prev => ({ ...prev, organiserIds: prev.organiserIds.filter(oid => oid !== id) }))} className="hover:text-blue-900">×</button>
+                        </div>
+                      );
+                    })}
+                    {(form.organiserIds || []).length === 0 && <span className="text-slate-400 text-xs py-1">No organisers selected</span>}
+                  </div>
+                  <Select value="" onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) return;
+                    if ((form.organiserIds || []).length >= 2) { toast.error('Maximum 2 organisers allowed'); return; }
+                    if ((form.organiserIds || []).includes(id)) return;
+                    setForm(prev => ({ ...prev, organiserIds: [...(prev.organiserIds || []), id] }));
+                  }} disabled={(form.organiserIds || []).length >= 2}>
+                    <option value="">Add Organiser...</option>
+                    {organiserOptions.filter(o => (!form.companyId || o.company === form.companyId) && !(form.organiserIds || []).includes(o._id)).map((option) => (
+                      <option key={option._id} value={option._id}>{option.name} ({option.email})</option>
+                    ))}
+                  </Select>
+                </div>
+              </Field>
+
+              <div className="col-span-2 pt-4 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Venue & Time</h3>
+              </div>
+              <Field label="Venue Name *"><Input value={form.venueName || ''} onChange={(e) => setForm((prev) => ({ ...prev, venueName: e.target.value }))} required /></Field>
+              <Field label="City"><Input value={form.city || ''} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} /></Field>
+              <Field label="Start Date/Time *"><Input type="datetime-local" value={form.startDate ? form.startDate.slice(0, 16) : ''} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} required /></Field>
+              <Field label="End Date/Time *"><Input type="datetime-local" value={form.endDate ? form.endDate.slice(0, 16) : ''} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} required /></Field>
+              <Field label="Event Timezone *">
+                <Select value={form.timezone || 'Asia/Colombo'} onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))} required>
+                  <option value="Asia/Colombo">Asia/Colombo (Sri Lanka Time)</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata (India Standard Time)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (Singapore Time)</option>
+                  <option value="Europe/London">Europe/London (GMT/BST)</option>
+                  <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                  <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                  <option value="America/New_York">America/New_York (US Eastern)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
+                  <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+                  <option value="UTC">UTC (Coordinated Universal Time)</option>
+                </Select>
+              </Field>
+
+              <div className="col-span-2 pt-4 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Communication & Settings</h3>
+              </div>
               <Field label="Status">
                 <Select value={form.status || 'draft'} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}>
-                  <option value="draft">Draft</option>
-                  <option value="published">Published</option>
-                  <option value="ongoing">Ongoing</option>
-                  <option value="completed">Completed</option>
+                  <option value="draft">Draft</option><option value="published">Published</option>
+                  <option value="ongoing">Ongoing</option><option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
                 </Select>
               </Field>
-              <Field label="Assigned organiser"><Select value={form.organiserId || ''} onChange={(e) => setForm((prev) => ({ ...prev, organiserId: e.target.value }))}><option value="">Unassigned</option>{organiserOptions.map((option) => <option key={option._id} value={option._id}>{option.name}</option>)}</Select></Field>
+              <Field label="Currency"><Select value={form.currency || 'LKR'} onChange={(e) => setForm((prev) => ({ ...prev, currency: e.target.value }))}><option value="LKR">LKR (Rs.)</option><option value="USD">USD ($)</option></Select></Field>
+              <Field label="Invite Limit"><Input type="number" value={form.inviteLimitPerAttendee || 3} onChange={(e) => setForm(prev => ({ ...prev, inviteLimitPerAttendee: parseInt(e.target.value) }))} /></Field>
+              <Field label="Confirmation Deadline (Hrs)"><Input type="number" value={form.settings?.confirmationDeadlineHours || 48} onChange={(e) => setForm(prev => ({ ...prev, settings: { ...prev.settings, confirmationDeadlineHours: parseInt(e.target.value) } }))} /></Field>
               
-              <div className="col-span-2 pt-4 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">Payment & Currency</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Currency">
-                    <Select value={form.currency || 'LKR'} onChange={(e) => setForm((prev) => ({ ...prev, currency: e.target.value }))}>
-                      <option value="LKR">LKR (Rs.)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                    </Select>
-                  </Field>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentCard !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentCard: e.target.checked }))} />
-                      <span className="text-sm text-slate-700">Card Payment</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentBank !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentBank: e.target.checked }))} />
-                      <span className="text-sm text-slate-700">Bank Transfer</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.paymentCash !== false} onChange={(e) => setForm(prev => ({ ...prev, paymentCash: e.target.checked }))} />
-                      <span className="text-sm text-slate-700">Cash Payment</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="col-span-2 pt-4 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">Event Controls</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.requirePhotoVerification !== false} onChange={(e) => setForm(prev => ({ ...prev, requirePhotoVerification: e.target.checked }))} />
-                    <span className="text-sm text-slate-700">Photo Verification</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.allowSelfConfirmation !== false} onChange={(e) => setForm(prev => ({ ...prev, allowSelfConfirmation: e.target.checked }))} />
-                    <span className="text-sm text-slate-700">Self Confirmation</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.rfidEnabled !== false} onChange={(e) => setForm(prev => ({ ...prev, rfidEnabled: e.target.checked }))} />
-                    <span className="text-sm text-slate-700">RFID Enabled</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="col-span-2 pt-4 border-t border-slate-100">
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">Communication Channels</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer opacity-60">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={true} disabled />
-                    <span className="text-sm text-slate-700">Email (Required)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.communicationSms ?? false} onChange={(e) => setForm(prev => ({ ...prev, communicationSms: e.target.checked }))} />
-                    <span className="text-sm text-slate-700">SMS Notifications</span>
-                  </label>
-                </div>
+              <div className="col-span-2 flex flex-wrap gap-x-8 gap-y-4 pt-2 pb-4">
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.requirePhotoVerification !== false} onChange={(e) => setForm(prev => ({ ...prev, requirePhotoVerification: e.target.checked }))} className="rounded text-blue-600 focus:ring-blue-500" /><span className="text-sm font-medium text-slate-700">Photo Verification</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.rfidEnabled !== false} onChange={(e) => setForm(prev => ({ ...prev, rfidEnabled: e.target.checked }))} className="rounded text-blue-600 focus:ring-blue-500" /><span className="text-sm font-medium text-slate-700">RFID Support</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.communicationEmail !== false} onChange={(e) => setForm(prev => ({ ...prev, communicationEmail: e.target.checked, settings: { ...prev.settings, communicationChannels: { ...prev.settings?.communicationChannels, email: e.target.checked } } }))} className="rounded text-blue-600 focus:ring-blue-500" /><span className="text-sm font-medium text-slate-700">Enable Email</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.communicationSms === true} onChange={(e) => setForm(prev => ({ ...prev, communicationSms: e.target.checked, settings: { ...prev.settings, communicationChannels: { ...prev.settings?.communicationChannels, sms: e.target.checked } } }))} className="rounded text-blue-600 focus:ring-blue-500" /><span className="text-sm font-medium text-slate-700">Enable SMS</span></label>
               </div>
             </>
           ) : (
             <>
-              <Field label="Phone"><Input value={form.phone || ''} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} required /></Field>
-              <Field label="Password"><Input type="password" value={form.password || ''} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} /></Field>
-              <Field label="Role"><Select value={form.role || ''} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}>{(modal.type === 'organiser' ? ['MainOrganiser', 'SubOrganiser'] : ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee']).map((role) => <option key={role} value={role}>{role}</option>)}</Select></Field>
+              <div className="col-span-2 pt-2 border-b border-slate-100 pb-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">User Information</h3>
+              </div>
+              <Field label="Full Name *"><Input value={form.name || ''} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} required /></Field>
+              <Field label="Email Address *"><Input type="email" value={form.email || ''} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} required /></Field>
+              <Field label="Phone Number"><Input value={form.phone || ''} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} /></Field>
+              <Field label="Organization"><Select value={form.companyId || ''} onChange={(e) => setForm((prev) => ({ ...prev, companyId: e.target.value }))} disabled={!!form._locked}><option value="">None / Unassigned</option>{companyOptions.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}</Select></Field>
+              <Field label="System Role *"><Select value={form.role || ''} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))} required>{(modal.type === 'organiser' ? ['MainOrganiser', 'SubOrganiser'] : ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee']).map((role) => <option key={role} value={role}>{role}</option>)}</Select></Field>
+              <Field label="Set Password"><Input type="password" placeholder={modal.mode === 'create' ? 'Enter password' : 'Leave blank to keep current'} value={form.password || ''} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} required={modal.mode === 'create'} /></Field>
+
+              {/* Responsibilities removed: use role assignments and zone/gate mappings instead */}
             </>
           )}
         </div>
         <div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={closeModal}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button></div>
+      </form>
+    </Modal>
+  );
+};
+
+const DuplicateModal = ({ modal, closeModal, submit }) => {
+  if (!modal.isOpen) return null;
+  return (
+    <Modal open onClose={() => closeModal({ isOpen: false })} title="Duplicate Event" size="md">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="New Event Name">
+          <Input 
+            required 
+            value={modal.name} 
+            onChange={(e) => closeModal((prev) => ({ ...prev, name: e.target.value }))} 
+          />
+        </Field>
+        <Field label="New Start Date">
+          <Input 
+            type="datetime-local" 
+            required 
+            value={modal.startDate} 
+            onChange={(e) => closeModal((prev) => ({ ...prev, startDate: e.target.value }))} 
+          />
+        </Field>
+        <Field label="New End Date">
+          <Input 
+            type="datetime-local" 
+            required 
+            value={modal.endDate} 
+            onChange={(e) => closeModal((prev) => ({ ...prev, endDate: e.target.value }))} 
+          />
+        </Field>
+        <div className="flex justify-end gap-3 pt-4">
+          <Button type="button" variant="outline" onClick={() => closeModal({ isOpen: false })}>Cancel</Button>
+          <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">Duplicate</Button>
+        </div>
       </form>
     </Modal>
   );
@@ -388,10 +963,15 @@ const AdminDashboard = () => {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [searchResults, setSearchResults] = useState({ events: [], users: [] });
+  const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' });
+
+  const [systemLogsData, setSystemLogsData] = useState({ logs: [], total: 0, pages: 1 });
+  const [sysLoading, setSysLoading] = useState(false);
 
   const updateQuery = (key, value) => setParams((current) => {
     const next = new URLSearchParams(current);
     if (value) next.set(key, value); else next.delete(key);
+    if (key !== 'page') next.delete('page');
     return next;
   });
 
@@ -410,6 +990,26 @@ const AdminDashboard = () => {
   useEffect(() => { loadWorkspace(); }, [params.toString()]);
 
   useEffect(() => {
+    if (section !== 'system-logs') return;
+    setSysLoading(true);
+    getSystemLogs({
+      search: params.get('search') || undefined,
+      action: params.get('action') || undefined,
+      from: params.get('from') || undefined,
+      to: params.get('to') || undefined,
+      page: params.get('page') || 1,
+      limit: params.get('limit') || 15
+    })
+      .then((res) => {
+        setSystemLogsData(res.data?.data || { logs: [], total: 0, pages: 1 });
+      })
+      .catch((err) => {
+        toast.error(err.response?.data?.message || 'Failed to fetch system logs');
+      })
+      .finally(() => setSysLoading(false));
+  }, [section, params.toString()]);
+
+  useEffect(() => {
     const handleSearch = async (event) => {
       const q = String(event.detail || '').trim();
       if (!q) return setSearchResults({ events: [], users: [] });
@@ -426,12 +1026,15 @@ const AdminDashboard = () => {
   }, []);
 
   const openModal = (type, mode = 'create', item = null) => {
-    setModal({ type, mode, item });
+    setModal({ type, mode, isOpen: true, item });
     if (type === 'event') setForm({ 
+      _id: normalizeEntityId(item?._id || item?.id),
       name: item?.name || '', 
+      timezone: item?.timezone || 'Asia/Colombo', 
       startDate: item?.date ? new Date(item.date).toISOString().slice(0, 16) : '', 
       endDate: item?.endDate ? new Date(item.endDate).toISOString().slice(0, 16) : '', 
-      organiserId: item?.organiser?._id || '', 
+      organiserIds: Array.isArray(item?.organiser) ? item.organiser.map(o => o._id) : (item?.organiser?._id ? [item.organiser._id] : []), 
+      companyId: item?.company?._id || item?.company || '',
       venueName: item?.venue || '', 
       status: item?.lifecycleStatus || 'draft', 
       description: item?.description || '',
@@ -440,31 +1043,96 @@ const AdminDashboard = () => {
       allowSelfConfirmation: item?.settings?.allowSelfConfirmation ?? true,
       rfidEnabled: item?.settings?.rfidEnabled ?? true,
       currency: item?.settings?.currency || 'LKR',
+      settings: item?.settings || {},
       paymentCard: item?.settings?.paymentMethods?.card ?? true,
       paymentBank: item?.settings?.paymentMethods?.bank_transfer ?? true,
       paymentCash: item?.settings?.paymentMethods?.cash ?? true,
       communicationEmail: item?.settings?.communicationChannels?.email ?? true,
       communicationSms: item?.settings?.communicationChannels?.sms ?? false
     });
-    if (type === 'organiser' || type === 'user') setForm({ name: item?.name || '', email: item?.email || '', phone: item?.phone || '', password: '', role: item?.role || (type === 'organiser' ? 'MainOrganiser' : 'Staff'), status: item?.status || 'Active' });
+    else if (type === 'company') setForm({ 
+      ...item,
+      establishmentDate: item?.establishmentDate ? item.establishmentDate.split('T')[0] : ''
+    });
+    else if (type === 'organiser' || type === 'user') setForm({ 
+      _id: normalizeEntityId(item?._id || item?.id),
+      name: item?.name || '', 
+      email: item?.email || '', 
+      phone: item?.phone || '', 
+      password: '', 
+      role: item?.role || (type === 'organiser' ? 'MainOrganiser' : 'Staff'), 
+      status: item?.status || 'Active',
+      companyId: item?.company?._id || item?.company || (mode === 'create' && item?.companyId ? item.companyId : '')
+    });
   };
   const closeModal = () => { setModal({ type: '', mode: 'create', item: null }); setForm({}); };
 
-  const saveEntity = async (event) => {
-    event.preventDefault();
+  const saveEntity = async (e) => {
+    e.preventDefault();
     setSaving(true);
     try {
-      if (modal.type === 'event' && modal.mode === 'create') await createSuperAdminEvent(form);
-      if (modal.type === 'event' && modal.mode === 'edit') await updateSuperAdminEvent(modal.item._id, form);
-      if (modal.type === 'organiser' && modal.mode === 'create') await createSuperAdminOrganiser(form);
-      if (modal.type === 'organiser' && modal.mode === 'edit') await updateSuperAdminOrganiser(modal.item._id, form);
-      if (modal.type === 'user' && modal.mode === 'create') await createSuperAdminUser(form);
-      if (modal.type === 'user' && modal.mode === 'edit') await updateSuperAdminUser(modal.item._id, form);
-      toast.success(`${modal.type} ${modal.mode === 'create' ? 'created' : 'updated'}`);
+      if (modal.type === 'company') {
+        const entityId = normalizeEntityId(form._id || modal.item?._id || modal.item?.id);
+        if (modal.mode === 'create') await createSuperAdminCompany(form);
+        else {
+          if (!entityId) throw new Error('Missing company ID');
+          await updateSuperAdminCompany(entityId, form);
+        }
+      } else if (modal.type === 'event') {
+        const entityId = normalizeEntityId(form._id || modal.item?._id || modal.item?.id);
+        const eventPayload = {
+          ...form,
+          companyId: form.companyId ? form.companyId : null,
+          communicationEmail: form.communicationEmail ?? form.settings?.communicationChannels?.email ?? true,
+          communicationSms: form.communicationSms ?? form.settings?.communicationChannels?.sms ?? false,
+        };
+        if (modal.mode === 'create') await createSuperAdminEvent(eventPayload);
+        else {
+          if (!entityId) throw new Error('Missing event ID');
+          await updateSuperAdminEvent(entityId, eventPayload);
+        }
+      } else if (modal.type === 'organiser') {
+        const entityId = normalizeEntityId(form._id || modal.item?._id || modal.item?.id);
+        if (modal.mode === 'create') await createSuperAdminOrganiser(form);
+        else {
+          if (!entityId) throw new Error('Missing organiser ID');
+          await updateSuperAdminOrganiser(entityId, form);
+        }
+      } else {
+        const entityId = normalizeEntityId(form._id || modal.item?._id || modal.item?.id);
+        if (modal.mode === 'create') await createSuperAdminUser(form);
+        else {
+          if (!entityId) throw new Error('Missing user ID');
+          await updateSuperAdminUser(entityId, form);
+        }
+      }
+      toast.success('Saved successfully');
       closeModal();
       loadWorkspace();
     } catch (err) {
-      toast.error(err.response?.data?.message || `Failed to ${modal.mode} ${modal.type}`);
+      toast.error(err.response?.data?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDuplicateSubmit = async (e) => {
+    e.preventDefault();
+    if (!duplicateModal.name || !duplicateModal.startDate || !duplicateModal.endDate) {
+      return toast.error('Please fill in all fields.');
+    }
+    setSaving(true);
+    try {
+      await duplicateAdminEvent(duplicateModal.eventId, {
+        newName: duplicateModal.name,
+        newStartDate: duplicateModal.startDate,
+        newEndDate: duplicateModal.endDate,
+      });
+      toast.success('Event duplicated successfully');
+      setDuplicateModal({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' });
+      loadWorkspace();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Duplication failed');
     } finally {
       setSaving(false);
     }
@@ -521,7 +1189,8 @@ const AdminDashboard = () => {
             </div>
             <div className="flex flex-wrap gap-3">
               {section === 'events' && <Button onClick={() => openModal('event')}>Create event</Button>}
-              {section === 'organisations' && <Button onClick={() => openModal('organiser')}>Create organiser</Button>}
+              {section === 'organisations' && <Button onClick={() => openModal('company')}>Create Organization</Button>}
+              {section === 'organisers' && <Button onClick={() => openModal('organiser')}>Create Organiser</Button>}
               {section === 'users' && <Button onClick={() => openModal('user')}>Create user</Button>}
               {section === 'reports' && <><Button onClick={() => exportReport('revenue')}>Revenue CSV</Button><Button variant="outline" onClick={() => exportReport('attendance')}>Attendance CSV</Button></>}
             </div>
@@ -536,12 +1205,15 @@ const AdminDashboard = () => {
           updateQuery={updateQuery}
           openModal={openModal}
           loadWorkspace={loadWorkspace}
-          exportReport={exportReport}
           deleteOrganiser={handleDeleteOrganiser}
           deleteUser={handleDeleteUser}
+          setDuplicateModal={setDuplicateModal}
+          systemLogsData={systemLogsData}
+          sysLoading={sysLoading}
         />
 
-        <EntityModal modal={modal} closeModal={closeModal} form={form} setForm={setForm} saving={saving} saveEntity={saveEntity} organiserOptions={workspace?.events?.filters?.organiserOptions || []} />
+        <EntityModal modal={modal} closeModal={closeModal} form={form} setForm={setForm} saving={saving} saveEntity={saveEntity} organiserOptions={workspace?.events?.filters?.organiserOptions || []} companyOptions={workspace?.events?.filters?.companyOptions || workspace?.users?.filters?.companyOptions || workspace?.organisations?.filters?.companyOptions || []} />
+        <DuplicateModal modal={duplicateModal} closeModal={setDuplicateModal} submit={handleDuplicateSubmit} />
       </div>
     </DashboardLayout>
   );

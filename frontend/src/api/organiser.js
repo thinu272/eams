@@ -24,6 +24,7 @@ export const updateSubOrganiserStatus = (id, status) => updateSubOrganiser(id, {
 export const getCustomRoles = (params) => api.get('/organiser/custom-roles', { params });
 export const createCustomRole = (payload) => api.post('/organiser/custom-roles', payload);
 export const updateCustomRole = (id, payload) => api.put(`/organiser/custom-roles/${id}`, payload);
+export const deleteCustomRole = (id, eventId) => api.delete(`/organiser/custom-roles/${id}`, { params: { eventId } });
 
 export const getVerificationQueue = (params) => api.get('/organiser/verification', { params });
 export const updateVerificationStatus = (attendeeId, payload) => api.post(`/organiser/verification/${attendeeId}`, payload);
@@ -64,3 +65,12 @@ export const resendOrganiserNotification = (id, eventId) => api.post(`/organiser
 export const getOrganiserSettings = (params) => api.get('/organiser/settings', { params });
 export const updateOrganiserSettings = (payload) => api.put('/organiser/settings', payload);
 export const updateOrganiserEventCustomization = (payload) => api.put('/organiser/event-customization', payload);
+
+export const getSponsorPackages = (params) => api.get('/organiser/sponsor-packages', { params });
+export const createSponsorPackage = (payload) => api.post('/organiser/sponsor-packages', payload);
+export const updateSponsorPackage = (id, payload) => api.put(`/organiser/sponsor-packages/${id}`, payload);
+export const deleteSponsorPackage = (id, eventId) => api.delete(`/organiser/sponsor-packages/${id}`, { params: { eventId } });
+
+export const getSponsors = (params) => api.get('/organiser/sponsors', { params });
+export const createSponsor = (payload) => api.post('/organiser/sponsors', payload);
+export const deleteSponsor = (id, eventId) => api.delete(`/organiser/sponsors/${id}`, { params: { eventId } });

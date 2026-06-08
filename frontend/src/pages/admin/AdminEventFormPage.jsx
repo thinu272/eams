@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import EventForm from '../../components/admin/EventForm';
 import { createEvent, getEventForEdit, updateEvent } from '../../api/events';
+import { getSuperAdminWorkspace } from '../../api/superAdmin';
 import toast from 'react-hot-toast';
 
 const AdminEventFormPage = () => {
@@ -12,12 +13,27 @@ const AdminEventFormPage = () => {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(!!id);
 
+  const [companies, setCompanies] = useState([]);
+  const [organisers, setOrganisers] = useState([]);
+
   useEffect(() => {
-    if (!id) return;
-    getEventForEdit(id)
-      .then((res) => setInitialData(res.data?.data?.event || null))
-      .catch(() => toast.error('Failed to load event'))
-      .finally(() => setFetching(false));
+    const fetchData = async () => {
+      try {
+        const workspace = await getSuperAdminWorkspace();
+        setCompanies(workspace.data?.data?.organisations?.rows || []);
+        setOrganisers(workspace.data?.data?.events?.filters?.organiserOptions || []);
+        
+        if (id) {
+          const res = await getEventForEdit(id);
+          setInitialData(res.data?.data?.event || null);
+        }
+      } catch (err) {
+        toast.error('Failed to load required data');
+      } finally {
+        setFetching(false);
+      }
+    };
+    fetchData();
   }, [id]);
 
   const handleSubmit = async (payload, filesObject) => {
@@ -74,7 +90,7 @@ const AdminEventFormPage = () => {
           {fetching ? (
             <p className="text-sm text-slate-500">Loading event data...</p>
           ) : (
-            <EventForm initialData={initialData} onSubmit={handleSubmit} loading={loading} />
+            <EventForm initialData={initialData} onSubmit={handleSubmit} loading={loading} companyOptions={companies} organiserOptions={organisers} />
           )}
         </div>
       </div>

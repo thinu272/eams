@@ -299,8 +299,17 @@ const SubOrgDashboard = () => {
 };
 
 const CategoryModal = ({ open, onClose, category, setCategory, zones, teamMembers, currency, onSave, loading }) => (
-  <Modal open={open} onClose={onClose} title={category?.id ? 'Edit Ticket Category' : 'Create New Ticket'}>
-    <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+  <Modal 
+    open={open} 
+    onClose={onClose} 
+    title={category?.id ? 'Edit Ticket Category' : 'Create New Ticket'}
+    footer={(
+      <Button className="w-full py-4 shadow-lg shadow-blue-100" onClick={onSave} loading={loading}>
+        {category?.id ? 'Update Category' : 'Create Category'}
+      </Button>
+    )}
+  >
+    <div className="space-y-6">
       <div className="space-y-3">
         <label className="block space-y-1">
           <span className="text-xs font-bold uppercase text-slate-500">Category Name</span>
@@ -413,9 +422,6 @@ const CategoryModal = ({ open, onClose, category, setCategory, zones, teamMember
         </div>
       </div>
 
-      <Button className="w-full" onClick={onSave} loading={loading}>
-        {category?.id ? 'Update Category' : 'Create Category'}
-      </Button>
     </div>
   </Modal>
 );

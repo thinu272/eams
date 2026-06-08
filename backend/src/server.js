@@ -23,11 +23,39 @@ const User = require("./models/User"); // Create this model (name, email, passwo
 // Initialize Express app
 const app = express();
 
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5000', 'http://127.0.0.1:5000'],
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
-  credentials: true,
-}));
+// Configure CORS for local network testing.
+// In development allow any origin; in production restrict to CORS_ORIGINS env var or known hosts.
+const defaultAllowed = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5000',
+  'http://127.0.0.1:5000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : defaultAllowed;
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use(
+    cors({
+      origin: true, // reflect request origin (allow all in dev/local network)
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
+      credentials: true,
+    })
+  );
+} else {
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+      },
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
+      credentials: true,
+    })
+  );
+}
 
 app.use(helmet());
 app.use(cookieParser());
@@ -98,6 +126,7 @@ app.use('/api/attendees', require('./routes/attendees'));
 app.use('/api/verification', require('./routes/verification'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/invite', require('./routes/invite'));
+app.use('/api/sponsor', require('./routes/sponsor'));
 app.use('/api/entry', require('./routes/entry'));
 app.use('/api/zone', require('./routes/zone'));
 app.use('/api/dashboard', require('./routes/dashboard')); 
@@ -132,4 +161,5 @@ mongoose
 const PORT = process.env.PORT || 5000;
 app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Bind to 0.0.0.0 for local network accessibility when running locally.
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

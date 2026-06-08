@@ -8,6 +8,7 @@ const User = require('../models/User');
 const SystemConfig = require('../models/SystemConfig');
 const { protect } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const { logActivity } = require('../utils/logger');
 
 // Rate limiting for login
 const loginLimiter = rateLimit({
@@ -116,7 +117,7 @@ router.post('/login', loginLimiter, [
     
     // Check Email Verification
     // Bypassing for administrative and operational roles (MainAdmin, MainOrganiser, SubOrganiser, Staff, Volunteer, Auditor)
-    const INTERNAL_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor'];
+    const INTERNAL_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Sponsor'];
     const isInternalRole = INTERNAL_ROLES.includes(user.role);
 
     if (user.isVerified === false && !isInternalRole) {
@@ -135,6 +136,14 @@ router.post('/login', loginLimiter, [
     }
 
     user.lastLogin = new Date();
+    await logActivity({
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'login',
+      details: { message: 'Successful login' }
+    });
     await sendTokens(user, 200, res);
   } catch (err) { next(err); }
 });
@@ -182,6 +191,15 @@ router.post('/register', [
       isVerified: false,
       emailVerificationToken: hashedToken,
       emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+    });
+
+    await logActivity({
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'user_creation',
+      details: { message: `Attendee registered: ${user.name}` }
     });
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -294,6 +312,14 @@ router.post('/logout', protect, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
     if (user) {
+      await logActivity({
+        req,
+        userId: user._id,
+        userEmail: user.email,
+        userRole: user.role,
+        action: 'logout',
+        details: { message: 'Logged out successfully' }
+      });
       user.refreshToken = undefined;
       await user.save({ validateBeforeSave: false });
     }
@@ -329,6 +355,15 @@ router.post('/mfa/setup', protect, async (req, res, next) => {
     
     user.mfaSecret = secret;
     await user.save({ validateBeforeSave: false });
+
+    await logActivity({
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'mfa_activity',
+      details: { message: 'MFA setup requested' }
+    });
     
     const otpauth = authenticator.keyuri(user.email, 'ENTRYNEX-HighFidelity', secret);
     const qrImage = await qrcode.toDataURL(otpauth);
@@ -352,6 +387,15 @@ router.post('/mfa/activate', protect, [
     
     user.mfaEnabled = true;
     await user.save({ validateBeforeSave: false });
+
+    await logActivity({
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'mfa_activity',
+      details: { message: 'MFA activated successfully' }
+    });
     
     res.json({ success: true, message: 'MFA activated successfully.' });
   } catch (err) { next(err); }

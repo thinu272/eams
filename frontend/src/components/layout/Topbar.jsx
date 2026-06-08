@@ -114,11 +114,14 @@ const Topbar = ({ onMenuClick }) => {
         >
           <Bars3Icon className="h-6 w-6" />
         </button>
-        <div className="animate-fade-in">
-          <p className="hidden sm:block text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">System Dashboard</p>
-          <p className="text-sm lg:text-base font-black text-slate-900 tracking-tight">
-            {isOrganiserWorkspace ? 'Command Center' : isSuperAdminWorkspace ? 'Global Control' : isStaffWorkspace ? 'Operations Terminal' : 'Console'}
-          </p>
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="Entrynex Logo" className="h-10 w-10 object-contain" />
+          <div className="animate-fade-in">
+            <p className="hidden sm:block text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">System Dashboard</p>
+            <p className="text-sm lg:text-base font-black text-slate-900 tracking-tight">
+              {isOrganiserWorkspace ? 'Command Center' : isSuperAdminWorkspace ? 'Global Control' : isStaffWorkspace ? 'Operations Terminal' : 'Console'}
+            </p>
+          </div>
         </div>
       </div>
 

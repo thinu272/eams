@@ -194,7 +194,7 @@ const OrganiserTeam = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Full Name <span className="text-red-500">*</span>
+                Full Name *
               </label>
               <input 
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
@@ -207,7 +207,7 @@ const OrganiserTeam = () => {
             
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Email Address <span className="text-red-500">*</span>
+                Email Address *
               </label>
               <input 
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
@@ -222,7 +222,7 @@ const OrganiserTeam = () => {
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Phone Number <span className="text-red-500">*</span>
+                Phone Number *
               </label>
               <input 
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
@@ -236,7 +236,7 @@ const OrganiserTeam = () => {
 
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Temporary Password <span className="text-red-500">*</span>
+                Temporary Password *
               </label>
               <input 
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 

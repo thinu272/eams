@@ -9,6 +9,7 @@ import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import toast from 'react-hot-toast';
 import { TicketIcon, CheckBadgeIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { getAssetUrl } from '../../utils/backend';
 
 const ConfirmOrderPage = () => {
   const { token } = useParams();
@@ -327,7 +328,7 @@ const ConfirmOrderPage = () => {
                           {ticket.attendee.photo && (
                             <div className="flex-shrink-0">
                               <img
-                                src={`http://localhost:5000/${ticket.attendee.photo}`}
+                                src={getAssetUrl(ticket.attendee.photo)}
                                 alt={ticket.attendee.fullName}
                                 className="w-12 h-12 rounded-lg object-cover border border-gray-200"
                               />

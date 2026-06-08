@@ -199,9 +199,10 @@ router.post('/respond', [
 router.post('/confirm', upload.single('photo'), [
   body('token').notEmpty().withMessage('Invite token is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
-  body('nicPassport').notEmpty().withMessage('NIC / Passport number is required'),
-  body('dateOfBirth').notEmpty().isISO8601().withMessage('Valid date of birth is required'),
-  body('phone').notEmpty().matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
+  body('email').notEmpty().isEmail().withMessage('Valid email is required'),
+  body('nicPassport').optional({ checkFalsy: true }),
+  body('dateOfBirth').optional({ checkFalsy: true }).isISO8601().withMessage('Valid date of birth is required'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -232,33 +233,42 @@ router.post('/confirm', upload.single('photo'), [
       return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
     }
 
-    // Duplicate check by NIC/passport for same event
-    const [nationalId, passportNumber] = nicPassport.includes('P') || nicPassport.includes('p') ? [null, nicPassport] : [nicPassport, null];
-    
-    const duplicateQuery = {
-      event: ticket.event._id,
-      $or: [
-        ...(nationalId ? [{ nationalId }] : []),
-        ...(passportNumber ? [{ passportNumber }] : [])
-      ],
-      confirmationStatus: { $in: ['confirmed', 'assigned'] }
-    };
+    // Duplicate check by NIC/passport for same event (only if provided)
+    let duplicate = null;
+    if (nicPassport) {
+      const [nationalId, passportNumber] = nicPassport.includes('P') || nicPassport.includes('p') ? [null, nicPassport] : [nicPassport, null];
+      
+      const duplicateQuery = {
+        event: ticket.event._id,
+        $or: [
+          ...(nationalId ? [{ nationalId }] : []),
+          ...(passportNumber ? [{ passportNumber }] : [])
+        ],
+        confirmationStatus: { $in: ['confirmed', 'assigned'] }
+      };
 
-    // Important: Exclude the current attendee from the duplicate check
-    if (ticket.attendee) {
-      duplicateQuery._id = { $ne: ticket.attendee._id || ticket.attendee };
+      if (ticket.attendee) {
+        duplicateQuery._id = { $ne: ticket.attendee._id || ticket.attendee };
+      }
+
+      duplicate = await Attendee.findOne(duplicateQuery);
     }
 
-    const duplicate = await Attendee.findOne(duplicateQuery);
-    if (duplicate) {
-      return res.status(409).json({ success: false, message: 'An attendee with this ID is already confirmed for this event.' });
+    let nationalId = null;
+    let passportNumber = null;
+    if (nicPassport) {
+      if (nicPassport.toLowerCase().includes('p')) {
+        passportNumber = nicPassport;
+      } else {
+        nationalId = nicPassport;
+      }
     }
 
     const attendeeData = {
       fullName,
       email: email || ticket.inviteEmail,
-      phone,
-      dateOfBirth: new Date(dateOfBirth),
+      phone: phone || undefined,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       nationalId: nationalId || undefined,
       passportNumber: passportNumber || undefined,
       event: ticket.event._id,
@@ -269,10 +279,11 @@ router.post('/confirm', upload.single('photo'), [
       allowedZones: ticket.allowedZones || [],
       confirmationToken: ticket.inviteToken,
       confirmationStatus: 'confirmed',
+      isConfirmed: true,
       confirmedAt: new Date(),
       confirmedBy: 'online_invite',
       addedVia: 'invite',
-      verificationStatus: 'PENDING',
+      photoVerificationStatus: ticket.event?.settings?.requirePhotoVerification ? 'pending' : 'verified',
     };
 
     if (req.file) {

@@ -15,6 +15,7 @@ const AuditLog = require('../models/AuditLog');
 const { protect, checkRole } = require('../middleware/auth');
 const crypto = require('crypto');
 const notificationService = require('../services/notificationService');
+const Company = require('../models/Company');
 
 const router = express.Router();
 const USER_ROLES = ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Attendee'];
@@ -24,6 +25,12 @@ const parsePositiveInt = (value, fallback, max = 100) => {
   const parsed = parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, max);
+};
+const pickBoolean = (...values) => {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+  }
+  return undefined;
 };
 
 const parseDateRange = (from, to, field = 'createdAt') => {
@@ -53,7 +60,7 @@ const getEventStatusLabel = (event) => {
 
 const buildEventFilter = ({ status, organiser, from, to, search }) => {
   const filter = { ...parseDateRange(from, to, 'startDate') };
-  if (organiser && mongoose.Types.ObjectId.isValid(organiser)) filter.mainOrganiser = organiser;
+  if (organiser && mongoose.Types.ObjectId.isValid(organiser)) filter.mainOrganisers = organiser;
   if (search) {
     const regex = new RegExp(escapeRegex(search), 'i');
     filter.$or = [{ name: regex }, { 'venue.name': regex }, { slug: regex }];
@@ -73,7 +80,9 @@ const serializeEvent = (event) => ({
   name: event.name,
   description: event.description || '',
   eventType: event.eventType || 'cricket',
-  organiser: event.mainOrganiser ? { _id: event.mainOrganiser._id, name: event.mainOrganiser.name, email: event.mainOrganiser.email } : null,
+  organiser: Array.isArray(event.mainOrganisers) && event.mainOrganisers.length > 0 
+    ? event.mainOrganisers.map(org => ({ _id: org._id, name: org.name, email: org.email })) 
+    : [],
   date: event.startDate,
   endDate: event.endDate,
   venue: event.venue?.name || '',
@@ -82,6 +91,7 @@ const serializeEvent = (event) => ({
   ticketsSold: Array.isArray(event.categories) ? event.categories.reduce((sum, category) => sum + (category.sold || 0), 0) : 0,
   ticketCapacity: Array.isArray(event.categories) ? event.categories.reduce((sum, category) => sum + (category.capacity || 0), 0) : 0,
   settings: event.settings || {},
+  timezone: event.timezone || 'Asia/Colombo',
   createdAt: event.createdAt,
 });
 
@@ -94,6 +104,7 @@ const serializeOrganiser = (user, stats = {}) => ({
   role: user.role,
   assignedEvents: Array.isArray(user.assignedEvents) ? user.assignedEvents : [],
   stats: { eventsCreated: stats.eventsCreated || 0, ticketsSold: stats.ticketsSold || 0, liveEvents: stats.liveEvents || 0 },
+  company: user.company,
   createdAt: user.createdAt,
 });
 
@@ -105,6 +116,7 @@ const serializeUser = (user) => ({
   role: user.role,
   status: user.status,
   assignedEvents: Array.isArray(user.assignedEvents) ? user.assignedEvents.map((event) => ({ _id: event._id, name: event.name })) : [],
+  company: user.company,
   createdAt: user.createdAt,
   lastLogin: user.lastLogin,
 });
@@ -185,10 +197,15 @@ const serializeSettings = (config) => ({
 
 router.use(protect, checkRole('SUPER_ADMIN'));
 
-const getOverviewData = async () => {
+const getOverviewData = async (query = {}) => {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
-  const [totalEvents, totalUsers, totalTicketsSold, revenueRows, verifiedAttendees, totalAttendees, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs] = await Promise.all([
+  
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [totalEvents, totalUsers, totalTicketsSold, revenueRows, verifiedAttendees, totalAttendees, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs, totalEntryLogs, totalZoneLogs, totalRequestLogs, revenueDistribution, attendanceStats] = await Promise.all([
     Event.countDocuments(),
     User.countDocuments(),
     Ticket.countDocuments({ status: { $ne: 'CANCELLED' } }),
@@ -201,16 +218,31 @@ const getOverviewData = async () => {
       { $group: { _id: { y: { $year: '$createdAt' }, m: { $month: '$createdAt' }, d: { $dayOfMonth: '$createdAt' } }, ticketsSold: { $sum: { $sum: '$tickets.quantity' } }, revenue: { $sum: '$totalAmount' } } },
       { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
     ]),
-    EntryLog.find({}).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).limit(5).lean(),
-    ZoneLog.find({}).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(5).lean(),
-    RequestLog.find({}).populate('userId', 'name role').sort({ createdAt: -1 }).limit(5).lean(),
+    EntryLog.find({}).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).limit(100).lean(),
+    ZoneLog.find({}).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(100).lean(),
+    RequestLog.find({}).populate('userId', 'name role').sort({ createdAt: -1 }).limit(100).lean(),
+    EntryLog.countDocuments(),
+    ZoneLog.countDocuments(),
+    RequestLog.countDocuments(),
+    Order.aggregate([
+      { $match: { paymentStatus: 'success' } },
+      { $lookup: { from: 'events', localField: 'event', foreignField: '_id', as: 'eventData' } },
+      { $unwind: '$eventData' },
+      { $group: { _id: '$eventData.name', value: { $sum: '$totalAmount' } } },
+      { $sort: { value: -1 } },
+      { $limit: 5 }
+    ]),
+    Attendee.aggregate([
+      { $match: { isActive: true } },
+      { $group: { _id: '$photoVerificationStatus', count: { $sum: 1 } } }
+    ])
   ]);
 
   const totalRevenue = revenueRows[0]?.totalRevenue || 0;
   const verificationRate = totalAttendees > 0 ? ((verifiedAttendees / totalAttendees) * 100).toFixed(1) : 0;
   const avgTicketPrice = totalTicketsSold > 0 ? (totalRevenue / totalTicketsSold).toFixed(2) : 0;
 
-  const activity = [
+  const allActivity = [
     ...entryLogs.map((item) => ({
       _id: item._id, type: 'entry', title: `${item.attendee?.fullName || item.snapshot?.fullName || 'Attendee'} ${item.accessGranted ? 'scanned in' : 'was denied'}`, subtitle: `${item.event?.name || 'Event'} • ${item.gateName || item.zoneName || item.gateId || 'Gate'}`, createdAt: item.timestamp,
     })),
@@ -220,47 +252,139 @@ const getOverviewData = async () => {
     ...requestLogs.map((item) => ({
       _id: item._id, type: 'request', title: `${item.method} ${item.path}`, subtitle: `${item.statusCode} • ${item.userId?.name || 'System'}`, createdAt: item.createdAt,
     })),
-  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10);
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const totalActivity = totalEntryLogs + totalZoneLogs + totalRequestLogs;
+  const paginatedActivity = allActivity.slice(skip, skip + limit);
 
   return {
-    metrics: { 
-      totalEvents, 
-      totalUsers, 
-      totalTicketsSold, 
-      totalRevenue, 
-      activeEvents,
-      verificationRate,
-      avgTicketPrice
-    },
+    metrics: { totalEvents, totalUsers, totalTicketsSold, totalRevenue, activeEvents, verificationRate, avgTicketPrice },
     ticketSalesOverTime: ticketSalesOverTime.map((row) => ({ label: `${row._id.y}-${String(row._id.m).padStart(2, '0')}-${String(row._id.d).padStart(2, '0')}`, ticketsSold: row.ticketsSold, revenue: row.revenue })),
-    activity,
+    distributions: {
+      revenue: revenueDistribution.map(d => ({ name: d._id, value: d.value })),
+      verification: attendanceStats.map(s => ({ name: s._id || 'unprocessed', value: s.count }))
+    },
+    activity: {
+      rows: paginatedActivity,
+      pagination: { total: totalActivity, pages: Math.ceil(totalActivity / limit), page, limit }
+    }
   };
 };
 
-const getEventsData = async (query) => {
-  const events = await Event.find(buildEventFilter(query)).populate('mainOrganiser', 'name email').sort({ startDate: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
-  const organiserOptions = await User.find({ role: { $in: ['MainOrganiser', 'SubOrganiser'] } }).select('name email').sort({ name: 1 }).lean();
-  return { rows: events.map(serializeEvent), filters: { organiserOptions } };
+const getEventsData = async (query = {}) => {
+  const filter = buildEventFilter(query);
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, events] = await Promise.all([
+    Event.countDocuments(filter),
+    Event.find(filter)
+      .populate('mainOrganisers', 'name email')
+      .populate('company', 'name')
+      .sort({ startDate: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+  ]);
+    
+  const companyOptions = await Company.find({ status: 'Active' }).select('name').sort({ name: 1 }).lean();
+  const organiserOptions = await User.find({ role: { $in: ['MainOrganiser', 'SubOrganiser'] } }).select('name email company').sort({ name: 1 }).lean();
+  
+  return { 
+    rows: events.map(e => ({ ...serializeEvent(e), company: e.company })), 
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
+    filters: { organiserOptions, companyOptions } 
+  };
 };
 
-const getOrganisersData = async (query) => {
+const getCompaniesData = async (query = {}) => {
+  const filter = {};
+  if (query.status) filter.status = query.status;
+  if (query.search) {
+    const regex = new RegExp(escapeRegex(query.search), 'i');
+    filter.$or = [{ name: regex }, { registeredBusinessName: regex }, { officialEmail: regex }];
+  }
+  
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, companies] = await Promise.all([
+    Company.countDocuments(filter),
+    Company.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+  ]);
+  
+  // Get counts of organisers, events and tickets for each company
+  const companyIds = companies.map(c => c._id);
+  const [userCounts, eventCounts, ticketStats] = await Promise.all([
+    User.aggregate([
+      { $match: { company: { $in: companyIds } } },
+      { $group: { _id: '$company', count: { $sum: 1 } } }
+    ]),
+    Event.aggregate([
+      { $match: { company: { $in: companyIds } } },
+      { $group: { _id: '$company', count: { $sum: 1 } } }
+    ]),
+    Event.aggregate([
+      { $match: { company: { $in: companyIds } } },
+      { $group: { _id: '$company', ticketsSold: { $sum: { $reduce: { input: '$categories', initialValue: 0, in: { $add: ['$$value', { $ifNull: ['$$this.sold', 0] }] } } } } } }
+    ])
+  ]);
+  
+  const userCountMap = new Map(userCounts.map(i => [String(i._id), i.count]));
+  const eventCountMap = new Map(eventCounts.map(i => [String(i._id), i.count]));
+  const ticketStatsMap = new Map(ticketStats.map(i => [String(i._id), i.ticketsSold]));
+  
+  const companyOptions = await Company.find({ status: 'Active' }).select('name').sort({ name: 1 }).lean();
+  return {
+    rows: companies.map(c => ({
+      ...c,
+      stats: {
+        organisers: userCountMap.get(String(c._id)) || 0,
+        events: eventCountMap.get(String(c._id)) || 0,
+        ticketsSold: ticketStatsMap.get(String(c._id)) || 0
+      }
+    })),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
+    filters: { companyOptions }
+  };
+};
+
+const getOrganisersData = async (query = {}) => {
   const filter = { role: { $in: ['MainOrganiser', 'SubOrganiser'] } };
   if (query.status) filter.status = query.status;
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
   }
-  const organisers = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, organisers] = await Promise.all([
+    User.countDocuments(filter),
+    User.find(filter).populate('assignedEvents', 'name').populate('company', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+  ]);
+
   const organiserIds = organisers.map((organiser) => organiser._id);
   const eventStats = await Event.aggregate([
-    { $match: { mainOrganiser: { $in: organiserIds } } },
-    { $group: { _id: '$mainOrganiser', eventsCreated: { $sum: 1 }, liveEvents: { $sum: { $cond: [{ $eq: ['$status', 'ongoing'] }, 1, 0] } }, ticketsSold: { $sum: { $reduce: { input: '$categories', initialValue: 0, in: { $add: ['$$value', { $ifNull: ['$$this.sold', 0] }] } } } } } },
+    { $match: { mainOrganisers: { $in: organiserIds } } },
+    { $unwind: '$mainOrganisers' },
+    { $match: { mainOrganisers: { $in: organiserIds } } },
+    { $group: { _id: '$mainOrganisers', eventsCreated: { $sum: 1 }, liveEvents: { $sum: { $cond: [{ $eq: ['$status', 'ongoing'] }, 1, 0] } }, ticketsSold: { $sum: { $reduce: { input: '$categories', initialValue: 0, in: { $add: ['$$value', { $ifNull: ['$$this.sold', 0] }] } } } } } },
   ]);
   const statsMap = new Map(eventStats.map((item) => [String(item._id), item]));
-  return { rows: organisers.map((organiser) => serializeOrganiser(organiser, statsMap.get(String(organiser._id)))) };
+  const companyOptions = await Company.find({ status: 'Active' }).select('name').sort({ name: 1 }).lean();
+  return { 
+    rows: organisers.map((organiser) => serializeOrganiser(organiser, statsMap.get(String(organiser._id)))),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
+    filters: { companyOptions }
+  };
 };
 
-const getUsersData = async (query) => {
+const getUsersData = async (query = {}) => {
   const filter = {};
   if (query.role) filter.role = query.role;
   if (query.status) filter.status = query.status;
@@ -268,18 +392,39 @@ const getUsersData = async (query) => {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
   }
-  const users = await User.find(filter).populate('assignedEvents', 'name').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
-  return { rows: users.map(serializeUser), roles: USER_ROLES };
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, users] = await Promise.all([
+    User.countDocuments(filter),
+    User.find(filter).populate('assignedEvents', 'name').populate('company', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+  ]);
+
+  const companyOptions = await Company.find({ status: 'Active' }).select('name').sort({ name: 1 }).lean();
+  return { 
+    rows: users.map(serializeUser), 
+    roles: USER_ROLES, 
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
+    filters: { companyOptions } 
+  };
 };
 
-const getTicketsData = async (query) => {
+const getTicketsData = async (query = {}) => {
   const filter = {};
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ ticketNumber: regex }, { categoryName: regex }];
   }
-  const tickets = await Ticket.find(filter).populate('event', 'name').populate('attendee', 'fullName email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
-  const [overbookedEvents, unassignedTickets] = await Promise.all([
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, tickets, overbookedEvents, unassignedTickets] = await Promise.all([
+    Ticket.countDocuments(filter),
+    Ticket.find(filter).populate('event', 'name').populate('attendee', 'fullName email').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Event.aggregate([
       { $project: { name: 1, overbookedCategories: { $filter: { input: '$categories', as: 'category', cond: { $gt: ['$$category.sold', '$$category.capacity'] } } } } },
       { $match: { 'overbookedCategories.0': { $exists: true } } },
@@ -289,6 +434,7 @@ const getTicketsData = async (query) => {
   ]);
   return {
     rows: tickets.map((ticket) => ({ _id: ticket._id, ticketNumber: ticket.ticketNumber, event: ticket.event?.name || 'Unknown event', attendee: ticket.attendee?.fullName || 'Unassigned', attendeeEmail: ticket.attendee?.email || '', categoryName: ticket.categoryName, price: ticket.price, status: ticket.status, inviteStatus: ticket.inviteStatus })),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
     anomalySummary: {
       overbookedEvents: overbookedEvents.map((event) => ({ event: event.name, categories: event.overbookedCategories.map((category) => `${category.name} (${category.sold}/${category.capacity})`) })),
       unassignedTickets,
@@ -296,54 +442,94 @@ const getTicketsData = async (query) => {
   };
 };
 
-const getVerificationData = async (query) => {
+const getVerificationData = async (query = {}) => {
   const filter = {};
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
     filter.$or = [{ fullName: regex }, { email: regex }];
   }
   if (query.status) filter.photoVerificationStatus = new RegExp(`^${escapeRegex(query.status)}$`, 'i');
-  const [summary, rows] = await Promise.all([
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, summary, rows] = await Promise.all([
+    Attendee.countDocuments(filter),
     Attendee.aggregate([{ $group: { _id: { $toLower: '$photoVerificationStatus' }, count: { $sum: 1 } } }]),
-    Attendee.find(filter).populate('event', 'name').populate('photoVerifiedBy', 'name').sort({ updatedAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean(),
+    Attendee.find(filter).populate('event', 'name').populate('photoVerifiedBy', 'name').sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
   ]);
   const summaryMap = summary.reduce((acc, item) => ({ ...acc, [item._id]: item.count }), {});
   return {
     summary: { pending: summaryMap.pending || 0, rejected: summaryMap.rejected || 0, verified: summaryMap.verified || 0 },
     rows: rows.map((row) => ({ _id: row._id, attendee: row.fullName, email: row.email, event: row.event?.name || 'Unknown event', status: String(row.photoVerificationStatus || '').toLowerCase(), rejectionReason: row.photoRejectionReason || '', verifiedBy: row.photoVerifiedBy?.name || '', updatedAt: row.updatedAt })),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit },
   };
 };
 
-const getEntryLogsData = async (query) => {
+const getEntryLogsData = async (query = {}) => {
   const filter = { ...parseDateRange(query.from, query.to, 'timestamp') };
   if (query.event && mongoose.Types.ObjectId.isValid(query.event)) filter.event = query.event;
   if (query.gate) filter.$or = [{ gateName: new RegExp(escapeRegex(query.gate), 'i') }, { gateId: new RegExp(escapeRegex(query.gate), 'i') }];
-  const logs = await EntryLog.find(filter).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
-  return { rows: logs.map((log) => ({ _id: log._id, attendee: log.attendee?.fullName || log.snapshot?.fullName || 'Unknown attendee', event: log.event?.name || 'Unknown event', gate: log.gateName || log.gateId || '-', time: log.timestamp, status: log.accessGranted ? 'Allowed' : 'Denied', action: log.action, denialReason: log.denialReason || '' })) };
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, logs] = await Promise.all([
+    EntryLog.countDocuments(filter),
+    EntryLog.find(filter).populate('event', 'name').populate('attendee', 'fullName').sort({ timestamp: -1 }).skip(skip).limit(limit).lean()
+  ]);
+
+  return { 
+    rows: logs.map((log) => ({ _id: log._id, attendee: log.attendee?.fullName || log.snapshot?.fullName || 'Unknown attendee', event: log.event?.name || 'Unknown event', gate: log.gateName || log.gateId || '-', time: log.timestamp, status: log.accessGranted ? 'Allowed' : 'Denied', action: log.action, denialReason: log.denialReason || '' })),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit }
+  };
 };
 
-const getZoneActivityData = async (query) => {
+const getZoneActivityData = async (query = {}) => {
   const filter = { ...parseDateRange(query.from, query.to, 'timestamp') };
   if (query.event && mongoose.Types.ObjectId.isValid(query.event)) filter.eventId = query.event;
   if (query.search) filter.zoneName = new RegExp(escapeRegex(query.search), 'i');
-  const [occupancy, movements] = await Promise.all([
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  // For occupancy pagination, we first need to get the total unique event-zone pairs
+  const occupancyCountResult = await ZoneLog.aggregate([
+    { $match: filter },
+    { $group: { _id: { eventId: '$eventId', zoneName: '$zoneName' } } },
+    { $count: 'total' }
+  ]);
+  const totalOccupancy = occupancyCountResult[0]?.total || 0;
+
+  const [occupancy, totalMovements, movements] = await Promise.all([
     ZoneLog.aggregate([
       { $match: filter },
       { $group: { _id: { eventId: '$eventId', zoneName: '$zoneName' }, entries: { $sum: { $cond: [{ $eq: ['$action', 'ENTRY'] }, 1, 0] } }, exits: { $sum: { $cond: [{ $eq: ['$action', 'EXIT'] }, 1, 0] } }, denied: { $sum: { $cond: [{ $eq: ['$accessGranted', false] }, 1, 0] } } } },
       { $lookup: { from: 'events', localField: '_id.eventId', foreignField: '_id', as: 'event' } },
       { $unwind: { path: '$event', preserveNullAndEmptyArrays: true } },
       { $sort: { entries: -1 } },
-      { $limit: 50 },
+      { $skip: skip },
+      { $limit: limit },
     ]),
-    ZoneLog.find(filter).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).limit(parsePositiveInt(query.limit, 10)).lean(),
+    ZoneLog.countDocuments(filter),
+    ZoneLog.find({ ...filter, attendeeId: { $ne: null } }).populate('eventId', 'name').populate('attendeeId', 'fullName').sort({ timestamp: -1 }).skip(skip).limit(limit).lean(),
   ]);
   return {
-    occupancy: occupancy.map((row) => ({ event: row.event?.name || 'Unknown event', zoneName: row._id.zoneName, occupancy: Math.max((row.entries || 0) - (row.exits || 0), 0), entries: row.entries || 0, exits: row.exits || 0, denied: row.denied || 0 })),
-    movements: movements.map((log) => ({ _id: log._id, attendee: log.attendeeId?.fullName || log.attendeeSnapshot?.fullName || 'Unknown attendee', event: log.eventId?.name || 'Unknown event', zoneName: log.zoneName, action: log.action, status: log.accessGranted ? 'Allowed' : 'Denied', timestamp: log.timestamp })),
+    occupancy: {
+      rows: occupancy.map((row) => ({ event: row.event?.name || 'Unknown event', zoneName: row._id.zoneName, occupancy: Math.max((row.entries || 0) - (row.exits || 0), 0), entries: row.entries || 0, exits: row.exits || 0, denied: row.denied || 0 })),
+      pagination: { total: totalOccupancy, pages: Math.ceil(totalOccupancy / limit), page, limit }
+    },
+    movements: {
+      rows: movements.map((log) => ({ _id: log._id, attendee: log.attendeeId?.fullName || log.attendeeSnapshot?.fullName || 'Unknown attendee', event: log.eventId?.name || 'Unknown event', zoneName: log.zoneName, action: log.action, status: log.accessGranted ? 'Allowed' : 'Denied', timestamp: log.timestamp })),
+      pagination: { total: totalMovements, pages: Math.ceil(totalMovements / limit), page, limit }
+    }
   };
 };
 
-const getNotificationsData = async (query) => {
+const getNotificationsData = async (query = {}) => {
   const filter = {};
   if (query.search) {
     const regex = new RegExp(escapeRegex(query.search), 'i');
@@ -352,22 +538,104 @@ const getNotificationsData = async (query) => {
   if (query.type) {
     filter.$or = [...(filter.$or || []), { 'metadata.notificationType': new RegExp(escapeRegex(query.type), 'i') }, { type: new RegExp(escapeRegex(query.type), 'i') }];
   }
-  const notifications = await Notification.find(filter).populate('user', 'name email').sort({ createdAt: -1 }).limit(parsePositiveInt(query.limit, 10)).lean();
-  return { rows: notifications.map((notification) => ({ _id: notification._id, user: notification.user?.name || 'System', email: notification.user?.email || '', title: notification.title, message: notification.message, channel: notification.metadata?.channel || 'email', type: notification.metadata?.notificationType || notification.type, eventName: notification.metadata?.eventName || '', read: notification.read, createdAt: notification.createdAt })) };
+
+  const limit = parsePositiveInt(query.limit, 10);
+  const page = parsePositiveInt(query.page, 1);
+  const skip = (page - 1) * limit;
+
+  const [total, notifications] = await Promise.all([
+    Notification.countDocuments(filter),
+    Notification.find(filter).populate('user', 'name email').sort({ createdAt: -1 }).skip(skip).limit(limit).lean()
+  ]);
+
+  return { 
+    rows: notifications.map((notification) => ({ _id: notification._id, user: notification.user?.name || 'System', email: notification.user?.email || '', title: notification.title, message: notification.message, channel: notification.metadata?.channel || 'email', type: notification.metadata?.notificationType || notification.type, eventName: notification.metadata?.eventName || '', read: notification.read, createdAt: notification.createdAt })),
+    pagination: { total, pages: Math.ceil(total / limit), page, limit }
+  };
 };
 
-const getReportsData = async (query) => {
+const getReportsData = async (query = {}) => {
   const eventFilter = buildEventFilter(query);
   const orderDateFilter = parseDateRange(query.from, query.to, 'createdAt');
   const entryDateFilter = parseDateRange(query.from, query.to, 'timestamp');
   const [revenue, attendance, organisers] = await Promise.all([
-    Order.aggregate([
-      { $match: { ...orderDateFilter, status: { $ne: 'CANCELLED' } } },
-      { $lookup: { from: 'events', localField: 'eventId', foreignField: '_id', as: 'event' } },
-      { $unwind: '$event' },
+    Event.aggregate([
       { $match: eventFilter },
-      { $group: { _id: '$event._id', eventName: { $first: '$event.name' }, revenue: { $sum: '$totalAmount' }, orders: { $sum: 1 }, ticketsSold: { $sum: { $sum: '$tickets.quantity' } } } },
-      { $sort: { revenue: -1 } },
+      { 
+        $lookup: { 
+          from: 'orders', 
+          localField: '_id', 
+          foreignField: 'eventId', 
+          as: 'orderList' 
+        } 
+      },
+      { 
+        $lookup: { 
+          from: 'sponsors', 
+          localField: '_id', 
+          foreignField: 'eventId', 
+          as: 'sponsorAssignments' 
+        } 
+      },
+      {
+        $project: {
+          _id: 1,
+          eventName: '$name',
+          sponsorPackages: 1,
+          orders: { $filter: { input: '$orderList', as: 'o', cond: { $ne: ['$$o.status', 'CANCELLED'] } } },
+          sponsorAssignments: 1
+        }
+      },
+      {
+        $addFields: {
+          ticketRevenue: { $sum: '$orders.totalAmount' },
+          ordersCount: { $size: '$orders' },
+          ticketsSold: {
+            $reduce: {
+              input: '$orders',
+              initialValue: 0,
+              in: { $add: ['$$value', { $sum: '$$this.tickets.quantity' }] }
+            }
+          },
+          sponsorRevenue: {
+            $sum: {
+              $map: {
+                input: '$sponsorAssignments',
+                as: 'sa',
+                in: {
+                  $let: {
+                    vars: {
+                      pkg: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: '$sponsorPackages',
+                              as: 'sp',
+                              cond: { $eq: ['$$sp.id', '$$sa.packageId'] }
+                            }
+                          },
+                          0
+                        ]
+                      }
+                    },
+                    in: { $ifNull: ['$$pkg.price', 0] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          eventName: 1,
+          revenue: { $add: ['$ticketRevenue', '$sponsorRevenue'] },
+          orders: '$ordersCount',
+          ticketsSold: 1
+        }
+      },
+      { $sort: { revenue: -1 } }
     ]),
     EntryLog.aggregate([
       { $match: entryDateFilter },
@@ -379,13 +647,21 @@ const getReportsData = async (query) => {
     ]),
     Event.aggregate([
       { $match: eventFilter },
-      { $group: { _id: '$mainOrganiser', events: { $sum: 1 }, ticketsSold: { $sum: { $reduce: { input: '$categories', initialValue: 0, in: { $add: ['$$value', { $ifNull: ['$$this.sold', 0] }] } } } } } },
+      { $unwind: '$mainOrganisers' },
+      { $group: { _id: '$mainOrganisers', events: { $sum: 1 }, ticketsSold: { $sum: { $reduce: { input: '$categories', initialValue: 0, in: { $add: ['$$value', { $ifNull: ['$$this.sold', 0] }] } } } } } },
       { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'organiser' } },
       { $unwind: { path: '$organiser', preserveNullAndEmptyArrays: true } },
       { $sort: { ticketsSold: -1 } },
     ]),
   ]);
-  return { revenue, attendance, organisers: organisers.map((row) => ({ organiser: row.organiser?.name || 'Unassigned', events: row.events, ticketsSold: row.ticketsSold })) };
+  const summary = {
+    totalRevenue: revenue.reduce((sum, r) => sum + (r.revenue || 0), 0),
+    totalTickets: revenue.reduce((sum, r) => sum + (r.ticketsSold || 0), 0),
+    totalAttendance: attendance.reduce((sum, r) => sum + (r.allowedEntries || 0), 0),
+    avgVerificationRate: attendance.length > 0 ? (attendance.reduce((sum, r) => sum + (r.allowedEntries / (r.allowedEntries + r.deniedEntries || 1)), 0) / attendance.length * 100).toFixed(1) : 0
+  };
+
+  return { summary, revenue, attendance, organisers: organisers.map((row) => ({ organiser: row.organiser?.name || 'Unassigned', events: row.events, ticketsSold: row.ticketsSold })) };
 };
 
 const getSettingsData = async () => {
@@ -395,7 +671,7 @@ const getSettingsData = async () => {
 
 router.get('/overview', async (req, res, next) => {
   try {
-    res.json({ success: true, data: await getOverviewData() });
+    res.json({ success: true, data: await getOverviewData(req.query) });
   } catch (error) {
     next(error);
   }
@@ -404,10 +680,10 @@ router.get('/overview', async (req, res, next) => {
 router.get('/workspace', async (req, res, next) => {
   try {
     const section = String(req.query.section || 'overview');
-    const data = { overview: await getOverviewData() };
+    const data = { overview: await getOverviewData(req.query) };
     if (section === 'events') data.events = await getEventsData(req.query);
-    if (section === 'organisations') data.organisations = await getOrganisersData(req.query);
-    if (section === 'users') data.users = await getUsersData(req.query);
+    if (section === 'organisations') data.organisations = await getCompaniesData(req.query);
+    if (section === 'organisers' || section === 'users') data.users = await (section === 'organisers' ? getOrganisersData(req.query) : getUsersData(req.query));
     if (section === 'tickets') data.tickets = await getTicketsData(req.query);
     if (section === 'verification') data.verification = await getVerificationData(req.query);
     if (section === 'entry-logs') data.entryLogs = await getEntryLogsData(req.query);
@@ -438,13 +714,26 @@ router.get('/search', async (req, res, next) => {
 
 router.post('/events', async (req, res, next) => {
   try {
-    const { 
-      name, startDate, endDate, organiserId, venueName, 
-      status = 'draft', description = '', eventType = 'cricket',
-      requirePhotoVerification = true, allowSelfConfirmation = true, rfidEnabled = true,
-      currency = 'LKR', paymentCard = true, paymentBank = true, paymentCash = true,
-      communicationEmail = true, communicationSms = false 
+    const organiserIds = Array.isArray(req.body.organiserIds) ? req.body.organiserIds : (req.body.organiserId ? [req.body.organiserId] : []);
+    
+    if (organiserIds.length > 2) {
+      return res.status(400).json({ success: false, message: 'Maximum 2 main organisers allowed per event.' });
+    }
+
+    const {
+      name, description, startDate, endDate, status, eventType, venueName, 
+      requirePhotoVerification, allowSelfConfirmation, rfidEnabled, currency,
+      communicationEmail, communicationSms, paymentCard, paymentBank, paymentCash,
+      companyId, timezone
     } = req.body;
+    const resolvedCommunicationEmail = pickBoolean(
+      communicationEmail,
+      req.body?.settings?.communicationChannels?.email
+    );
+    const resolvedCommunicationSms = pickBoolean(
+      communicationSms,
+      req.body?.settings?.communicationChannels?.sms
+    );
 
     const event = await Event.create({ 
       name, 
@@ -453,19 +742,21 @@ router.post('/events', async (req, res, next) => {
       endDate, 
       status, 
       eventType,
+      timezone: timezone || 'Asia/Colombo',
       venue: { name: venueName || 'TBD' }, 
-      mainOrganiser: organiserId || undefined, 
+      mainOrganisers: organiserIds.filter(id => mongoose.Types.ObjectId.isValid(id)), 
       createdBy: req.user._id, 
       categories: [], 
       zones: [],
+      company: companyId || null,
       settings: {
         requirePhotoVerification,
         allowSelfConfirmation,
         rfidEnabled,
         currency,
         communicationChannels: {
-          email: communicationEmail,
-          sms: communicationSms,
+          email: resolvedCommunicationEmail ?? true,
+          sms: resolvedCommunicationSms ?? false,
         },
         paymentMethods: {
           card: paymentCard,
@@ -475,11 +766,11 @@ router.post('/events', async (req, res, next) => {
       }
     });
 
-    if (organiserId && mongoose.Types.ObjectId.isValid(organiserId)) {
-      await User.findByIdAndUpdate(organiserId, { $addToSet: { assignedEvents: event._id } });
+    if (organiserIds.length) {
+      await User.updateMany({ _id: { $in: organiserIds } }, { $addToSet: { assignedEvents: event._id } });
     }
 
-    const hydrated = await Event.findById(event._id).populate('mainOrganiser', 'name email');
+    const hydrated = await Event.findById(event._id).populate('mainOrganisers', 'name email');
     res.status(201).json({ success: true, data: { event: serializeEvent(hydrated) } });
   } catch (error) {
     next(error);
@@ -489,12 +780,20 @@ router.post('/events', async (req, res, next) => {
 router.patch('/events/:id', async (req, res, next) => {
   try {
     const updates = {};
-    ['name', 'description', 'startDate', 'endDate', 'status', 'eventType'].forEach((field) => { 
+    ['name', 'description', 'startDate', 'endDate', 'status', 'eventType', 'timezone'].forEach((field) => { 
       if (req.body[field] !== undefined) updates[field] = req.body[field]; 
     });
 
     if (req.body.venueName !== undefined) updates['venue.name'] = req.body.venueName;
-    if (req.body.organiserId !== undefined) updates.mainOrganiser = req.body.organiserId || null;
+    
+    if (req.body.organiserIds !== undefined) {
+      const ids = Array.isArray(req.body.organiserIds) ? req.body.organiserIds : (req.body.organiserIds ? [req.body.organiserIds] : []);
+      if (ids.length > 2) return res.status(400).json({ success: false, message: 'Maximum 2 main organisers allowed.' });
+      updates.mainOrganisers = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
+    } else if (req.body.organiserId !== undefined) {
+      updates.mainOrganisers = req.body.organiserId ? [req.body.organiserId] : [];
+    }
+    if (req.body.companyId !== undefined) updates.company = req.body.companyId;
 
     // Handle nested settings
     if (req.body.requirePhotoVerification !== undefined) updates['settings.requirePhotoVerification'] = req.body.requirePhotoVerification;
@@ -504,14 +803,22 @@ router.patch('/events/:id', async (req, res, next) => {
     if (req.body.paymentCard !== undefined) updates['settings.paymentMethods.card'] = req.body.paymentCard;
     if (req.body.paymentBank !== undefined) updates['settings.paymentMethods.bank_transfer'] = req.body.paymentBank;
     if (req.body.paymentCash !== undefined) updates['settings.paymentMethods.cash'] = req.body.paymentCash;
-    if (req.body.communicationEmail !== undefined) updates['settings.communicationChannels.email'] = req.body.communicationEmail;
-    if (req.body.communicationSms !== undefined) updates['settings.communicationChannels.sms'] = req.body.communicationSms;
+    const resolvedCommunicationEmail = pickBoolean(
+      req.body.communicationEmail,
+      req.body?.settings?.communicationChannels?.email
+    );
+    const resolvedCommunicationSms = pickBoolean(
+      req.body.communicationSms,
+      req.body?.settings?.communicationChannels?.sms
+    );
+    if (resolvedCommunicationEmail !== undefined) updates['settings.communicationChannels.email'] = resolvedCommunicationEmail;
+    if (resolvedCommunicationSms !== undefined) updates['settings.communicationChannels.sms'] = resolvedCommunicationSms;
 
-    const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true }).populate('mainOrganiser', 'name email');
+    const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true }).populate('mainOrganisers', 'name email');
     if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${req.params.id})` });
 
-    if (req.body.organiserId && mongoose.Types.ObjectId.isValid(req.body.organiserId)) {
-      await User.findByIdAndUpdate(req.body.organiserId, { $addToSet: { assignedEvents: event._id } });
+    if (updates.mainOrganisers?.length) {
+      await User.updateMany({ _id: { $in: updates.mainOrganisers } }, { $addToSet: { assignedEvents: event._id } });
     }
 
     res.json({ success: true, data: { event: serializeEvent(event) } });
@@ -545,6 +852,10 @@ router.post('/organisers', async (req, res, next) => {
 
     console.log('CREATE ORGANISER: Attempting to create user with payload:', { ...payload, password: '[REDACTED]' });
     const organiser = await User.create(payload);
+    
+    if (payload.companyId) {
+      await User.findByIdAndUpdate(organiser._id, { company: payload.companyId });
+    }
     console.log('CREATE ORGANISER: User created successfully. ID:', organiser._id);
     
     console.log('CREATE ORGANISER: Triggering notification for credentials...');
@@ -560,7 +871,15 @@ router.post('/organisers', async (req, res, next) => {
 
 router.patch('/organisers/:id', async (req, res, next) => {
   try {
-    const organiser = await User.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('assignedEvents', 'name');
+    const updateData = { ...req.body };
+    if (updateData.companyId) {
+      updateData.company = updateData.companyId;
+      delete updateData.companyId;
+    }
+
+    const organiser = await User.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true })
+      .populate('assignedEvents', 'name')
+      .populate('company', 'name');
     if (!organiser) return res.status(404).json({ success: false, message: 'Organiser not found' });
     
     // Notify if critical permissions changed
@@ -582,8 +901,8 @@ router.delete('/organisers/:id', async (req, res, next) => {
     const organiser = await User.findOneAndDelete({ _id: req.params.id, role: { $in: ['MainOrganiser', 'SubOrganiser'] } });
     if (!organiser) return res.status(404).json({ success: false, message: 'Organiser not found' });
     await Event.updateMany(
-      { $or: [{ mainOrganiser: organiser._id }, { createdBy: organiser._id }] },
-      { $unset: { mainOrganiser: '' } },
+      { $or: [{ mainOrganisers: organiser._id }, { createdBy: organiser._id }] },
+      { $pull: { mainOrganisers: organiser._id } },
     );
     res.json({ success: true, message: 'Organiser deleted' });
   } catch (error) {
@@ -665,7 +984,7 @@ router.delete('/users/:id', async (req, res, next) => {
     }
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    await Event.updateMany({ mainOrganiser: user._id }, { $unset: { mainOrganiser: '' } });
+    await Event.updateMany({ mainOrganisers: user._id }, { $pull: { mainOrganisers: user._id } });
     res.json({ success: true, message: 'User deleted' });
   } catch (error) {
     next(error);
@@ -846,6 +1165,59 @@ router.get('/logs', async (req, res, next) => {
       RequestLog.countDocuments(filter),
     ]);
     res.json({ success: true, data: { logs, total, page: Math.floor(skip / safeLimit) + 1, pages: Math.ceil(total / safeLimit) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Company Routes
+router.post('/companies', async (req, res, next) => {
+  try {
+    const profitableTypes = ['Sole Proprietorship', 'Partnership', 'Incorporated Company', 'State Company'];
+    const isProfitable = profitableTypes.includes(req.body.organizationType);
+    
+    if (isProfitable) {
+      if (!req.body.brNumber) return res.status(400).json({ success: false, message: 'BR Number is required for profitable organizations.' });
+      if (!req.body.tinNumber) return res.status(400).json({ success: false, message: 'TIN Number is required for profitable organizations.' });
+      if (!req.body.vatNumber) return res.status(400).json({ success: false, message: 'VAT Number is required for profitable organizations.' });
+    }
+
+    const company = await Company.create({
+      ...req.body,
+      isProfitable,
+      createdBy: req.user._id
+    });
+    res.status(201).json({ success: true, data: { company } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/companies/:id', async (req, res, next) => {
+  try {
+    const profitableTypes = ['Sole Proprietorship', 'Partnership', 'Incorporated Company', 'State Company'];
+    if (req.body.organizationType) {
+      req.body.isProfitable = profitableTypes.includes(req.body.organizationType);
+    }
+
+    const company = await Company.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+    res.json({ success: true, data: { company } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/companies/:id', async (req, res, next) => {
+  try {
+    const company = await Company.findByIdAndDelete(req.params.id);
+    if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+    // Unlink users and events
+    await Promise.all([
+      User.updateMany({ company: company._id }, { $unset: { company: "" } }),
+      Event.updateMany({ company: company._id }, { $unset: { company: "" } })
+    ]);
+    res.json({ success: true, message: 'Company deleted' });
   } catch (error) {
     next(error);
   }

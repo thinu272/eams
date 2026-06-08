@@ -91,9 +91,16 @@ router.post('/notify', async (req, res) => {
       if (order.paymentStatus !== 'failed' && order.paymentStatus !== 'cancelled') {
         // Release tickets back to inventory
         for (const item of order.tickets) {
+          const event = await Event.findById(eventId);
+          const category = (event?.categories || []).find(c => c.name === item.categoryName);
+          const decData = { 'categories.$.sold': -item.quantity };
+          if (category?.isPrivate) {
+            decData['categories.$.usageCount'] = -item.quantity;
+          }
+
           await Event.updateOne(
             { _id: eventId, 'categories.name': item.categoryName },
-            { $inc: { 'categories.$.sold': -item.quantity } }
+            { $inc: decData }
           );
         }
 

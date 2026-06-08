@@ -32,7 +32,12 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
       rfidEnabled: true,
       maxTicketsPerOrder: 10,
       ...(initialData.settings || {}),
+      mfaEnforced: initialData?.settings?.mfaEnforced ?? false,
+      sponsorModuleEnabled: initialData?.settings?.sponsorModuleEnabled ?? true,
+      publicRegistrationEnabled: initialData?.settings?.publicRegistrationEnabled ?? true,
+      ticketTransfersEnabled: initialData?.settings?.ticketTransfersEnabled ?? false,
     },
+    timezone: initialData.timezone || 'Asia/Colombo',
     ...initialData,
     // Format dates for datetime-local input (yyyy-MM-ddTHH:mm)
     startDate: initialData.startDate ? format(new Date(initialData.startDate), "yyyy-MM-dd'T'HH:mm") : '',
@@ -135,6 +140,21 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
                 <input name="venue.city" value={form.venue.city} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Timezone *</label>
+                <select name="timezone" value={form.timezone || 'Asia/Colombo'} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+                  <option value="Asia/Colombo">Asia/Colombo (Sri Lanka Time)</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata (India Standard Time)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (Singapore Time)</option>
+                  <option value="Europe/London">Europe/London (GMT/BST)</option>
+                  <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                  <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                  <option value="America/New_York">America/New_York (US Eastern)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
+                  <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+                  <option value="UTC">UTC (Coordinated Universal Time)</option>
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-2 col-span-2">
                 <div>
@@ -337,6 +357,14 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                   <input type="checkbox" name="settings.autoConfirmEnabled" checked={form.settings.autoConfirmEnabled} onChange={handleChange} id="autoConf" className="w-4 h-4 text-blue-600 rounded"/>
                   <label htmlFor="autoConf" className="text-sm text-gray-700 font-medium">Auto-confirm Paid Tickets</label>
                 </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.publicRegistrationEnabled" checked={form.settings.publicRegistrationEnabled} onChange={handleChange} id="publicReg" className="w-4 h-4 text-blue-600 rounded" />
+                  <label htmlFor="publicReg" className="text-sm text-gray-700 font-medium">Enable Public Registration</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.ticketTransfersEnabled" checked={form.settings.ticketTransfersEnabled} onChange={handleChange} id="ticketTransfers" className="w-4 h-4 text-blue-600 rounded" />
+                  <label htmlFor="ticketTransfers" className="text-sm text-gray-700 font-medium">Enable Ticket Transfers</label>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -373,6 +401,17 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                       </span>
                     )}
                   </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <h4 className="text-sm font-bold text-gray-900 border-b pb-2">Features & Integrations</h4>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.mfaEnforced" checked={form.settings.mfaEnforced} onChange={handleChange} id="mfaEnforced" className="w-4 h-4 text-blue-600 rounded" />
+                  <label htmlFor="mfaEnforced" className="text-sm text-gray-700 font-medium">Enable MFA Enforcement</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="settings.sponsorModuleEnabled" checked={form.settings.sponsorModuleEnabled !== false} onChange={handleChange} id="sponsorModule" className="w-4 h-4 text-blue-600 rounded" />
+                  <label htmlFor="sponsorModule" className="text-sm text-gray-700 font-medium">Enable Sponsor Module</label>
                 </div>
               </div>
             </div>

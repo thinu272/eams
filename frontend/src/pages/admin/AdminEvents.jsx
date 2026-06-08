@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { getAllEventsAdmin, assignOrganiser, publishEvent, updateEvent, deleteEvent } from '../../api/events';
+import { getAllEventsAdmin, assignOrganiser, publishEvent, updateEvent, deleteEvent, duplicateAdminEvent } from '../../api/events';
 import { getUsers } from '../../api/users';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
@@ -19,6 +19,7 @@ const AdminEvents = () => {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [filters, setFilters] = useState({ status: '', search: '', from: '', to: '' });
+  const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' });
 
   const load = async (nextPage = page) => {
     setLoading(true);
@@ -80,6 +81,25 @@ const AdminEvents = () => {
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
+    }
+  };
+
+  const handleDuplicateSubmit = async (e) => {
+    e.preventDefault();
+    if (!duplicateModal.name || !duplicateModal.startDate || !duplicateModal.endDate) {
+      return toast.error('Please fill in all fields.');
+    }
+    try {
+      await duplicateAdminEvent(duplicateModal.eventId, {
+        newName: duplicateModal.name,
+        newStartDate: duplicateModal.startDate,
+        newEndDate: duplicateModal.endDate,
+      });
+      toast.success('Event duplicated successfully');
+      setDuplicateModal({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Duplication failed');
     }
   };
 
@@ -185,6 +205,9 @@ const AdminEvents = () => {
                       <button onClick={() => handlePublishToggle(event)} className="text-blue-600 hover:text-blue-700">
                         {event.status === 'published' ? 'Unpublish' : 'Publish'}
                       </button>
+                      <button onClick={() => {
+                        setDuplicateModal({ isOpen: true, eventId: event._id, name: event.name + ' (Copy)', startDate: '', endDate: '' });
+                      }} className="text-emerald-600 hover:text-emerald-700">Duplicate</button>
                       <button onClick={() => handleDelete(event._id)} className="text-rose-600 hover:text-rose-700">Delete</button>
                     </div>
                   </Td>
@@ -208,6 +231,54 @@ const AdminEvents = () => {
           </div>
         </div>
       </div>
+
+      {duplicateModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Duplicate Event</h3>
+            <form onSubmit={handleDuplicateSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New Event Name</label>
+                <input
+                  type="text"
+                  required
+                  value={duplicateModal.name}
+                  onChange={(e) => setDuplicateModal({ ...duplicateModal, name: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New Start Date</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={duplicateModal.startDate}
+                  onChange={(e) => setDuplicateModal({ ...duplicateModal, startDate: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New End Date</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={duplicateModal.endDate}
+                  onChange={(e) => setDuplicateModal({ ...duplicateModal, endDate: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setDuplicateModal({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' })}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-500">
+                  Duplicate
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

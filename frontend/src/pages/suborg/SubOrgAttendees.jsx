@@ -4,10 +4,12 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import Modal from '../../components/ui/Modal';
 import AttendeeTable from '../../components/suborg/AttendeeTable';
 import { getSubAttendees, getSubZones, scanSubEntry } from '../../api/sub';
-import { createAttendee } from '../../api/attendees';
+import { createAttendee, updateAttendee } from '../../api/attendees';
+import { deleteOrganiserAttendee } from '../../api/organiser';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import { getAssetUrl } from '../../utils/backend';
 
 const emptyWorkspace = { event: null, attendees: [], total: 0, pages: 1 };
 
@@ -15,18 +17,27 @@ const SubOrgAttendees = () => {
   const [searchParams] = useSearchParams();
   const initialZone = searchParams.get('zone') || '';
   const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
-  const [filters, setFilters] = useState({ search: '', category: '', status: '', verificationStatus: '', zone: initialZone });
+  const [filters, setFilters] = useState({ search: '', category: '', status: '', verificationStatus: '', zone: initialZone, page: 1, limit: 20 });
   const [workspace, setWorkspace] = useState(emptyWorkspace);
   const [zones, setZones] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+
   const [addModal, setAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
   const { user } = useAuth();
   
   const initialAttendee = { fullName: '', email: '', phone: '', categoryId: '', notificationChannel: 'email' };
   const [newAttendee, setNewAttendee] = useState(initialAttendee);
+
+  const handleFilterChange = (key, value) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1
+    }));
+  };
 
   const load = async (eventId = currentEventId) => {
     setLoading(true);
@@ -64,7 +75,7 @@ const SubOrgAttendees = () => {
 
   useEffect(() => {
     load();
-  }, [filters.search, filters.category, filters.status, filters.verificationStatus, currentEventId]);
+  }, [filters.search, filters.category, filters.status, filters.verificationStatus, filters.zone, filters.page, filters.limit, currentEventId]);
 
   const zoneFilteredAttendees = useMemo(() => {
     if (!filters.zone) return workspace.attendees || [];
@@ -86,7 +97,7 @@ const SubOrgAttendees = () => {
     
     // Sub-organisers can only see categories where they management at least one of the required zones
     if (user?.role === 'SubOrganiser') {
-      const myZones = (user.responsibilities?.zoneIds || []).map(String);
+      const myZones = (user.assignedZones || user.responsibilities?.zoneIds || []).map(String);
       return workspace.event.categories.filter(cat => {
         const catZones = (cat.allowedZones || []).map(String);
         // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
@@ -137,6 +148,28 @@ const SubOrgAttendees = () => {
     }
   };
 
+  const handleDisableToggle = async (attendee) => {
+    const newStatus = !attendee.isDisabled;
+    try {
+      await updateAttendee(attendee._id, { isDisabled: newStatus });
+      toast.success(newStatus ? 'Attendee disabled successfully' : 'Attendee enabled successfully');
+      load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update attendee status');
+    }
+  };
+
+  const handleDeleteAttendee = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this attendee?')) return;
+    try {
+      await deleteOrganiserAttendee(id, currentEventId);
+      toast.success('Attendee deleted successfully');
+      load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete attendee');
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -151,22 +184,22 @@ const SubOrgAttendees = () => {
               Add Attendee
             </Button>
             <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-              Showing {zoneFilteredAttendees.length} of {workspace.total || 0} attendees in scope
+              Showing page {workspace.page || 1} of {workspace.pages || 1} ({workspace.total || 0} total)
             </div>
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Search name, email, phone" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900" />
-          <select value={filters.zone} onChange={(event) => setFilters((current) => ({ ...current, zone: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <input value={filters.search} onChange={(event) => handleFilterChange('search', event.target.value)} placeholder="Search name, email, phone" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900" />
+          <select value={filters.zone} onChange={(event) => handleFilterChange('zone', event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
             <option value="">All assigned zones</option>
             {zones.map((zone) => <option key={zone.id || zone.name} value={zone.id || zone.name}>{zone.name}</option>)}
           </select>
-          <select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+          <select value={filters.category} onChange={(event) => handleFilterChange('category', event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
             <option value="">All categories</option>
             {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+          <select value={filters.status} onChange={(event) => handleFilterChange('status', event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
             <option value="">All statuses</option>
             <option value="confirmed">Confirmed</option>
             <option value="pending">Pending</option>
@@ -174,15 +207,52 @@ const SubOrgAttendees = () => {
             <option value="checked-in">Checked in</option>
             <option value="not-checked-in">Not checked in</option>
           </select>
-          <select value={filters.verificationStatus} onChange={(event) => setFilters((current) => ({ ...current, verificationStatus: event.target.value }))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+          <select value={filters.verificationStatus} onChange={(event) => handleFilterChange('verificationStatus', event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
             <option value="">All verification</option>
             <option value="pending">Pending</option>
             <option value="verified">Verified</option>
             <option value="rejected">Rejected</option>
           </select>
+          <select value={String(filters.limit)} onChange={(event) => handleFilterChange('limit', Number(event.target.value))} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
+            <option value="10">10 rows</option>
+            <option value="20">20 rows</option>
+            <option value="50">50 rows</option>
+            <option value="100">100 rows</option>
+          </select>
         </div>
 
-        <AttendeeTable attendees={zoneFilteredAttendees} loading={loading} onView={setSelected} onMarkAttendance={handleMarkAttendance} canEdit={false} />
+        <AttendeeTable
+          attendees={zoneFilteredAttendees}
+          loading={loading}
+          onView={setSelected}
+          onMarkAttendance={handleMarkAttendance}
+          canEdit={false}
+          onDisableToggle={handleDisableToggle}
+          onDelete={handleDeleteAttendee}
+        />
+        
+        {!loading && workspace.pages > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+            <span className="text-xs text-slate-500">Page {workspace.page || 1} of {workspace.pages || 1} ({workspace.total || 0} total records)</span>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                disabled={filters.page <= 1} 
+                onClick={() => setFilters(curr => ({ ...curr, page: Math.max(1, curr.page - 1) }))}
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                disabled={filters.page >= workspace.pages} 
+                onClick={() => setFilters(curr => ({ ...curr, page: Math.min(workspace.pages, curr.page + 1) }))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+        
         {loadError && (
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
             {loadError}
@@ -268,7 +338,7 @@ const SubOrgAttendees = () => {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
               {selected.photo ? (
                 <img
-                  src={selected.photo.startsWith('http') ? selected.photo : `${process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:5000'}${selected.photo.startsWith('/') ? selected.photo : `/${selected.photo}`}`}
+                  src={getAssetUrl(selected.photo)}
                   alt={selected.fullName || 'Attendee'}
                   className="h-72 w-full object-cover"
                 />

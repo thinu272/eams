@@ -21,6 +21,8 @@ const { protect, checkRole, requireEventAccess, requirePermission } = require('.
 const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite, notifyUserCredentials } = require('../services/notificationService');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rbac');
+const Sponsor = require('../models/Sponsor');
+const { logActivity } = require('../utils/logger');
 
 const router = express.Router();
 const ORGANISER_ROLES = ['sub_organiser', 'main_organiser', 'main_admin', 'super_admin'];
@@ -81,7 +83,7 @@ const getScopedEvent = async (req) => {
   // 1. Try to find the event by identified ID
   if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
     event = await Event.findById(eventId)
-      .populate('mainOrganiser', 'name email phone')
+      .populate('mainOrganisers', 'name email phone')
       .populate({
         path: 'subOrganisers',
         select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
@@ -97,7 +99,7 @@ const getScopedEvent = async (req) => {
       // Pick the most recent event
       event = await Event.findOne()
         .sort({ createdAt: -1 })
-        .populate('mainOrganiser', 'name email phone')
+        .populate('mainOrganisers', 'name email phone')
         .populate({
           path: 'subOrganisers',
           select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
@@ -134,7 +136,7 @@ const getWritableScopedEvent = async (req) => {
 
   if (!event && role === ROLES.MAIN_ORGANISER) {
     event = await Event.findOne({
-      $or: [{ createdBy: req.user._id }, { mainOrganiser: req.user._id }],
+      $or: [{ createdBy: req.user._id }, { mainOrganisers: req.user._id }],
     }).sort({ createdAt: -1 });
   }
 
@@ -264,12 +266,28 @@ const requireScopedEvent = async (req, res, next) => {
 
 router.use(protect, checkRole(ORGANISER_ROLES));
 
-router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard'), requireScopedEvent, async (req, res, next) => {
   try {
     const eventId = String(req.scopedEvent._id);
     const page = clamp(req.query.page, 1, 9999, 1);
+    const invitesPage = clamp(req.query.invitesPage, 1, 9999, 1);
+    const entryLogsPage = clamp(req.query.entryLogsPage, 1, 9999, 1);
+    const notificationsPage = clamp(req.query.notificationsPage, 1, 9999, 1);
+    const zoneLogsPage = clamp(req.query.zoneLogsPage, 1, 9999, 1);
+    const teamPage = clamp(req.query.teamPage, 1, 9999, 1);
+    const verificationPage = clamp(req.query.verificationPage, 1, 9999, 1);
+
     const limit = clamp(req.query.limit, 1, 50, 10);
-    const skip = (page - 1) * limit;
+    const logsLimit = limit;
+
+    const attendeeSkip = (page - 1) * limit;
+    const invitesSkip = (invitesPage - 1) * limit;
+    const entryLogsSkip = (entryLogsPage - 1) * logsLimit;
+    const notificationsSkip = (notificationsPage - 1) * limit;
+    const zoneLogsSkip = (zoneLogsPage - 1) * limit;
+    const teamSkip = (teamPage - 1) * limit;
+    const verificationSkip = (verificationPage - 1) * limit;
+
     const attendeeFilter = buildAttendeeFilter({ eventId, query: req.query });
 
     const [
@@ -277,6 +295,7 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
       ticketsSold,
       confirmedAttendees,
       checkedInCount,
+      entryLogTotal,
       zoneOccupancyRows,
       hourlyCheckins,
       recentEntries,
@@ -284,18 +303,25 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
       attendeeRows,
       attendeeTotal,
       pendingVerificationRows,
+      pendingVerificationTotal,
       inviteRows,
+      inviteTotal,
       zoneRows,
+      zoneTotal,
       notificationRows,
+      notificationTotal,
       ticketCategories,
       customRoles,
       teamMembers,
+      teamTotal,
       revenueByCategory,
+      sponsors,
     ] = await Promise.all([
       Ticket.countDocuments({ event: eventId }),
       Ticket.countDocuments({ event: eventId, status: { $ne: 'CANCELLED' } }),
       Attendee.countDocuments({ event: eventId, isActive: true, confirmationStatus: 'confirmed' }),
       EntryLog.countDocuments({ event: eventId, action: 'check_in', accessGranted: true }),
+      EntryLog.countDocuments({ event: eventId }),
       ZoneLog.aggregate([
         { $match: { eventId: toObjectId(eventId), accessGranted: true } },
         { $group: { _id: { zoneName: '$zoneName', action: '$action' }, count: { $sum: 1 } } },
@@ -313,14 +339,18 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
           },
         },
       ]),
-      EntryLog.find({ event: eventId }).populate('attendee', 'fullName categoryName').sort({ timestamp: -1 }).limit(5).lean(),
+      EntryLog.find({ event: eventId }).populate('attendee', 'fullName categoryName').sort({ timestamp: -1 }).skip(entryLogsSkip).limit(logsLimit).lean(),
       Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(5).lean(),
-      Attendee.find(attendeeFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Attendee.find(attendeeFilter).sort({ createdAt: -1 }).skip(attendeeSkip).limit(limit).lean(),
       Attendee.countDocuments(attendeeFilter),
-      Attendee.find({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }).sort({ createdAt: -1 }).limit(8).lean(),
-      Ticket.find({ event: eventId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).limit(20).lean(),
-      ZoneLog.find({ eventId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).limit(10).lean(),
-      Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(20).lean(),
+      Attendee.find({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }).sort({ createdAt: -1 }).skip(verificationSkip).limit(limit).lean(),
+      Attendee.countDocuments({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }),
+      Ticket.find({ event: eventId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).skip(invitesSkip).limit(limit).lean(),
+      Ticket.countDocuments({ event: eventId }),
+      ZoneLog.find({ eventId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).skip(zoneLogsSkip).limit(limit).lean(),
+      ZoneLog.countDocuments({ eventId }),
+      Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).skip(notificationsSkip).limit(limit).lean(),
+      Notification.countDocuments({ 'metadata.eventId': eventId }),
       getTicketCategorySummary(req.scopedEvent),
       Role.find({ event: eventId }).sort({ createdAt: -1 }).lean(),
       User.find({
@@ -331,12 +361,19 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
         .populate('customRole')
         .populate('createdBy', 'name email role')
         .sort({ role: 1, createdAt: -1 })
+        .skip(teamSkip)
+        .limit(limit)
         .lean(),
+      User.countDocuments({
+        assignedEvents: toObjectId(eventId),
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
+      }),
       Ticket.aggregate([
         { $match: { event: toObjectId(eventId), status: { $ne: 'CANCELLED' } } },
         { $group: { _id: '$categoryName', revenue: { $sum: '$price' }, count: { $sum: 1 } } },
         { $project: { name: '$_id', value: '$revenue', count: 1, _id: 0 } },
       ]),
+      Sponsor.find({ eventId: toObjectId(eventId) }).lean(),
     ]);
 
     const zoneOccupancy = {};
@@ -373,15 +410,23 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
         event: {
           _id: req.scopedEvent._id,
           name: req.scopedEvent.name,
+          description: req.scopedEvent.description || '',
+          eventType: req.scopedEvent.eventType || '',
           startDate: req.scopedEvent.startDate,
           endDate: req.scopedEvent.endDate,
+          timezone: req.scopedEvent.timezone || 'Asia/Colombo',
           venue: req.scopedEvent.venue,
           status: req.scopedEvent.status,
           zones: req.scopedEvent.zones || [],
           settings: req.scopedEvent.settings || {},
+          branding: req.scopedEvent.branding || {},
+          coverImage: req.scopedEvent.coverImage || '',
+          logoImage: req.scopedEvent.logoImage || '',
+          bannerImage: req.scopedEvent.bannerImage || '',
           matchDetails: req.scopedEvent.matchDetails || {},
           concertDetails: req.scopedEvent.concertDetails || {},
           conferenceDetails: req.scopedEvent.conferenceDetails || {},
+          sponsorPackages: req.scopedEvent.sponsorPackages || [],
           customEventType: req.scopedEvent.customEventType || '',
         },
         overview: { totalTickets, ticketsSold, confirmedAttendees, checkedInCount, totalRevenue, zoneOccupancy: topZoneOccupancy },
@@ -399,13 +444,28 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
         tickets: ticketCategories,
         subOrganisers: req.scopedEvent.subOrganisers || [],
         teamMembers,
+        teamPage,
+        teamPages: Math.ceil(teamTotal / limit) || 1,
+        teamTotal,
         customRoles,
         verificationQueue: pendingVerificationRows,
+        verificationPage,
+        verificationPages: Math.ceil(pendingVerificationTotal / limit) || 1,
+        verificationTotal: pendingVerificationTotal,
         invites: inviteRows.map(mapInviteRow),
+        invitesPage,
+        invitesPages: Math.ceil(inviteTotal / limit) || 1,
         entryLogs: recentEntries,
+        entryLogsPage,
+        entryLogsPages: Math.ceil(entryLogTotal / logsLimit) || 1,
         zoneLogs: zoneRows,
+        zoneLogsPage,
+        zoneLogsPages: Math.ceil(zoneTotal / limit) || 1,
         zoneOccupancy: Object.values(zoneOccupancy),
         notifications: notificationRows,
+        notificationsPage,
+        notificationsPages: Math.ceil(notificationTotal / limit) || 1,
+        sponsors: sponsors || [],
         reports: {
           available: [
             { id: 'attendees', label: 'Attendee List', exportType: 'attendees' },
@@ -443,7 +503,7 @@ router.get('/workspace', requireEventAccess, requireScopedEvent, async (req, res
   }
 });
 
-router.get('/attendees', requireEventAccess, async (req, res, next) => {
+router.get('/attendees', requireEventAccess, requirePermission('canViewAttendees'), async (req, res, next) => {
   try {
     const eventId = resolveEventId(req);
     const page = clamp(req.query.page, 1, 9999, 1);
@@ -504,7 +564,7 @@ router.get('/attendees', requireEventAccess, async (req, res, next) => {
 
 router.post(
   '/attendees',
-  requirePermission('canAddAttendees'),
+  requirePermission(['canAddAttendees', 'canEditAttendees']),
   upload.single('photo'),
   handleS3Upload('attendee-photos'),
   [
@@ -547,6 +607,13 @@ router.post(
         confirmationToken
       });
 
+      await logActivity({
+        req,
+        action: 'ticket_creation',
+        eventId,
+        details: { message: `Attendee created manually: ${fullName} (${category.name})` }
+      });
+
       // Create a complimentary ticket for the manual attendee
       const orderCount = await Order.countDocuments({ eventId });
       const order = new Order({
@@ -556,11 +623,22 @@ router.post(
         buyerPhone: phone || '',
         totalAmount: 0,
         status: 'CONFIRMED',
-        paymentStatus: 'success', // Manual additions are considered successful/complimentary
+        paymentStatus: 'success',
         orderNumber: `MAN-${Date.now()}-${orderCount + 1}`,
         confirmationToken: uuidv4()
       });
       await order.save();
+      
+      // Update sold count in Event categories
+      const updateData = { 'categories.$.sold': 1 };
+      if (category.isPrivate) {
+        updateData['categories.$.usageCount'] = 1;
+      }
+
+      await Event.updateOne(
+        { _id: eventId, 'categories.id': categoryId },
+        { $inc: updateData }
+      );
 
       const ticket = new Ticket({
         event: eventId,
@@ -693,6 +771,33 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
       if (ticketDocs.length) {
         await Ticket.insertMany(ticketDocs);
       }
+
+      // Update Event Sold Counts
+      const categoryCounts = {};
+      docs.forEach(d => {
+        categoryCounts[d.categoryId] = (categoryCounts[d.categoryId] || 0) + 1;
+      });
+      
+      const updatePromises = Object.entries(categoryCounts).map(([catId, count]) => {
+        const category = (event.categories || []).find(c => c.id === catId);
+        const updateData = { 'categories.$.sold': count };
+        if (category?.isPrivate) {
+          updateData['categories.$.usageCount'] = count;
+        }
+
+        return Event.updateOne(
+          { _id: eventId, 'categories.id': catId },
+          { $inc: updateData }
+        );
+      });
+      await Promise.all(updatePromises);
+
+      await logActivity({
+        req,
+        action: 'ticket_creation',
+        eventId,
+        details: { message: `Bulk uploaded ${docs.length} attendees / tickets` }
+      });
     }
 
     await buildActivityNotification({
@@ -714,7 +819,7 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
   }
 });
 
-router.put('/attendee/:id', requireEventAccess, requirePermission('canAddAttendees'), async (req, res, next) => {
+router.put('/attendee/:id', requireEventAccess, requirePermission(['canAddAttendees', 'canEditAttendees']), async (req, res, next) => {
   try {
     const attendee = await Attendee.findById(req.params.id);
     if (!attendee || !attendee.isActive) {
@@ -724,21 +829,45 @@ router.put('/attendee/:id', requireEventAccess, requirePermission('canAddAttende
     const event = await Event.findById(attendee.event);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
 
-    const nextCategoryId = req.body.categoryId || attendee.categoryId;
-    const category = (event.categories || []).find((item) => item.id === nextCategoryId);
-    if (!category) {
-      return res.status(400).json({ success: false, message: 'Invalid category for attendee.' });
+    const nextCategoryId = req.body.categoryId;
+    let oldCategoryId = attendee.categoryId;
+    let newCategoryId = attendee.categoryId;
+
+    if (nextCategoryId) {
+      const category = (event.categories || []).find((item) => item.id === nextCategoryId);
+      if (!category) {
+        return res.status(400).json({ success: false, message: 'Invalid category for attendee.' });
+      }
+      newCategoryId = category.id;
+      attendee.categoryId = newCategoryId;
+      attendee.categoryName = category.name;
+      attendee.allowedZones = category.allowedZones || [];
     }
 
     attendee.fullName = req.body.fullName ?? attendee.fullName;
     attendee.email = req.body.email ?? attendee.email;
     attendee.phone = req.body.phone ?? attendee.phone;
     attendee.nationalId = req.body.nationalId ?? attendee.nationalId;
-    attendee.categoryId = category.id;
-    attendee.categoryName = category.name;
-    attendee.allowedZones = category.allowedZones || [];
     attendee.notes = req.body.notes ?? attendee.notes;
+    attendee.isDisabled = req.body.isDisabled ?? attendee.isDisabled;
     await attendee.save();
+
+    // If category changed, sync Event sold counts
+    if (nextCategoryId && oldCategoryId && oldCategoryId !== newCategoryId) {
+      const event = await Event.findById(attendee.event);
+      const oldCat = (event?.categories || []).find(c => c.id === oldCategoryId);
+      const newCat = (event?.categories || []).find(c => c.id === newCategoryId);
+
+      // Decrement old
+      const decData = { 'categories.$.sold': -1 };
+      if (oldCat?.isPrivate) decData['categories.$.usageCount'] = -1;
+      await Event.updateOne({ _id: attendee.event, 'categories.id': oldCategoryId }, { $inc: decData });
+
+      // Increment new
+      const incData = { 'categories.$.sold': 1 };
+      if (newCat?.isPrivate) incData['categories.$.usageCount'] = 1;
+      await Event.updateOne({ _id: attendee.event, 'categories.id': newCategoryId }, { $inc: incData });
+    }
 
     await buildActivityNotification({
       userId: req.user._id,
@@ -755,15 +884,33 @@ router.put('/attendee/:id', requireEventAccess, requirePermission('canAddAttende
   }
 });
 
-router.delete('/attendee/:id', requireEventAccess, requirePermission('canAddAttendees'), async (req, res, next) => {
+router.delete('/attendee/:id', requireEventAccess, requirePermission(['canAddAttendees', 'canEditAttendees']), async (req, res, next) => {
   try {
     const attendee = await Attendee.findById(req.params.id);
     if (!attendee || !attendee.isActive) {
       return res.status(404).json({ success: false, message: 'Attendee not found.' });
     }
 
+    if (attendee.addedVia === 'self_purchase' || attendee.addedVia === 'invite') {
+      return res.status(400).json({ success: false, message: 'Public portal buyers cannot be deleted.' });
+    }
+
     attendee.isActive = false;
     await attendee.save();
+
+    // Decrement sold count in Event categories
+    const updateData = { 'categories.$.sold': -1 };
+    const event = await Event.findById(attendee.event);
+    const category = (event?.categories || []).find(c => c.id === attendee.categoryId);
+    
+    if (category?.isPrivate) {
+      updateData['categories.$.usageCount'] = -1;
+    }
+
+    await Event.updateOne(
+      { _id: attendee.event, 'categories.id': attendee.categoryId },
+      { $inc: updateData }
+    );
 
     await buildActivityNotification({
       userId: req.user._id,
@@ -825,7 +972,7 @@ router.post('/attendees/:id/invite', requireEventAccess, requirePermission('canI
   }
 });
 
-router.get('/ticket-categories', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+router.get('/ticket-categories', requireEventAccess, requirePermission('canManageTickets'), requireScopedEvent, async (req, res, next) => {
   try {
     const categories = await getTicketCategorySummary(req.scopedEvent);
     res.json({ success: true, data: { categories } });
@@ -834,7 +981,7 @@ router.get('/ticket-categories', requireEventAccess, requireScopedEvent, async (
   }
 });
 
-router.post('/ticket-categories', requireEventAccess, async (req, res, next) => {
+router.post('/ticket-categories', requireEventAccess, requirePermission('canManageTickets'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -872,7 +1019,7 @@ router.post('/ticket-categories', requireEventAccess, async (req, res, next) => 
   }
 });
 
-router.put('/ticket-categories/:categoryId', requireEventAccess, async (req, res, next) => {
+router.put('/ticket-categories/:categoryId', requireEventAccess, requirePermission('canManageTickets'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -910,7 +1057,7 @@ router.put('/ticket-categories/:categoryId', requireEventAccess, async (req, res
   }
 });
 
-router.delete('/ticket-categories/:categoryId', requireEventAccess, async (req, res, next) => {
+router.delete('/ticket-categories/:categoryId', requireEventAccess, requirePermission('canManageTickets'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1022,6 +1169,10 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
     let tempPassword = null;
     let user;
 
+    // Enforce contact requirements based on event settings
+    const emailRequired = event.settings?.communicationChannels?.email === true;
+    const smsRequired = event.settings?.communicationChannels?.sms === true;
+
     if (existing) {
       // 1. Role level check: Cannot re-assign a user with equal or higher role than yours
       const existingRole = normalizeRole(existing.role);
@@ -1030,6 +1181,13 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
            success: false, 
            message: `You do not have permission to manage this existing user (${existingRole}).` 
          });
+      }
+      // Validate existing contact details satisfy event requirements
+      if (emailRequired && (!existing.email || String(existing.email).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'The existing user does not have an email address required for this event.' });
+      }
+      if (smsRequired && (!existing.phone || String(existing.phone).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'The existing user does not have a phone number required for this event.' });
       }
 
       user = existing;
@@ -1067,7 +1225,15 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
     } else {
       isNewUser = true;
       tempPassword = req.body.password || crypto.randomBytes(8).toString('hex');
-        user = await User.create({
+      // Validate incoming payload satisfies event requirements
+      if (emailRequired && (!req.body.email || String(req.body.email).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Email is required for team members on this event.' });
+      }
+      if (smsRequired && (!req.body.phone || String(req.body.phone).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Phone number is required for team members on this event.' });
+      }
+
+      user = await User.create({
         name: req.body.name,
         email: String(req.body.email || '').toLowerCase().trim(),
         phone: req.body.phone,
@@ -1288,6 +1454,9 @@ router.post('/verification/:attendeeId', requireEventAccess, requirePermission('
     if (status === 'rejected') {
       await notifyPhotoRejectionNotification({ attendee, event: attendee.event, reason });
     } else {
+      const { deliverAttendeeTicketEmail } = require('../services/ticketDeliveryService');
+      await deliverAttendeeTicketEmail({ attendee, event: attendee.event }).catch(err => console.error('AUTO_TICKET_DELIVERY_ERROR:', err));
+
       await notifyStatusChange({
         attendee,
         event: attendee.event,
@@ -1387,7 +1556,7 @@ router.patch('/invites/:ticketId/cancel', requireEventAccess, requirePermission(
   }
 });
 
-router.get('/event/:eventId/stats', requireEventAccess, async (req, res, next) => {
+router.get('/event/:eventId/stats', requireEventAccess, requirePermission('canViewDashboard'), async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.eventId).lean();
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1417,7 +1586,7 @@ router.get('/event/:eventId/stats', requireEventAccess, async (req, res, next) =
   }
 });
 
-router.get('/event/:eventId/entry-logs', requireEventAccess, async (req, res, next) => {
+router.get('/event/:eventId/entry-logs', requireEventAccess, requirePermission('canViewLogs'), async (req, res, next) => {
   try {
     const page = clamp(req.query.page, 1, 9999, 1);
     const limit = clamp(req.query.limit, 1, 100, 20);
@@ -1449,7 +1618,7 @@ router.get('/event/:eventId/entry-logs', requireEventAccess, async (req, res, ne
   }
 });
 
-router.get('/event/:eventId/zones/report', requireEventAccess, async (req, res, next) => {
+router.get('/event/:eventId/zones/report', requireEventAccess, requirePermission('canViewReports'), async (req, res, next) => {
   try {
     const zoneLogs = await ZoneLog.find({ eventId: req.params.eventId })
       .populate('attendeeId', 'fullName categoryName')
@@ -1477,7 +1646,7 @@ router.get('/event/:eventId/zones/report', requireEventAccess, async (req, res, 
   }
 });
 
-router.get('/zones', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+router.get('/zones', requireEventAccess, requirePermission('canManageZones'), requireScopedEvent, async (req, res, next) => {
   try {
     res.json({ success: true, data: { zones: req.scopedEvent.zones || [] } });
   } catch (err) {
@@ -1485,7 +1654,7 @@ router.get('/zones', requireEventAccess, requireScopedEvent, async (req, res, ne
   }
 });
 
-router.post('/zones', requireEventAccess, async (req, res, next) => {
+router.post('/zones', requireEventAccess, requirePermission('canManageZones'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1513,7 +1682,7 @@ router.post('/zones', requireEventAccess, async (req, res, next) => {
   }
 });
 
-router.put('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
+router.put('/zones/:zoneId', requireEventAccess, requirePermission('canManageZones'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1538,7 +1707,7 @@ router.put('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
   }
 });
 
-router.delete('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
+router.delete('/zones/:zoneId', requireEventAccess, requirePermission('canManageZones'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1556,7 +1725,7 @@ router.delete('/zones/:zoneId', requireEventAccess, async (req, res, next) => {
   }
 });
 
-router.patch('/zones/:zoneId/categories', requireEventAccess, async (req, res, next) => {
+router.patch('/zones/:zoneId/categories', requireEventAccess, requirePermission('canManageZones'), async (req, res, next) => {
   try {
     const event = await Event.findById(resolveEventId(req));
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -1631,6 +1800,9 @@ router.post('/custom-roles', requireEventAccess, async (req, res, next) => {
       description: req.body.description || '',
       event: eventId,
       permissions: {
+        canViewDashboard: !!req.body.permissions?.canViewDashboard,
+        canManageEvents: !!req.body.permissions?.canManageEvents,
+        canManageTickets: !!req.body.permissions?.canManageTickets,
         canViewAttendees: !!req.body.permissions?.canViewAttendees,
         canEditAttendees: !!req.body.permissions?.canEditAttendees,
         canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
@@ -1638,6 +1810,11 @@ router.post('/custom-roles', requireEventAccess, async (req, res, next) => {
         canManageZones: !!req.body.permissions?.canManageZones,
         canInviteAttendees: !!req.body.permissions?.canInviteAttendees,
         canBulkUpload: !!req.body.permissions?.canBulkUpload,
+        canViewReports: !!req.body.permissions?.canViewReports,
+        canViewLogs: !!req.body.permissions?.canViewLogs,
+        canManageSponsors: !!req.body.permissions?.canManageSponsors,
+        canViewTransactions: !!req.body.permissions?.canViewTransactions,
+        canManageSettings: !!req.body.permissions?.canManageSettings,
       },
       zoneIds: req.body.zoneIds || [],
       createdBy: req.user._id,
@@ -1655,13 +1832,54 @@ router.put('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
     role.name = req.body.name ?? role.name;
     role.slug = req.body.slug ? slugify(req.body.slug) : role.slug;
     role.description = req.body.description ?? role.description;
+    
+    // Explicitly update all permissions safely
+    const reqPerms = req.body.permissions || {};
+    const existingPerms = role.permissions?.toObject ? role.permissions.toObject() : role.permissions || {};
+    
     role.permissions = {
-      ...(role.permissions?.toObject ? role.permissions.toObject() : role.permissions || {}),
-      ...(req.body.permissions || {}),
+      canViewDashboard: reqPerms.canViewDashboard !== undefined ? !!reqPerms.canViewDashboard : !!existingPerms.canViewDashboard,
+      canManageEvents: reqPerms.canManageEvents !== undefined ? !!reqPerms.canManageEvents : !!existingPerms.canManageEvents,
+      canManageTickets: reqPerms.canManageTickets !== undefined ? !!reqPerms.canManageTickets : !!existingPerms.canManageTickets,
+      canViewAttendees: reqPerms.canViewAttendees !== undefined ? !!reqPerms.canViewAttendees : !!existingPerms.canViewAttendees,
+      canEditAttendees: reqPerms.canEditAttendees !== undefined ? !!reqPerms.canEditAttendees : !!existingPerms.canEditAttendees,
+      canVerifyPhotos: reqPerms.canVerifyPhotos !== undefined ? !!reqPerms.canVerifyPhotos : !!existingPerms.canVerifyPhotos,
+      canScanEntry: reqPerms.canScanEntry !== undefined ? !!reqPerms.canScanEntry : !!existingPerms.canScanEntry,
+      canManageZones: reqPerms.canManageZones !== undefined ? !!reqPerms.canManageZones : !!existingPerms.canManageZones,
+      canInviteAttendees: reqPerms.canInviteAttendees !== undefined ? !!reqPerms.canInviteAttendees : !!existingPerms.canInviteAttendees,
+      canBulkUpload: reqPerms.canBulkUpload !== undefined ? !!reqPerms.canBulkUpload : !!existingPerms.canBulkUpload,
+      canViewReports: reqPerms.canViewReports !== undefined ? !!reqPerms.canViewReports : !!existingPerms.canViewReports,
+      canViewLogs: reqPerms.canViewLogs !== undefined ? !!reqPerms.canViewLogs : !!existingPerms.canViewLogs,
+      canManageSponsors: reqPerms.canManageSponsors !== undefined ? !!reqPerms.canManageSponsors : !!existingPerms.canManageSponsors,
+      canViewTransactions: reqPerms.canViewTransactions !== undefined ? !!reqPerms.canViewTransactions : !!existingPerms.canViewTransactions,
+      canManageSettings: reqPerms.canManageSettings !== undefined ? !!reqPerms.canManageSettings : !!existingPerms.canManageSettings,
     };
+    
     role.zoneIds = req.body.zoneIds || role.zoneIds;
     await role.save();
     res.json({ success: true, data: { role }, message: 'Custom role updated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
+  try {
+    const roleId = req.params.id;
+    const role = await Role.findById(roleId);
+    if (!role) return res.status(404).json({ success: false, message: 'Role not found.' });
+
+    // Check if any sub-organisers are currently assigned this custom role
+    const assignedUser = await User.findOne({ customRole: roleId });
+    if (assignedUser) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete custom role because it is currently assigned to ${assignedUser.name || 'a team member'}.`,
+      });
+    }
+
+    await Role.findByIdAndDelete(roleId);
+    res.json({ success: true, message: 'Custom role deleted successfully.' });
   } catch (err) {
     next(err);
   }
@@ -1717,19 +1935,42 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       event.markModified('conferenceDetails');
     }
 
+    const role = normalizeRole(req.user.role);
+    const isAdmin = role === ROLES.MAIN_ADMIN || role === ROLES.SUPER_ADMIN;
+
     if (basicInfo) {
-      event.name = basicInfo.name ?? event.name;
+      // Basic Fields: Admin only for Name/Type/Dates, Organiser allowed for Description
+      if (isAdmin) {
+        event.name = basicInfo.name ?? event.name;
+        event.eventType = basicInfo.eventType ?? event.eventType;
+        event.customEventType = basicInfo.customEventType ?? event.customEventType;
+        if (basicInfo.startDate) event.startDate = new Date(basicInfo.startDate);
+        if (basicInfo.endDate) event.endDate = new Date(basicInfo.endDate);
+      }
+      
       event.description = basicInfo.description ?? event.description;
-      event.eventType = basicInfo.eventType ?? event.eventType;
-      event.customEventType = basicInfo.customEventType ?? event.customEventType;
-      if (basicInfo.startDate) event.startDate = new Date(basicInfo.startDate);
-      if (basicInfo.endDate) event.endDate = new Date(basicInfo.endDate);
+      if (basicInfo.timezone !== undefined) {
+        event.timezone = basicInfo.timezone;
+      }
       
       if (basicInfo.venue) {
-        event.venue = {
-          ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
-          ...basicInfo.venue,
-        };
+        if (isAdmin) {
+          // Admin can update everything in venue
+          event.venue = {
+            ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
+            ...basicInfo.venue,
+          };
+        } else {
+          // Organiser can update address, city, country, mapUrl
+          const v = event.venue?.toObject ? event.venue.toObject() : (event.venue || {});
+          event.venue = {
+            ...v,
+            address: basicInfo.venue.address ?? v.address,
+            city: basicInfo.venue.city ?? v.city,
+            country: basicInfo.venue.country ?? v.country,
+            mapUrl: basicInfo.venue.mapUrl ?? v.mapUrl,
+          };
+        }
         event.markModified('venue');
       }
 
@@ -1833,7 +2074,7 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
   }
 });
 
-router.get('/settings', requireEventAccess, requireScopedEvent, async (req, res, next) => {
+router.get('/settings', requireEventAccess, requirePermission('canManageSettings'), requireScopedEvent, async (req, res, next) => {
   try {
     res.json({ success: true, data: { event: req.scopedEvent, settings: req.scopedEvent.settings || {} } });
   } catch (err) {
@@ -1841,18 +2082,37 @@ router.get('/settings', requireEventAccess, requireScopedEvent, async (req, res,
   }
 });
 
-router.put('/settings', requireEventAccess, async (req, res, next) => {
+router.put('/settings', requireEventAccess, requirePermission('canManageSettings'), async (req, res, next) => {
   try {
     const { event, requestedId } = await getWritableScopedEvent(req);
     if (!event) return res.status(404).json({ success: false, message: `Event not found. (ID: ${requestedId})` });
 
-    event.name = req.body.name ?? event.name;
-    event.startDate = req.body.startDate ? new Date(req.body.startDate) : event.startDate;
-    event.endDate = req.body.endDate ? new Date(req.body.endDate) : event.endDate;
-    event.venue = {
-      ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
-      ...(req.body.venue || {}),
-    };
+    const role = normalizeRole(req.user.role);
+    const isAdmin = role === ROLES.MAIN_ADMIN || role === ROLES.SUPER_ADMIN;
+
+    if (isAdmin) {
+      event.name = req.body.name ?? event.name;
+      event.startDate = req.body.startDate ? new Date(req.body.startDate) : event.startDate;
+      event.endDate = req.body.endDate ? new Date(req.body.endDate) : event.endDate;
+      if (req.body.venue) {
+        event.venue = {
+          ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
+          ...req.body.venue,
+        };
+      }
+    } else {
+      // Organiser can update address, city, country, mapUrl
+      if (req.body.venue) {
+        const v = event.venue?.toObject ? event.venue.toObject() : (event.venue || {});
+        event.venue = {
+          ...v,
+          address: req.body.venue.address ?? v.address,
+          city: req.body.venue.city ?? v.city,
+          country: req.body.venue.country ?? v.country,
+          mapUrl: req.body.venue.mapUrl ?? v.mapUrl,
+        };
+      }
+    }
     const incomingSettings = req.body.settings || {};
     
     // Security: Organisers cannot enable SMS
@@ -1900,7 +2160,7 @@ router.get('/template', requireEventAccess, async (req, res, next) => {
   }
 });
 
-router.get('/event/:eventId/export', requireEventAccess, async (req, res, next) => {
+router.get('/event/:eventId/export', requireEventAccess, requirePermission('canViewReports'), async (req, res, next) => {
   try {
     const type = req.query.type || 'attendees';
     const wb = XLSX.utils.book_new();
@@ -1942,6 +2202,205 @@ router.get('/event/:eventId/export', requireEventAccess, async (req, res, next) 
   } catch (err) {
     next(err);
   }
+});
+
+// --- SPONSOR PACKAGES ---
+
+router.get('/sponsor-packages', requireEventAccess, requirePermission('canManageSponsors'), requireScopedEvent, async (req, res, next) => {
+  try {
+    res.json({ success: true, data: { packages: req.scopedEvent.sponsorPackages || [] } });
+  } catch (err) { next(err); }
+});
+
+router.post('/sponsor-packages', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    const pkg = {
+      id: uuidv4(),
+      name: req.body.name,
+      level: req.body.level || 'Custom',
+      description: req.body.description || '',
+      capacity: Number(req.body.capacity || 1), // NOP
+      price: Number(req.body.price || 0),
+      zones: req.body.zones || [],
+      benefits: req.body.benefits || [],
+      contactNumber: req.body.contactNumber || '',
+      isVisible: req.body.isVisible !== false,
+      expiryDate: req.body.expiryDate ? new Date(req.body.expiryDate) : null,
+    };
+
+    event.sponsorPackages.push(pkg);
+    await event.save();
+    res.status(201).json({ success: true, data: { package: pkg }, message: 'Sponsor package created.' });
+  } catch (err) { next(err); }
+});
+
+router.put('/sponsor-packages/:packageId', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    const pkg = event.sponsorPackages.find(p => p.id === req.params.packageId);
+    if (!pkg) return res.status(404).json({ success: false, message: 'Package not found.' });
+
+    Object.assign(pkg, {
+      name: req.body.name ?? pkg.name,
+      level: req.body.level ?? pkg.level,
+      description: req.body.description ?? pkg.description,
+      capacity: req.body.capacity != null ? Number(req.body.capacity) : pkg.capacity,
+      price: req.body.price != null ? Number(req.body.price) : pkg.price,
+      zones: req.body.zones ?? pkg.zones,
+      benefits: req.body.benefits ?? pkg.benefits,
+      contactNumber: req.body.contactNumber ?? pkg.contactNumber,
+      isVisible: req.body.isVisible ?? pkg.isVisible,
+      expiryDate: req.body.expiryDate ? new Date(req.body.expiryDate) : pkg.expiryDate,
+    });
+
+    await event.save();
+    res.json({ success: true, data: { package: pkg }, message: 'Sponsor package updated.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/sponsor-packages/:packageId', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const event = await Event.findById(resolveEventId(req));
+    // Check if any sponsor is assigned to this package
+    const assignedSponsor = await Sponsor.findOne({ eventId: event._id, packageId: req.params.packageId });
+    if (assignedSponsor) return res.status(400).json({ success: false, message: 'Cannot delete package with active assignments.' });
+
+    event.sponsorPackages = event.sponsorPackages.filter(p => p.id !== req.params.packageId);
+    await event.save();
+    res.json({ success: true, message: 'Sponsor package deleted.' });
+  } catch (err) { next(err); }
+});
+
+// --- SPONSOR ASSIGNMENTS ---
+
+router.get('/sponsors', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const sponsors = await Sponsor.find({ eventId: resolveEventId(req) }).lean();
+    res.json({ success: true, data: sponsors });
+  } catch (err) { next(err); }
+});
+
+router.post('/sponsors', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const { companyName, contactPerson, email, phone, packageId, notes } = req.body;
+    const eventId = resolveEventId(req);
+    const event = await Event.findById(eventId);
+    
+    const pkg = event.sponsorPackages.find(p => p.id === packageId);
+    if (!pkg) return res.status(404).json({ success: false, message: 'Package not found.' });
+
+    let user = await User.findOne({ email });
+    const tempPassword = Math.random().toString(36).slice(-10);
+    // Enforce event-level contact requirements
+    const emailRequired = event.settings?.communicationChannels?.email === true;
+    const smsRequired = event.settings?.communicationChannels?.sms === true;
+    if (emailRequired && (!email || String(email).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Email is required for sponsors on this event.' });
+    }
+    if (smsRequired && (!phone || String(phone).trim() === '')) {
+      return res.status(400).json({ success: false, message: 'Phone number is required for sponsors on this event.' });
+    }
+
+    if (!user) {
+      user = await User.create({
+        name: contactPerson,
+        email,
+        phone,
+        password: tempPassword,
+        role: 'Sponsor',
+        isTempPassword: true,
+        isVerified: true,
+        assignedEvents: [event._id]
+      });
+    } else {
+      // Validate existing user contact info meets event requirements
+      if (emailRequired && (!user.email || String(user.email).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Existing user does not have an email required for sponsor on this event.' });
+      }
+      if (smsRequired && (!user.phone || String(user.phone).trim() === '')) {
+        return res.status(400).json({ success: false, message: 'Existing user does not have a phone number required for sponsor on this event.' });
+      }
+
+      user.role = 'Sponsor';
+      user.isVerified = true;
+      if (!user.assignedEvents.includes(event._id)) user.assignedEvents.push(event._id);
+      await user.save();
+    }
+
+    const sponsor = await Sponsor.create({
+      eventId: event._id,
+      packageId,
+      companyName,
+      contactPerson,
+      email,
+      phone,
+      userId: user._id,
+      assignedBy: req.user._id,
+      notes
+    });
+
+    // Create the first attendee (the sponsor contact person themselves) as a pass holder
+    const confirmationToken = crypto.randomBytes(32).toString('hex');
+    await Attendee.create({
+      event: event._id,
+      sponsorId: sponsor._id,
+      fullName: contactPerson,
+      email,
+      phone,
+      categoryName: `${pkg.name} Pass`,
+      confirmationToken,
+      confirmationStatus: 'pending',
+      photoVerificationStatus: 'pending',
+      isActive: true,
+      zones: pkg.zones || []
+    });
+
+    await logActivity({
+      req,
+      action: 'sponsor_action',
+      eventId: event._id,
+      details: { message: `Sponsor onboarded: ${companyName} (${pkg.name})` }
+    });
+
+    await logActivity({
+      req,
+      action: 'ticket_creation',
+      eventId: event._id,
+      details: { message: `Sponsor ticket created: ${contactPerson} (${pkg.name} Pass)` }
+    });
+
+    // Send Welcome Email + Pass Invite
+    const notificationService = require('../services/notificationService');
+    try {
+      await notificationService.notifySponsorWelcome(user, event, pkg, tempPassword, confirmationToken);
+    } catch (emailErr) {
+      console.error('Failed to send sponsor welcome email:', emailErr);
+    }
+
+    res.status(201).json({ success: true, data: sponsor, message: 'Sponsor created and notified.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/sponsors/:id', requireEventAccess, requirePermission('canManageSponsors'), async (req, res, next) => {
+  try {
+    const sponsor = await Sponsor.findById(req.params.id);
+    if (!sponsor) return res.status(404).json({ success: false, message: 'Sponsor not found.' });
+
+    // Optionally deactivate user account or remove from event
+    if (sponsor.userId) {
+       const user = await User.findById(sponsor.userId);
+       if (user) {
+         user.assignedEvents = user.assignedEvents.filter(id => id.toString() !== sponsor.eventId.toString());
+         await user.save();
+       }
+    }
+
+    await Sponsor.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Sponsor removed.' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

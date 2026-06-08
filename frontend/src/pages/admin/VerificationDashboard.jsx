@@ -6,6 +6,7 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
+import { getAssetUrl } from '../../utils/backend';
 
 const statusColors = {
   pending: 'yellow',
@@ -261,10 +262,10 @@ const VerificationDashboard = () => {
                   >
                     {attendee.photo ? (
                       <img
-                        src={`http://localhost:5000/${attendee.photo}`}
-                        alt={attendee.fullName}
-                        className="w-full h-full object-cover group-hover:opacity-80 transition"
-                      />
+                          src={getAssetUrl(attendee.photo)}
+                          alt={attendee.fullName}
+                          className="w-full h-full object-cover group-hover:opacity-80 transition"
+                        />
                     ) : (
                       <div className="flex items-center justify-center h-full text-gray-400">
                         <span>No photo</span>
@@ -365,7 +366,7 @@ const VerificationDashboard = () => {
             <h2 className="text-2xl font-bold mb-4">{selectedAttendee.fullName}</h2>
             <div className="mb-4">
               <img
-                src={`http://localhost:5000/${selectedAttendee.photo}`}
+                src={getAssetUrl(selectedAttendee.photo)}
                 alt={selectedAttendee.fullName}
                 className="w-full rounded-lg"
               />

@@ -12,6 +12,13 @@ export const createSuperAdminOrganiser = (payload) => api.post('/super-admin/org
 export const updateSuperAdminOrganiser = (id, payload) => api.patch(`/super-admin/organisers/${id}`, payload);
 export const deleteSuperAdminOrganiser = (id) => api.delete(`/super-admin/organisers/${id}`);
 
+export const createSuperAdminCompany = (payload) => api.post('/super-admin/companies', payload);
+export const updateSuperAdminCompany = (id, payload) => api.patch(`/super-admin/companies/${id}`, payload);
+export const deleteSuperAdminCompany = (id) => api.delete(`/super-admin/companies/${id}`);
+
+export const getSuperAdminCompanies = () => api.get('/super-admin/workspace').then(res => ({ data: { data: res.data.data.organisations.rows } }));
+export const getSuperAdminOrganisers = () => api.get('/super-admin/workspace').then(res => ({ data: { data: res.data.data.events.filters.organiserOptions } }));
+
 export const createSuperAdminUser = (payload) => api.post('/super-admin/users', payload);
 export const updateSuperAdminUser = (id, payload) => api.patch(`/super-admin/users/${id}`, payload);
 export const resendSuperAdminUserCredentials = (id) => api.post(`/super-admin/users/${id}/resend-credentials`);
