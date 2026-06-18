@@ -159,18 +159,18 @@ const StaffDashboardPage = () => {
         </section>
 
         {/* Dynamic Counters Grid */}
-        <section className="grid grid-cols-3 gap-4">
-          <div className="rounded-2xl bg-white border border-slate-100 p-4 shadow-sm text-center">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Gate Actions</p>
-            <p className="mt-1 text-2xl lg:text-3xl font-black text-slate-900">{stats.total}</p>
+        <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="rounded-2xl bg-white border border-slate-100 p-4 sm:p-5 md:p-6 shadow-sm text-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Gate Actions</p>
+            <p className="mt-1 text-xl sm:text-2xl md:text-3xl font-black text-slate-900">{stats.total}</p>
           </div>
-          <div className="rounded-2xl bg-emerald-50/50 border border-emerald-100 p-4 shadow-sm text-center">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">Total Valid</p>
-            <p className="mt-1 text-2xl lg:text-3xl font-black text-emerald-600">{stats.success}</p>
+          <div className="rounded-2xl bg-emerald-50/50 border border-emerald-100 p-4 sm:p-5 md:p-6 shadow-sm text-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-600">Total Valid</p>
+            <p className="mt-1 text-xl sm:text-2xl md:text-3xl font-black text-emerald-600">{stats.success}</p>
           </div>
-          <div className="rounded-2xl bg-rose-50/50 border border-rose-100 p-4 shadow-sm text-center">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-600">Total Denied</p>
-            <p className="mt-1 text-2xl lg:text-3xl font-black text-rose-600">{stats.failed}</p>
+          <div className="rounded-2xl bg-rose-50/50 border border-rose-100 p-4 sm:p-5 md:p-6 shadow-sm text-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-rose-600">Total Denied</p>
+            <p className="mt-1 text-xl sm:text-2xl md:text-3xl font-black text-rose-600">{stats.failed}</p>
           </div>
         </section>
 

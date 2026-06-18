@@ -154,6 +154,25 @@ The application will be available at:
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
 
+## Localhost vs LAN (development)
+
+- Localhost (default): use when developing on a single machine.
+   - Backend: `http://localhost:5000` — run from `backend` with `npm run dev`.
+   - Frontend: `http://localhost:3000` — run from `frontend` with `npm start`.
+
+- LAN (access from other devices on same network):
+   - In `backend/src/server.js` bind to all interfaces: `server.listen(PORT, '0.0.0.0')`.
+   - Set `REACT_APP_API_URL` in `frontend/.env` to `http://<HOST_IP>:5000/api` (replace `<HOST_IP>` with your machine's LAN IPv4).
+   - Start frontend so it serves externally (PowerShell example):
+      ```powershell
+      cd frontend
+      $env:HOST="0.0.0.0"
+      npm start
+      ```
+   - If other devices cannot reach the app, allow inbound firewall rules for ports `3000` and `5000` (requires admin).
+
+See `LAN_RUN.md` for a slightly more detailed checklist.
+
 ## <img src="https://img.shields.io/badge/-Project_Structure-purple.svg" alt="Project Structure"> Project Structure
 
 ```

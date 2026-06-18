@@ -300,15 +300,15 @@ const OrderConfirmationPage = () => {
                     <div className="p-6 space-y-4">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Event Date</p>
-                            <p className="font-bold text-slate-900">{formatDate(order?.event?.startDate)}</p>
+                            <p className="font-bold text-slate-900">{formatDate(payload?.order?.event?.startDate)}</p>
                         </div>
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Venue</p>
-                            <p className="font-bold text-slate-900">{order?.event?.venue?.name || 'TBD'}</p>
+                            <p className="font-bold text-slate-900">{payload?.order?.event?.venue?.name || 'TBD'}</p>
                         </div>
                         <div className="pt-4 border-t border-slate-100">
                             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Total Investment</p>
-                            <p className="text-xl font-black text-blue-700">{formatCurrency(order.totalAmount)}</p>
+                            <p className="text-xl font-black text-blue-700">{formatCurrency(payload?.order?.totalAmount)}</p>
                         </div>
                     </div>
                  </div>
@@ -324,219 +324,213 @@ const OrderConfirmationPage = () => {
               </div>
 
               {/* Tickets Column */}
-              <div className="lg:col-span-2 space-y-6">
-                 {tickets.map((ticket) => {
-                    const form = getForm(ticket._id);
-                    const isOpen = expandedTicketId === ticket._id;
-                    const confirmed = isConfirmedTicket(ticket.status);
+               <div className="lg:col-span-2 space-y-6">
+                  {tickets.map((ticket) => {
+                     const form = getForm(ticket._id);
+                     const isOpen = expandedTicketId === ticket._id;
+                     const confirmed = isConfirmedTicket(ticket.status);
 
-                    return (
-                        <article 
-                            key={ticket._id} 
-                            className={`group overflow-hidden rounded-3xl border transition-all duration-300 ${
-                                confirmed ? 'border-blue-200 bg-white shadow-lg' : 'border-slate-200 bg-white shadow-sm hover:shadow-xl'
-                            }`}
-                        >
-                            <div className="p-6">
-                                <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
-                                            confirmed ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'
-                                        }`}>
-                                            <TicketIcon className="h-7 w-7" />
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Slot #{ticket.slotIndex}</p>
-                                                {getTicketStatusBadge(ticket.status)}
-                                            </div>
-                                            <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{ticket.categoryName}</h3>
-                                        </div>
-                                    </div>
+                     return (
+                         <article key={ticket._id} className={`group overflow-hidden rounded-3xl border transition-all duration-300 ${confirmed ? 'border-blue-200 bg-white shadow-lg' : 'border-slate-200 bg-white shadow-sm hover:shadow-xl'}`}>
+                             <div className="p-6">
+                                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                                     <div className="flex items-center gap-4">
+                                         <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
+                                             confirmed ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'
+                                         }`}>
+                                             <TicketIcon className="h-7 w-7" />
+                                         </div>
+                                         <div>
+                                             <div className="flex items-center gap-2 mb-1">
+                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Slot #{ticket.slotIndex}</p>
+                                                 {getTicketStatusBadge(ticket.status)}
+                                             </div>
+                                             <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{ticket.categoryName}</h3>
+                                         </div>
+                                     </div>
 
-                                    {!confirmed && (
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleTicketForm(ticket._id)}
-                                                className={`flex items-center gap-2 rounded-xl px-5 py-3 text-xs font-black uppercase tracking-widest transition-all ${
-                                                    isOpen ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20'
-                                                }`}
-                                            >
-                                                {isOpen ? 'Close' : 'Complete Identity'}
-                                                {isOpen ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
-                                            </button>
-                                        </div>
-                                    )}
+                                     {!confirmed && (
+                                         <div className="flex items-center gap-2">
+                                             <button
+                                                 type="button"
+                                                 onClick={() => toggleTicketForm(ticket._id)}
+                                                 className={`flex items-center gap-2 rounded-xl px-5 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                                                     isOpen ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20'
+                                                 }`}
+                                             >
+                                                 {isOpen ? 'Close' : 'Complete Identity'}
+                                                 {isOpen ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+                                             </button>
+                                         </div>
+                                     )}
 
-                                    {confirmed && (
-                                        <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-2 border border-slate-100">
-                                            <div className="text-right">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Assigned To</p>
-                                                <p className="text-sm font-black text-slate-900">
-                                                    {ticket.attendee?.fullName || ticket.inviteEmail || 'Guest'}
-                                                </p>
-                                            </div>
-                                            <CheckBadgeIcon className="h-6 w-6 text-blue-500" />
-                                        </div>
-                                    )}
-                                </div>
+                                     {confirmed && (
+                                         <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-2 border border-slate-100">
+                                             <div className="text-right">
+                                                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Assigned To</p>
+                                                 <p className="text-sm font-black text-slate-900">
+                                                     {ticket.attendee?.fullName || ticket.inviteEmail || 'Guest'}
+                                                 </p>
+                                             </div>
+                                             <CheckBadgeIcon className="h-6 w-6 text-blue-500" />
+                                         </div>
+                                     )}
+                                 </div>
 
-                                {isOpen && !confirmed && (
-                                    <div className="mt-8 animate-in slide-in-from-top duration-300">
-                                        <div className="grid gap-8 lg:grid-cols-2">
-                                            {/* Direct Fill */}
-                                            <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-6">
-                                                <div className="flex items-center gap-3 mb-6">
-                                                   <CheckBadgeIcon className="h-6 w-6 text-blue-600" />
-                                                   <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">I'm Attending</h4>
-                                                </div>
-                                                <div className="space-y-4">
-                                                    <input
-                                                        type="text"
-                                                        value={form.fullName}
-                                                        onChange={(e) => updateForm(ticket._id, 'fullName', e.target.value)}
-                                                        placeholder="Full Name *"
-                                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                    <input
-                                                        type="email"
-                                                        value={form.email}
-                                                        onChange={(e) => updateForm(ticket._id, 'email', e.target.value)}
-                                                        placeholder="Email Address *"
-                                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                    <div className="grid grid-cols-2 gap-3">
+                                 {isOpen && !confirmed && (
+                                     <div className="mt-8 animate-in slide-in-from-top duration-300">
+                                         <div className="grid gap-8 lg:grid-cols-2">
+                                             {/* Direct Fill */}
+                                             <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-6">
+                                                 <div className="flex items-center gap-3 mb-6">
+                                                     <CheckBadgeIcon className="h-6 w-6 text-blue-600" />
+                                                     <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">I'm Attending</h4>
+                                                 </div>
+                                                 <div className="space-y-4">
+                                                     <input
+                                                         type="text"
+                                                         value={form.fullName}
+                                                         onChange={(e) => updateForm(ticket._id, 'fullName', e.target.value)}
+                                                         placeholder="Full Name *"
+                                                         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                     />
+                                                     <input
+                                                         type="email"
+                                                         value={form.email}
+                                                         onChange={(e) => updateForm(ticket._id, 'email', e.target.value)}
+                                                         placeholder="Email Address *"
+                                                         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                     />
+                                                     <div className="grid grid-cols-2 gap-3">
                                                          <input
-                                                            type="text"
-                                                            value={form.nationalId}
-                                                            onChange={(e) => updateForm(ticket._id, 'nationalId', e.target.value)}
-                                                            placeholder="NIC / Passport"
-                                                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold"
-                                                        />
-                                                        <input
-                                                            type="date"
-                                                            value={form.dateOfBirth}
-                                                            onChange={(e) => updateForm(ticket._id, 'dateOfBirth', e.target.value)}
-                                                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold"
-                                                        />
-                                                    </div>
+                                                             type="text"
+                                                             value={form.nationalId}
+                                                             onChange={(e) => updateForm(ticket._id, 'nationalId', e.target.value)}
+                                                             placeholder="NIC / Passport"
+                                                             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold"
+                                                         />
+                                                         <input
+                                                             type="date"
+                                                             value={form.dateOfBirth}
+                                                             onChange={(e) => updateForm(ticket._id, 'dateOfBirth', e.target.value)}
+                                                             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold"
+                                                         />
+                                                     </div>
 
-                                                    {/* Photo Upload Area */}
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold text-slate-700">Identity Verification Photo *</label>
-                                                        <div className="flex flex-col gap-3">
-                                                            <div className="flex gap-2">
-                                                                <label className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 cursor-pointer group">
-                                                                    {form.photo ? (
-                                                                        <div className="relative h-32 w-full">
-                                                                            <img 
-                                                                                src={URL.createObjectURL(form.photo)} 
-                                                                                alt="Preview" 
-                                                                                className="h-full w-full rounded-xl object-cover shadow-md"
-                                                                            />
-                                                                            <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-white">Change Photo</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="flex flex-col items-center py-4">
-                                                                            <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                                                                <UserPlusIcon className="h-6 w-6" />
-                                                                            </div>
-                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
-                                                                        </div>
-                                                                    )}
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        onChange={(e) => updateForm(ticket._id, 'photo', e.target.files?.[0] || null)}
-                                                                        className="hidden"
-                                                                    />
-                                                                </label>
+                                                     {/* Photo Upload Area */}
+                                                     <div>
+                                                         <label className="mb-2 block text-xs font-bold text-slate-700">Identity Verification Photo *</label>
+                                                         <div className="flex flex-col gap-3">
+                                                             <div className="grid grid-cols-2 gap-2">
+                                                                 <label className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 cursor-pointer group">
+                                                                     {form.photo ? (
+                                                                         <div className="relative h-32 w-full">
+                                                                             <img
+                                                                                 src={URL.createObjectURL(form.photo)}
+                                                                                 alt="Preview"
+                                                                                 className="h-full w-full rounded-xl object-cover shadow-md"
+                                                                             />
+                                                                             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-white">Change Photo</span>
+                                                                             </div>
+                                                                         </div>
+                                                                     ) : (
+                                                                         <div className="flex flex-col items-center py-4">
+                                                                             <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                                                                 <UserPlusIcon className="h-6 w-6" />
+                                                                             </div>
+                                                                             <p className="text-[10px] font-black text-center uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
+                                                                         </div>
+                                                                     )}
+                                                                     <input
+                                                                         type="file"
+                                                                         accept="image/*"
+                                                                         onChange={(e) => updateForm(ticket._id, 'photo', e.target.files?.[0] || null)}
+                                                                         className="hidden"
+                                                                     />
+                                                                 </label>
 
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setCameraTicketId(ticket._id)}
-                                                                    className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 group"
-                                                                >
-                                                                    <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                                                        <CameraIcon className="h-6 w-6" />
-                                                                    </div>
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Live Camera</p>
-                                                                </button>
-                                                            </div>
+                                                                 <button
+                                                                     type="button"
+                                                                     onClick={() => setCameraTicketId(ticket._id)}
+                                                                     className="flex-1 relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50 group"
+                                                                 >
+                                                                     <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                                                         <CameraIcon className="h-6 w-6" />
+                                                                     </div>
+                                                                     <p className="text-[10px] font-black text-center uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Live Camera</p>
+                                                                 </button>
+                                                             </div>
+                                                             {cameraTicketId === ticket._id && (
+                                                                 <CameraCapture
+                                                                     onCapture={(file) => updateForm(ticket._id, 'photo', file)}
+                                                                     onClose={() => setCameraTicketId(null)}
+                                                                 />
+                                                             )}
+                                                         </div>
+                                                     </div>
 
-                                                            {cameraTicketId === ticket._id && (
-                                                                <CameraCapture 
-                                                                    onCapture={(file) => updateForm(ticket._id, 'photo', file)} 
-                                                                    onClose={() => setCameraTicketId(null)} 
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    </div>
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleFillSubmit(ticket._id)}
+                                                         disabled={submittingTicketId === ticket._id}
+                                                         className="w-full rounded-xl bg-slate-950 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-slate-900/20 hover:bg-slate-800 disabled:opacity-50"
+                                                     >
+                                                         Confirm My Details
+                                                     </button>
+                                                 </div>
+                                             </div>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleFillSubmit(ticket._id)}
-                                                        disabled={submittingTicketId === ticket._id}
-                                                        className="w-full rounded-xl bg-slate-950 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-slate-900/20 hover:bg-slate-800 disabled:opacity-50"
-                                                    >
-                                                        Confirm My Details
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Invite Others */}
-                                            <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-6">
-                                               <div className="flex items-center gap-3 mb-6">
-                                                   <UserPlusIcon className="h-6 w-6 text-sky-600" />
-                                                   <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Delegate Slot</h4>
-                                                </div>
-                                                <p className="text-xs font-medium text-slate-500 leading-relaxed mb-6">
-                                                   We'll email a secure confirmation link to your guest so they can fill their own details.
-                                                </p>
-                                                <div className="space-y-4">
-                                                    <div className="relative">
-                                                        <EnvelopeIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                                                        <input
-                                                            type="email"
-                                                            value={inviteEmailByTicket[ticket._id] || ''}
-                                                            onChange={(e) => setInviteEmailByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
-                                                            placeholder="Guest Email Address"
-                                                            className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                        />
-                                                    </div>
-                                                    <div className="relative">
-                                                        <PhoneIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                                                        <input
-                                                            type="tel"
-                                                            value={invitePhoneByTicket[ticket._id] || ''}
-                                                            onChange={(e) => setInvitePhoneByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
-                                                            placeholder={`Guest Phone ${payload?.smsEnabled ? '*' : '(Optional)'}`}
-                                                            className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleSendInvite(ticket._id)}
-                                                        disabled={submittingTicketId === ticket._id}
-                                                        className="w-full rounded-xl border-2 border-slate-200 bg-white py-4 text-xs font-black uppercase tracking-widest text-slate-700 transition hover:border-blue-500 hover:text-blue-700 disabled:opacity-50"
-                                                    >
-                                                        Email Secure Invite
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </article>
-                    );
-                 })}
-              </div>
-           </div>
-        </div>
+                                             {/* Invite Others */}
+                                             <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-6">
+                                                 <div className="flex items-center gap-3 mb-6">
+                                                     <UserPlusIcon className="h-6 w-6 text-sky-600" />
+                                                     <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Delegate Slot</h4>
+                                                 </div>
+                                                 <p className="text-xs font-medium text-slate-500 leading-relaxed mb-6">
+                                                     We'll email a secure confirmation link to your guest so they can fill their own details.
+                                                 </p>
+                                                 <div className="space-y-4">
+                                                     <div className="relative">
+                                                         <EnvelopeIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                                                         <input
+                                                             type="email"
+                                                             value={inviteEmailByTicket[ticket._id] || ''}
+                                                             onChange={(e) => setInviteEmailByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
+                                                             placeholder="Guest Email Address"
+                                                             className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                         />
+                                                     </div>
+                                                     <div className="relative">
+                                                         <PhoneIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                                                         <input
+                                                             type="tel"
+                                                             value={invitePhoneByTicket[ticket._id] || ''}
+                                                             onChange={(e) => setInvitePhoneByTicket((prev) => ({ ...prev, [ticket._id]: e.target.value }))}
+                                                             placeholder={`Guest Phone ${payload?.smsEnabled ? '*' : '(Optional)'}`}
+                                                             className="w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 py-3 text-sm font-bold transition focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                         />
+                                                     </div>
+                                                     <button
+                                                         type="button"
+                                                         onClick={() => handleSendInvite(ticket._id)}
+                                                         disabled={submittingTicketId === ticket._id}
+                                                         className="w-full rounded-xl border-2 border-slate-200 bg-white py-4 text-xs font-black uppercase tracking-widest text-slate-700 transition hover:border-blue-500 hover:text-blue-700 disabled:opacity-50"
+                                                     >
+                                                         Email Secure Invite
+                                                     </button>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 )}
+                             </div>
+                         </article>
+                     );
+                  })}
+               </div>
+            </div>
+         </div>
       </div>
     </PublicLayout>
   );

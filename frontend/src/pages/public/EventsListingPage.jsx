@@ -93,7 +93,7 @@ const EventsListingPage = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           
           {/* Filters Bar */}
-          <div className="-mt-8 rounded-2xl bg-white p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200">
+          <div className="-mt-8 rounded-2xl bg-white p-3 xs:p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200">
             <div className="flex flex-col lg:flex-row gap-4">
               
               {/* Search */}

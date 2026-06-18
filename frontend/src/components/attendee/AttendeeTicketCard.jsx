@@ -64,22 +64,22 @@ const AttendeeTicketCard = ({ ticket }) => {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex flex-col xs:flex-row xs:items-start justify-between gap-3 mb-4">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
               <TicketIcon className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 leading-tight">
                 {ticket.event?.name || 'Event Name'}
               </h3>
-              <p className="text-sm text-gray-500">Ticket #{ticket.ticketNumber}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Ticket #{ticket.ticketNumber}</p>
             </div>
           </div>
           
-          <div className={`flex items-center space-x-2 px-3 py-1 rounded-full border ${getStatusColor(ticket.attendee?.confirmationStatus)}`}>
+          <div className={`flex items-center self-start xs:self-auto space-x-2 px-3 py-1 rounded-full border flex-shrink-0 ${getStatusColor(ticket.attendee?.confirmationStatus)}`}>
             {getStatusIcon(ticket.attendee?.confirmationStatus)}
             <span className="text-xs font-medium capitalize">
               {ticket.attendee?.confirmationStatus || 'Pending'}
@@ -90,19 +90,17 @@ const AttendeeTicketCard = ({ ticket }) => {
         {/* Event Details */}
         <div className="space-y-3 mb-4">
           <div className="flex items-center space-x-3 text-sm text-gray-600">
-            <CalendarIcon className="h-4 w-4" />
-            <span>{formatDate(ticket.event?.startDate)}</span>
-            <span>at</span>
-            <span>{formatTime(ticket.event?.startDate)}</span>
+            <CalendarIcon className="h-4 w-4 flex-shrink-0" />
+            <span>{formatDate(ticket.event?.startDate)} at {formatTime(ticket.event?.startDate)}</span>
           </div>
           
           <div className="flex items-center space-x-3 text-sm text-gray-600">
-            <MapPinIcon className="h-4 w-4" />
-            <span>{ticket.event?.venue?.name || 'Venue TBD'}</span>
+            <MapPinIcon className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{ticket.event?.venue?.name || 'Venue TBD'}</span>
           </div>
           
           <div className="flex items-center space-x-3 text-sm text-gray-600">
-            <UserIcon className="h-4 w-4" />
+            <UserIcon className="h-4 w-4 flex-shrink-0" />
             <span>{ticket.categoryName || 'Standard'}</span>
           </div>
         </div>
@@ -115,8 +113,8 @@ const AttendeeTicketCard = ({ ticket }) => {
                 <span className="text-amber-600 text-xs font-bold">!</span>
               </div>
               <div className="text-sm">
-                <p className="font-medium text-amber-800">Action Required</p>
-                <ul className="text-amber-700 mt-1 space-y-1">
+                <p className="font-semibold text-amber-800">Action Required</p>
+                <ul className="text-amber-700 mt-1 space-y-1 text-xs">
                   {needsConfirmation && (
                     <li>Complete confirmation process</li>
                   )}
@@ -130,21 +128,21 @@ const AttendeeTicketCard = ({ ticket }) => {
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="flex flex-col-reverse xs:flex-row xs:items-center justify-between gap-4 mt-6">
+          <div className="flex items-center space-x-3 w-full xs:w-auto">
             {needsConfirmation && (
               <Link
                 to={`/confirm/${ticket.attendee?.confirmationToken}`}
-                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors w-full xs:w-auto text-center"
               >
-                <CheckCircleIcon className="h-4 w-4" />
+                <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />
                 <span>Complete Confirmation</span>
               </Link>
             )}
             
             {needsPhoto && !needsConfirmation && (
-              <button className="inline-flex items-center space-x-2 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors">
-                <CameraIcon className="h-4 w-4" />
+              <button className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors w-full xs:w-auto">
+                <CameraIcon className="h-4 w-4 flex-shrink-0" />
                 <span>Upload Photo</span>
               </button>
             )}
@@ -152,9 +150,9 @@ const AttendeeTicketCard = ({ ticket }) => {
 
           <Link
             to={`/attendee/ticket/${ticket._id}`}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="text-blue-600 hover:text-blue-700 text-sm font-semibold text-right xs:text-left w-full xs:w-auto"
           >
-            View Ticket
+            View Ticket &rarr;
           </Link>
         </div>
       </div>

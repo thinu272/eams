@@ -408,10 +408,11 @@ const AttendeeIdentityConfirmPage = () => {
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Phone Number {smsEnabled ? '*' : '(Optional)'}</label>
                     <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} required={smsEnabled} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder={smsEnabled ? '+1234567890' : '+1234567890 (Optional)'} />
                   </div>
+
                   <div className="space-y-2">
                     <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Identity Photo (Selfie) *</label>
                     <div className="flex flex-col gap-3">
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                         <label className="flex-1 group relative flex h-[132px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
                           {form.photo ? (
                             <div className="relative h-full w-full">
@@ -424,7 +425,7 @@ const AttendeeIdentityConfirmPage = () => {
                           ) : (
                             <div className="flex flex-col items-center py-4">
                               <PhotoIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
-                              <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
+                              <p className="text-[10px] text-center font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
                             </div>
                           )}
                           <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
@@ -436,7 +437,7 @@ const AttendeeIdentityConfirmPage = () => {
                           className="flex-1 group relative flex h-[132px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
                         >
                           <CameraIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
-                          <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Take Live Photo</p>
+                          <p className="text-[10px] text-center font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Take Live Photo</p>
                         </button>
                       </div>
                       

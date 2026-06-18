@@ -562,9 +562,9 @@ const StaffScanPage = () => {
               </div>
 
               {/* Distraction-Free Camera Viewfinder Component */}
-              <div className="rounded-[32px] border-4 border-slate-900 bg-black overflow-hidden shadow-2xl relative aspect-[4/3] sm:aspect-square">
-                <QRScannerComponent onScanSuccess={(value) => handleScan(value, 'qr')} onScanError={() => {}} fps={12} qrbox={260} />
-              </div>
+                <div className="rounded-[32px] border-4 border-slate-900 bg-black overflow-hidden shadow-2xl w-full h-screen mx-auto">
+                  <QRScannerComponent onScanSuccess={(value) => handleScan(value, 'qr')} onScanError={() => {}} fps={12} qrbox={260} />
+                </div>
 
               {/* Dynamic validation result overlay */}
               {result.state !== 'idle' && (
