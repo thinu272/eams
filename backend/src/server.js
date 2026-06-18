@@ -66,6 +66,30 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === 'object') {
+    // Clean up empty _id and id at the root level of payloads
+    if (req.body._id === '' || req.body._id === 'null' || req.body._id === 'undefined') delete req.body._id;
+    if (req.body.id === '' || req.body.id === 'null' || req.body.id === 'undefined') delete req.body.id;
+
+    // Convert empty or serialized null/undefined values to null for common ObjectId fields
+    const fieldsToNull = ['companyId', 'company', 'eventId', 'event', 'organiserId'];
+    fieldsToNull.forEach((field) => {
+      if (req.body[field] === '' || req.body[field] === 'null' || req.body[field] === 'undefined') {
+        req.body[field] = null;
+      }
+    });
+
+    // Clean up arrays of ObjectIds
+    if (Array.isArray(req.body.organiserIds)) {
+      req.body.organiserIds = req.body.organiserIds.filter(id => id && id !== '' && id !== 'null' && id !== 'undefined');
+    }
+    if (Array.isArray(req.body.mainOrganisers)) {
+      req.body.mainOrganisers = req.body.mainOrganisers.filter(id => id && id !== '' && id !== 'null' && id !== 'undefined');
+    }
+  }
+  next();
+});
 app.use(requestLogger);
 app.use(maintenanceMode);
 // Note: File uploads now go to S3 via s3Upload middleware
@@ -161,5 +185,5 @@ mongoose
 const PORT = process.env.PORT || 5000;
 app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
-// Bind to 0.0.0.0 for local network accessibility when running locally.
-server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+// Bind to localhost only for local-only development.
+server.listen(PORT, '127.0.0.1', () => console.log(`Server running on port ${PORT}`));

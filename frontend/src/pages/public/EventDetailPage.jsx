@@ -780,7 +780,7 @@ const EventDetailPage = () => {
                 </div>
 
                 {/* Mobile Sticky Bar */}
-                <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-20">
+                <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 pb-6 xs:pb-7 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-20">
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Price</p>

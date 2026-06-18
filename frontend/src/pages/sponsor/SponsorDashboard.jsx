@@ -102,29 +102,29 @@ const SponsorDashboard = () => {
   return (
     <DashboardLayout>
       <div className="space-y-8 pb-20">
-        <section className="relative overflow-hidden rounded-[40px] bg-brand-dark p-8 lg:p-12 text-white shadow-2xl">
+        <section className="relative overflow-hidden rounded-3xl sm:rounded-[40px] p-6 sm:p-8 lg:p-12 bg-brand-dark text-white shadow-2xl">
           <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-brand-main/20 rounded-full blur-[120px]"></div>
           <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="animate-fade-in">
               <p className="text-[10px] font-black uppercase tracking-[0.5em] text-brand-main">Sponsor Portal</p>
-              <h1 className="mt-4 text-4xl lg:text-6xl font-black tracking-tight leading-none">{pkg?.name || 'Sponsor Package'}</h1>
-              <p className="mt-4 text-white/60 font-medium max-w-xl">{event?.name} · {event?.venue?.name}</p>
-              <div className="mt-6 flex flex-wrap gap-4 text-sm font-medium">
+              <h1 className="mt-4 text-3xl sm:text-4xl lg:text-6xl font-black tracking-tight leading-none">{pkg?.name || 'Sponsor Package'}</h1>
+              <p className="mt-4 text-white/60 font-medium max-w-xl text-sm sm:text-base">{event?.name} · {event?.venue?.name}</p>
+              <div className="mt-6 flex flex-wrap gap-4 text-xs sm:text-sm font-medium">
                 <span className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-4 py-1.5 backdrop-blur-sm italic">
                   Premium Sponsor Pass Holder
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 lg:gap-6 animate-fade-in [animation-delay:200ms]">
-               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 lg:gap-6 animate-fade-in [animation-delay:200ms] w-full lg:w-auto">
+               <div className="glass-dark border-white/5 px-5 py-4 sm:px-6 sm:py-5 rounded-3xl min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Pass Capacity</p>
-                  <p className="mt-2 text-3xl font-black text-brand-main">{teamCount} / {capacity}</p>
-                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">Team Members</p>
+                  <p className="mt-2 text-2xl sm:text-3xl font-black text-brand-main">{teamCount} / {capacity}</p>
+                  <p className="mt-1 text-[9px] sm:text-[10px] font-bold text-white/30 uppercase tracking-widest">Team Members</p>
                </div>
-               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
+               <div className="glass-dark border-white/5 px-5 py-4 sm:px-6 sm:py-5 rounded-3xl min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Utilization</p>
-                  <p className="mt-2 text-3xl font-black text-brand-main">{utilization}%</p>
-                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">{remainingSlots} Slots Left</p>
+                  <p className="mt-2 text-2xl sm:text-3xl font-black text-brand-main">{utilization}%</p>
+                  <p className="mt-1 text-[9px] sm:text-[10px] font-bold text-white/30 uppercase tracking-widest">{remainingSlots} Slots Left</p>
                </div>
             </div>
           </div>

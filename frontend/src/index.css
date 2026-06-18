@@ -6,7 +6,7 @@
 
 html, body {
   @apply overflow-x-hidden max-w-full;
-  width: 100vw;
+  width: 100%;
   margin: 0;
   padding: 0;
 }

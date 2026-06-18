@@ -100,8 +100,8 @@ const normalizeEventPayload = (body, file, files) => {
 
   if (payload.mainOrganisers) {
     payload.mainOrganisers = payload.mainOrganisers
-      .filter(id => id && id !== '' && id !== 'null')
       .map(id => (typeof id === 'object' ? (id._id || id.id || id) : id))
+      .filter(id => id && id !== '' && id !== 'null' && id !== 'undefined' && mongoose.Types.ObjectId.isValid(id))
       .slice(0, 2);
   }
 
@@ -335,13 +335,22 @@ router.post('/', protect, restrictTo('main_admin', 'main_organiser'), upload.fie
 // PATCH /api/events/:eventId/assign-organiser
 router.patch('/:eventId/assign-organiser', protect, restrictTo('main_admin'), async (req, res, next) => {
   try {
-    const { organiserIds } = req.body;
+    const rawIds = req.body.organiserIds || req.body.organiserId;
     if (!mongoose.Types.ObjectId.isValid(req.params.eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
     
-    const ids = Array.isArray(organiserIds) ? organiserIds : (organiserIds ? [organiserIds] : []);
+    const ids = (Array.isArray(rawIds) ? rawIds : (rawIds ? [rawIds] : []))
+      .filter(id => id && id !== '' && id !== 'null' && id !== 'undefined');
+
     if (ids.length > 2) return res.status(400).json({ success: false, message: 'Maximum 2 organisers allowed.' });
+
+    // Validate each ID is a valid ObjectId format
+    for (const id of ids) {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: `Invalid organiser ID format: ${id}` });
+      }
+    }
 
     const User = require('../models/User');
     const existingEvent = await Event.findById(req.params.eventId);

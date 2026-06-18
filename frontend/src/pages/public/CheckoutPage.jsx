@@ -222,14 +222,14 @@ const CheckoutPage = () => {
             <div className="space-y-8">
               {/* Buyer Information */}
               <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="bg-slate-900 px-8 py-6">
-                   <h2 className="flex items-center gap-3 text-xl font-black uppercase tracking-wide text-white">
+                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
+                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
                       <ShieldCheckIcon className="h-6 w-6 text-amber-500" />
                       Buyer Information
                    </h2>
                 </div>
-                <div className="p-8 space-y-6">
-                  <div className="grid gap-6 sm:grid-cols-2">
+                <div className="p-4 xs:p-6 sm:p-8 space-y-6">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-slate-500">
                         Full Name *
@@ -280,35 +280,34 @@ const CheckoutPage = () => {
                   </div>
                 </div>
               </div>
-
               {/* Payment Methods */}
               <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="bg-slate-900 px-8 py-6">
-                   <h2 className="flex items-center gap-3 text-xl font-black uppercase tracking-wide text-white">
+                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
+                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
                       <CreditCardIcon className="h-6 w-6 text-emerald-500" />
                       Payment Method
                    </h2>
                 </div>
-                <div className="p-8 space-y-4">
+                <div className="p-4 xs:p-6 sm:p-8 space-y-4">
                    {/* Option 1: Card */}
                    {enabledMethods.card && (
                      <div 
                         onClick={() => setPaymentMethod('card')}
-                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
                           paymentMethod === 'card' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                         }`}
                      >
-                        <div className="flex items-center justify-between">
-                           <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between gap-2">
+                           <div className="flex items-center gap-3 xs:gap-4">
                               <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'}`}>
                                  <CreditCardIcon className="h-6 w-6" />
                               </div>
                               <div>
-                                 <p className="font-black text-slate-900">Standard Checkout</p>
-                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
+                                 <p className="font-black text-slate-900 text-sm xs:text-base">Standard Checkout</p>
+                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
                               </div>
                            </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
                              paymentMethod === 'card' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
                            }`} />
                         </div>
@@ -319,21 +318,21 @@ const CheckoutPage = () => {
                    {enabledMethods.bank_transfer && (
                      <div 
                         onClick={() => setPaymentMethod('bank_transfer')}
-                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
                           paymentMethod === 'bank_transfer' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                         }`}
                      >
-                        <div className="flex items-center justify-between">
-                           <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between gap-2">
+                           <div className="flex items-center gap-3 xs:gap-4">
                               <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'bank_transfer' ? 'text-blue-600' : 'text-slate-400'}`}>
                                  <WalletIcon className="h-6 w-6" />
                               </div>
                               <div>
-                                 <p className="font-black text-slate-900">Direct Bank Transfer</p>
-                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Manual Verification</p>
+                                 <p className="font-black text-slate-900 text-sm xs:text-base">Direct Bank Transfer</p>
+                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Manual Verification</p>
                               </div>
                            </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
                              paymentMethod === 'bank_transfer' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
                            }`} />
                         </div>
@@ -344,21 +343,21 @@ const CheckoutPage = () => {
                    {enabledMethods.cash && (
                      <div 
                         onClick={() => setPaymentMethod('cash')}
-                        className={`cursor-pointer rounded-2xl border-2 p-6 transition-all ${
+                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
                           paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                         }`}
                      >
-                        <div className="flex items-center justify-between">
-                           <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between gap-2">
+                           <div className="flex items-center gap-3 xs:gap-4">
                               <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'cash' ? 'text-blue-600' : 'text-slate-400'}`}>
                                  <ShieldCheckIcon className="h-6 w-6" />
                               </div>
                               <div>
-                                 <p className="font-black text-slate-900">Cash at Entrance</p>
-                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Pay on Event Day</p>
+                                 <p className="font-black text-slate-900 text-sm xs:text-base">Cash at Entrance</p>
+                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Pay on Event Day</p>
                               </div>
                            </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all ${
+                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
                              paymentMethod === 'cash' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
                            }`} />
                         </div>
@@ -366,9 +365,9 @@ const CheckoutPage = () => {
                    )}
 
                    <div className="mt-8 flex items-center gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-200">
-                      < ShieldCheckIcon className="h-5 w-5 text-amber-600" />
-                      <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">
-                         Transactions are secured with industry-standard 256-bit encryption.
+                      < ShieldCheckIcon className="h-5 w-5 text-amber-600 shrink-0" />
+                      <p className="text-[10px] xs:text-xs font-bold text-amber-800 uppercase tracking-wide">
+                          Transactions are secured with industry-standard 256-bit encryption.
                       </p>
                    </div>
                 </div>
@@ -378,13 +377,13 @@ const CheckoutPage = () => {
             <div className="space-y-8">
               {/* Order Summary Summary */}
               <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl lg:sticky lg:top-8">
-                <div className="bg-slate-900 px-8 py-6">
-                   <h2 className="flex items-center gap-3 text-xl font-black uppercase tracking-wide text-white">
+                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
+                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
                       <WalletIcon className="h-6 w-6 text-amber-500" />
                       Order Summary
                    </h2>
                 </div>
-                <div className="p-8">
+                <div className="p-4 xs:p-6 sm:p-8">
                   <div className="space-y-4">
                     {selectedCategories.map((category) => (
                       <div

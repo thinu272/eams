@@ -73,7 +73,7 @@ const AttendeeDashboardPage = () => {
 
   return (
     <AttendeeLayout>
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Welcome Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome back!</h1>
@@ -113,50 +113,50 @@ const AttendeeDashboardPage = () => {
 
         {/* Primary Event Card */}
         {primaryTicket && (
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-6 text-white mb-8">
-            <div className="flex items-center justify-between">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-5 sm:p-6 text-white mb-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
-                <div className="flex items-center space-x-3 mb-4">
-                  <TicketIcon className="h-8 w-8" />
-                  <h2 className="text-xl font-bold">{primaryTicket.event?.name}</h2>
+                <div className="flex items-start space-x-3 mb-4">
+                  <TicketIcon className="h-8 w-8 flex-shrink-0 mt-0.5" />
+                  <h2 className="text-xl font-bold leading-tight">{primaryTicket.event?.name}</h2>
                 </div>
                 
                 <div className="space-y-2">
                   <div className="flex items-center space-x-3 text-blue-100">
-                    <CalendarIcon className="h-4 w-4" />
-                    <span>{formatDate(primaryTicket.event?.startDate)} at {formatTime(primaryTicket.event?.startDate)}</span>
+                    <CalendarIcon className="h-4 w-4 flex-shrink-0" />
+                    <span className="text-sm">{formatDate(primaryTicket.event?.startDate)} at {formatTime(primaryTicket.event?.startDate)}</span>
                   </div>
                   
                   <div className="flex items-center space-x-3 text-blue-100">
-                    <MapPinIcon className="h-4 w-4" />
-                    <span>{primaryTicket.event?.venue?.name || 'Venue TBD'}</span>
+                    <MapPinIcon className="h-4 w-4 flex-shrink-0" />
+                    <span className="text-sm">{primaryTicket.event?.venue?.name || 'Venue TBD'}</span>
                   </div>
                   
                   <div className="flex items-center space-x-3 text-blue-100">
-                    <TicketIcon className="h-4 w-4" />
-                    <span>Ticket #{primaryTicket.ticketNumber}</span>
+                    <TicketIcon className="h-4 w-4 flex-shrink-0" />
+                    <span className="text-sm">Ticket #{primaryTicket.ticketNumber}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="text-right">
-                <div className="flex items-center space-x-2 mb-2">
+              <div className="text-left md:text-right flex flex-col items-start md:items-end gap-3">
+                <div className="flex items-center space-x-2">
                   {primaryTicket.attendee?.confirmationStatus === 'confirmed' ? (
                     <>
                       <CheckCircleSolid className="h-5 w-5 text-green-300" />
-                      <span className="text-green-300">Confirmed</span>
+                      <span className="text-green-300 font-semibold">Confirmed</span>
                     </>
                   ) : (
                     <>
                       <ClockIcon className="h-5 w-5 text-yellow-300" />
-                      <span className="text-yellow-300">Pending</span>
+                      <span className="text-yellow-300 font-semibold">Pending</span>
                     </>
                   )}
                 </div>
                 
                 <Link
                   to={`/attendee/ticket/${primaryTicket._id}`}
-                  className="inline-flex items-center space-x-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                  className="inline-flex items-center space-x-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-semibold"
                 >
                   <span>View Ticket</span>
                   <ArrowRightIcon className="h-4 w-4" />
@@ -168,7 +168,7 @@ const AttendeeDashboardPage = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Tickets</p>
@@ -178,7 +178,7 @@ const AttendeeDashboardPage = () => {
             </div>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Confirmed</p>
@@ -190,7 +190,7 @@ const AttendeeDashboardPage = () => {
             </div>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Pending Action</p>
@@ -205,7 +205,7 @@ const AttendeeDashboardPage = () => {
 
         {/* Recent Tickets */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">Your Tickets</h2>
               <Link
@@ -243,36 +243,36 @@ const AttendeeDashboardPage = () => {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
             <div className="space-y-3">
               <Link
                 to="/attendee/tickets"
-                className="block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
               >
                 View All Tickets
               </Link>
               <Link
                 to="/attendee/events"
-                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
               >
                 Event Details
               </Link>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Need Help?</h3>
             <div className="space-y-3">
               <Link
                 to="/attendee/profile"
-                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
               >
                 Update Profile
               </Link>
               <Link
                 to="/attendee/notifications"
-                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                className="block w-full text-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
               >
                 View Notifications
               </Link>

@@ -74,6 +74,10 @@ const requireEventAccess = async (req, res, next) => {
     const rawId = req.params.eventId || req.body.eventId || req.query.eventId;
     let eventId = (rawId && rawId !== 'undefined') ? rawId : null;
 
+    if (eventId && !mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
+    }
+
     // Root Authority bypass (Admins and Main Organisers have global scope)
     const canonicalRole = normalizeRole(user.role);
     if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {

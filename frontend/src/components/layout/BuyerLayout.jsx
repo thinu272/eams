@@ -43,18 +43,19 @@ const BuyerLayout = ({ children }) => {
           <div className="flex items-center gap-3">
             <Link
               to="/"
-              className="inline-flex h-10 items-center justify-center rounded-2xl bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+              className="inline-flex h-10 w-10 sm:w-auto items-center justify-center rounded-2xl bg-white sm:px-4 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
               title="Public Home"
             >
-              Public Home
+              <HomeIcon className="h-5 w-5 sm:hidden" />
+              <span className="hidden sm:inline">Public Home</span>
             </Link>
-            <div className="text-right">
+            <div className="text-right hidden sm:block">
               <p className="text-xs text-slate-500">Hi,</p>
               <p className="text-sm font-semibold text-slate-900">{user?.name || 'Buyer'}</p>
             </div>
             <button
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-brand-dark px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-brand-dark px-3 sm:px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
               title="Logout"
             >
               <ArrowRightOnRectangleIcon className="h-4 w-4" />
@@ -64,7 +65,7 @@ const BuyerLayout = ({ children }) => {
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-4 pb-24 pt-5 md:px-6 md:pb-8">
+      <div className="mx-auto max-w-4xl px-3 xs:px-4 pb-24 pt-5 md:px-6 md:pb-8">
         <div className="hidden md:flex md:gap-2 md:pb-5">
           {items.map((item) => (
             <NavLink

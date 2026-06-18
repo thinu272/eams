@@ -33,25 +33,25 @@ const HomePage = () => {
           <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500/10 via-transparent to-transparent" />
         </div>
         
-        <div className="relative max-w-7xl mx-auto px-6 py-20 text-center">
+        <div className="relative max-w-7xl mx-auto px-4 xs:px-6 py-12 sm:py-20 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-300 backdrop-blur-md animate-fade-in">
             <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.8)]"></span>
             Next-Gen Event Experience
           </div>
           
-          <h1 className="mt-8 text-3xl font-black uppercase tracking-tighter leading-tight md:text-6xl lg:text-7xl animate-fade-in [animation-delay:100ms]">
+          <h1 className="mt-8 text-2xl xs:text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-black uppercase tracking-tighter leading-tight animate-fade-in [animation-delay:100ms]">
             Live the <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-main via-blue-400 to-cyan-400">Moment</span>
           </h1>
           
-          <p className="mx-auto mt-10 max-w-2xl text-base md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
+          <p className="mx-auto mt-6 sm:mt-10 max-w-2xl text-sm xs:text-base md:text-xl text-slate-400 font-medium leading-relaxed animate-fade-in [animation-delay:200ms]">
             ENTRYNEX platform secures your seats for the most exclusive events. <br className="hidden md:block"/>
             From stadium matches to premium conferences, we handle the access.
           </p>
           
-          <div className="mt-12 flex justify-center animate-fade-in [animation-delay:300ms]">
+          <div className="mt-8 sm:mt-12 flex justify-center animate-fade-in [animation-delay:300ms]">
             <Link
               to="/events"
-              className="btn-premium group flex items-center gap-3 px-8 py-4 md:px-10 md:py-5 text-base md:text-lg"
+              className="btn-premium group flex items-center gap-3 px-6 py-3.5 sm:px-8 sm:py-4 md:px-10 md:py-5 text-sm xs:text-base md:text-lg"
             >
               Secure Tickets
               <ChevronRightIcon className="h-5 w-5 transition-transform group-hover:translate-x-1" />
@@ -61,10 +61,10 @@ const HomePage = () => {
       </div>
 
       {/* Featured Events Section */}
-      <div id="events" className="relative z-10 mx-auto max-w-[1400px] px-4 sm:px-6 py-20 md:py-32 overflow-hidden">
-        <div className="flex flex-col items-center text-center mb-16 md:mb-24">
+      <div id="events" className="relative z-10 mx-auto max-w-[1400px] px-4 sm:px-6 py-16 sm:py-20 md:py-32 overflow-hidden">
+        <div className="flex flex-col items-center text-center mb-12 sm:mb-16 md:mb-24">
           <p className="text-xs font-black uppercase tracking-[0.5em] text-brand-main mb-4 opacity-80">Discovery</p>
-          <h2 className="text-3xl md:text-6xl font-black tracking-tight text-slate-900 leading-tight">
+          <h2 className="text-2xl xs:text-3xl md:text-6xl font-black tracking-tight text-slate-900 leading-tight">
             Featured <br className="md:hidden"/> <span className="text-brand-main">Experiences</span>
           </h2>
           <div className="mt-8 h-1.5 w-32 rounded-full bg-slate-100 overflow-hidden">

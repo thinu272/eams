@@ -97,6 +97,7 @@ export const ROLE_NAVIGATION = {
       {
         title: 'Operations',
         items: [
+          { to: '/staff/dashboard', label: 'Overview', icon: HomeIcon },
           { to: '/staff/scan', label: 'Scan Entry', icon: MagnifyingGlassIcon },
           { to: '/staff/search', label: 'Manual Search', icon: UserGroupIcon },
           { to: '/staff/zone-access', label: 'Zone Access', icon: ShieldCheckIcon },
