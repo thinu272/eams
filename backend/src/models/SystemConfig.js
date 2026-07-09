@@ -77,6 +77,8 @@ const systemConfigSchema = new mongoose.Schema({
     loginRateLimit: { type: Number, default: 5 },
     emailVerificationRequired: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: false },
+    oneActiveDeviceLimit: { type: Boolean, default: false },
+    deviceApprovalRequired: { type: Boolean, default: false },
   },
   ticketing: {
     qrEnabled: { type: Boolean, default: true },

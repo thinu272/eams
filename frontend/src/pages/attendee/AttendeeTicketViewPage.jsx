@@ -14,15 +14,43 @@ import {
   ArrowLeftIcon,
   CameraIcon,
   ShieldCheckIcon,
-  QrCodeIcon
+  QrCodeIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
+import toast from 'react-hot-toast';
 
 const AttendeeTicketViewPage = () => {
   const { ticketId } = useParams();
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (token, ticketNumber) => {
+    if (!token) return;
+    try {
+      setDownloading(true);
+      const response = await api.get(`/tickets/download/${token}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Ticket-${ticketNumber || token}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Ticket downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading ticket:', error);
+      toast.error('Failed to download ticket PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     if (ticketId) {
@@ -92,7 +120,7 @@ const AttendeeTicketViewPage = () => {
     });
   };
 
-  const isConfirmed = ticket?.attendee?.isConfirmed && ticket?.attendee?.confirmationStatus === 'confirmed';
+  const isConfirmed = ticket?.status === 'CONFIRMED';
   const needsConfirmation = !isConfirmed;
   const needsPhoto = !ticket?.attendee?.photo && ticket?.event?.requirePhotoVerification;
 
@@ -177,11 +205,42 @@ const AttendeeTicketViewPage = () => {
                     <p className="text-sm text-gray-600 text-center mb-4">
                       Show this QR code at the event entrance for quick entry
                     </p>
-                    <div className="flex items-center space-x-2 text-green-600">
-                      <CheckCircleSolid className="h-5 w-5" />
-                      <span className="text-sm font-medium">Ticket Active</span>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 mt-2">
+                      <div className="flex items-center space-x-2 text-green-600">
+                        <CheckCircleSolid className="h-5 w-5" />
+                        <span className="text-sm font-medium">Ticket Active</span>
+                      </div>
+                      <button
+                        onClick={() => handleDownload(ticket.attendee?.qrToken, ticket.ticketNumber)}
+                        disabled={downloading}
+                        className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto disabled:opacity-50"
+                      >
+                        {downloading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Downloading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDownTrayIcon className="h-4 w-4 flex-shrink-0" />
+                            <span>Download PDF Ticket</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   </>
+                ) : ticket?.status === 'PENDING_VERIFICATION' ? (
+                  <div className="text-center py-8">
+                    <div className="w-32 h-32 bg-amber-50 rounded-lg flex items-center justify-center mx-auto mb-4 border border-amber-100">
+                      <ClockIcon className="h-16 w-16 text-amber-500" />
+                    </div>
+                    <p className="text-amber-800 font-semibold mb-2">
+                      Awaiting Photo Verification
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto mb-4">
+                      The organizer is currently reviewing your uploaded face photo. The entry QR code will unlock once approved.
+                    </p>
+                  </div>
                 ) : (
                   <div className="text-center py-8">
                     <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">

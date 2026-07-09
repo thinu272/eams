@@ -91,6 +91,33 @@ const CheckoutPage = () => {
     );
   }
 
+  const isExpired = event.endDate && new Date(event.endDate) < new Date();
+
+  if (isExpired) {
+    return (
+      <PublicLayout>
+        <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
+          <p className="text-sm font-black uppercase tracking-[0.3em] text-red-500">
+            Booking Closed
+          </p>
+          <h1 className="mt-6 text-5xl font-black text-slate-950 uppercase tracking-tight">Event Has Ended</h1>
+          <p className="mt-6 text-lg text-slate-500 font-medium">
+            This event is overdue. Ticket bookings are no longer available.
+          </p>
+          <div className="mt-10">
+            <Link
+              to="/events"
+              className="inline-flex rounded-full bg-slate-950 px-8 py-4 text-sm font-black uppercase tracking-widest text-white transition shadow-xl brightness-110"
+              style={{ backgroundColor: themeColor }}
+            >
+              Back to fixtures
+            </Link>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
   const selectedCategories = event.categories.filter((category) => selectedTickets[category.id] > 0);
   const totalTickets = Object.values(selectedTickets).reduce((sum, qty) => sum + qty, 0);
   const totalPrice = event.categories.reduce((sum, category) => {
@@ -115,6 +142,11 @@ const CheckoutPage = () => {
   };
 
   const handlePayment = async () => {
+    if (event.endDate && new Date(event.endDate) < new Date()) {
+      toast.error('This event has already ended. Booking is closed.');
+      return;
+    }
+
     if (!buyerDetails.name || !buyerDetails.email) {
       toast.error('Please fill in all required fields');
       return;

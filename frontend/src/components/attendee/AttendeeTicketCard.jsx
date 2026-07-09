@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   TicketIcon, 
@@ -8,11 +8,40 @@ import {
   CheckCircleIcon,
   ClockIcon,
   XCircleIcon,
-  CameraIcon
+  CameraIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
+import api from '../../api/client';
+import toast from 'react-hot-toast';
 
 const AttendeeTicketCard = ({ ticket }) => {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (token, ticketNumber) => {
+    if (!token) return;
+    try {
+      setDownloading(true);
+      const response = await api.get(`/tickets/download/${token}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Ticket-${ticketNumber || token}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Ticket downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading ticket:', error);
+      toast.error('Failed to download ticket PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'confirmed':
@@ -61,6 +90,7 @@ const AttendeeTicketCard = ({ ticket }) => {
 
   const needsConfirmation = !ticket.attendee?.isConfirmed || ticket.attendee?.confirmationStatus !== 'confirmed';
   const needsPhoto = !ticket.attendee?.photo && ticket.event?.requirePhotoVerification;
+  const isConfirmed = ticket.status === 'CONFIRMED';
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
@@ -106,7 +136,19 @@ const AttendeeTicketCard = ({ ticket }) => {
         </div>
 
         {/* Action Requirements */}
-        {(needsConfirmation || needsPhoto) && (
+        {ticket.status === 'PENDING_VERIFICATION' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div className="flex items-start space-x-2">
+              <ClockIcon className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold text-blue-800">Awaiting Photo Verification</p>
+                <p className="text-blue-700 text-xs mt-0.5">Your organizer is reviewing your photo. The entry QR code will unlock once approved.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(needsConfirmation || needsPhoto) && ticket.status !== 'PENDING_VERIFICATION' && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
             <div className="flex items-start space-x-2">
               <div className="w-5 h-5 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -144,6 +186,26 @@ const AttendeeTicketCard = ({ ticket }) => {
               <button className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 transition-colors w-full xs:w-auto">
                 <CameraIcon className="h-4 w-4 flex-shrink-0" />
                 <span>Upload Photo</span>
+              </button>
+            )}
+
+            {isConfirmed && (
+              <button
+                onClick={() => handleDownload(ticket.attendee?.qrToken, ticket.ticketNumber)}
+                disabled={downloading}
+                className="inline-flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors w-full xs:w-auto disabled:opacity-50"
+              >
+                {downloading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Downloading...</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowDownTrayIcon className="h-4 w-4 flex-shrink-0" />
+                    <span>Download PDF</span>
+                  </>
+                )}
               </button>
             )}
           </div>

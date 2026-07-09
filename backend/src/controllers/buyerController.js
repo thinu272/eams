@@ -168,7 +168,8 @@ const assignSelfToTicket = async (req, res, next) => {
 
     await attendee.save();
     ticket.attendee = attendee._id;
-    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
+    const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
+    ticket.status = requiresPhotoVerification(ticket.event) && attendee.photo ? 'PENDING_VERIFICATION' : nextTicketStatus;
     await ticket.save();
 
     // Update order confirmation status
@@ -325,6 +326,7 @@ module.exports = {
             assigned,
             pending,
           },
+          totalAmount: order.totalAmount,
           categories: Object.values(byCategory).sort((a, b) => (a.categoryName || '').localeCompare(b.categoryName || '')),
         };
       });

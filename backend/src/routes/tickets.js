@@ -516,4 +516,34 @@ router.get('/download/:token', protect, async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/tickets/order-download/:orderId
+ * Protected endpoint to download the order summary PDF
+ */
+router.get('/order-download/:orderId', protect, async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.orderId).populate('eventId');
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const requesterEmail = req.user?.email?.toLowerCase?.() || '';
+    const isAllowed = order.buyerEmail?.toLowerCase?.() === requesterEmail;
+
+    if (!isAllowed) {
+      return res.status(403).json({ success: false, message: 'You are not authorised to download this order summary.' });
+    }
+
+    const { generateOrderSummaryPDF } = require('../services/pdfService');
+    const pdfBuffer = await generateOrderSummaryPDF(order, order.eventId);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ENTRYNEX-Order-${order.orderNumber}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('ORDER DOWNLOAD ERROR:', err);
+    next(err);
+  }
+});
+
 module.exports = router;

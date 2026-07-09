@@ -159,7 +159,7 @@ router.get('/', async (req, res, next) => {
     
     const filter = {
       status: status ? status : { $in: ['published', 'ongoing'] },
-      endDate: { $gte: new Date(new Date().getTime() - 60 * 60 * 1000) } // Lenient expiry (1 hour grace)
+      endDate: { $gte: new Date() } // Filter out overdue events
     };
 
     console.log('[PUBLIC_LISTING] Querying events with filter:', JSON.stringify(filter));

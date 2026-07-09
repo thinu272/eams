@@ -129,6 +129,13 @@ io.on("connection", (socket) => {
       socket.leave(`dashboard:${eventId}`);
     }
   });
+  // Listing page room — for real-time event listing updates
+  socket.on("join_listings", () => {
+    socket.join('listings');
+  });
+  socket.on("leave_listings", () => {
+    socket.leave('listings');
+  });
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
@@ -166,6 +173,7 @@ app.use('/api/sub', require('./routes/sub'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/devices', require('./routes/devices'));
 
 // --- DATABASE CONNECTION ---
 const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";

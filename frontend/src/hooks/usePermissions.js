@@ -6,88 +6,93 @@ export const usePermissions = () => {
   const { user } = useAuth();
   const canonicalRole = getCanonicalRole(user?.role);
 
-  const permissions = useMemo(() => ({
-    // Basic permissions
-    canViewDashboard: hasRolePower(user?.role, 'Attendee'),
-    canViewOwnProfile: true, // All users can view their own profile
-    
-    // Event permissions
-    canViewEvents: hasRolePower(user?.role, 'Attendee'),
-    canCreateEvents: hasRolePower(user?.role, 'MainOrganiser'),
-    canEditEvents: hasRolePower(user?.role, 'MainOrganiser'),
-    canDeleteEvents: hasRolePower(user?.role, 'MainAdmin'),
-    
-    // Attendee permissions
-    canViewAttendees: hasRolePower(user?.role, 'SubOrganiser'),
-    canEditAttendees: hasRolePower(user?.role, 'MainOrganiser'),
-    canDeleteAttendees: hasRolePower(user?.role, 'MainAdmin'),
-    canInviteAttendees: hasRolePower(user?.role, 'MainOrganiser'),
-    canBulkUpload: hasRolePower(user?.role, 'SubOrganiser'),
-    
-    // Ticket permissions
-    canViewTickets: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    canCreateTickets: hasRolePower(user?.role, 'MainOrganiser'),
-    canEditTickets: hasRolePower(user?.role, 'MainOrganiser'),
-    canDeleteTickets: hasRolePower(user?.role, 'MainAdmin'),
-    canScanTickets: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    
-    // Verification permissions
-    canViewVerifications: hasRolePower(user?.role, 'SubOrganiser'),
-    canVerifyPhotos: hasRolePower(user?.role, 'SubOrganiser'),
-    canApproveVerifications: hasRolePower(user?.role, 'MainOrganiser'),
-    canRejectVerifications: hasRolePower(user?.role, 'SubOrganiser'),
-    
-    // Zone permissions
-    canViewZones: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    canManageZones: hasRolePower(user?.role, 'SubOrganiser'),
-    canCreateZones: hasRolePower(user?.role, 'MainOrganiser'),
-    canEditZones: hasRolePower(user?.role, 'SubOrganiser'),
-    canDeleteZones: hasRolePower(user?.role, 'MainAdmin'),
-    
-    // Scanning permissions
-    canScanEntry: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    canScanZones: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    canManualSearch: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    
-    // Reports permissions
-    canViewReports: hasRolePower(user?.role, 'Auditor'),
-    canExportReports: hasRolePower(user?.role, 'Auditor'),
-    canGenerateReports: hasRolePower(user?.role, 'MainOrganiser'),
-    
-    // User management permissions
-    canViewUsers: hasRolePower(user?.role, 'MainOrganiser'),
-    canCreateUsers: hasRolePower(user?.role, 'MainAdmin'),
-    canEditUsers: hasRolePower(user?.role, 'MainAdmin'),
-    canDeleteUsers: hasRolePower(user?.role, 'MainAdmin'),
-    canAssignRoles: hasRolePower(user?.role, 'MainAdmin'),
-    
-    // Organiser permissions
-    canViewOrganisers: hasRolePower(user?.role, 'MainAdmin'),
-    canCreateOrganisers: hasRolePower(user?.role, 'MainAdmin'),
-    canEditOrganisers: hasRolePower(user?.role, 'MainAdmin'),
-    canDeleteOrganisers: hasRolePower(user?.role, 'MainAdmin'),
-    
-    // System permissions
-    canViewSystemLogs: hasRolePower(user?.role, 'MainAdmin'),
-    canManageSettings: hasRolePower(user?.role, 'MainAdmin'),
-    canViewSystemHealth: hasRolePower(user?.role, 'MainAdmin'),
-    canManageNotifications: hasRolePower(user?.role, 'MainOrganiser'),
-    
-    // Activity permissions
-    canViewActivityLogs: hasRolePower(user?.role, 'SubOrganiser'),
-    canViewEntryLogs: hasRolePower(user?.role, 'Staff') || canonicalRole === 'Volunteer',
-    canViewZoneActivity: hasRolePower(user?.role, 'SubOrganiser'),
-    
-    // Financial permissions
-    canViewRevenue: hasRolePower(user?.role, 'MainOrganiser'),
-    canViewOrders: hasRolePower(user?.role, 'MainOrganiser'),
-    canProcessRefunds: hasRolePower(user?.role, 'MainAdmin'),
-    
-    // Communication permissions
-    canSendNotifications: hasRolePower(user?.role, 'MainOrganiser'),
-    canSendEmails: hasRolePower(user?.role, 'MainOrganiser'),
-    canSendSMS: hasRolePower(user?.role, 'MainOrganiser'),
-  }), [user?.role]);
+  const permissions = useMemo(() => {
+    const hasPower = (requiredRole) => hasRolePower(user?.role, requiredRole);
+    const hasCustom = (permKey) => !!user?.permissions?.[permKey];
+
+    return {
+      // Basic permissions
+      canViewDashboard: hasPower('Attendee') || hasCustom('canViewDashboard'),
+      canViewOwnProfile: true, // All users can view their own profile
+      
+      // Event permissions
+      canViewEvents: hasPower('Attendee') || hasCustom('canViewEvents'),
+      canCreateEvents: hasPower('MainOrganiser') || hasCustom('canCreateEvents'),
+      canEditEvents: hasPower('MainOrganiser') || hasCustom('canEditEvents'),
+      canDeleteEvents: hasPower('MainAdmin') || hasCustom('canDeleteEvents'),
+      
+      // Attendee permissions
+      canViewAttendees: hasPower('SubOrganiser') || hasCustom('canViewAttendees'),
+      canEditAttendees: hasPower('MainOrganiser') || hasCustom('canEditAttendees'),
+      canDeleteAttendees: hasPower('MainAdmin') || hasCustom('canDeleteAttendees'),
+      canInviteAttendees: hasPower('MainOrganiser') || hasCustom('canInviteAttendees'),
+      canBulkUpload: hasPower('SubOrganiser') || hasCustom('canBulkUpload'),
+      
+      // Ticket permissions
+      canViewTickets: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canViewTickets'),
+      canCreateTickets: hasPower('MainOrganiser') || hasCustom('canCreateTickets'),
+      canEditTickets: hasPower('MainOrganiser') || hasCustom('canEditTickets'),
+      canDeleteTickets: hasPower('MainAdmin') || hasCustom('canDeleteTickets'),
+      canScanTickets: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanTickets'),
+      
+      // Verification permissions
+      canViewVerifications: hasPower('SubOrganiser') || hasCustom('canViewVerifications'),
+      canVerifyPhotos: hasPower('SubOrganiser') || hasCustom('canVerifyPhotos'),
+      canApproveVerifications: hasPower('MainOrganiser') || hasCustom('canApproveVerifications'),
+      canRejectVerifications: hasPower('SubOrganiser') || hasCustom('canRejectVerifications'),
+      
+      // Zone permissions
+      canViewZones: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canViewZones'),
+      canManageZones: hasPower('SubOrganiser') || hasCustom('canManageZones'),
+      canCreateZones: hasPower('MainOrganiser') || hasCustom('canCreateZones'),
+      canEditZones: hasPower('SubOrganiser') || hasCustom('canEditZones'),
+      canDeleteZones: hasPower('MainAdmin') || hasCustom('canDeleteZones'),
+      
+      // Scanning permissions
+      canScanEntry: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanEntry'),
+      canScanZones: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanZones'),
+      canManualSearch: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canManualSearch'),
+      
+      // Reports permissions
+      canViewReports: hasPower('Auditor') || hasCustom('canViewReports'),
+      canExportReports: hasPower('Auditor') || hasCustom('canExportReports'),
+      canGenerateReports: hasPower('MainOrganiser') || hasCustom('canGenerateReports'),
+      
+      // User management permissions
+      canViewUsers: hasPower('MainOrganiser') || hasCustom('canViewUsers'),
+      canCreateUsers: hasPower('MainAdmin') || hasCustom('canCreateUsers'),
+      canEditUsers: hasPower('MainAdmin') || hasCustom('canEditUsers'),
+      canDeleteUsers: hasPower('MainAdmin') || hasCustom('canDeleteUsers'),
+      canAssignRoles: hasPower('MainAdmin') || hasCustom('canAssignRoles'),
+      
+      // Organiser permissions
+      canViewOrganisers: hasPower('MainAdmin') || hasCustom('canViewOrganisers'),
+      canCreateOrganisers: hasPower('MainAdmin') || hasCustom('canCreateOrganisers'),
+      canEditOrganisers: hasPower('MainAdmin') || hasCustom('canEditOrganisers'),
+      canDeleteOrganisers: hasPower('MainAdmin') || hasCustom('canDeleteOrganisers'),
+      
+      // System permissions
+      canViewSystemLogs: hasPower('MainAdmin') || hasCustom('canViewSystemLogs'),
+      canManageSettings: hasPower('MainAdmin') || hasCustom('canManageSettings'),
+      canViewSystemHealth: hasPower('MainAdmin') || hasCustom('canViewSystemHealth'),
+      canManageNotifications: hasPower('MainOrganiser') || hasCustom('canManageNotifications'),
+      
+      // Activity permissions
+      canViewActivityLogs: hasPower('SubOrganiser') || hasCustom('canViewActivityLogs'),
+      canViewEntryLogs: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canViewEntryLogs'),
+      canViewZoneActivity: hasPower('SubOrganiser') || hasCustom('canViewZoneActivity'),
+      
+      // Financial permissions
+      canViewRevenue: hasPower('MainOrganiser') || hasCustom('canViewRevenue'),
+      canViewOrders: hasPower('MainOrganiser') || hasCustom('canViewOrders'),
+      canProcessRefunds: hasPower('MainAdmin') || hasCustom('canProcessRefunds'),
+      
+      // Communication permissions
+      canSendNotifications: hasPower('MainOrganiser') || hasCustom('canSendNotifications'),
+      canSendEmails: hasPower('MainOrganiser') || hasCustom('canSendEmails'),
+      canSendSMS: hasPower('MainOrganiser') || hasCustom('canSendSMS'),
+    };
+  }, [user?.role, user?.permissions, canonicalRole]);
 
   const hasPermission = (permission) => {
     return permissions[permission] || false;

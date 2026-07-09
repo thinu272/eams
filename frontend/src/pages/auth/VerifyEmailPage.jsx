@@ -4,6 +4,9 @@ import api from '../../api/client';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
+// Track called tokens to prevent double-verification in React 18 Strict Mode
+const calledTokens = new Set();
+
 const VerifyEmailPage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -11,6 +14,12 @@ const VerifyEmailPage = () => {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    if (!token || calledTokens.has(token)) {
+      // If already verifying or verified in this session, do not request again
+      return;
+    }
+    calledTokens.add(token);
+
     const verifyEmail = async () => {
       try {
         const response = await api.get(`/auth/verify-email/${token}`);
@@ -19,18 +28,18 @@ const VerifyEmailPage = () => {
           setMessage(response.data.message);
           toast.success('Email verified! You can now log in.');
         } else {
+          calledTokens.delete(token); // Allow retry on failure
           setStatus('error');
           setMessage(response.data.message || 'Verification failed.');
         }
       } catch (err) {
+        calledTokens.delete(token); // Allow retry on failure
         setStatus('error');
         setMessage(err.response?.data?.message || 'The verification link is invalid or has expired.');
       }
     };
 
-    if (token) {
-      verifyEmail();
-    }
+    verifyEmail();
   }, [token]);
 
   return (

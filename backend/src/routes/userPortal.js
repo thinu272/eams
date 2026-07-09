@@ -231,6 +231,11 @@ router.get('/profile', async (req, res) => {
         name: req.user.name,
         email: req.user.email,
         phone: req.user.phone,
+        isVerified: req.user.isVerified,
+        createdAt: req.user.createdAt,
+        lastLogin: req.user.lastLogin,
+        mfaEnabled: req.user.mfaEnabled,
+        profilePhoto: req.user.profilePhoto,
       },
     },
   });

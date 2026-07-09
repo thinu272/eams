@@ -1,7 +1,9 @@
+
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { getSocketUrl } from '../../utils/backend';
+import { getSocketUrl, getAssetUrl } from '../../utils/backend';
 import { formatDistanceToNow } from 'date-fns';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import toast from 'react-hot-toast';
@@ -218,6 +220,9 @@ const OrganiserDashboard = () => {
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [logoImageFile, setLogoImageFile] = useState(null);
   const [bannerImageFile, setBannerImageFile] = useState(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [removeBanner, setRemoveBanner] = useState(false);
+  const [removeCover, setRemoveCover] = useState(false);
   
   const [customRoles, setCustomRoles] = useState([]);
   const [customRoleModal, setCustomRoleModal] = useState(null);
@@ -489,7 +494,7 @@ const OrganiserDashboard = () => {
   };
 
   const teamCounts = useMemo(() => {
-    const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, total: teamMembers.length };
+    const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, None: 0, total: teamMembers.length };
     teamMembers.forEach(m => {
       if (counts[m.role] !== undefined) {
         counts[m.role]++;
@@ -713,11 +718,19 @@ const OrganiserDashboard = () => {
       if (logoImageFile) formData.append('logoImage', logoImageFile);
       if (bannerImageFile) formData.append('bannerImage', bannerImageFile);
 
+      // Removal flags — only sent when no new file is chosen
+      if (removeCover && !coverImageFile) formData.append('removeCoverImage', 'true');
+      if (removeLogo && !logoImageFile) formData.append('removeLogoImage', 'true');
+      if (removeBanner && !bannerImageFile) formData.append('removeBannerImage', 'true');
+
       await updateOrganiserEventCustomization(formData);
       toast.success('Event customization updated');
       setCoverImageFile(null);
       setLogoImageFile(null);
       setBannerImageFile(null);
+      setRemoveCover(false);
+      setRemoveLogo(false);
+      setRemoveBanner(false);
       loadWorkspace(activeEventId);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
@@ -736,15 +749,16 @@ const OrganiserDashboard = () => {
     try {
       const payload = {
         ...sponsorPackageModal,
+        eventId,
         capacity: Number(sponsorPackageModal.capacity || 1),
         price: Number(sponsorPackageModal.price || 0),
         benefits: (sponsorPackageModal.benefits || []).filter(Boolean),
       };
       if (sponsorPackageModal.id) {
-        await updateSponsorPackage(sponsorPackageModal.id, payload);
+        await updateSponsorPackage(sponsorPackageModal.id, payload, { eventId });
         toast.success('Sponsor package updated');
       } else {
-        await createSponsorPackage(payload);
+        await createSponsorPackage(payload, { eventId });
         toast.success('Sponsor package created');
       }
       setSponsorPackageModal(null);
@@ -766,8 +780,9 @@ const OrganiserDashboard = () => {
     try {
       const payload = {
         ...sponsorModal,
+        eventId,
       };
-      await createSponsor(payload);
+      await createSponsor(payload, { eventId });
       toast.success('Sponsor created');
       setSponsorModal(null);
       loadWorkspace(eventId);
@@ -1106,48 +1121,133 @@ const OrganiserDashboard = () => {
                     <option value="SGD">SGD (Singapore Dollar)</option>
                   </select>
                 </label>
-                <div className="space-y-4">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Event Logo</span>
-                  {customizationForm.branding.logoImage && !logoImageFile && (
-                    <div className="h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
-                      <img src={customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : getAssetUrl(customizationForm.branding.logoImage)} alt="logo" className="h-full w-full object-contain" />
+                {/* ── Logo Image ── */}
+                {(() => {
+                  const logoSrc = logoImageFile
+                    ? URL.createObjectURL(logoImageFile)
+                    : (customizationForm.branding.logoImage && !removeLogo)
+                      ? (customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : getAssetUrl(customizationForm.branding.logoImage))
+                      : null;
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Event Logo</p>
+                      <div className="flex items-center gap-4">
+                        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
+                          {logoSrc ? (
+                            <img src={logoSrc} alt="logo preview" className="h-full w-full object-contain" />
+                          ) : (
+                            <svg className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2 flex-1">
+                          <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors w-fit">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                            {logoSrc ? 'Change Image' : 'Upload Image'}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setLogoImageFile(f); if (f) setRemoveLogo(false); }} />
+                          </label>
+                          {logoSrc && (
+                            <button
+                              type="button"
+                              onClick={() => { setRemoveLogo(true); setLogoImageFile(null); }}
+                              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors w-fit"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              Remove Logo
+                            </button>
+                          )}
+                          {logoImageFile && <p className="text-[10px] text-slate-500 truncate max-w-[180px]">Selected: {logoImageFile.name}</p>}
+                          {removeLogo && !logoImageFile && <p className="text-[10px] text-red-500 font-semibold">Logo will be removed on save</p>}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setLogoImageFile(e.target.files?.[0] || null)}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
-                  />
-                </div>
-                <div className="space-y-4">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cover Image (Card View)</span>
-                  {customizationForm.branding.coverImage && !coverImageFile && (
-                    <div className="h-24 w-full max-w-xs overflow-hidden rounded-xl border border-slate-200">
-                      <img src={customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : getAssetUrl(customizationForm.branding.coverImage)} alt="cover" className="h-full w-full object-cover" />
+                  );
+                })()}
+
+                {/* ── Cover Image ── */}
+                {(() => {
+                  const coverSrc = coverImageFile
+                    ? URL.createObjectURL(coverImageFile)
+                    : (customizationForm.branding.coverImage && !removeCover)
+                      ? (customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : getAssetUrl(customizationForm.branding.coverImage))
+                      : null;
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Cover Image <span className="normal-case font-normal text-slate-400">(Card View)</span></p>
+                      <div className="relative h-32 w-full overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
+                        {coverSrc ? (
+                          <img src={coverSrc} alt="cover preview" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-slate-300">
+                            <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <span className="text-xs">No cover image</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                          {coverSrc ? 'Change Image' : 'Upload Image'}
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setCoverImageFile(f); if (f) setRemoveCover(false); }} />
+                        </label>
+                        {coverSrc && (
+                          <button
+                            type="button"
+                            onClick={() => { setRemoveCover(true); setCoverImageFile(null); }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            Remove Image
+                          </button>
+                        )}
+                      </div>
+                      {coverImageFile && <p className="text-[10px] text-slate-500 truncate">Selected: {coverImageFile.name}</p>}
+                      {removeCover && !coverImageFile && <p className="text-[10px] text-red-500 font-semibold">Cover image will be removed on save</p>}
                     </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
-                  />
-                </div>
-                <div className="space-y-4">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hero Banner Image</span>
-                  {customizationForm.branding.bannerImage && !bannerImageFile && (
-                    <div className="h-32 w-full overflow-hidden rounded-2xl border border-slate-200">
-                      <img src={customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : getAssetUrl(customizationForm.branding.bannerImage)} alt="banner" className="h-full w-full object-cover" />
+                  );
+                })()}
+
+                {/* ── Banner Image ── */}
+                {(() => {
+                  const bannerSrc = bannerImageFile
+                    ? URL.createObjectURL(bannerImageFile)
+                    : (customizationForm.branding.bannerImage && !removeBanner)
+                      ? (customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : getAssetUrl(customizationForm.branding.bannerImage))
+                      : null;
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Hero Banner Image</p>
+                      <div className="relative h-40 w-full overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
+                        {bannerSrc ? (
+                          <img src={bannerSrc} alt="banner preview" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-slate-300">
+                            <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <span className="text-xs">No banner image</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                          {bannerSrc ? 'Change Image' : 'Upload Image'}
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setBannerImageFile(f); if (f) setRemoveBanner(false); }} />
+                        </label>
+                        {bannerSrc && (
+                          <button
+                            type="button"
+                            onClick={() => { setRemoveBanner(true); setBannerImageFile(null); }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            Remove Banner
+                          </button>
+                        )}
+                      </div>
+                      {bannerImageFile && <p className="text-[10px] text-slate-500 truncate">Selected: {bannerImageFile.name}</p>}
+                      {removeBanner && !bannerImageFile && <p className="text-[10px] text-red-500 font-semibold">Banner image will be removed on save</p>}
                     </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setBannerImageFile(e.target.files?.[0] || null)}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm"
-                  />
-                </div>
+                  );
+                })()}
               </div>
 
               <div className="space-y-4">
@@ -1432,13 +1532,14 @@ const OrganiserDashboard = () => {
         {activeSection === 'suborganisers' && (
           <div className="space-y-6 animate-fade-in">
             {/* Team Overview Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               {[
                 { label: 'Total Strength', value: teamCounts.total, color: 'text-slate-900', bg: 'bg-slate-100/70 border-slate-200/60' },
                 { label: 'Sub-Organisers', value: teamCounts.SubOrganiser, color: 'text-indigo-600', bg: 'bg-indigo-50/30 border-indigo-100' },
                 { label: 'Staff', value: teamCounts.Staff, color: 'text-blue-600', bg: 'bg-blue-50/30 border-blue-100' },
                 { label: 'Volunteers', value: teamCounts.Volunteer, color: 'text-cyan-600', bg: 'bg-cyan-50/30 border-cyan-100' },
                 { label: 'Auditors', value: teamCounts.Auditor, color: 'text-teal-600', bg: 'bg-teal-50/30 border-teal-100' },
+                { label: 'None (Custom)', value: teamCounts.None, color: 'text-slate-600', bg: 'bg-slate-50/30 border-slate-100' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
@@ -1509,6 +1610,7 @@ const OrganiserDashboard = () => {
                       <option value="Staff">Staff</option>
                       <option value="Volunteer">Volunteers</option>
                       <option value="Auditor">Auditors</option>
+                      <option value="None">None (Custom Role)</option>
                     </select>
                     <select 
                       value={teamStatusFilter} 
@@ -1547,7 +1649,7 @@ const OrganiserDashboard = () => {
                                   <div className="text-xs text-slate-500">{user.email} · {user.phone}</div>
                                   {ownerName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">Lead: {ownerName}</div>}
                                 </Td>
-                                <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span></Td>
+                                <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span></Td>
                                 <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
                                 <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General Scope'}</Td>
                                 <Td>
@@ -1593,7 +1695,7 @@ const OrganiserDashboard = () => {
                                   <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
                                   <Td>
                                     <div className="flex flex-col gap-1 items-start">
-                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span>
                                       <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
                                     </div>
                                   </Td>
@@ -1637,7 +1739,7 @@ const OrganiserDashboard = () => {
                                   <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
                                   <Td>
                                     <div className="flex flex-col gap-1 items-start">
-                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span>
                                       <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
                                     </div>
                                   </Td>
@@ -2184,6 +2286,7 @@ const OrganiserDashboard = () => {
                 <option value="Staff">Staff</option>
                 <option value="Volunteer">Volunteer</option>
                 <option value="Auditor">Auditor</option>
+                <option value="None">None</option>
               </select>
             </label>
             <label className="space-y-1 block">
@@ -2194,7 +2297,7 @@ const OrganiserDashboard = () => {
               <span className="text-xs font-bold uppercase text-slate-500">Phone</span>
               <input value={subOrgForm.phone} onChange={(e) => setSubOrgForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
             </label>
-            {['SubOrganiser', 'Staff'].includes(subOrgForm.role) && (
+            {['SubOrganiser', 'Staff', 'None'].includes(subOrgForm.role) && (
               <label className="space-y-1 block sm:col-span-2">
                 <span className="text-xs font-bold uppercase text-slate-500">Custom Role Profile</span>
                 <select
@@ -2211,13 +2314,21 @@ const OrganiserDashboard = () => {
                           canBulkUpload: true,
                           canEntryAccess: true
                         };
-                      } else {
+                      } else if (subOrgForm.role === 'Staff') {
                         permissions = {
                           canAddAttendees: true,
                           canVerifyPhotos: true,
                           canInviteAttendees: true,
                           canBulkUpload: false,
                           canEntryAccess: true
+                        };
+                      } else {
+                        permissions = {
+                          canAddAttendees: false,
+                          canVerifyPhotos: false,
+                          canInviteAttendees: false,
+                          canBulkUpload: false,
+                          canEntryAccess: false
                         };
                       }
                       setSubOrgForm(curr => ({ 

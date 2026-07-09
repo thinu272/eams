@@ -15,6 +15,7 @@ const normalizeRoleForStorage = (role) => {
   if (normalized === 'AUDITOR') return 'Auditor';
   if (normalized === 'SPONSOR') return 'Sponsor';
   if (normalized === 'ATTENDEE' || normalized === 'USER' || normalized === 'BUYER') return 'Attendee';
+  if (normalized === 'NONE') return 'None';
 
   return String(role || '').trim();
 };
@@ -42,7 +43,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Sponsor', 'Attendee'],
+    enum: ['MainAdmin', 'MainOrganiser', 'SubOrganiser', 'Staff', 'Volunteer', 'Auditor', 'Sponsor', 'Attendee', 'None'],
     required: true,
     set: normalizeRoleForStorage,
   },
@@ -98,15 +99,31 @@ const userSchema = new mongoose.Schema({
   mfaSecret: { type: String, select: false },
   mfaBackupCodes: [{ type: String, select: false }],
   lastMfaVerification: { type: Date },
+  passwordHistory: [{ type: String, select: false }],
   
   refreshToken: { type: String, select: false },
 }, {
   timestamps: true,
 });
 
-// Hash password before save
+// Hash password before save & track password history
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
+
+  // Save current password hash to history if this is not a new user
+  if (!this.isNew) {
+    try {
+      const oldUser = await mongoose.model('User').findById(this._id).select('+password +passwordHistory');
+      if (oldUser && oldUser.password) {
+        const history = oldUser.passwordHistory || [];
+        history.unshift(oldUser.password);
+        this.passwordHistory = history.slice(0, 3);
+      }
+    } catch (err) {
+      console.error('Error saving password history:', err);
+    }
+  }
+
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
@@ -114,6 +131,24 @@ userSchema.pre('save', async function (next) {
 // Compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Check if password has been reused
+userSchema.methods.isPasswordReused = async function (candidatePassword) {
+  // Compare against current password hash
+  if (this.password && await bcrypt.compare(candidatePassword, this.password)) {
+    return true;
+  }
+  // Compare against password history hashes
+  if (this.passwordHistory && this.passwordHistory.length > 0) {
+    const bcrypt = require('bcryptjs');
+    for (const oldHash of this.passwordHistory) {
+      if (await bcrypt.compare(candidatePassword, oldHash)) {
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 // Remove sensitive fields from JSON output

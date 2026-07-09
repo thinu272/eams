@@ -53,13 +53,19 @@ const EventsListingPage = () => {
 
   useEffect(() => {
     const socket = io(getSocketUrl());
-    
-    socket.on('event_update', (data) => {
-      console.log('Listing update received:', data);
+
+    // Join the listings room so we receive targeted broadcasts
+    socket.emit('join_listings');
+
+    const handleUpdate = () => {
       fetchEvents();
-    });
+    };
+
+    socket.on('event_update', handleUpdate);
+    socket.on('events_updated', handleUpdate);
 
     return () => {
+      socket.emit('leave_listings');
       socket.disconnect();
     };
   }, []);

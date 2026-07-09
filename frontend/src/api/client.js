@@ -14,6 +14,9 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('entrynex_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
 
+  const deviceId = localStorage.getItem('deviceId');
+  if (deviceId) config.headers['x-device-id'] = deviceId;
+
   // If data is FormData, let axios set the correct Content-Type with boundary
   if (config.data instanceof FormData) {
     if (typeof config.headers?.delete === 'function') {

@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { checkRoleMatch, getCanonicalRole, normalizeRole, ROLES } = require('../utils/rbac');
+const UserDevice = require('../models/UserDevice');
+const SystemConfig = require('../models/SystemConfig');
 
 const protect = async (req, res, next) => {
   try {
@@ -40,6 +42,26 @@ const protect = async (req, res, next) => {
     // Normalize role for robust RBAC
     user.rbacRole = getCanonicalRole(user.role);
     req.user = user;
+    // Session control: verify device legitimacy
+    const deviceId = req.headers['x-device-id'];
+    if (deviceId) {
+      const device = await UserDevice.findOne({ deviceId });
+      if (!device) {
+        return res.status(401).json({ success: false, message: 'Device not recognized.' });
+      }
+      if (device.status !== 'Active') {
+        return res.status(401).json({ success: false, message: 'Device is blocked.' });
+      }
+      // Check if device approval is required per system config
+      const sysConfig = await SystemConfig.findOne({});
+      if (sysConfig?.security?.deviceApprovalRequired && !device.isApproved) {
+        return res.status(401).json({ success: false, message: 'Device not approved.' });
+      }
+      // Ensure device belongs to the authenticated user
+      if (device.userId.toString() !== user._id.toString()) {
+        return res.status(401).json({ success: false, message: 'Device does not belong to the authenticated user.' });
+      }
+    }
     next();
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
