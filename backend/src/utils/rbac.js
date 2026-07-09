@@ -11,6 +11,7 @@ const ROLES = {
   VOLUNTEER: 'Volunteer',
   AUDITOR: 'Auditor',
   ATTENDEE: 'Attendee',
+  NONE: 'None',
 };
 
 // Hierarchy definition: higher number = more privilege
@@ -23,6 +24,7 @@ const ROLE_LEVELS = {
   [ROLES.VOLUNTEER]: 20,
   [ROLES.AUDITOR]: 10,
   [ROLES.ATTENDEE]: 1,
+  [ROLES.NONE]: 0,
 };
 
 /**
@@ -48,6 +50,7 @@ const normalizeRole = (role) => {
     'attendee': ROLES.ATTENDEE,
     'user': ROLES.ATTENDEE,
     'buyer': ROLES.ATTENDEE,
+    'none': ROLES.NONE,
   };
 
   return mapping[r.toLowerCase()] || r;

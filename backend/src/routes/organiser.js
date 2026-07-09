@@ -355,7 +355,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
       Role.find({ event: eventId }).sort({ createdAt: -1 }).lean(),
       User.find({
         assignedEvents: toObjectId(eventId),
-        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] },
       })
         .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
         .populate('customRole')
@@ -366,7 +366,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
         .lean(),
       User.countDocuments({
         assignedEvents: toObjectId(eventId),
-        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] },
       }),
       Ticket.aggregate([
         { $match: { event: toObjectId(eventId), status: { $ne: 'CANCELLED' } } },
@@ -772,6 +772,25 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
         await Ticket.insertMany(ticketDocs);
       }
 
+      // Send confirmation invites for bulk-uploaded attendees that have an email address
+      const inviteTasks = createdAttendees.map((attendee) => {
+        if (!attendee.email) return Promise.resolve({ skipped: true, reason: 'No email provided', attendeeId: attendee._id });
+        return notifyInvite({
+          attendee,
+          event,
+          email: attendee.email,
+          phone: attendee.phone,
+        }).then(() => ({ skipped: false, attendeeId: attendee._id }))
+          .catch((error) => {
+            console.error('BULK INVITE ERROR:', error, 'attendeeId:', attendee._id);
+            return { skipped: false, attendeeId: attendee._id, error: error.message || 'invite failed' };
+          });
+      });
+      const inviteResults = await Promise.all(inviteTasks);
+      const invitesSent = inviteResults.filter((result) => !result.skipped && !result.error).length;
+      const invitesSkipped = inviteResults.filter((result) => result.skipped).length;
+      const inviteFailures = inviteResults.filter((result) => result.error).length;
+
       // Update Event Sold Counts
       const categoryCounts = {};
       docs.forEach(d => {
@@ -806,13 +825,26 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
       title: 'Bulk attendee upload complete',
       message: `${docs.length} attendee records imported${errors.length ? ` with ${errors.length} row issues` : ''}.`,
       type: errors.length ? 'warning' : 'success',
-      metadata: { actionType: 'attendee_bulk_upload', created: docs.length, errorCount: errors.length },
+      metadata: {
+        actionType: 'attendee_bulk_upload',
+        created: docs.length,
+        errorCount: errors.length,
+        invitesSent,
+        invitesSkipped,
+        inviteFailures,
+      },
     });
 
     res.json({
       success: true,
-      data: { created: docs.length, errors },
-      message: `${docs.length} attendees created.`,
+      data: {
+        created: docs.length,
+        errors,
+        invitesSent,
+        invitesSkipped,
+        inviteFailures,
+      },
+      message: `${docs.length} attendees created. ${invitesSent} invite emails sent${inviteFailures ? `, ${inviteFailures} failed` : ''}${invitesSkipped ? `, ${invitesSkipped} skipped due to missing email` : ''}.`,
     });
   } catch (err) {
     next(err);
@@ -1083,7 +1115,7 @@ router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req
     
     const query = {
       assignedEvents: req.scopedEvent._id,
-      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] }
+      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] }
     };
 
     if (isMainOrganiser) {
@@ -1264,7 +1296,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
 
     // Add to event personnel collections
     const userIdStr = String(user._id);
-    if (targetRole === ROLES.SUB_ORGANISER) {
+    if (targetRole === ROLES.SUB_ORGANISER || targetRole === ROLES.NONE) {
       event.subOrganisers = Array.from(new Set([...(event.subOrganisers || []).map(String), userIdStr])).map(toObjectId);
     } else if (targetRole === ROLES.STAFF) {
       event.staff = Array.from(new Set([...(event.staff || []).map(String), userIdStr])).map(toObjectId);
@@ -1329,8 +1361,8 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
       const effectiveRole = normalizeRole(req.body.role || user.role);
       const canHaveCheckpoints = [ROLES.STAFF, ROLES.VOLUNTEER].includes(effectiveRole);
 
-    const eventId = req.body.eventId || req.query.eventId || req.params.eventId;
-    const event = eventId ? await Event.findById(eventId) : null;
+    const eventId = req.body.eventId || req.query.eventId || req.params.eventId || (user.assignedEvents && user.assignedEvents[0]) || (req.user.assignedEvents && req.user.assignedEvents[0]);
+    const event = eventId && mongoose.Types.ObjectId.isValid(eventId) ? await Event.findById(eventId) : null;
 
     // Zone scoping check for Sub-Organisers
     if (requesterRole === ROLES.SUB_ORGANISER && req.body.responsibilities?.zoneIds) {
@@ -1373,10 +1405,24 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
       user.responsibilities.zoneIds = Array.from(new Set([...existingZonesFromOtherEvents, ...newZonesFromThisEvent]));
     }
 
-    if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
-      const nextAssignments = new Set((user.assignedEvents || []).map((item) => String(item)));
-      nextAssignments.add(String(eventId));
-      user.assignedEvents = Array.from(nextAssignments).map((item) => toObjectId(item));
+    if (event && req.body.role) {
+      const targetRole = normalizeRole(req.body.role);
+      const userIdStr = String(user._id);
+      event.subOrganisers = (event.subOrganisers || []).filter(id => String(id) !== userIdStr);
+      event.staff = (event.staff || []).filter(id => String(id) !== userIdStr);
+      event.volunteers = (event.volunteers || []).filter(id => String(id) !== userIdStr);
+      event.auditors = (event.auditors || []).filter(id => String(id) !== userIdStr);
+
+      if (targetRole === ROLES.SUB_ORGANISER || targetRole === ROLES.NONE) {
+        event.subOrganisers.push(toObjectId(userIdStr));
+      } else if (targetRole === ROLES.STAFF) {
+        event.staff.push(toObjectId(userIdStr));
+      } else if (targetRole === ROLES.VOLUNTEER) {
+        event.volunteers.push(toObjectId(userIdStr));
+      } else if (targetRole === ROLES.AUDITOR) {
+        event.auditors.push(toObjectId(userIdStr));
+      }
+      await event.save();
     }
 
     await user.save();
@@ -1981,28 +2027,43 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       }
     }
 
-    if (branding || req.files) {
+    if (branding || req.files || req.body.removeCoverImage || req.body.removeLogoImage || req.body.removeBannerImage) {
       const b = branding || {};
       if (!event.branding) event.branding = {};
-      
+
       Object.assign(event.branding, b);
-      
+
+      // Handle new image uploads
       if (req.files?.coverImage) {
         const path = `/uploads/${req.files.coverImage[0].filename}`;
         event.coverImage = path;
         event.branding.coverImage = path;
+      } else if (req.body.removeCoverImage === 'true') {
+        // Remove cover image
+        event.coverImage = '';
+        event.branding.coverImage = '';
       }
+
       if (req.files?.bannerImage) {
         const path = `/uploads/${req.files.bannerImage[0].filename}`;
         event.bannerImage = path;
         event.branding.bannerImage = path;
+      } else if (req.body.removeBannerImage === 'true') {
+        // Remove banner image
+        event.bannerImage = '';
+        event.branding.bannerImage = '';
       }
+
       if (req.files?.logoImage) {
         const path = `/uploads/${req.files.logoImage[0].filename}`;
         event.logoImage = path;
         event.branding.logoImage = path;
+      } else if (req.body.removeLogoImage === 'true') {
+        // Remove logo image
+        event.logoImage = '';
+        event.branding.logoImage = '';
       }
-      
+
       event.markModified('branding');
     }
 
@@ -2066,6 +2127,8 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     if (io) {
       io.to(`event:${event._id}`).emit('event_update', { eventId: event._id });
       io.to(`dashboard:${event._id}`).emit('event_update', { eventId: event._id });
+      // Notify the public listing page so cover/banner/logo images update live
+      io.to('listings').emit('events_updated', { eventId: event._id });
     }
 
     res.json({ success: true, data: { event }, message: 'Event customization updated.' });

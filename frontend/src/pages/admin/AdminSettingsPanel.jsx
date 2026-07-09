@@ -450,6 +450,8 @@ const AdminSettingsPanel = () => {
                   <Toggle label="Require Password Complexity (Symbols/Numbers)" checked={settings.security?.requirePasswordComplexity} onChange={(v) => updateSetting('security', 'requirePasswordComplexity', v)} />
                   <Toggle label="Require Email Verification for New Users" checked={settings.security?.emailVerificationRequired} onChange={(v) => updateSetting('security', 'emailVerificationRequired', v)} />
                   <Toggle label="Enable Two-Factor Authentication (2FA)" checked={settings.security?.twoFactorEnabled} onChange={(v) => updateSetting('security', 'twoFactorEnabled', v)} />
+                  <Toggle label="Limit to One Active Device per Account" checked={settings.security?.oneActiveDeviceLimit} onChange={(v) => updateSetting('security', 'oneActiveDeviceLimit', v)} />
+                  <Toggle label="Require Admin Approval for New Devices" checked={settings.security?.deviceApprovalRequired} onChange={(v) => updateSetting('security', 'deviceApprovalRequired', v)} />
                 </div>
               </>
             )}

@@ -55,6 +55,14 @@ router.post('/', [
       });
     }
 
+    // Check if event is overdue
+    if (event.endDate && new Date(event.endDate) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'This event has ended. Ticket booking is no longer available.'
+      });
+    }
+
     // Enforce communication-channel-based requirements configured on the event
     const smsRequired = !!(event.settings?.communicationChannels?.sms);
     const emailRequired = !!(event.settings?.communicationChannels?.email);

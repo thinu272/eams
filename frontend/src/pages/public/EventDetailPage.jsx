@@ -200,7 +200,7 @@ const EventDetailPage = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-blue-950/40 mix-blend-multiply" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+          <div className={`grid grid-cols-1 gap-12 ${isExpired ? '' : 'lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end'}`}>
             <div>
               <Link
                 to="/events"
@@ -263,29 +263,27 @@ const EventDetailPage = () => {
               </div>
             </div>
 
-             <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
-              <p className="text-sm font-black uppercase tracking-[0.2em]" style={{ color: isExpired ? '#EF4444' : themeColor }}>
-                {isExpired ? 'Match Concluded' : 'Official Tickets'}
-              </p>
-              <h2 className="mt-4 text-2xl sm:text-3xl font-black text-white leading-tight">
-                {isExpired ? 'This event has ended.' : 'Secure your access today.'}
-              </h2>
-              <p className="mt-4 text-base text-slate-300 font-medium">
-                {isExpired 
-                  ? 'Ticket booking is no longer available for this match. Please check our upcoming fixtures.'
-                  : 'Select your preferred ticket category to view pricing and confirm your reservation.'
-                }
-              </p>
-               <button
-                type="button"
-                onClick={() => !isExpired && setIsTicketModalOpen(true)}
-                disabled={isExpired}
-                className={`mt-8 inline-flex w-full items-center justify-center rounded-xl px-6 py-4 text-lg font-black text-white shadow-lg transition hover:scale-[1.02] active:scale-[0.98] brightness-110 ${isExpired ? 'bg-slate-700 cursor-not-allowed opacity-50 shadow-none' : 'shadow-blue-900/50'}`}
-                style={!isExpired ? { backgroundColor: themeColor } : {}}
-              >
-                {isExpired ? 'Booking Closed' : 'Choose Tickets'}
-              </button>
-            </div>
+            {!isExpired && (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
+                <p className="text-sm font-black uppercase tracking-[0.2em]" style={{ color: themeColor }}>
+                  Official Tickets
+                </p>
+                <h2 className="mt-4 text-2xl sm:text-3xl font-black text-white leading-tight">
+                  Secure your access today.
+                </h2>
+                <p className="mt-4 text-base text-slate-300 font-medium">
+                  Select your preferred ticket category to view pricing and confirm your reservation.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsTicketModalOpen(true)}
+                  className="mt-8 inline-flex w-full items-center justify-center rounded-xl px-6 py-4 text-lg font-black text-white shadow-lg transition hover:scale-[1.02] active:scale-[0.98] brightness-110 shadow-blue-900/50"
+                  style={{ backgroundColor: themeColor }}
+                >
+                  Choose Tickets
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -388,130 +386,134 @@ const EventDetailPage = () => {
               )}
 
               {/* Ticket Categories Segment */}
-               <div className="pt-12">
-                <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-900">Ticket Categories</h2>
-                <div className="mt-2 h-1 w-12 sm:w-16 rounded-full" style={{ backgroundColor: themeColor }}></div>
-                <p className="mt-4 text-base font-medium text-slate-500 max-w-3xl">
-                  Review the packages below to see pricing and the specific stadium zones they grant access to.
-                </p>
-              </div>
+              {!isExpired && (
+                <>
+                  <div className="pt-12">
+                    <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-900">Ticket Categories</h2>
+                    <div className="mt-2 h-1 w-12 sm:w-16 rounded-full" style={{ backgroundColor: themeColor }}></div>
+                    <p className="mt-4 text-base font-medium text-slate-500 max-w-3xl">
+                      Review the packages below to see pricing and the specific stadium zones they grant access to.
+                    </p>
+                  </div>
 
-              <div className="grid gap-6 md:grid-cols-2 mt-8">
-                {categories.map((category) => {
-                  const categoryId = getCategoryId(category);
-                  return (
-                     <article
-                      key={categoryId}
-                      className="group flex flex-col rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm transition-all hover:shadow-xl hover:shadow-blue-900/10 relative overflow-hidden"
-                      style={{ '--hover-border': themeColor }}
-                    >
-                      <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" style={{ backgroundColor: `${themeColor}1A` }}></div>
-                      <div className="relative z-10">
-                        <div className="flex items-start justify-between gap-4 mb-2">
-                          <p className="text-sm font-black uppercase tracking-widest text-slate-400">
-                            Category
-                          </p>
-                        </div>
-                         <h3 className="text-3xl font-black text-slate-900 mb-4">{category.name}</h3>
-                        <p className="text-4xl font-black mb-8" style={{ color: themeColor }}>
-                          {formatCurrency(category.price)}
-                        </p>
-                        
-                        <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <h4 className="text-sm font-bold uppercase tracking-wide text-slate-900 flex items-center gap-2">
-                               <CheckCircleIcon className="h-5 w-5" style={{ color: themeColor }} /> Included Zones
-                            </h4>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${
-                                (category.capacity - category.sold) <= 0 
-                                  ? 'bg-red-100 text-red-600' 
-                                  : (category.capacity - category.sold) < 50 
-                                    ? 'bg-amber-100 text-amber-600' 
-                                    : 'bg-emerald-100 text-emerald-600'
-                              }`}>
-                                {(category.capacity - category.sold) <= 0 
-                                  ? 'Sold Out' 
-                                  : `${category.capacity - category.sold} Seats Left`}
-                              </span>
+                  <div className="grid gap-6 md:grid-cols-2 mt-8">
+                    {categories.map((category) => {
+                      const categoryId = getCategoryId(category);
+                      return (
+                         <article
+                          key={categoryId}
+                          className="group flex flex-col rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm transition-all hover:shadow-xl hover:shadow-blue-900/10 relative overflow-hidden"
+                          style={{ '--hover-border': themeColor }}
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" style={{ backgroundColor: `${themeColor}1A` }}></div>
+                          <div className="relative z-10">
+                            <div className="flex items-start justify-between gap-4 mb-2">
+                              <p className="text-sm font-black uppercase tracking-widest text-slate-400">
+                                Category
+                              </p>
+                            </div>
+                             <h3 className="text-3xl font-black text-slate-900 mb-4">{category.name}</h3>
+                            <p className="text-4xl font-black mb-8" style={{ color: themeColor }}>
+                              {formatCurrency(category.price)}
+                            </p>
+                            
+                            <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <h4 className="text-sm font-bold uppercase tracking-wide text-slate-900 flex items-center gap-2">
+                                   <CheckCircleIcon className="h-5 w-5" style={{ color: themeColor }} /> Included Zones
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${
+                                    (category.capacity - category.sold) <= 0 
+                                      ? 'bg-red-100 text-red-600' 
+                                      : (category.capacity - category.sold) < 50 
+                                        ? 'bg-amber-100 text-amber-600' 
+                                        : 'bg-emerald-100 text-emerald-600'
+                                  }`}>
+                                    {(category.capacity - category.sold) <= 0 
+                                      ? 'Sold Out' 
+                                      : `${category.capacity - category.sold} Seats Left`}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {category.allowedZones && category.allowedZones.length > 0 ? (
+                                  category.allowedZones.map(zoneId => {
+                                    const matchedZone = allZones.find((zone) => getZoneId(zone) === zoneId);
+                                    return (
+                                      <span key={zoneId} className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200">
+                                        {matchedZone ? matchedZone.name : zoneId}
+                                      </span>
+                                    );
+                                  })
+                                ) : (
+                                  <span className="text-sm text-slate-500 italic">Standard Admission</span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            {category.allowedZones && category.allowedZones.length > 0 ? (
-                              category.allowedZones.map(zoneId => {
-                                const matchedZone = allZones.find((zone) => getZoneId(zone) === zoneId);
-                                return (
-                                  <span key={zoneId} className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200">
-                                    {matchedZone ? matchedZone.name : zoneId}
-                                  </span>
-                                );
-                              })
-                            ) : (
-                              <span className="text-sm text-slate-500 italic">Standard Admission</span>
-                            )}
-                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  {/* Matrix Table */}
+                  {allZones.length > 0 && categories.length > 0 && (
+                    <div className="pt-8">
+                       <h2 className="text-3xl font-black uppercase tracking-tight text-slate-900">Access Matrix</h2>
+                      <div className="mt-2 h-1 w-16 rounded-full mb-6" style={{ backgroundColor: themeColor }}></div>
+                      
+                      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-900">
+                              <tr>
+                                <th className="px-6 py-5 text-left text-xs font-bold uppercase tracking-widest text-slate-300">
+                                  Stadium Zone
+                                </th>
+                                {categories.map((category) => (
+                                  <th
+                                    key={getCategoryId(category)}
+                                    className="px-6 py-5 text-center text-xs font-bold uppercase tracking-widest text-slate-300"
+                                  >
+                                    {category.name}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {allZones.map((zone) => (
+                                <tr key={getZoneId(zone)} className="hover:bg-slate-50 transition-colors">
+                                  <td className="whitespace-nowrap px-6 py-5 font-bold text-slate-900">
+                                    {zone.name}
+                                  </td>
+                                  {categories.map((category) => {
+                                    const zoneId = getZoneId(zone);
+                                    const categoryId = getCategoryId(category);
+                                    const hasAccess = category.allowedZones?.includes(zoneId);
+                                    return (
+                                      <td key={`${zoneId}-${categoryId}`} className="px-6 py-4 text-center">
+                                        {hasAccess ? (
+                                           <span className="inline-flex items-center justify-center h-8 w-8 rounded-full ring-4" style={{ backgroundColor: `${themeColor}1A`, color: themeColor, ringColor: `${themeColor}1A` }}>
+                                            <CheckCircleIcon className="h-4 w-4" />
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-400">
+                                            -
+                                          </span>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
-
-              {/* Matrix Table */}
-              {allZones.length > 0 && categories.length > 0 && (
-                <div className="pt-8">
-                   <h2 className="text-3xl font-black uppercase tracking-tight text-slate-900">Access Matrix</h2>
-                  <div className="mt-2 h-1 w-16 rounded-full mb-6" style={{ backgroundColor: themeColor }}></div>
-                  
-                  <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-900">
-                          <tr>
-                            <th className="px-6 py-5 text-left text-xs font-bold uppercase tracking-widest text-slate-300">
-                              Stadium Zone
-                            </th>
-                            {categories.map((category) => (
-                              <th
-                                key={getCategoryId(category)}
-                                className="px-6 py-5 text-center text-xs font-bold uppercase tracking-widest text-slate-300"
-                              >
-                                {category.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {allZones.map((zone) => (
-                            <tr key={getZoneId(zone)} className="hover:bg-slate-50 transition-colors">
-                              <td className="whitespace-nowrap px-6 py-5 font-bold text-slate-900">
-                                {zone.name}
-                              </td>
-                              {categories.map((category) => {
-                                const zoneId = getZoneId(zone);
-                                const categoryId = getCategoryId(category);
-                                const hasAccess = category.allowedZones?.includes(zoneId);
-                                return (
-                                  <td key={`${zoneId}-${categoryId}`} className="px-6 py-4 text-center">
-                                    {hasAccess ? (
-                                       <span className="inline-flex items-center justify-center h-8 w-8 rounded-full ring-4" style={{ backgroundColor: `${themeColor}1A`, color: themeColor, ringColor: `${themeColor}1A` }}>
-                                        <CheckCircleIcon className="h-4 w-4" />
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-400">
-                                        -
-                                      </span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
                     </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
 
               {/* Sponsor Packages Segment */}
@@ -600,13 +602,15 @@ const EventDetailPage = () => {
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsTicketModalOpen(true)}
-                  className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-4 text-lg font-black text-white hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
-                >
-                  Buy Tickets
-                </button>
+                {!isExpired && (
+                  <button
+                    type="button"
+                    onClick={() => setIsTicketModalOpen(true)}
+                    className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-4 text-lg font-black text-white hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
+                  >
+                    Buy Tickets
+                  </button>
+                )}
               </div>
             </aside>
           </div>

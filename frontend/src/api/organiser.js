@@ -67,10 +67,10 @@ export const updateOrganiserSettings = (payload) => api.put('/organiser/settings
 export const updateOrganiserEventCustomization = (payload) => api.put('/organiser/event-customization', payload);
 
 export const getSponsorPackages = (params) => api.get('/organiser/sponsor-packages', { params });
-export const createSponsorPackage = (payload) => api.post('/organiser/sponsor-packages', payload);
-export const updateSponsorPackage = (id, payload) => api.put(`/organiser/sponsor-packages/${id}`, payload);
+export const createSponsorPackage = (payload, params) => api.post('/organiser/sponsor-packages', payload, { params });
+export const updateSponsorPackage = (id, payload, params) => api.put(`/organiser/sponsor-packages/${id}`, payload, { params });
 export const deleteSponsorPackage = (id, eventId) => api.delete(`/organiser/sponsor-packages/${id}`, { params: { eventId } });
 
 export const getSponsors = (params) => api.get('/organiser/sponsors', { params });
-export const createSponsor = (payload) => api.post('/organiser/sponsors', payload);
+export const createSponsor = (payload, params) => api.post('/organiser/sponsors', payload, { params });
 export const deleteSponsor = (id, eventId) => api.delete(`/organiser/sponsors/${id}`, { params: { eventId } });

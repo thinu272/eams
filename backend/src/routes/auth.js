@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const SystemConfig = require('../models/SystemConfig');
+const UserDevice = require('../models/UserDevice');
 const { protect } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 const { logActivity } = require('../utils/logger');
@@ -18,6 +19,30 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+const validateNewPassword = async (newPassword, userObject = null) => {
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const minLen = config.security?.minPasswordLength || 8;
+  const requireComplexity = config.security?.requirePasswordComplexity || false;
+
+  if (!newPassword || newPassword.length < minLen) {
+    throw new Error(`Password must be at least ${minLen} characters long.`);
+  }
+
+  if (requireComplexity) {
+    const passwordComplexityRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>_+-=[\]\\/]).+$/;
+    if (!passwordComplexityRegex.test(newPassword)) {
+      throw new Error('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.');
+    }
+  }
+
+  if (userObject) {
+    const isReused = await userObject.isPasswordReused(newPassword);
+    if (isReused) {
+      throw new Error('You cannot reuse any of your last 3 passwords.');
+    }
+  }
+};
 
 const signAccessToken = (id, ttlHours = 24) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: `${ttlHours}h` });
@@ -65,7 +90,7 @@ router.post('/login', loginLimiter, [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     const { email, password, mfaToken } = req.body;
-    const user = await User.findOne({ email }).select('+password +mfaSecret +loginAttempts +lockUntil');
+    const user = await User.findOne({ email }).select('+password +mfaSecret +mfaBackupCodes +loginAttempts +lockUntil');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -107,11 +132,34 @@ router.post('/login', loginLimiter, [
         });
       }
       
-      const { authenticator } = require('otplib');
-      const isValid = authenticator.check(mfaToken, user.mfaSecret);
+      let mfaPassed = false;
+      let usedBackupCodeIndex = -1;
       
-      if (!isValid) {
-        return res.status(401).json({ success: false, message: 'Invalid MFA token' });
+      // 1. Check TOTP
+      const { authenticator } = require('otplib');
+      if (authenticator.check(mfaToken, user.mfaSecret)) {
+        mfaPassed = true;
+      } else if (user.mfaBackupCodes && user.mfaBackupCodes.length > 0) {
+        // 2. Check Backup Codes
+        const bcrypt = require('bcryptjs');
+        for (let i = 0; i < user.mfaBackupCodes.length; i++) {
+          const matched = await bcrypt.compare(mfaToken.trim().toUpperCase(), user.mfaBackupCodes[i]);
+          if (matched) {
+            mfaPassed = true;
+            usedBackupCodeIndex = i;
+            break;
+          }
+        }
+      }
+      
+      if (!mfaPassed) {
+        return res.status(401).json({ success: false, message: 'Invalid MFA token or backup recovery code' });
+      }
+      
+      // Consume backup code if used
+      if (usedBackupCodeIndex !== -1) {
+        user.mfaBackupCodes.splice(usedBackupCodeIndex, 1);
+        await user.save({ validateBeforeSave: false });
       }
     }
     
@@ -162,6 +210,12 @@ router.post('/register', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     const { name, email, phone, password, role } = req.body;
+
+    try {
+      await validateNewPassword(password);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       if (existingUser.isVerified) {
@@ -217,24 +271,27 @@ router.post('/register', [
 // GET /api/auth/verify-email/:token
 router.get('/verify-email/:token', async (req, res, next) => {
   try {
-    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
-
+    const rawToken = req.params.token || req.query.token || '';
+    const token = decodeURIComponent(rawToken).trim();
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Verification token missing.' });
+    }
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({
       emailVerificationToken: hashedToken,
       emailVerificationExpires: { $gt: Date.now() },
     });
-
     if (!user) {
       return res.status(400).json({ success: false, message: 'Token is invalid or has expired.' });
     }
-
     user.isVerified = true;
     user.emailVerificationToken = undefined;
     user.emailVerificationExpires = undefined;
     await user.save({ validateBeforeSave: false });
-
     res.json({ success: true, message: 'Email verified successfully. You can now log in.' });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/auth/change-temp-password
@@ -261,9 +318,15 @@ router.post('/change-temp-password', [
       return res.status(401).json({ success: false, message: 'Invalid token type.' });
     }
 
-    const user = await User.findById(decoded.id).select('+password');
+    const user = await User.findById(decoded.id).select('+password +passwordHistory');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User no longer exists.' });
+    }
+
+    try {
+      await validateNewPassword(newPassword, user);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
     }
 
     user.password = newPassword;
@@ -385,7 +448,20 @@ router.post('/mfa/activate', protect, [
       return res.status(401).json({ success: false, message: 'Invalid token. Activation failed.' });
     }
     
+    // Generate 8 backup recovery codes
+    const bcrypt = require('bcryptjs');
+    const plainCodes = [];
+    const hashedCodes = [];
+    for (let i = 0; i < 8; i++) {
+      const code = crypto.randomBytes(5).toString('hex').toUpperCase();
+      const formattedCode = `${code.substring(0, 5)}-${code.substring(5, 10)}`;
+      plainCodes.push(formattedCode);
+      const hashed = await bcrypt.hash(formattedCode, 10);
+      hashedCodes.push(hashed);
+    }
+    
     user.mfaEnabled = true;
+    user.mfaBackupCodes = hashedCodes;
     await user.save({ validateBeforeSave: false });
 
     await logActivity({
@@ -394,10 +470,45 @@ router.post('/mfa/activate', protect, [
       userEmail: user.email,
       userRole: user.role,
       action: 'mfa_activity',
-      details: { message: 'MFA activated successfully' }
+      details: { message: 'MFA activated successfully with backup codes generated' }
     });
     
-    res.json({ success: true, message: 'MFA activated successfully.' });
+    res.json({ 
+      success: true, 
+      message: 'MFA activated successfully.', 
+      backupCodes: plainCodes 
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/mfa/deactivate
+router.post('/mfa/deactivate', protect, [
+  body('token').notEmpty().withMessage('MFA token required'),
+], async (req, res, next) => {
+  try {
+    const { authenticator } = require('otplib');
+    const user = await User.findById(req.user.id).select('+mfaSecret');
+    
+    const isValid = authenticator.check(req.body.token, user.mfaSecret);
+    if (!isValid) {
+      return res.status(401).json({ success: false, message: 'Invalid token. Deactivation failed.' });
+    }
+    
+    user.mfaEnabled = false;
+    user.mfaSecret = undefined;
+    user.mfaBackupCodes = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    await logActivity({
+      req,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'mfa_activity',
+      details: { message: 'MFA deactivated successfully' }
+    });
+    
+    res.json({ success: true, message: 'MFA deactivated successfully.' });
   } catch (err) { next(err); }
 });
 
@@ -411,10 +522,17 @@ router.patch('/update-password', protect, [
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
-    const user = await User.findById(req.user.id).select('+password');
+    const user = await User.findById(req.user.id).select('+password +passwordHistory');
     if (!(await user.comparePassword(req.body.currentPassword))) {
       return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
     }
+
+    try {
+      await validateNewPassword(req.body.newPassword, user);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
     user.password = req.body.newPassword;
     await user.save();
     
@@ -472,10 +590,16 @@ router.post('/reset-password/:token', [
     const user = await User.findOne({
       passwordResetToken: hashedToken,
       passwordResetExpires: { $gt: Date.now() },
-    }).select('+password');
+    }).select('+password +passwordHistory');
 
     if (!user) {
       return res.status(400).json({ success: false, message: 'Token is invalid or has expired.' });
+    }
+
+    try {
+      await validateNewPassword(req.body.password, user);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
     }
 
     user.password = req.body.password;
