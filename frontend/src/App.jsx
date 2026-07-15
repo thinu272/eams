@@ -22,6 +22,8 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import VerifyEmailPage from './pages/auth/VerifyEmailPage';
 import ChangeTempPasswordPage from './pages/auth/ChangeTempPasswordPage';
+import PasswordChangePage from './pages/auth/PasswordChangePage';
+import MfaSetupPage from './pages/auth/MfaSetupPage';
 import Dashboard from './pages/Dashboard';
 import UserDashboardPage from './pages/enhanced/UserDashboardPage';
 
@@ -34,6 +36,7 @@ import BuyerHomePage from './pages/buyer/BuyerHomePage';
 import BuyerTicketsPage from './pages/buyer/BuyerTicketsPage';
 import BuyerInvitesPage from './pages/buyer/BuyerInvitesPage';
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage';
+import BuyerOrderHistoryPage from './pages/buyer/BuyerOrderHistoryPage';
 import BuyerConfirmPassPage from './pages/buyer/BuyerConfirmPassPage';
 import BankTransferInstructionsPage from './pages/buyer/BankTransferInstructionsPage';
 import BankTransferSubmitPage from './pages/buyer/BankTransferSubmitPage';
@@ -51,6 +54,7 @@ import ResubmitPage from './pages/buyer/ResubmitPage';
 
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminPaymentManagement from './pages/admin/AdminPaymentManagement';
 
 // Organiser
 import OrganiserDashboard from './pages/organiser/OrganiserDashboard';
@@ -120,6 +124,8 @@ const AppRoutes = () => (
     <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
     <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
     <Route path="/change-password" element={<ChangeTempPasswordPage />} />
+    <Route path="/settings/security" element={<Protected redirectTo="/dashboard"><PasswordChangePage /></Protected>} />
+    <Route path="/settings/mfa" element={<Protected redirectTo="/dashboard"><MfaSetupPage /></Protected>} />
 
     {/* Buyer confirmation flow - public links from email */}
     <Route path="/confirm/:inviteToken" element={<AttendeeIdentityConfirmPage />} />
@@ -140,6 +146,7 @@ const AppRoutes = () => (
     <Route path="/buyer/orders/:orderId" element={<Protected roles={['BUYER']}><BuyerOrderDetailsPage /></Protected>} />
     <Route path="/buyer/invites" element={<Protected roles={['BUYER']}><BuyerInvitesPage /></Protected>} />
     <Route path="/buyer/profile" element={<Protected roles={['BUYER']}><BuyerProfilePage /></Protected>} />
+    <Route path="/buyer/orders" element={<Protected roles={['BUYER']}><BuyerOrderHistoryPage /></Protected>} />
     <Route path="/attendee/dashboard" element={<Protected roles={['BUYER']}><AttendeeDashboardPage /></Protected>} />
                 <Route path="/attendee/tickets" element={<Protected roles={['BUYER']}><AttendeeTicketsPage /></Protected>} />
                 <Route path="/attendee/ticket/:ticketId" element={<Protected roles={['BUYER']}><AttendeeTicketViewPage /></Protected>} />
@@ -160,6 +167,7 @@ const AppRoutes = () => (
     <Route path="/admin/settings" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=settings" replace /></Protected>} />
     <Route path="/admin/reports" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=reports" replace /></Protected>} />
     <Route path="/admin/verification" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=verification" replace /></Protected>} />
+    <Route path="/admin/payments" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=payments" replace /></Protected>} />
 
     {/* Main Organiser */}
     <Route path="/organiser/dashboard" element={<Protected roles={['MainOrganiser']} redirectTo="/dashboard"><OrganiserDashboard /></Protected>} />
