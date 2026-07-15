@@ -796,7 +796,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for seamless event management**
+**Built By CBNIT for seamless event management**
 
 ## Changelog
 
