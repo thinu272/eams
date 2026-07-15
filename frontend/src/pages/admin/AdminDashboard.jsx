@@ -34,6 +34,10 @@ import {
   updateSuperAdminUser,
   resendSuperAdminUserCredentials,
   updateSuperAdminUserStatus,
+  getAdminBankAccounts,
+  createAdminBankAccount,
+  updateAdminBankAccount,
+  deleteAdminBankAccount,
 } from '../../api/superAdmin';
 
 const SECTION_LABELS = {
@@ -50,6 +54,11 @@ const SECTION_LABELS = {
   reports: 'Reports',
   'system-logs': 'System Logs',
   settings: 'System Settings',
+  'bank-accounts': 'Bank Accounts',
+};
+
+const SECTION_SUBTITLES = {
+  'bank-accounts': 'Manage bank transfer accounts shown to buyers during checkout and payment instructions.',
 };
 
 const statusTone = { Active: 'green', Inactive: 'red', Live: 'green', Upcoming: 'blue', Completed: 'gray', Allowed: 'green', Denied: 'red', pending: 'amber', rejected: 'red', verified: 'green', login: 'green', logout: 'blue', ticket_creation: 'cyan', ticket_scan: 'teal', event_update: 'purple', user_creation: 'indigo', qr_verification: 'violet', sponsor_action: 'orange', mfa_activity: 'fuchsia' };
@@ -93,7 +102,7 @@ const normalizeEntityId = (value) => {
 };
 
 const SectionFilters = ({ section, params, updateQuery, organiserOptions = [] }) => {
-  if (section === 'overview' || section === 'settings') return null;
+  if (section === 'overview' || section === 'settings' || section === 'bank-accounts') return null;
   return (
     <Card className="rounded-[28px] border-slate-200">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -728,6 +737,317 @@ const SectionContent = ({ section, workspace, params, updateQuery, openModal, lo
   );
 };
 
+/* ─────────────────────────────────────────────────────────
+   Bank Accounts Section
+───────────────────────────────────────────────────────── */
+const EMPTY_BANK_FORM = {
+  bankName: '',
+  accountName: '',
+  accountNumber: '',
+  branch: '',
+  swiftCode: '',
+  qrCode: '',
+  isActive: true,
+};
+
+const BankAccountsSection = () => {
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null); // null = create
+  const [form, setForm] = useState(EMPTY_BANK_FORM);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const loadAccounts = async () => {
+    setLoading(true);
+    try {
+      const res = await getAdminBankAccounts();
+      const list = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
+      setAccounts(list);
+    } catch {
+      toast.error('Failed to load bank accounts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAccounts(); }, []);
+
+  const openCreate = () => {
+    setEditTarget(null);
+    setForm(EMPTY_BANK_FORM);
+    setModalOpen(true);
+  };
+
+  const openEdit = (acct) => {
+    setEditTarget(acct);
+    setForm({
+      bankName: acct.bankName || '',
+      accountName: acct.accountName || '',
+      accountNumber: acct.accountNumber || '',
+      branch: acct.branch || '',
+      swiftCode: acct.swiftCode || '',
+      qrCode: acct.qrCode || '',
+      isActive: acct.isActive !== false,
+    });
+    setModalOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (editTarget) {
+        await updateAdminBankAccount(editTarget._id, form);
+        toast.success('Bank account updated');
+      } else {
+        await createAdminBankAccount(form);
+        toast.success('Bank account created');
+      }
+      setModalOpen(false);
+      loadAccounts();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (acct) => {
+    if (!window.confirm(`Delete bank account "${acct.bankName} – ${acct.accountName}"?`)) return;
+    setDeletingId(acct._id);
+    try {
+      await deleteAdminBankAccount(acct._id);
+      toast.success('Bank account deleted');
+      loadAccounts();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleToggleActive = async (acct) => {
+    try {
+      await updateAdminBankAccount(acct._id, { isActive: !acct.isActive });
+      toast.success(`Bank account ${!acct.isActive ? 'activated' : 'deactivated'}`);
+      loadAccounts();
+    } catch {
+      toast.error('Failed to update status');
+    }
+  };
+
+  return (
+    <>
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500">
+          {accounts.length} account{accounts.length !== 1 ? 's' : ''} configured
+        </p>
+        <Button onClick={openCreate}>
+          + Add Bank Account
+        </Button>
+      </div>
+
+      {/* Accounts grid */}
+      {loading ? (
+        <LoadingSkeleton />
+      ) : accounts.length === 0 ? (
+        <Card className="rounded-[28px] border-slate-200">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+              <CreditCardIcon className="h-8 w-8 text-slate-400" />
+            </div>
+            <p className="text-lg font-semibold text-slate-700">No bank accounts yet</p>
+            <p className="mt-1 text-sm text-slate-400">Add a bank account so buyers can transfer payments.</p>
+            <Button className="mt-6" onClick={openCreate}>+ Add Bank Account</Button>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {accounts.map((acct) => (
+            <Card key={acct._id} className={`rounded-[28px] border-2 transition-all ${
+              acct.isActive ? 'border-blue-100 bg-white' : 'border-slate-100 bg-slate-50 opacity-70'
+            }`}>
+              {/* Status chip */}
+              <div className="mb-4 flex items-center justify-between">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                  acct.isActive
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    acct.isActive ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`} />
+                  {acct.isActive ? 'Active' : 'Inactive'}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openEdit(acct)}
+                    className="rounded-xl p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                    title="Edit"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(acct)}
+                    className={`rounded-xl p-1.5 transition-colors ${
+                      acct.isActive
+                        ? 'text-amber-400 hover:bg-amber-50 hover:text-amber-600'
+                        : 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'
+                    }`}
+                    title={acct.isActive ? 'Deactivate' : 'Activate'}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728M12 8v4m0 4h.01" /></svg>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(acct)}
+                    disabled={deletingId === acct._id}
+                    className="rounded-xl p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-colors disabled:opacity-40"
+                    title="Delete"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bank details */}
+              <div className="mb-1 flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50">
+                  <CreditCardIcon className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-base font-bold text-slate-900">{acct.bankName}</p>
+                  <p className="text-xs text-slate-400">{acct.branch}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Account Name</span>
+                  <span className="font-semibold text-slate-800">{acct.accountName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Account No.</span>
+                  <span className="font-mono font-semibold text-slate-800">{acct.accountNumber}</span>
+                </div>
+                {acct.swiftCode && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Swift / BIC</span>
+                    <span className="font-mono font-semibold text-slate-800">{acct.swiftCode}</span>
+                  </div>
+                )}
+              </div>
+
+              {acct.qrCode && (
+                <div className="mt-4 flex justify-center">
+                  <img
+                    src={acct.qrCode}
+                    alt="QR Code"
+                    className="h-24 w-24 rounded-xl border border-slate-200 object-contain p-1"
+                  />
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Add / Edit Modal */}
+      {modalOpen && (
+        <Modal
+          open
+          onClose={() => setModalOpen(false)}
+          title={editTarget ? 'Edit Bank Account' : 'Add Bank Account'}
+          size="lg"
+        >
+          <form onSubmit={handleSave}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-[65vh] overflow-y-auto px-1">
+              <Field label="Bank Name *">
+                <Input
+                  value={form.bankName}
+                  onChange={(e) => setForm((p) => ({ ...p, bankName: e.target.value }))}
+                  placeholder="e.g. Commercial Bank of Ceylon"
+                  required
+                />
+              </Field>
+              <Field label="Account Name *">
+                <Input
+                  value={form.accountName}
+                  onChange={(e) => setForm((p) => ({ ...p, accountName: e.target.value }))}
+                  placeholder="e.g. ENTRYNEX Events (Pvt) Ltd"
+                  required
+                />
+              </Field>
+              <Field label="Account Number *">
+                <Input
+                  value={form.accountNumber}
+                  onChange={(e) => setForm((p) => ({ ...p, accountNumber: e.target.value }))}
+                  placeholder="e.g. 1234567890"
+                  required
+                />
+              </Field>
+              <Field label="Branch *">
+                <Input
+                  value={form.branch}
+                  onChange={(e) => setForm((p) => ({ ...p, branch: e.target.value }))}
+                  placeholder="e.g. Colombo 03"
+                  required
+                />
+              </Field>
+              <Field label="Swift / BIC Code *">
+                <Input
+                  value={form.swiftCode}
+                  onChange={(e) => setForm((p) => ({ ...p, swiftCode: e.target.value }))}
+                  placeholder="e.g. CCEYLKLX"
+                  required
+                />
+              </Field>
+              <Field label="QR Code Image URL (optional)">
+                <Input
+                  value={form.qrCode}
+                  onChange={(e) => setForm((p) => ({ ...p, qrCode: e.target.value }))}
+                  placeholder="https://..."
+                />
+              </Field>
+              <div className="col-span-1 md:col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={form.isActive}
+                      onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
+                    />
+                    <div className={`block h-6 w-10 rounded-full transition-colors ${
+                      form.isActive ? 'bg-blue-500' : 'bg-slate-200'
+                    }`} />
+                    <div className={`dot absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                      form.isActive ? 'translate-x-4' : ''
+                    }`} />
+                  </div>
+                  <span className="text-sm font-medium text-slate-700">
+                    Active (visible to buyers during checkout)
+                  </span>
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={saving}>
+                {editTarget ? 'Save Changes' : 'Create Account'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+};
+
 const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, organiserOptions, companyOptions = [] }) => {
   if (!modal.isOpen) return null;
 
@@ -1185,7 +1505,9 @@ const AdminDashboard = () => {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Super Admin</p>
               <h1 className="mt-2 text-3xl font-semibold text-slate-900">{SECTION_LABELS[section]}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-500">Platform-level control across events, organisers, users, verification, access activity, and system configuration.</p>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                {SECTION_SUBTITLES[section] || 'Platform-level control across events, organisers, users, verification, access activity, and system configuration.'}
+              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               {section === 'events' && <Button onClick={() => openModal('event')}>Create event</Button>}
@@ -1193,24 +1515,29 @@ const AdminDashboard = () => {
               {section === 'organisers' && <Button onClick={() => openModal('organiser')}>Create Organiser</Button>}
               {section === 'users' && <Button onClick={() => openModal('user')}>Create user</Button>}
               {section === 'reports' && <><Button onClick={() => exportReport('revenue')}>Revenue CSV</Button><Button variant="outline" onClick={() => exportReport('attendance')}>Attendance CSV</Button></>}
+              {/* bank-accounts section has its own Add button rendered inside BankAccountsSection */}
             </div>
           </div>
           {searchSummary?.length > 0 && <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Global search matches</p><div className="mt-3 flex flex-wrap gap-2">{searchSummary.map((item) => <span key={`${item._id}-${item.email || item.slug || ''}`} className="rounded-full bg-white px-3 py-1 text-sm text-slate-600 ring-1 ring-slate-200">{item.name} {item.email ? `• ${item.email}` : ''}</span>)}</div></div>}
         </Card>
 
-        <SectionContent
-          section={section}
-          workspace={workspace}
-          params={params}
-          updateQuery={updateQuery}
-          openModal={openModal}
-          loadWorkspace={loadWorkspace}
-          deleteOrganiser={handleDeleteOrganiser}
-          deleteUser={handleDeleteUser}
-          setDuplicateModal={setDuplicateModal}
-          systemLogsData={systemLogsData}
-          sysLoading={sysLoading}
-        />
+        {section === 'bank-accounts' ? (
+          <BankAccountsSection />
+        ) : (
+          <SectionContent
+            section={section}
+            workspace={workspace}
+            params={params}
+            updateQuery={updateQuery}
+            openModal={openModal}
+            loadWorkspace={loadWorkspace}
+            deleteOrganiser={handleDeleteOrganiser}
+            deleteUser={handleDeleteUser}
+            setDuplicateModal={setDuplicateModal}
+            systemLogsData={systemLogsData}
+            sysLoading={sysLoading}
+          />
+        )}
 
         <EntityModal modal={modal} closeModal={closeModal} form={form} setForm={setForm} saving={saving} saveEntity={saveEntity} organiserOptions={workspace?.events?.filters?.organiserOptions || []} companyOptions={workspace?.events?.filters?.companyOptions || workspace?.users?.filters?.companyOptions || workspace?.organisations?.filters?.companyOptions || []} />
         <DuplicateModal modal={duplicateModal} closeModal={setDuplicateModal} submit={handleDuplicateSubmit} />

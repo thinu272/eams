@@ -29,6 +29,9 @@ const mapTicket = (ticket) => {
     allowedZones: ticket.allowedZones || [],
     price: ticket.price,
     orderNumber: order.orderNumber,
+    orderId: order._id,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
     event: event?._id ? {
       _id: event._id,
       name: event.name,
@@ -41,7 +44,15 @@ const mapTicket = (ticket) => {
       instructions: event.instructions,
       status: event.status,
       requirePhotoVerification: !!(event.settings?.requirePhotoVerification),
+      settings: event.settings,
     } : null,
+    inviteSentAt: ticket.inviteSentAt,
+    inviteRespondedAt: ticket.inviteRespondedAt,
+    refundStatus: ticket.refundStatus,
+    refundAmount: ticket.refundAmount,
+    refundedAt: ticket.refundedAt,
+    invalidatedAt: ticket.invalidatedAt,
+    invalidationReason: ticket.invalidationReason,
     attendee: attendee?._id ? {
       _id: attendee._id,
       fullName: attendee.fullName,
@@ -52,11 +63,13 @@ const mapTicket = (ticket) => {
       confirmationToken: attendee.confirmationToken,
       confirmationStatus: attendee.confirmationStatus,
       isConfirmed: attendee.isConfirmed,
+      confirmedAt: attendee.confirmedAt,
       checkedIn: attendee.checkedIn,
       allowedZones: attendee.allowedZones || ticket.allowedZones || [],
       photo: attendee.photo,
       photoVerificationStatus: attendee.photoVerificationStatus,
       photoRejectionReason: attendee.photoRejectionReason,
+      resubmitToken: attendee.resubmitToken,
     } : null,
   };
 };
@@ -86,9 +99,9 @@ const getUserScopedTickets = async (user) => {
   }
 
   return Ticket.find(query)
-    .populate('event', 'name slug description coverImage startDate endDate venue zones categories')
-    .populate('attendee', 'fullName email phone qrCode qrToken confirmationStatus isConfirmed checkedIn allowedZones')
-    .populate('order', 'orderNumber buyerName buyerEmail buyerPhone totalAmount status createdAt')
+    .populate('event', 'name slug description coverImage startDate endDate venue zones categories settings')
+    .populate('attendee', 'fullName email phone qrCode qrToken confirmationStatus isConfirmed checkedIn allowedZones photo photoVerificationStatus photoRejectionReason resubmitToken')
+    .populate('order', 'orderNumber buyerName buyerEmail buyerPhone totalAmount status createdAt paymentMethod paymentStatus')
     .sort({ createdAt: -1 });
 };
 
@@ -421,11 +434,18 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
       attendee.photoRejectionReason = null;
     }
 
+    const needsPhotoApproval = requiresPhotoVerification(attendee.event) && attendee.photo;
+
     attendee.confirmationStatus = 'confirmed';
     attendee.isConfirmed = true;
     attendee.confirmedAt = new Date();
     attendee.confirmedBy = 'self';
-    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+
+    if (!needsPhotoApproval) {
+      attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+    } else {
+      attendee.qrCode = null;
+    }
 
     await attendee.save();
     const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: attendee.event });
@@ -488,9 +508,11 @@ router.post('/upload-photo', upload.single('photo'), handleS3Upload('attendee-ph
     attendee.photoUploadedAt = new Date();
     attendee.photoVerificationStatus = 'pending';
     attendee.photoRejectionReason = null;
+    attendee.qrCode = null;
     attendee.resubmitCount = (attendee.resubmitCount || 0) + 1;
 
     await attendee.save();
+    await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'PENDING_VERIFICATION' });
     res.json({ success: true, data: { attendee }, message: 'Photo uploaded successfully.' });
   } catch (err) {
     next(err);

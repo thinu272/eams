@@ -17,12 +17,14 @@ const ZoneLog = require('../models/ZoneLog');
 const Notification = require('../models/Notification');
 const Role = require('../models/Role');
 const Order = require('../models/Order');
+const PaymentSubmission = require('../models/PaymentSubmission');
 const { protect, checkRole, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite, notifyUserCredentials } = require('../services/notificationService');
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rbac');
 const Sponsor = require('../models/Sponsor');
 const { logActivity } = require('../utils/logger');
+const { withUploadedPhoto, finalizePhotoRejection } = require('../services/ticketDeliveryService');
 
 const router = express.Router();
 const ORGANISER_ROLES = ['sub_organiser', 'main_organiser', 'main_admin', 'super_admin'];
@@ -177,7 +179,12 @@ const buildAttendeeFilter = ({ eventId, query = {} }) => {
 
   if (category || ticketCategory) filter.categoryName = category || ticketCategory;
   if (status) filter.confirmationStatus = status;
-  if (photoStatus) filter.photoVerificationStatus = photoStatus;
+  if (photoStatus) {
+    filter.photoVerificationStatus = photoStatus;
+    if (['pending', 'Pending'].includes(photoStatus)) {
+      Object.assign(filter, withUploadedPhoto());
+    }
+  }
 
   return filter;
 };
@@ -343,8 +350,8 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
       Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(5).lean(),
       Attendee.find(attendeeFilter).sort({ createdAt: -1 }).skip(attendeeSkip).limit(limit).lean(),
       Attendee.countDocuments(attendeeFilter),
-      Attendee.find({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }).sort({ createdAt: -1 }).skip(verificationSkip).limit(limit).lean(),
-      Attendee.countDocuments({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } }),
+      Attendee.find(withUploadedPhoto({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })).sort({ createdAt: -1 }).skip(verificationSkip).limit(limit).lean(),
+      Attendee.countDocuments(withUploadedPhoto({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })),
       Ticket.find({ event: eventId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).skip(invitesSkip).limit(limit).lean(),
       Ticket.countDocuments({ event: eventId }),
       ZoneLog.find({ eventId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).skip(zoneLogsSkip).limit(limit).lean(),
@@ -1449,11 +1456,12 @@ router.get('/verification', requireEventAccess, async (req, res, next) => {
     const limit = clamp(req.query.limit, 1, 50, 12);
     const skip = (page - 1) * limit;
 
-    const filter = {
+    const statusFilter = req.query.status || { $in: ['pending', 'Pending'] };
+    const filter = withUploadedPhoto({
       event: eventId,
       isActive: true,
-      photoVerificationStatus: req.query.status || { $in: ['pending', 'Pending'] },
-    };
+      photoVerificationStatus: statusFilter,
+    });
 
     if (req.query.search) {
       filter.$or = [
@@ -1480,35 +1488,45 @@ router.post('/verification/:attendeeId', requireEventAccess, requirePermission('
       return res.status(400).json({ success: false, message: 'Status must be verified or rejected.' });
     }
 
-    const attendee = await Attendee.findById(req.params.attendeeId).populate('event');
+    let attendee = await Attendee.findById(req.params.attendeeId).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
 
-    attendee.photoVerificationStatus = status;
-    attendee.photoVerifiedAt = new Date();
-    attendee.photoVerifiedBy = req.user._id;
-    attendee.photoRejectionReason = status === 'rejected' ? reason : null;
-    attendee.confirmationStatus = status === 'verified' ? 'confirmed' : attendee.confirmationStatus;
-    attendee.isConfirmed = status === 'verified' ? true : attendee.isConfirmed;
-
     if (status === 'rejected') {
-      attendee.resubmitToken = attendee.resubmitToken || uuidv4();
-      attendee.resubmitCount = (attendee.resubmitCount || 0) + 1;
-    }
-
-    await attendee.save();
-
-    if (status === 'rejected') {
+      attendee = await finalizePhotoRejection(attendee, {
+        reason,
+        verifiedBy: req.user._id,
+      });
       await notifyPhotoRejectionNotification({ attendee, event: attendee.event, reason });
     } else {
-      const { deliverAttendeeTicketEmail } = require('../services/ticketDeliveryService');
-      await deliverAttendeeTicketEmail({ attendee, event: attendee.event }).catch(err => console.error('AUTO_TICKET_DELIVERY_ERROR:', err));
+      const { finalizePhotoApproval } = require('../services/ticketDeliveryService');
+      const { notifyFinalTicket, notifyStatusChange } = require('../services/notificationService');
+      const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+
+      const approvedAttendee = await finalizePhotoApproval(attendee, {
+        verifiedBy: req.user._id,
+        confirmedBy: 'organiser',
+      });
+
+      await notifyFinalTicket({
+        attendee: approvedAttendee,
+        event: approvedAttendee.event,
+        phone: approvedAttendee.phone,
+        notificationChannel: 'both',
+        force: true,
+      }).catch((err) => console.error('AUTO_TICKET_DELIVERY_ERROR:', err));
+
+      if (approvedAttendee.order) {
+        await processOrderFinalConfirmation({ orderId: approvedAttendee.order }).catch(console.error);
+      }
 
       await notifyStatusChange({
-        attendee,
-        event: attendee.event,
+        attendee: approvedAttendee,
+        event: approvedAttendee.event,
         status: 'Photo approved',
-        message: 'Your attendee verification was approved.',
+        message: 'Your attendee verification was approved. Your entry QR code has been sent to your email.',
       });
+
+      attendee = approvedAttendee;
     }
 
     await buildActivityNotification({
@@ -2464,6 +2482,97 @@ router.delete('/sponsors/:id', requireEventAccess, requirePermission('canManageS
     await Sponsor.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Sponsor removed.' });
   } catch (err) { next(err); }
+});
+
+// GET /api/organiser/payments - Payment submissions for organiser dashboard
+router.get('/payments', requireEventAccess, requirePermission('canViewPayments'), async (req, res, next) => {
+  try {
+    const { status = 'pending', page = 1, limit = 20 } = req.query;
+    const eventId = resolveEventId(req);
+    
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Valid event ID is required.' });
+    }
+
+    // Get orders for the specific event
+    const ordersForEvent = await Order.find({ 
+      eventId: toObjectId(eventId),
+      paymentMethod: 'bank_transfer'
+    }).select('_id');
+    
+    const orderIds = ordersForEvent.map(o => o._id);
+
+    if (orderIds.length === 0) {
+      return res.json({ 
+        success: true, 
+        data: { 
+          payments: [], 
+          total: 0, 
+          pages: 0 
+        } 
+      });
+    }
+
+    // Build filter
+    const filter = { orderId: { $in: orderIds } };
+    if (status && status !== 'all') {
+      filter.verificationStatus = status;
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+    const [payments, total] = await Promise.all([
+      PaymentSubmission.find(filter)
+        .populate('orderId', 'orderNumber totalAmount buyerEmail buyerName eventId')
+        .populate('verifiedBy', 'name email')
+        .sort({ submittedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10)),
+      PaymentSubmission.countDocuments(filter)
+    ]);
+
+    res.json({ 
+      success: true, 
+      data: { 
+        payments: payments.map(payment => ({
+          _id: payment._id,
+          payerName: payment.payerName,
+          payerEmail: payment.payerEmail,
+          payerPhone: payment.payerPhone,
+          payerNicPassport: payment.payerNicPassport,
+          bankUsed: payment.bankUsed,
+          transferDate: payment.transferDate,
+          transferTime: payment.transferTime,
+          referenceNumber: payment.referenceNumber,
+          amountPaid: payment.amountPaid,
+          receiptFile: payment.receiptFile,
+          receiptFileType: payment.receiptFileType,
+          notes: payment.notes,
+          verificationStatus: payment.verificationStatus,
+          rejectionReason: payment.rejectionReason,
+          submittedAt: payment.submittedAt,
+          verifiedAt: payment.verifiedAt,
+          verifiedBy: payment.verifiedBy ? {
+            _id: payment.verifiedBy._id,
+            name: payment.verifiedBy.name,
+            email: payment.verifiedBy.email,
+          } : null,
+          order: payment.orderId ? {
+            _id: payment.orderId._id,
+            orderNumber: payment.orderId.orderNumber,
+            totalAmount: payment.orderId.totalAmount,
+            buyerEmail: payment.orderId.buyerEmail,
+            buyerName: payment.orderId.buyerName,
+            eventId: payment.orderId.eventId,
+          } : null,
+        })),
+        total, 
+        pages: Math.ceil(total / parseInt(limit, 10)) 
+      } 
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

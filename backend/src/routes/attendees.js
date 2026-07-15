@@ -14,7 +14,7 @@ const { sendAttendeeVerificationConfirmation } = require('../utils/email');
 const { upload, excelUpload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
 const { validatePhoto } = require('../services/photoValidationService');
-const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus, finalizePhotoApproval, finalizePhotoRejection, handleMaxResubmissionsReached, MAX_RESUBMIT_COUNT } = require('../services/ticketDeliveryService');
 const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 const { ROLES, normalizeRole } = require('../utils/rbac');
 
@@ -590,41 +590,32 @@ router.patch('/:id/verify-photo', protect, requirePermission('canVerifyPhotos'),
     const attendee = await Attendee.findById(req.params.id).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
     
-    attendee.photoVerificationStatus = status;
-    attendee.photoVerifiedBy = req.user._id;
-    attendee.photoVerifiedAt = new Date();
-    
     if (status === 'rejected') {
+      attendee.photoVerificationStatus = 'rejected';
       attendee.photoRejectionReason = rejectionReason;
-      attendee.qrCode = null; // Clear QR if rejected
-    } else if (status === 'verified') {
-      attendee.photoRejectionReason = null;
-      
-      // Generate QR code on approval
-      attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
-      attendee.confirmationStatus = 'confirmed';
-      attendee.isConfirmed = true;
-      attendee.confirmedAt = new Date();
-      attendee.confirmedBy = 'organiser';
-      
-      // Sync ticket status
-      await Ticket.findOneAndUpdate({ attendee: attendee._id }, { status: 'CONFIRMED' });
-      
-      // Ensure data is saved before notifying
+      attendee.photoVerifiedBy = req.user._id;
+      attendee.photoVerifiedAt = new Date();
+      attendee.qrCode = null;
       await attendee.save();
+    } else if (status === 'verified') {
+      const approvedAttendee = await finalizePhotoApproval(attendee, {
+        verifiedBy: req.user._id,
+        confirmedBy: 'organiser',
+      });
 
-      // Send final ticket notification
       await notifyFinalTicket({
-        attendee,
-        event: attendee.event,
-        phone: attendee.phone,
+        attendee: approvedAttendee,
+        event: approvedAttendee.event,
+        phone: approvedAttendee.phone,
         notificationChannel: 'both',
-        force: true
+        force: true,
       }).catch(console.error);
 
-      if (attendee.order) {
-        await processOrderFinalConfirmation({ orderId: attendee.order }).catch(console.error);
+      if (approvedAttendee.order) {
+        await processOrderFinalConfirmation({ orderId: approvedAttendee.order }).catch(console.error);
       }
+
+      return res.json({ success: true, data: { attendee: approvedAttendee } });
     }
 
     await attendee.save();
@@ -646,24 +637,30 @@ router.post('/reject-photo', protect, requirePermission('canVerifyPhotos'), asyn
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
 
-    const resubmitToken = uuidv4();
-    const resubmitCount = (attendee.resubmitCount || 0) + 1;
+    const rejectedAttendee = await finalizePhotoRejection(attendee, {
+      reason,
+      verifiedBy: req.user._id,
+    });
 
-    attendee.photoVerificationStatus = 'rejected';
-    attendee.photoRejectionReason = reason;
-    attendee.resubmitToken = resubmitToken;
-    attendee.resubmitCount = resubmitCount;
-    attendee.photoVerifiedBy = req.user._id;
-    attendee.photoVerifiedAt = new Date();
-    attendee.qrCode = null; // Clear QR on rejection
-    
-    await attendee.save();
+    if ((rejectedAttendee.resubmitCount || 0) < MAX_RESUBMIT_COUNT && rejectedAttendee.resubmitToken) {
+      const { notifyPhotoRejection } = require('../services/notificationService');
+      await notifyPhotoRejection({
+        attendee: rejectedAttendee,
+        reason,
+        resubmitToken: rejectedAttendee.resubmitToken,
+      });
+    }
 
-    // Send notifications
-    const { notifyPhotoRejection } = require('../services/notificationService');
-    await notifyPhotoRejection({ attendee, reason, resubmitToken });
+    const ticket = await Ticket.findOne({ attendee: rejectedAttendee._id });
+    const invalidated = ticket?.status === 'CANCELLED' && ticket?.refundStatus === 'refunded';
 
-    res.json({ success: true, message: 'Photo rejected and resubmit notification sent.' });
+    res.json({
+      success: true,
+      message: invalidated
+        ? 'Photo rejected. Maximum resubmissions reached; ticket invalidated and refund initiated.'
+        : 'Photo rejected and resubmit notification sent.',
+      data: { attendee: rejectedAttendee, ticket },
+    });
   } catch (err) { next(err); }
 });
 
@@ -673,9 +670,24 @@ router.get('/resubmit/:token', async (req, res, next) => {
     const attendee = await Attendee.findOne({ resubmitToken: req.params.token }).populate('event', 'name photoRequirements');
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid resubmit link.' });
 
-    // Check resubmit limit (max 3)
-    if (attendee.resubmitCount >= 3) {
-      return res.status(400).json({ success: false, message: 'Maximum resubmissions reached.' });
+    if (attendee.resubmitCount >= MAX_RESUBMIT_COUNT) {
+      const invalidation = await handleMaxResubmissionsReached(attendee, {
+        reason: 'Maximum photo resubmissions reached.',
+      });
+      if (invalidation.handled) {
+        const { notifyTicketInvalidationRefund } = require('../services/notificationService');
+        await notifyTicketInvalidationRefund(invalidation).catch(console.error);
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum resubmissions reached. This ticket has been invalidated and a refund has been initiated.',
+        data: {
+          invalidated: true,
+          refundAmount: invalidation.refundAmount || invalidation.ticket?.refundAmount || 0,
+          ticketNumber: invalidation.ticket?.ticketNumber,
+        },
+      });
     }
 
     res.json({
@@ -705,8 +717,24 @@ router.post('/resubmit/photo', upload.single('photo'), handleS3Upload('attendee-
     const attendee = await Attendee.findOne({ resubmitToken: token });
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid token.' });
 
-    if (attendee.resubmitCount >= 3) {
-      return res.status(400).json({ success: false, message: 'Maximum resubmissions reached.' });
+    if (attendee.resubmitCount >= MAX_RESUBMIT_COUNT) {
+      const invalidation = await handleMaxResubmissionsReached(attendee, {
+        reason: 'Maximum photo resubmissions reached.',
+      });
+      if (invalidation.handled) {
+        const { notifyTicketInvalidationRefund } = require('../services/notificationService');
+        await notifyTicketInvalidationRefund(invalidation).catch(console.error);
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum resubmissions reached. This ticket has been invalidated and a refund has been initiated.',
+        data: {
+          invalidated: true,
+          refundAmount: invalidation.refundAmount || invalidation.ticket?.refundAmount || 0,
+          ticketNumber: invalidation.ticket?.ticketNumber,
+        },
+      });
     }
 
     if (!req.s3Data) return res.status(400).json({ success: false, message: 'Photo is required.' });

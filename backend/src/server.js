@@ -13,6 +13,7 @@ const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const maintenanceMode = require("./middleware/maintenanceMode");
 const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
+const { initializeBankTransferScheduler } = require("./utils/bankTransferScheduler");
 
 // Load environment variables
 dotenv.config();
@@ -172,6 +173,8 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/sub', require('./routes/sub'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/payment', require('./routes/payment'));
+app.use('/api/bank-transfer', require('./routes/bankTransfer'));
+app.use('/api/payment-management', require('./routes/paymentManagement'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/devices', require('./routes/devices'));
 
@@ -186,6 +189,7 @@ mongoose
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       initializeCleanupScheduler();
     }
+    initializeBankTransferScheduler(io);
   })
   .catch((err) => console.log("MongoDB connection error:", err));
 

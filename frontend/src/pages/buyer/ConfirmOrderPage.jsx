@@ -7,6 +7,8 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
+import PhotoValidationFeedback from '../../components/shared/PhotoValidationFeedback';
+import { usePhotoAiValidation } from '../../hooks/usePhotoAiValidation';
 import toast from 'react-hot-toast';
 import { TicketIcon, CheckBadgeIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { getAssetUrl } from '../../utils/backend';
@@ -32,6 +34,21 @@ const ConfirmOrderPage = () => {
     photo: null
   });
   const [photoPreview, setPhotoPreview] = useState(null);
+  const {
+    validationErrors,
+    allowOverride,
+    setAllowOverride,
+    qualityAnalysis,
+    faceAnalysis,
+    validating,
+    validateFile,
+    resetValidation,
+    appendValidationToFormData,
+    canSubmitPhoto,
+    modelLoadFailed,
+    imageRef,
+    overlayRef,
+  } = usePhotoAiValidation();
   const [assignErrors, setAssignErrors] = useState({});
   const [finalizing, setFinalizing] = useState(false);
   const [inviteModal, setInviteModal] = useState({ open: false, ticketId: null });
@@ -84,6 +101,7 @@ const ConfirmOrderPage = () => {
       photo: null
     });
     setPhotoPreview(null);
+    resetValidation();
     setAssignErrors({});
   };
 
@@ -101,6 +119,12 @@ const ConfirmOrderPage = () => {
         return;
       }
 
+      if (assignForm.photo && !canSubmitPhoto(true)) {
+        toast.error('Please fix photo validation issues or allow override.');
+        setAssigning(a => ({...a, [assignModal.ticketId]: false}));
+        return;
+      }
+
       if (assignForm.photo) {
         // Use FormData for file upload
         data = new FormData();
@@ -112,6 +136,7 @@ const ConfirmOrderPage = () => {
         data.append('nationalId', assignForm.nationalId);
         data.append('passportNumber', assignForm.passportNumber);
         data.append('photo', assignForm.photo);
+        appendValidationToFormData(data);
       } else {
         // Use regular JSON for non-file data
         data = {
@@ -129,6 +154,7 @@ const ConfirmOrderPage = () => {
       toast.success('Ticket assigned successfully!');
       setAssignModal({ open: false, ticketId: null });
       setPhotoPreview(null);
+      resetValidation();
       load(); // Refresh data
     } catch (err) {
       if (err.response?.data?.errors) {
@@ -279,7 +305,7 @@ const ConfirmOrderPage = () => {
               </div>
               <div>
                 <span className="text-sm text-gray-500 block">Total Amount</span>
-                <p className="font-medium text-gray-900 text-lg">LKR {order?.totalAmount?.toLocaleString() || '0'}</p>
+                <p className="font-medium text-gray-900 text-lg">{order?.currency || order?.event?.settings?.currency || 'LKR'} {order?.totalAmount?.toLocaleString() || '0'}</p>
               </div>
             </div>
           </div>
@@ -306,6 +332,16 @@ const ConfirmOrderPage = () => {
                       <div>
                         <h3 className="font-semibold text-gray-900">{ticket.categoryName}</h3>
                         <p className="text-sm text-gray-600">Ticket #{ticket.ticketNumber}</p>
+                        {ticket.status !== 'PENDING' && (
+                          <div className="mt-1 space-y-0.5 text-[10px] text-gray-400 font-medium font-mono">
+                            {(ticket.inviteSentAt || ticket.createdAt) && (
+                              <p>Assigned: {new Date(ticket.inviteSentAt || ticket.createdAt).toLocaleString()}</p>
+                            )}
+                            {(ticket.status === 'CONFIRMED' || ticket.status === 'ASSIGNED') && (ticket.attendee?.confirmedAt || ticket.updatedAt) && (
+                              <p>Confirmed: {new Date(ticket.attendee?.confirmedAt || ticket.updatedAt).toLocaleString()}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <Badge
                         color={
@@ -482,21 +518,16 @@ const ConfirmOrderPage = () => {
               <input
                 type="file"
                 accept="image/jpeg,image/jpg,image/png"
-                onChange={(e) => {
+                onChange={async (e) => {
                   if (e.target.files?.[0]) {
                     const file = e.target.files[0];
-                    // Validate file size (5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                      toast.error('Photo must be less than 5MB');
-                      return;
-                    }
+                    await validateFile(file);
                     setAssignForm(f => ({...f, photo: file}));
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       setPhotoPreview(reader.result);
                     };
                     reader.readAsDataURL(file);
-                    toast.success('Photo selected');
                   }
                 }}
                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
@@ -506,21 +537,36 @@ const ConfirmOrderPage = () => {
               {photoPreview && (
                 <div className="relative flex justify-center">
                   <img
+                    ref={imageRef}
                     src={photoPreview}
                     alt="Preview"
                     className="max-w-xs max-h-48 rounded-lg border-2 border-blue-200 shadow-md"
                   />
+                  <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 max-w-xs max-h-48 rounded-lg" />
                   <button
                     type="button"
                     onClick={() => {
                       setAssignForm(f => ({...f, photo: null}));
                       setPhotoPreview(null);
+                      resetValidation();
                     }}
                     className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-red-600"
                   >
                     <XMarkIcon className="h-4 w-4" />
                   </button>
                 </div>
+              )}
+
+              {assignForm.photo && (
+                <PhotoValidationFeedback
+                  validationErrors={validationErrors}
+                  qualityAnalysis={qualityAnalysis}
+                  faceAnalysis={faceAnalysis}
+                  allowOverride={allowOverride}
+                  onAllowOverrideChange={setAllowOverride}
+                  modelLoadFailed={modelLoadFailed}
+                  validating={validating}
+                />
               )}
               
               <p className="text-xs text-gray-500 flex items-center gap-1">

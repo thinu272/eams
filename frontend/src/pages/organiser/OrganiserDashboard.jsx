@@ -230,8 +230,98 @@ const OrganiserDashboard = () => {
   const [activeTeamTab, setActiveTeamTab] = useState('members');
   const [sponsorPackageModal, setSponsorPackageModal] = useState(null);
   const [sponsorModal, setSponsorModal] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [paymentsTab, setPaymentsTab] = useState('pending');
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [actionMessage, setActionMessage] = useState('');
+  const [showActionModal, setShowActionModal] = useState(null); // 'reject' or 'request-info'
 
   const activeSection = params.get('section') || 'overview';
+
+  const fetchPayments = async () => {
+    if (!eventId) return;
+    setLoadingPayments(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/bank-transfer/payments?status=${paymentsTab}&eventId=${eventId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.data) {
+        setPayments(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      toast.error('Failed to load payments');
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'payments' && eventId) {
+      fetchPayments();
+    }
+  }, [activeSection, paymentsTab, eventId]);
+
+  const handleApprovePayment = async (subId) => {
+    if (!window.confirm('Are you sure you want to approve this payment? This will confirm the order and activate tickets.')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/bank-transfer/payments/${subId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast.success('Payment approved successfully!');
+        fetchPayments();
+      } else {
+        toast.error(data.message || 'Failed to approve payment');
+      }
+    } catch (error) {
+      console.error('Error approving payment:', error);
+      toast.error('Error approving payment');
+    }
+  };
+
+  const handleRejectOrRequestInfo = async () => {
+    if (!actionMessage.trim()) {
+      toast.error('Please enter a message/reason');
+      return;
+    }
+    const isReject = showActionModal === 'reject';
+    const endpoint = isReject ? 'reject' : 'request-info';
+    const payload = isReject ? { rejectionReason: actionMessage } : { message: actionMessage };
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/bank-transfer/payments/${selectedPayment._id}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(isReject ? 'Payment rejected' : 'Information requested');
+        setShowActionModal(null);
+        setSelectedPayment(null);
+        setActionMessage('');
+        fetchPayments();
+      } else {
+        toast.error(data.message || 'Operation failed');
+      }
+    } catch (error) {
+      console.error('Error processing action:', error);
+      toast.error('Operation failed');
+    }
+  };
 
   const rememberSelectedEvent = (nextEventId) => {
     if (!nextEventId) {
@@ -2007,6 +2097,184 @@ const OrganiserDashboard = () => {
                 <Button onClick={() => exportOrganiserEventData(eventId, { type: report.exportType }).then((res) => downloadBlob(res.data, `${report.id}-${eventId}.csv`))}>Export CSV</Button>
               </Card>
             ))}
+          </div>
+        )}
+
+        {activeSection === 'payments' && (
+          <div className="space-y-6">
+            {/* Sub-navigation tabs */}
+            <div className="flex gap-4 border-b border-slate-200 pb-4">
+              {['pending', 'approved', 'rejected'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setPaymentsTab(tab)}
+                  className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all capitalize ${
+                    paymentsTab === tab
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab === 'pending' ? 'Pending Verification' : tab}
+                </button>
+              ))}
+            </div>
+
+            {loadingPayments ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : payments.length === 0 ? (
+              <Card>
+                <div className="text-center py-12 text-slate-500 font-medium">
+                  No payment submissions found.
+                </div>
+              </Card>
+            ) : (
+              <Card>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Order Info</Th>
+                      <Th>Buyer Details</Th>
+                      <Th>Amount Paid</Th>
+                      <Th>Reference</Th>
+                      <Th>Submitted</Th>
+                      <Th>Actions</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((sub) => (
+                      <Tr key={sub._id}>
+                        <Td>
+                          <span className="font-bold text-slate-900 block">
+                            #{sub.orderId?.orderNumber || 'N/A'}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ID: {sub.orderId?._id || 'N/A'}
+                          </span>
+                        </Td>
+                        <Td>
+                          <span className="font-bold text-slate-900 block">{sub.payerName}</span>
+                          <span className="text-xs text-slate-500 block">{sub.payerEmail}</span>
+                          <span className="text-xs text-slate-500 block">{sub.payerPhone}</span>
+                        </Td>
+                        <Td>
+                          <span className="font-black text-blue-600">
+                            LKR {sub.amountPaid?.toLocaleString()}
+                          </span>
+                          <span className="text-xs text-slate-400 block">via {sub.bankUsed}</span>
+                        </Td>
+                        <Td>
+                          <span className="font-semibold text-slate-700 block">{sub.referenceNumber}</span>
+                          {sub.payerNicPassport && (
+                            <span className="text-xs text-slate-500">ID: {sub.payerNicPassport}</span>
+                          )}
+                        </Td>
+                        <Td>
+                          <span className="text-sm font-medium text-slate-600">
+                            {new Date(sub.createdAt).toLocaleString()}
+                          </span>
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-3">
+                            {sub.receiptFile && (
+                              <a
+                                href={`/api/upload/file?path=${encodeURIComponent(sub.receiptFile)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 transition"
+                              >
+                                View Receipt
+                              </a>
+                            )}
+                            
+                            {paymentsTab === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => handleApprovePayment(sub._id)}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedPayment(sub);
+                                    setShowActionModal('reject');
+                                  }}
+                                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedPayment(sub);
+                                    setShowActionModal('request-info');
+                                  }}
+                                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                                >
+                                  Request Info
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </Card>
+            )}
+
+            {/* Modal for Reject / Request Info */}
+            {showActionModal && selectedPayment && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                  <h3 className="text-lg font-bold text-slate-900 capitalize">
+                    {showActionModal === 'reject' ? 'Reject Payment' : 'Request More Info'}
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-500">
+                      {showActionModal === 'reject' ? 'Rejection Reason *' : 'Message to Buyer *'}
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={actionMessage}
+                      onChange={(e) => setActionMessage(e.target.value)}
+                      placeholder={
+                        showActionModal === 'reject'
+                          ? 'e.g., Receipt details do not match the transaction amount.'
+                          : 'e.g., Please provide a clearer screenshot of the receipt showing reference number.'
+                      }
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowActionModal(null);
+                        setSelectedPayment(null);
+                        setActionMessage('');
+                      }}
+                      className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleRejectOrRequestInfo}
+                      className={`px-4 py-2 text-white rounded-xl font-bold text-sm transition ${
+                        showActionModal === 'reject'
+                          ? 'bg-rose-600 hover:bg-rose-700'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

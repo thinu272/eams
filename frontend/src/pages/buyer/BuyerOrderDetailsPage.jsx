@@ -19,6 +19,8 @@ import {
   QrCodeIcon,
   ShoppingBagIcon,
   CheckBadgeIcon,
+  ExclamationTriangleIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 const statusPill = (status) => {
@@ -149,7 +151,7 @@ const BuyerOrderDetailsPage = () => {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="rounded-2xl bg-brand-main/5 p-4 border border-brand-main/10">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-brand-main">Total Paid Price</p>
-                <p className="mt-1 text-base sm:text-xl font-bold text-brand-main truncate">LKR {Number(order.totalAmount || 0).toLocaleString()}</p>
+                <p className="mt-1 text-base sm:text-xl font-bold text-brand-main truncate">{order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Total Ticket Slots</p>
@@ -262,6 +264,11 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
   const isInvited = ticket.status === 'INVITED';
   const isSubmitted = ticket.status === 'PENDING_VERIFICATION';
   const isConfirmed = ticket.status === 'CONFIRMED';
+  const isInvalidated = ticket.status === 'CANCELLED' || ticket.refundStatus === 'refunded';
+  const isPhotoRejected = !isInvalidated && String(ticket.attendee?.photoVerificationStatus || '').toLowerCase() === 'rejected';
+  const resubmitHref = ticket.attendee?.resubmitToken
+    ? `/resubmit/${ticket.attendee.resubmitToken}`
+    : `/buyer/confirm/${ticket._id}`;
 
   return (
     <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-200 flex flex-col justify-between gap-4">
@@ -274,9 +281,19 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
           <p className="mt-1 truncate text-xs text-slate-500 font-semibold leading-normal">
             {ticket.attendee?.fullName || ticket.inviteEmail || 'No guest assigned'}
           </p>
+          {ticket.status !== 'PENDING' && (
+            <div className="mt-2 space-y-0.5 text-[10px] text-slate-400 font-medium font-mono">
+              {(ticket.inviteSentAt || ticket.createdAt) && (
+                <p>Assigned: {new Date(ticket.inviteSentAt || ticket.createdAt).toLocaleString()}</p>
+              )}
+              {isConfirmed && (ticket.attendee?.confirmedAt || ticket.updatedAt) && (
+                <p>Confirmed: {new Date(ticket.attendee?.confirmedAt || ticket.updatedAt).toLocaleString()}</p>
+              )}
+            </div>
+          )}
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${statusPill(ticket.status)}`}>
-          {statusLabel(ticket.status)}
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${isInvalidated ? 'bg-slate-100 text-slate-700 border border-slate-200' : isPhotoRejected ? 'bg-red-50 text-red-700 border border-red-100' : statusPill(ticket.status)}`}>
+          {isInvalidated ? 'Invalidated' : isPhotoRejected ? 'Photo Rejected' : statusLabel(ticket.status)}
         </span>
       </div>
 
@@ -323,7 +340,42 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
         </div>
       )}
 
-      {(isInvited || isSubmitted) && (
+      {isInvalidated && (
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-bold text-slate-800">Ticket invalidated</p>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            {ticket.invalidationReason || 'Maximum photo resubmissions were reached.'}
+          </p>
+          {ticket.refundAmount > 0 && (
+            <p className="text-[11px] font-semibold text-emerald-700">
+              Refund initiated: LKR {Number(ticket.refundAmount).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
+
+      {isPhotoRejected && (
+        <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+          <div className="flex items-start gap-2">
+            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-red-800">Photo verification rejected</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                {ticket.attendee?.photoRejectionReason || 'Please upload a clearer verification photo.'}
+              </p>
+            </div>
+          </div>
+          <Link
+            to={resubmitHref}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-all active:scale-95"
+          >
+            <PhotoIcon className="h-3.5 w-3.5" />
+            <span>Resubmit Photo</span>
+          </Link>
+        </div>
+      )}
+
+      {(isInvited || isSubmitted) && !isPhotoRejected && (
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
             {isInvited ? (

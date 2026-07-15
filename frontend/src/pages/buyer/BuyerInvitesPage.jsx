@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import BuyerLayout from '../../components/layout/BuyerLayout';
 import { getBuyerInvites, resendInvite } from '../../api/buyer';
 import toast from 'react-hot-toast';
@@ -12,6 +13,8 @@ import {
   EnvelopeIcon,
   PhoneIcon,
   ArrowRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
 const badgeFor = (status) => {
@@ -44,6 +47,8 @@ const BuyerInvitesPage = () => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [resending, setResending] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   const load = () => {
     setLoading(true);
@@ -75,6 +80,16 @@ const BuyerInvitesPage = () => {
     });
     return Array.from(byEvent.values());
   }, [invites]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(grouped.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedGroups = grouped.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
 
   const handleResend = async (ticketId) => {
     setResending(ticketId);
@@ -168,7 +183,7 @@ const BuyerInvitesPage = () => {
 
         {!loading && invites.length > 0 && (
           <div className="space-y-6">
-            {grouped.map((group) => (
+            {paginatedGroups.map((group) => (
               <div key={group.event?._id || 'event'} className="rounded-[32px] bg-white border border-slate-200 p-6 shadow-sm">
                 <div className="border-b border-slate-100 pb-4 mb-4">
                   <h3 className="text-lg font-extrabold text-slate-900">{group.event?.name || 'Event'}</h3>
@@ -215,6 +230,12 @@ const BuyerInvitesPage = () => {
                         <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-xs text-red-700">
                           <p className="font-bold">Identity Photo Rejected</p>
                           <p className="mt-1 text-slate-600 leading-normal">{invite.attendee.photoRejectionReason || 'Please resubmit details.'}</p>
+                          <Link
+                            to={invite.attendee?.resubmitToken ? `/resubmit/${invite.attendee.resubmitToken}` : `/buyer/confirm/${invite.ticketId}`}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-red-700 transition-all"
+                          >
+                            Resubmit Photo
+                          </Link>
                         </div>
                       )}
 
@@ -240,6 +261,50 @@ const BuyerInvitesPage = () => {
                 </div>
               </div>
             ))}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2">
+                <p className="text-xs text-slate-500 font-medium">
+                  Showing {startIndex + 1} to {Math.min(endIndex, grouped.length)} of {grouped.length} event groups
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeftIcon className="h-3.5 w-3.5" />
+                    <span>Previous</span>
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                          currentPage === page
+                            ? 'bg-brand-main text-white shadow-sm'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <span>Next</span>
+                    <ChevronRightIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

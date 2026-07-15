@@ -7,6 +7,7 @@ const Attendee = require('../models/Attendee');
 const { protect, restrictTo } = require('../middleware/auth');
 const { normalizeRole, ROLES } = require('../utils/rbac');
 const { notifyPhotoRejectionNotification, notifyStatusChange } = require('../services/notificationService');
+const { withUploadedPhoto, finalizePhotoRejection } = require('../services/ticketDeliveryService');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -267,7 +268,7 @@ router.get('/dashboard', async (req, res, next) => {
       Attendee.countDocuments(attendeeFilter),
       Attendee.countDocuments({ ...attendeeFilter, checkedIn: true }),
       hasVerificationPermission(req.user)
-        ? Attendee.countDocuments({ ...attendeeFilter, photoVerificationStatus: { $in: ['pending', 'Pending'] }, photo: { $exists: true, $ne: '' } })
+        ? Attendee.countDocuments(withUploadedPhoto({ ...attendeeFilter, photoVerificationStatus: { $in: ['pending', 'Pending'] } }))
         : Promise.resolve(0),
       EntryLog.find({ event: event._id, zoneId: { $in: scopeZoneKeys } })
         .populate('attendee', 'fullName')
@@ -399,7 +400,12 @@ router.get('/attendees', async (req, res, next) => {
       else if (status === 'not-checked-in') filter.checkedIn = false;
       else filter.confirmationStatus = status;
     }
-    if (verificationStatus) filter.photoVerificationStatus = verificationStatus;
+    if (verificationStatus) {
+      filter.photoVerificationStatus = verificationStatus;
+      if (['pending', 'Pending'].includes(verificationStatus)) {
+        Object.assign(filter, withUploadedPhoto());
+      }
+    }
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
@@ -496,7 +502,7 @@ router.post('/verify', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Status must be verified or rejected.' });
     }
 
-    const attendee = await Attendee.findById(attendeeId).populate('event').populate('order');
+    let attendee = await Attendee.findById(attendeeId).populate('event').populate('order');
     if (!attendee) {
       return res.status(404).json({ success: false, message: 'Attendee not found.' });
     }
@@ -513,55 +519,61 @@ router.post('/verify', async (req, res, next) => {
       }
     }
 
-    attendee.photoVerificationStatus = normalizedStatus;
-    attendee.photoVerifiedBy = req.user._id;
-    attendee.photoVerifiedAt = new Date();
-    attendee.verifiedBy = req.user._id;
-    attendee.verifiedAt = new Date();
-    attendee.photoRejectionReason = normalizedStatus === 'rejected' ? (reason || 'Rejected by sub organiser') : null;
     if (normalizedStatus === 'rejected') {
-      attendee.resubmitToken = attendee.resubmitToken || uuidv4();
-    }
-    await attendee.save();
-
-    if (normalizedStatus === 'rejected') {
+      attendee = await finalizePhotoRejection(attendee, {
+        reason: reason || 'Rejected by sub organiser',
+        verifiedBy: req.user._id,
+      });
+      attendee.verifiedBy = req.user._id;
+      attendee.verifiedAt = new Date();
+      await attendee.save();
       await notifyPhotoRejectionNotification({
         attendee,
         event: attendee.event,
         reason: attendee.photoRejectionReason,
       });
     } else {
-      attendee.confirmationStatus = 'confirmed';
-      attendee.isConfirmed = true;
-      attendee.confirmedAt = new Date();
-      attendee.confirmedBy = 'sub_organiser';
+      attendee.photoVerificationStatus = normalizedStatus;
+      attendee.photoVerifiedBy = req.user._id;
+      attendee.photoVerifiedAt = new Date();
+      attendee.verifiedBy = req.user._id;
+      attendee.verifiedAt = new Date();
+      attendee.photoRejectionReason = null;
       await attendee.save();
+
+      const { finalizePhotoApproval } = require('../services/ticketDeliveryService');
+      const approvedAttendee = await finalizePhotoApproval(attendee, {
+        verifiedBy: req.user._id,
+        confirmedBy: 'sub_organiser',
+      });
 
       const { notifyFinalTicket, notifyStatusChange } = require('../services/notificationService');
       const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
       const Ticket = require('../models/Ticket');
 
       await notifyFinalTicket({
-        attendee,
-        event: event,
-        phone: attendee.phone,
+        attendee: approvedAttendee,
+        event,
+        phone: approvedAttendee.phone,
         notificationChannel: 'both',
-        force: true
+        force: true,
       }).catch((err) => console.error('SUB_ORG FINAL NOTIFY ERROR:', err));
 
-      const orderTickets = await Ticket.find({ order: attendee.order }).populate('attendee');
-      const allVerified = orderTickets.length > 0 && orderTickets.every(t => t.attendee && t.attendee.photoVerificationStatus === 'verified');
+      const orderTickets = await Ticket.find({ order: approvedAttendee.order }).populate('attendee');
+      const allVerified = orderTickets.length > 0 && orderTickets.every((t) => t.attendee && t.attendee.photoVerificationStatus === 'verified');
 
       if (allVerified) {
-         await processOrderFinalConfirmation({ orderId: attendee.order });
+        await processOrderFinalConfirmation({ orderId: approvedAttendee.order });
       } else {
         await notifyStatusChange({
-          attendee,
-          event: attendee.event,
+          attendee: approvedAttendee,
+          event: approvedAttendee.event,
           status: 'Photo Verified',
           message: 'Your photo has been verified. Waiting for other attendees in your order to be verified before tickets are issued.',
         });
       }
+
+      attendee = approvedAttendee;
     }
 
     res.json({ success: true, data: { attendee }, message: `Photo ${normalizedStatus}.` });

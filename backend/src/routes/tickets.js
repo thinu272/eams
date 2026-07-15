@@ -2,34 +2,20 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
-const multer = require('multer');
-const path = require('path');
 const Ticket = require('../models/Ticket');
 const Order = require('../models/Order');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
 const QRCode = require('qrcode');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
-const { resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { generateTicketPDF } = require('../services/pdfService');
 const { protect } = require('../middleware/auth');
 
-// Multer configuration for photo upload
-const upload = multer({
-  dest: path.join(__dirname, '../../uploads/'),
-  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowed.includes(ext)) {
-      return cb(new Error('Only image files are allowed'));
-    }
-    cb(null, true);
-  },
-});
-
 // POST /api/tickets/assign - Assign attendee to ticket (self-assignment)
-router.post('/assign', upload.single('photo'), [
+router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos'), [
   body('ticketId').notEmpty().withMessage('Ticket ID is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('email').isEmail().withMessage('Valid email is required'),
@@ -49,7 +35,7 @@ router.post('/assign', upload.single('photo'), [
       });
     }
 
-    if (!req.file) {
+    if (!req.s3Data) {
       return res.status(400).json({
         success: false,
         message: 'Identity Verification Photo is required',
@@ -84,7 +70,6 @@ router.post('/assign', upload.single('photo'), [
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       nationalId,
       passportNumber,
-      photo: req.file ? `uploads/${req.file.filename}` : undefined,
       order: ticket.order._id,
       event: ticket.event._id,
       ticket: ticket._id,
@@ -93,21 +78,40 @@ router.post('/assign', upload.single('photo'), [
       allowedZones: ticket.allowedZones || [],
       confirmationToken: uuidv4(),
       qrToken: uuidv4(),
-      confirmationStatus: 'confirmed', // Self-assigned attendees are immediately confirmed
+      confirmationStatus: 'confirmed',
       confirmedAt: new Date(),
       confirmedBy: 'self',
       addedVia: 'self_purchase',
     });
 
-    // Generate QR code
-    const qrData = attendee.qrToken;
-    attendee.qrCode = await QRCode.toDataURL(qrData);
+    const photoResult = await applyValidatedPhotoUpload({
+      attendee,
+      event: ticket.event,
+      fileBuffer: req.file.buffer,
+      s3Data: req.s3Data,
+      body: req.body,
+    });
+
+    if (!photoResult.ok) {
+      return res.status(photoResult.status).json({
+        success: false,
+        message: photoResult.message,
+        data: photoResult.aiResults ? { aiResults: photoResult.aiResults } : undefined,
+      });
+    }
+
+    const needsPhotoApproval = requiresPhotoVerification(ticket.event) && attendee.photo;
+
+    if (!needsPhotoApproval) {
+      const qrData = attendee.qrToken;
+      attendee.qrCode = await QRCode.toDataURL(qrData);
+    }
 
     await attendee.save();
 
     // Update ticket
     ticket.attendee = attendee._id;
-    ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
+    ticket.status = needsPhotoApproval ? 'PENDING_VERIFICATION' : resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     await ticket.save();
 
     // Check if all tickets in the order are now assigned
@@ -118,12 +122,22 @@ router.post('/assign', upload.single('photo'), [
       await Order.findByIdAndUpdate(ticket.order._id, { allAssigned: true });
     }
 
-    await notifyFinalTicket({
-      attendee,
-      event: ticket.event,
-      phone: attendee.phone,
-      notificationChannel: 'both',
-    });
+    if (needsPhotoApproval) {
+      await notifyBuyerTicketProgress({
+        order: ticket.order,
+        attendee,
+        event: ticket.event,
+        ticket,
+        stage: 'pending_verification',
+      });
+    } else {
+      await notifyFinalTicket({
+        attendee,
+        event: ticket.event,
+        phone: attendee.phone,
+        notificationChannel: 'both',
+      });
+    }
 
     res.json({
       success: true,

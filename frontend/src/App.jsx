@@ -34,6 +34,10 @@ import BuyerHomePage from './pages/buyer/BuyerHomePage';
 import BuyerTicketsPage from './pages/buyer/BuyerTicketsPage';
 import BuyerInvitesPage from './pages/buyer/BuyerInvitesPage';
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage';
+import BuyerConfirmPassPage from './pages/buyer/BuyerConfirmPassPage';
+import BankTransferInstructionsPage from './pages/buyer/BankTransferInstructionsPage';
+import BankTransferSubmitPage from './pages/buyer/BankTransferSubmitPage';
+import BankTransferThankYouPage from './pages/buyer/BankTransferThankYouPage';
 import AttendeeDashboardPage from './pages/attendee/AttendeeDashboardPage';
 import AttendeeTicketsPage from './pages/attendee/AttendeeTicketsPage';
 import AttendeeTicketViewPage from './pages/attendee/AttendeeTicketViewPage';
@@ -128,6 +132,10 @@ const AppRoutes = () => (
     <Route path="/buyer/dashboard" element={<Protected roles={['BUYER']}><BuyerDashboardPage /></Protected>} />
     <Route path="/buyer/home" element={<Protected roles={['BUYER']}><BuyerHomePage /></Protected>} />
     <Route path="/buyer/tickets" element={<Protected roles={['BUYER']}><BuyerTicketsPage /></Protected>} />
+    <Route path="/buyer/confirm/:ticketId" element={<Protected roles={['BUYER']}><BuyerConfirmPassPage /></Protected>} />
+    <Route path="/bank-transfer/instructions/:orderId" element={<BankTransferInstructionsPage />} />
+    <Route path="/bank-transfer/submit/:orderId" element={<BankTransferSubmitPage />} />
+    <Route path="/bank-transfer/thank-you/:orderId" element={<BankTransferThankYouPage />} />
     <Route path="/buyer/assign/:orderId" element={<Protected roles={['BUYER']}><BuyerOrderDetailsPage /></Protected>} />
     <Route path="/buyer/orders/:orderId" element={<Protected roles={['BUYER']}><BuyerOrderDetailsPage /></Protected>} />
     <Route path="/buyer/invites" element={<Protected roles={['BUYER']}><BuyerInvitesPage /></Protected>} />

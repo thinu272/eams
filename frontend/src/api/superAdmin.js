@@ -34,3 +34,9 @@ export const getSuperAdminSettings = () => api.get('/super-admin/settings');
 export const updateSuperAdminSettings = (payload) => api.patch('/super-admin/settings', payload);
 export const getSuperAdminLogs = (params) => api.get('/super-admin/logs', { params });
 export const uploadSystemAsset = (formData) => api.post('/upload/system-asset', formData);
+
+// Bank Account management (uses /bank-transfer/bank-accounts routes)
+export const getAdminBankAccounts = () => api.get('/bank-transfer/bank-accounts');
+export const createAdminBankAccount = (payload) => api.post('/bank-transfer/bank-accounts', payload);
+export const updateAdminBankAccount = (id, payload) => api.put(`/bank-transfer/bank-accounts/${id}`, payload);
+export const deleteAdminBankAccount = (id) => api.delete(`/bank-transfer/bank-accounts/${id}`);

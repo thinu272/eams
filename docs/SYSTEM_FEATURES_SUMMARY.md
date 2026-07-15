@@ -30,6 +30,10 @@ Flexible payment options tailored to diverse event needs.
 - **Multi-Currency Support**: Selection from global currencies with localized symbol display.
 - **Granular Payment Methods**: Organizers can toggle Card, Bank Transfer, and Cash options per event.
 - **Integrated Gateways**: Native support for PayHere (Sandbox) with automated order confirmation flows.
+- **Direct Bank Transfer Management**: Comprehensive bank transfer payment verification system with automatic workflow updates, audit logging, and real-time notifications.
+- **Payment Verification Workflows**: Organizer and admin dashboards for approving, rejecting, or requesting more information for bank transfer payments.
+- **Automatic Order Confirmation**: Payment approval automatically confirms orders, activates tickets, generates QR codes, and sends notifications.
+- **Platform-Wide Payment Visibility**: Super Admin can view and manage all payments across all events with advanced filtering and reporting.
 - **Event Customization Recovery**: Organiser customization and settings saves recover from stale cached event IDs by falling back to the valid scoped event.
 
 ## 5. Secure Attendee Management

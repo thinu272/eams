@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const path = require('path');
 const { body, validationResult } = require('express-validator');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
+const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
+const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
-const { resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 
 const getInviteExpiryDate = (ticket) => {
   if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
@@ -21,17 +21,6 @@ const isInviteExpired = (ticket) => {
   const expiryDate = getInviteExpiryDate(ticket);
   return !!expiryDate && expiryDate.getTime() < Date.now();
 };
-
-const upload = multer({
-  dest: path.join(__dirname, '../../uploads/'),
-  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowed.includes(ext)) return cb(new Error('Only JPG/JPEG/PNG images are allowed'));
-    cb(null, true);
-  },
-});
 
 // GET /api/invite/:token - validate invite token and return event/ticket
 router.get('/:token', async (req, res, next) => {
@@ -196,7 +185,7 @@ router.post('/respond', [
 });
 
 // POST /api/invite/confirm - accept invite and confirm identity
-router.post('/confirm', upload.single('photo'), [
+router.post('/confirm', upload.single('photo'), handleS3Upload('attendee-photos'), [
   body('token').notEmpty().withMessage('Invite token is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('email').notEmpty().isEmail().withMessage('Valid email is required'),
@@ -231,6 +220,10 @@ router.post('/confirm', upload.single('photo'), [
 
     if (isInviteExpired(ticket)) {
       return res.status(400).json({ success: false, message: 'Invitation token has expired.' });
+    }
+
+    if (requiresPhotoVerification(ticket.event) && !req.s3Data) {
+      return res.status(400).json({ success: false, message: 'Identity verification photo is required.' });
     }
 
     // Duplicate check by NIC/passport for same event (only if provided)
@@ -283,27 +276,41 @@ router.post('/confirm', upload.single('photo'), [
       confirmedAt: new Date(),
       confirmedBy: 'online_invite',
       addedVia: 'invite',
-      photoVerificationStatus: ticket.event?.settings?.requirePhotoVerification ? 'pending' : 'verified',
     };
-
-    if (req.file) {
-      attendeeData.photo = `uploads/${req.file.filename}`;
-      attendeeData.photoUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${req.file.filename}`;
-    }
 
     let attendee;
     if (ticket.attendee) {
       attendee = await Attendee.findById(ticket.attendee);
       if (attendee) {
         Object.assign(attendee, attendeeData);
-        await attendee.save();
       }
     }
 
     if (!attendee) {
       attendee = new Attendee(attendeeData);
-      await attendee.save();
     }
+
+    if (req.s3Data) {
+      const photoResult = await applyValidatedPhotoUpload({
+        attendee,
+        event: ticket.event,
+        fileBuffer: req.file.buffer,
+        s3Data: req.s3Data,
+        body: req.body,
+      });
+
+      if (!photoResult.ok) {
+        return res.status(photoResult.status).json({
+          success: false,
+          message: photoResult.message,
+          data: photoResult.aiResults ? { aiResults: photoResult.aiResults } : undefined,
+        });
+      }
+    } else if (!requiresPhotoVerification(ticket.event)) {
+      attendee.photoVerificationStatus = 'verified';
+    }
+
+    await attendee.save();
 
     ticket.attendee = attendee._id;
     ticket.status = resolveConfirmedTicketStatus({ attendee, event: ticket.event });

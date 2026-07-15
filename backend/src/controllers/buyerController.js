@@ -6,8 +6,10 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
+const PaymentSubmission = require('../models/PaymentSubmission');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
+const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -19,6 +21,15 @@ const buildTicketSummary = (ticket) => ({
   categoryName: ticket.categoryName,
   allowedZones: ticket.allowedZones || [],
   slotIndex: ticket.slotIndex,
+  inviteEmail: ticket.inviteEmail,
+  invitePhone: ticket.invitePhone,
+  inviteSentAt: ticket.inviteSentAt,
+  inviteRespondedAt: ticket.inviteRespondedAt,
+  refundStatus: ticket.refundStatus,
+  refundAmount: ticket.refundAmount,
+  refundedAt: ticket.refundedAt,
+  invalidatedAt: ticket.invalidatedAt,
+  invalidationReason: ticket.invalidationReason,
   attendee: ticket.attendee ? {
     _id: ticket.attendee._id,
     fullName: ticket.attendee.fullName,
@@ -28,7 +39,11 @@ const buildTicketSummary = (ticket) => ({
     qrToken: ticket.attendee.qrToken,
     confirmationStatus: ticket.attendee.confirmationStatus,
     isConfirmed: ticket.attendee.isConfirmed,
+    confirmedAt: ticket.attendee.confirmedAt,
     photo: ticket.attendee.photo,
+    photoVerificationStatus: ticket.attendee.photoVerificationStatus,
+    photoRejectionReason: ticket.attendee.photoRejectionReason,
+    resubmitToken: ticket.attendee.resubmitToken,
   } : null,
 });
 
@@ -36,12 +51,29 @@ const getBuyerOrders = async (req, res, next) => {
   try {
     const email = normalizeEmail(req.user.email);
     const orders = await Order.find({ buyerEmail: email })
-      .populate('eventId', 'name startDate venue')
+      .populate('eventId', 'name startDate venue settings')
       .sort({ createdAt: -1 });
 
     const orderIds = orders.map((order) => order._id);
     const tickets = await Ticket.find({ order: { $in: orderIds } })
       .populate('attendee', 'fullName email confirmationStatus isConfirmed');
+
+    // Fetch payment submissions for bank transfer orders
+    const bankTransferOrderIds = orders
+      .filter((order) => order.paymentMethod === 'bank_transfer')
+      .map((order) => order._id);
+    
+    const paymentSubmissions = bankTransferOrderIds.length > 0 
+      ? await PaymentSubmission.find({ orderId: { $in: bankTransferOrderIds } })
+          .populate('verifiedBy', 'name email')
+          .sort({ submittedAt: -1 })
+      : [];
+    
+    // Create a map of orderId to payment submission for easy lookup
+    const paymentSubmissionMap = {};
+    paymentSubmissions.forEach((submission) => {
+      paymentSubmissionMap[submission.orderId.toString()] = submission;
+    });
 
     const ticketGroups = tickets.reduce((acc, ticket) => {
       const key = ticket.order.toString();
@@ -55,18 +87,40 @@ const getBuyerOrders = async (req, res, next) => {
       const confirmed = list.filter((t) => t.status === 'CONFIRMED').length;
       const total = list.length;
       const allConfirmed = total > 0 && confirmed === total;
+      const paymentSubmission = paymentSubmissionMap[order._id.toString()];
       return {
         _id: order._id,
         orderNumber: order.orderNumber,
         totalAmount: order.totalAmount,
+        currency: order.eventId?.settings?.currency || 'LKR',
         status: order.status,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
         confirmationStatus: allConfirmed ? 'All Confirmed' : 'Pending',
         createdAt: order.createdAt,
+        paymentSubmission: paymentSubmission ? {
+          _id: paymentSubmission._id,
+          payerName: paymentSubmission.payerName,
+          payerEmail: paymentSubmission.payerEmail,
+          payerPhone: paymentSubmission.payerPhone,
+          bankUsed: paymentSubmission.bankUsed,
+          transferDate: paymentSubmission.transferDate,
+          transferTime: paymentSubmission.transferTime,
+          referenceNumber: paymentSubmission.referenceNumber,
+          amountPaid: paymentSubmission.amountPaid,
+          receiptFile: paymentSubmission.receiptFile,
+          receiptFileType: paymentSubmission.receiptFileType,
+          verificationStatus: paymentSubmission.verificationStatus,
+          rejectionReason: paymentSubmission.rejectionReason,
+          submittedAt: paymentSubmission.submittedAt,
+          verifiedAt: paymentSubmission.verifiedAt,
+        } : null,
         event: order.eventId ? {
           _id: order.eventId._id,
           name: order.eventId.name,
           startDate: order.eventId.startDate,
           venue: order.eventId.venue,
+          currency: order.eventId.settings?.currency || 'LKR',
         } : null,
         progress: { confirmed, total },
       };
@@ -82,15 +136,22 @@ const getBuyerOrderDetails = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid order ID.' });
     }
     const email = normalizeEmail(req.user.email);
-    const order = await Order.findById(req.params.orderId).populate('eventId', 'name startDate venue endDate');
+    const order = await Order.findById(req.params.orderId).populate('eventId', 'name startDate venue endDate settings');
     if (!order || normalizeEmail(order.buyerEmail) !== email) {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
     const tickets = await Ticket.find({ order: order._id })
-      .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken')
+      .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken photoVerificationStatus photoRejectionReason resubmitToken')
       .sort({ slotIndex: 1 });
 
     const confirmed = tickets.filter((t) => t.status === 'CONFIRMED').length;
+
+    // Fetch payment submission for bank transfer orders
+    let paymentSubmission = null;
+    if (order.paymentMethod === 'bank_transfer') {
+      paymentSubmission = await PaymentSubmission.findOne({ orderId: order._id })
+        .populate('verifiedBy', 'name email');
+    }
 
     res.json({
       success: true,
@@ -99,17 +160,38 @@ const getBuyerOrderDetails = async (req, res, next) => {
           _id: order._id,
           orderNumber: order.orderNumber,
           totalAmount: order.totalAmount,
+          currency: order.eventId?.settings?.currency || 'LKR',
           status: order.status,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
           createdAt: order.createdAt,
           buyerName: order.buyerName,
           buyerEmail: order.buyerEmail,
           buyerPhone: order.buyerPhone,
+          paymentSubmission: paymentSubmission ? {
+            _id: paymentSubmission._id,
+            payerName: paymentSubmission.payerName,
+            payerEmail: paymentSubmission.payerEmail,
+            payerPhone: paymentSubmission.payerPhone,
+            bankUsed: paymentSubmission.bankUsed,
+            transferDate: paymentSubmission.transferDate,
+            transferTime: paymentSubmission.transferTime,
+            referenceNumber: paymentSubmission.referenceNumber,
+            amountPaid: paymentSubmission.amountPaid,
+            receiptFile: paymentSubmission.receiptFile,
+            receiptFileType: paymentSubmission.receiptFileType,
+            verificationStatus: paymentSubmission.verificationStatus,
+            rejectionReason: paymentSubmission.rejectionReason,
+            submittedAt: paymentSubmission.submittedAt,
+            verifiedAt: paymentSubmission.verifiedAt,
+          } : null,
           event: order.eventId ? {
             _id: order.eventId._id,
             name: order.eventId.name,
             startDate: order.eventId.startDate,
             endDate: order.eventId.endDate,
             venue: order.eventId.venue,
+            currency: order.eventId.settings?.currency || 'LKR',
           } : null,
           progress: { confirmed, total: tickets.length },
         },
@@ -154,13 +236,35 @@ const assignSelfToTicket = async (req, res, next) => {
     if (passportNumber) attendee.passportNumber = passportNumber;
     if (nationality) attendee.nationality = nationality;
 
-    if (req.s3Data) {
-      attendee.photo = req.s3Data.url;
-      attendee.photoS3Key = req.s3Data.key;
-      attendee.photoUploadedAt = new Date();
+    if (requiresPhotoVerification(ticket.event) && !req.s3Data && !attendee.photo) {
+      return res.status(400).json({ success: false, message: 'Identity verification photo is required for this event.' });
     }
 
-    attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+    if (req.s3Data) {
+      const photoResult = await applyValidatedPhotoUpload({
+        attendee,
+        event: ticket.event,
+        fileBuffer: req.file.buffer,
+        s3Data: req.s3Data,
+        body: req.body,
+      });
+
+      if (!photoResult.ok) {
+        return res.status(photoResult.status).json({
+          success: false,
+          message: photoResult.message,
+          data: photoResult.aiResults ? { aiResults: photoResult.aiResults } : undefined,
+        });
+      }
+    }
+
+    const needsPhotoApproval = requiresPhotoVerification(ticket.event) && attendee.photo;
+
+    if (!needsPhotoApproval) {
+      if (!attendee.qrToken) attendee.qrToken = uuidv4();
+      attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+    }
+
     attendee.confirmationStatus = 'confirmed';
     attendee.isConfirmed = true;
     attendee.confirmedAt = new Date();
@@ -169,7 +273,7 @@ const assignSelfToTicket = async (req, res, next) => {
     await attendee.save();
     ticket.attendee = attendee._id;
     const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
-    ticket.status = requiresPhotoVerification(ticket.event) && attendee.photo ? 'PENDING_VERIFICATION' : nextTicketStatus;
+    ticket.status = needsPhotoApproval ? 'PENDING_VERIFICATION' : nextTicketStatus;
     await ticket.save();
 
     // Update order confirmation status
@@ -178,7 +282,7 @@ const assignSelfToTicket = async (req, res, next) => {
     const confirmationStatus = confirmedCount === tickets.length ? 'complete' : 'partial';
     await Order.findByIdAndUpdate(ticket.order._id, { confirmationStatus });
 
-    if (requiresPhotoVerification(ticket.event)) {
+    if (needsPhotoApproval) {
       await notifyBuyerTicketProgress({
         order: ticket.order,
         attendee,
@@ -278,10 +382,28 @@ module.exports = {
         .populate('event', 'name startDate endDate venue coverImage settings instructions status')
         .sort({ createdAt: -1 });
 
+      // Fetch payment submissions for bank transfer orders
+      const bankTransferOrderIds = orders
+        .filter((order) => order.paymentMethod === 'bank_transfer')
+        .map((order) => order._id);
+      
+      const paymentSubmissions = bankTransferOrderIds.length > 0 
+        ? await PaymentSubmission.find({ orderId: { $in: bankTransferOrderIds } })
+            .populate('verifiedBy', 'name email')
+            .sort({ submittedAt: -1 })
+        : [];
+      
+      // Create a map of orderId to payment submission for easy lookup
+      const paymentSubmissionMap = {};
+      paymentSubmissions.forEach((submission) => {
+        paymentSubmissionMap[submission.orderId.toString()] = submission;
+      });
+
       const normalizedOrders = orders.map((order) => {
         const orderTickets = tickets.filter((t) => t.order?.toString?.() === order._id.toString());
         const assigned = orderTickets.filter((t) => ['INVITED', 'PENDING_VERIFICATION', 'ASSIGNED', 'CONFIRMED'].includes(t.status)).length;
         const pending = orderTickets.filter((t) => t.status === 'PENDING').length;
+        const paymentSubmission = paymentSubmissionMap[order._id.toString()];
 
         const byCategory = orderTickets.reduce((acc, ticket) => {
           const key = ticket.categoryId || ticket.categoryName || 'unknown';
@@ -309,6 +431,7 @@ module.exports = {
           buyerName: order.buyerName,
           buyerEmail: order.buyerEmail,
           buyerPhone: order.buyerPhone,
+          currency: order.eventId?.settings?.currency || 'LKR',
           event: order.eventId ? {
             _id: order.eventId._id,
             name: order.eventId.name,
@@ -319,6 +442,7 @@ module.exports = {
             description: order.eventId.description,
             status: order.eventId.status,
             requirePhotoVerification: !!(order.eventId.settings?.requirePhotoVerification),
+            currency: order.eventId.settings?.currency || 'LKR',
             instructions: order.eventId.instructions || '',
           } : null,
           stats: {
@@ -327,6 +451,25 @@ module.exports = {
             pending,
           },
           totalAmount: order.totalAmount,
+          paymentMethod: order.paymentMethod || null,
+          paymentStatus: order.paymentStatus || null,
+          paymentSubmission: paymentSubmission ? {
+            _id: paymentSubmission._id,
+            payerName: paymentSubmission.payerName,
+            payerEmail: paymentSubmission.payerEmail,
+            payerPhone: paymentSubmission.payerPhone,
+            bankUsed: paymentSubmission.bankUsed,
+            transferDate: paymentSubmission.transferDate,
+            transferTime: paymentSubmission.transferTime,
+            referenceNumber: paymentSubmission.referenceNumber,
+            amountPaid: paymentSubmission.amountPaid,
+            receiptFile: paymentSubmission.receiptFile,
+            receiptFileType: paymentSubmission.receiptFileType,
+            verificationStatus: paymentSubmission.verificationStatus,
+            rejectionReason: paymentSubmission.rejectionReason,
+            submittedAt: paymentSubmission.submittedAt,
+            verifiedAt: paymentSubmission.verifiedAt,
+          } : null,
           categories: Object.values(byCategory).sort((a, b) => (a.categoryName || '').localeCompare(b.categoryName || '')),
         };
       });
@@ -411,7 +554,7 @@ module.exports = {
 
       const tickets = await Ticket.find({ order: { $in: orderIds }, status: { $in: ['INVITED', 'PENDING_VERIFICATION', 'CONFIRMED'] } })
         .populate('event', 'name startDate venue coverImage')
-        .populate('attendee', 'fullName email phone confirmationStatus photoVerificationStatus photoRejectionReason confirmationToken');
+        .populate('attendee', 'fullName email phone confirmationStatus photoVerificationStatus photoRejectionReason resubmitToken confirmationToken');
 
       const invites = tickets
         .filter((t) => t.attendee)
@@ -436,6 +579,7 @@ module.exports = {
             confirmationStatus: t.attendee.confirmationStatus,
             photoVerificationStatus: t.attendee.photoVerificationStatus,
             photoRejectionReason: t.attendee.photoRejectionReason,
+            resubmitToken: t.attendee.resubmitToken,
             confirmationToken: t.attendee.confirmationToken,
           },
         }))

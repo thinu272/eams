@@ -14,11 +14,19 @@ import {
   CircleStackIcon,
   UserPlusIcon,
   QuestionMarkCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CreditCardIcon,
+  BanknotesIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 
 const BuyerTicketsPage = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
 
   const fetchOrders = () => {
     setLoading(true);
@@ -69,19 +77,43 @@ const BuyerTicketsPage = () => {
     return [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [orders]);
 
+  // Filter orders by payment method
+  const filteredOrders = useMemo(() => {
+    if (paymentMethodFilter === 'all') {
+      return sortedOrders;
+    }
+    return sortedOrders.filter(order => order.paymentMethod === paymentMethodFilter);
+  }, [sortedOrders, paymentMethodFilter]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paymentMethodFilter]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
   // Overall Stats
   const overallStats = useMemo(() => {
-    let totalSpent = 0;
+    let totalsByCurrency = {};
     let totalTickets = 0;
     let totalAssigned = 0;
     
     orders.forEach(o => {
-      totalSpent += o.totalAmount || 0;
+      const cur = o.currency || o.event?.currency || 'LKR';
+      totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + (o.totalAmount || 0);
       totalTickets += o.stats?.total || 0;
       totalAssigned += o.stats?.assigned || 0;
     });
 
-    return { totalSpent, totalTickets, totalAssigned };
+    return { totalsByCurrency, totalTickets, totalAssigned };
   }, [orders]);
 
   return (
@@ -108,12 +140,60 @@ const BuyerTicketsPage = () => {
           </div>
         </div>
 
+        {/* Payment Method Filter */}
+        {!loading && orders.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-[32px] p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <FunnelIcon className="h-5 w-5 text-slate-400" />
+              <span className="text-sm font-bold text-slate-700">Filter by Payment Method:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPaymentMethodFilter('all')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    paymentMethodFilter === 'all'
+                      ? 'bg-brand-main text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>All</span>
+                </button>
+                <button
+                  onClick={() => setPaymentMethodFilter('card')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    paymentMethodFilter === 'card'
+                      ? 'bg-brand-main text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <CreditCardIcon className="h-4 w-4" />
+                  <span>Card</span>
+                </button>
+                <button
+                  onClick={() => setPaymentMethodFilter('bank_transfer')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    paymentMethodFilter === 'bank_transfer'
+                      ? 'bg-brand-main text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <BanknotesIcon className="h-4 w-4" />
+                  <span>Bank Transfer</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Global Summary Cards */}
         {!loading && orders.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total Spent</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">LKR {overallStats.totalSpent.toLocaleString()}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {Object.entries(overallStats.totalsByCurrency).length > 0 
+                  ? Object.entries(overallStats.totalsByCurrency).map(([cur, amt]) => `${cur} ${amt.toLocaleString()}`).join(', ') 
+                  : 'LKR 0'}
+              </p>
             </div>
             <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Purchased Tickets</p>
@@ -154,7 +234,8 @@ const BuyerTicketsPage = () => {
 
         {!loading && !empty && (
           <div className="space-y-6">
-            {sortedOrders.map((order) => {
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {paginatedOrders.map((order) => {
               const total = order.stats?.total || 0;
               const assigned = order.stats?.assigned || 0;
               const progressPercent = total > 0 ? Math.round((assigned / total) * 100) : 0;
@@ -167,13 +248,32 @@ const BuyerTicketsPage = () => {
                   <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
                     {/* Event & Order info */}
                     <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-slate-200">
                           Order #{order.orderNumber}
                         </span>
                         <span className="text-xs text-slate-400 font-medium">
                           Purchased on {new Date(order.createdAt).toLocaleDateString()}
                         </span>
+                        {order.paymentMethod && (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border ${
+                            order.paymentMethod === 'card'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }`}>
+                            {order.paymentMethod === 'card' ? (
+                              <>
+                                <CreditCardIcon className="h-3 w-3" />
+                                <span>Card</span>
+                              </>
+                            ) : (
+                              <>
+                                <BanknotesIcon className="h-3 w-3" />
+                                <span>Bank Transfer</span>
+                              </>
+                            )}
+                          </span>
+                        )}
                       </div>
                       
                       <h3 className="text-xl font-extrabold text-slate-900 leading-snug">
@@ -229,7 +329,7 @@ const BuyerTicketsPage = () => {
                   {/* Action Bar */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 pt-5">
                     <p className="text-base font-extrabold text-slate-900">
-                      Total Paid: LKR {Number(order.totalAmount || 0).toLocaleString()}
+                      Total Paid: {order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}
                     </p>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -252,7 +352,52 @@ const BuyerTicketsPage = () => {
                   </div>
                 </div>
               );
-            })}
+              })}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2">
+                <p className="text-xs text-slate-500 font-medium">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length} orders
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeftIcon className="h-3.5 w-3.5" />
+                    <span>Previous</span>
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                          currentPage === page
+                            ? 'bg-brand-main text-white shadow-sm'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <span>Next</span>
+                    <ChevronRightIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

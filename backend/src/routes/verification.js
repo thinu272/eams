@@ -7,6 +7,7 @@ const Ticket = require('../models/Ticket');
 const { protect, requirePermission } = require('../middleware/auth');
 const { triggerCleanupNow } = require('../utils/s3Cleanup');
 const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+const { finalizePhotoApproval, finalizePhotoRejection, withUploadedPhoto } = require('../services/ticketDeliveryService');
 const { notifyPhotoRejectionNotification } = require('../services/notificationService');
 const { logActivity } = require('../utils/logger');
 
@@ -44,7 +45,7 @@ router.get('/pending', protect, requirePermission('canVerifyPhotos'), async (req
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
-    const filter = { event: eventId, isActive: true };
+    const filter = withUploadedPhoto({ event: eventId, isActive: true });
 
     if (status) filter.photoVerificationStatus = status;
 
@@ -102,7 +103,7 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
       return res.status(400).json({ success: false, message: 'Attendee ID is required.' });
     }
 
-    const attendee = await Attendee.findById(attendeeId).select('event photoVerificationStatus');
+    const attendee = await Attendee.findById(attendeeId).populate('event');
     if (!attendee) {
       return res.status(404).json({ success: false, message: 'Attendee not found.' });
     }
@@ -111,24 +112,10 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
 
-    const updated = await Attendee.findByIdAndUpdate(
-      attendeeId,
-      {
-        photoVerificationStatus: 'verified',
-        photoVerifiedBy: req.user._id,
-        photoVerifiedAt: new Date(),
-        photoRejectionReason: null,
-        // Auto-confirm attendee once photo is approved
-        confirmationStatus: 'confirmed',
-        isConfirmed: true,
-        confirmedAt: new Date(),
-        confirmedBy: 'organiser',
-      },
-      { new: true },
-    ).populate('event').select('_id fullName email phone photoVerificationStatus confirmationStatus isConfirmed order event qrToken qrCode');
-
-    // Keep ticket lifecycle in sync once attendee is verified.
-    await Ticket.findOneAndUpdate({ attendee: attendeeId }, { status: 'CONFIRMED' });
+    const updated = await finalizePhotoApproval(attendee, {
+      verifiedBy: req.user._id,
+      confirmedBy: 'organiser',
+    });
 
     // Trigger specific attendee notification
     const { notifyFinalTicket } = require('../services/notificationService');
@@ -171,7 +158,7 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
       return res.status(400).json({ success: false, message: 'Attendee ID and reason are required.' });
     }
 
-    const attendee = await Attendee.findById(attendeeId).select('event photoVerificationStatus');
+    const attendee = await Attendee.findById(attendeeId).populate('event');
     if (!attendee) {
       return res.status(404).json({ success: false, message: 'Attendee not found.' });
     }
@@ -180,16 +167,10 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
 
-    const updated = await Attendee.findByIdAndUpdate(
-      attendeeId,
-      {
-        photoVerificationStatus: 'rejected',
-        photoVerifiedBy: req.user._id,
-        photoVerifiedAt: new Date(),
-        photoRejectionReason: reason,
-      },
-      { new: true },
-    ).populate('event').select('_id fullName email photoVerificationStatus photoRejectionReason resubmitToken order event phone');
+    const updated = await finalizePhotoRejection(attendee, {
+      reason,
+      verifiedBy: req.user._id,
+    });
 
     await notifyPhotoRejectionNotification({
       attendee: updated,
@@ -225,7 +206,13 @@ router.get('/stats', protect, requirePermission('canVerifyPhotos'), async (req, 
     }
 
     const stats = await Attendee.aggregate([
-      { $match: { event: new mongoose.Types.ObjectId(eventId), isActive: true } },
+      {
+        $match: {
+          event: new mongoose.Types.ObjectId(eventId),
+          isActive: true,
+          photo: { $exists: true, $nin: [null, ''] },
+        },
+      },
       {
         $group: {
           _id: '$photoVerificationStatus',

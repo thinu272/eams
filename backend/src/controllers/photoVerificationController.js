@@ -4,11 +4,12 @@ const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { notifyPhotoRejectionNotification, notifyStatusChange } = require('../services/notificationService');
+const { finalizePhotoApproval, finalizePhotoRejection, withUploadedPhoto } = require('../services/ticketDeliveryService');
 
 const listPendingPhotos = async (req, res, next) => {
   try {
     const { eventId } = req.query;
-    const filter = { photoVerificationStatus: { $in: ['pending', 'Pending'] } };
+    const filter = withUploadedPhoto({ photoVerificationStatus: { $in: ['pending', 'Pending'] } });
     if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
       filter.event = eventId;
     }
@@ -36,52 +37,50 @@ const verifyPhoto = async (req, res, next) => {
     const attendee = await Attendee.findById(attendeeId).populate('event').populate('order');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
 
-    attendee.photoVerificationStatus = normalized;
-    attendee.photoRejectionReason = normalized === 'rejected' ? (reason || 'Rejected') : null;
-    attendee.photoVerifiedBy = req.user._id;
-    attendee.photoVerifiedAt = new Date();
-    attendee.verifiedBy = req.user._id;
-    attendee.verifiedAt = new Date();
-
     if (normalized === 'rejected') {
-      attendee.resubmitToken = attendee.resubmitToken || uuidv4();
-    }
-
-    await attendee.save();
-
-    if (normalized === 'rejected') {
+      const rejectedAttendee = await finalizePhotoRejection(attendee, {
+        reason: reason || 'Rejected',
+        verifiedBy: req.user._id,
+      });
+      rejectedAttendee.verifiedBy = req.user._id;
+      rejectedAttendee.verifiedAt = new Date();
+      await rejectedAttendee.save();
       await notifyPhotoRejectionNotification({
-        attendee,
-        event: attendee.event,
-        reason: attendee.photoRejectionReason,
+        attendee: rejectedAttendee,
+        event: rejectedAttendee.event,
+        reason: rejectedAttendee.photoRejectionReason,
       });
-    } else {
-      attendee.confirmationStatus = 'confirmed';
-      attendee.isConfirmed = true;
-      attendee.confirmedAt = new Date();
-      attendee.confirmedBy = 'organiser';
-      
-      await attendee.save();
-
-      const { notifyFinalTicket, notifyStatusChange } = require('../services/notificationService');
-      
-      await notifyFinalTicket({
-        attendee,
-        event: attendee.event,
-        phone: attendee.phone,
-        notificationChannel: 'both',
-        force: true
-      }).catch((err) => console.error('CONTROLLER FINAL NOTIFY ERROR:', err));
-
-      await notifyStatusChange({
-        attendee,
-        event: attendee.event,
-        status: 'Photo Verified',
-        message: 'Your photo has been verified successfully and your ticket has been sent to your email.',
-      });
+      return res.json({ success: true, data: { attendee: rejectedAttendee } });
     }
 
-    res.json({ success: true, data: { attendee } });
+    const approvedAttendee = await finalizePhotoApproval(attendee, {
+      verifiedBy: req.user._id,
+      confirmedBy: 'organiser',
+    });
+
+    const { notifyFinalTicket } = require('../services/notificationService');
+    const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
+
+    await notifyFinalTicket({
+      attendee: approvedAttendee,
+      event: approvedAttendee.event,
+      phone: approvedAttendee.phone,
+      notificationChannel: 'both',
+      force: true,
+    }).catch((err) => console.error('CONTROLLER FINAL NOTIFY ERROR:', err));
+
+    if (approvedAttendee.order) {
+      await processOrderFinalConfirmation({ orderId: approvedAttendee.order }).catch(console.error);
+    }
+
+    await notifyStatusChange({
+      attendee: approvedAttendee,
+      event: approvedAttendee.event,
+      status: 'Photo Verified',
+      message: 'Your photo has been verified successfully and your ticket with QR code has been sent to your email.',
+    });
+
+    res.json({ success: true, data: { attendee: approvedAttendee } });
   } catch (err) { next(err); }
 };
 

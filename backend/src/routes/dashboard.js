@@ -7,6 +7,8 @@ const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const EntryLog = require('../models/EntryLog');
 const ZoneLog = require('../models/ZoneLog');
+const PaymentSubmission = require('../models/PaymentSubmission');
+const Order = require('../models/Order');
 const { normalizeRole, ROLES } = require('../utils/rbac');
 
 const toObjectId = (value) => new mongoose.Types.ObjectId(value);
@@ -374,6 +376,97 @@ router.get('/export', async (req, res, next) => {
     res.setHeader('Content-Type', mime);
     return res.send(buffer);
   } catch (err) { next(err); }
+});
+
+// GET /api/dashboard/payments | Payment submissions for dashboard
+router.get('/payments', async (req, res, next) => {
+  try {
+    const { eventId, status = 'pending', page = 1, limit = 20 } = req.query;
+    const accessibleEventIds = await getAccessibleEventIds(req.user, eventId);
+
+    if (!accessibleEventIds.length) {
+      return res.status(403).json({ success: false, message: 'You do not have access to the requested event.' });
+    }
+
+    // Get orders for accessible events
+    const ordersForEvents = await Order.find({ 
+      eventId: { $in: accessibleEventIds.map(id => toObjectId(id)) },
+      paymentMethod: 'bank_transfer'
+    }).select('_id');
+    
+    const orderIds = ordersForEvents.map(o => o._id);
+
+    if (orderIds.length === 0) {
+      return res.json({ 
+        success: true, 
+        data: { 
+          payments: [], 
+          total: 0, 
+          pages: 0 
+        } 
+      });
+    }
+
+    // Build filter
+    const filter = { orderId: { $in: orderIds } };
+    if (status && status !== 'all') {
+      filter.verificationStatus = status;
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+    const [payments, total] = await Promise.all([
+      PaymentSubmission.find(filter)
+        .populate('orderId', 'orderNumber totalAmount buyerEmail buyerName eventId')
+        .populate('verifiedBy', 'name email')
+        .sort({ submittedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10)),
+      PaymentSubmission.countDocuments(filter)
+    ]);
+
+    res.json({ 
+      success: true, 
+      data: { 
+        payments: payments.map(payment => ({
+          _id: payment._id,
+          payerName: payment.payerName,
+          payerEmail: payment.payerEmail,
+          payerPhone: payment.payerPhone,
+          payerNicPassport: payment.payerNicPassport,
+          bankUsed: payment.bankUsed,
+          transferDate: payment.transferDate,
+          transferTime: payment.transferTime,
+          referenceNumber: payment.referenceNumber,
+          amountPaid: payment.amountPaid,
+          receiptFile: payment.receiptFile,
+          receiptFileType: payment.receiptFileType,
+          notes: payment.notes,
+          verificationStatus: payment.verificationStatus,
+          rejectionReason: payment.rejectionReason,
+          submittedAt: payment.submittedAt,
+          verifiedAt: payment.verifiedAt,
+          verifiedBy: payment.verifiedBy ? {
+            _id: payment.verifiedBy._id,
+            name: payment.verifiedBy.name,
+            email: payment.verifiedBy.email,
+          } : null,
+          order: payment.orderId ? {
+            _id: payment.orderId._id,
+            orderNumber: payment.orderId.orderNumber,
+            totalAmount: payment.orderId.totalAmount,
+            buyerEmail: payment.orderId.buyerEmail,
+            buyerName: payment.orderId.buyerName,
+            eventId: payment.orderId.eventId,
+          } : null,
+        })),
+        total, 
+        pages: Math.ceil(total / parseInt(limit, 10)) 
+      } 
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

@@ -11,6 +11,8 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const RequestLog = require('../models/RequestLog');
 const SystemConfig = require('../models/SystemConfig');
+const PaymentSubmission = require('../models/PaymentSubmission');
+const Order = require('../models/Order');
 const {
   getStats,
   getDashboardStats,
@@ -410,5 +412,82 @@ router.post('/events/:id/duplicate', duplicateEvent);
 router.get('/users', listUsers);
 router.post('/users', createUser);
 router.patch('/users/:id', updateUser);
+
+// GET /api/admin/payments - Payment submissions for admin dashboard
+router.get('/payments', async (req, res, next) => {
+  try {
+    const { status = 'pending', page = 1, limit = 20, eventId } = req.query;
+    
+    // Build filter
+    const filter = {};
+    if (status && status !== 'all') {
+      filter.verificationStatus = status;
+    }
+    
+    if (eventId) {
+      // Get orders for the specific event
+      const ordersForEvent = await Order.find({ 
+        eventId: mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId,
+        paymentMethod: 'bank_transfer'
+      }).select('_id');
+      const orderIds = ordersForEvent.map(o => o._id);
+      filter.orderId = { $in: orderIds };
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+    const [payments, total] = await Promise.all([
+      PaymentSubmission.find(filter)
+        .populate('orderId', 'orderNumber totalAmount buyerEmail buyerName eventId')
+        .populate('verifiedBy', 'name email')
+        .sort({ submittedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10)),
+      PaymentSubmission.countDocuments(filter)
+    ]);
+
+    res.json({ 
+      success: true, 
+      data: { 
+        payments: payments.map(payment => ({
+          _id: payment._id,
+          payerName: payment.payerName,
+          payerEmail: payment.payerEmail,
+          payerPhone: payment.payerPhone,
+          payerNicPassport: payment.payerNicPassport,
+          bankUsed: payment.bankUsed,
+          transferDate: payment.transferDate,
+          transferTime: payment.transferTime,
+          referenceNumber: payment.referenceNumber,
+          amountPaid: payment.amountPaid,
+          receiptFile: payment.receiptFile,
+          receiptFileType: payment.receiptFileType,
+          notes: payment.notes,
+          verificationStatus: payment.verificationStatus,
+          rejectionReason: payment.rejectionReason,
+          submittedAt: payment.submittedAt,
+          verifiedAt: payment.verifiedAt,
+          verifiedBy: payment.verifiedBy ? {
+            _id: payment.verifiedBy._id,
+            name: payment.verifiedBy.name,
+            email: payment.verifiedBy.email,
+          } : null,
+          order: payment.orderId ? {
+            _id: payment.orderId._id,
+            orderNumber: payment.orderId.orderNumber,
+            totalAmount: payment.orderId.totalAmount,
+            buyerEmail: payment.orderId.buyerEmail,
+            buyerName: payment.orderId.buyerName,
+            eventId: payment.orderId.eventId,
+          } : null,
+        })),
+        total, 
+        pages: Math.ceil(total / parseInt(limit, 10)) 
+      } 
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
