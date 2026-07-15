@@ -197,8 +197,11 @@ const CheckoutPage = () => {
           
           document.body.appendChild(form);
           form.submit();
+        } else if (paymentMethod === 'bank_transfer') {
+          toast.success('Order created! Redirecting to instructions...');
+          navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
         } else {
-          // For Cash or Bank Transfer, just go to confirmation
+          // For Cash, just go to confirmation
           toast.success('Order created successfully!');
           const confirmationToken = response.data.data.confirmationToken;
           navigate(`/order/${confirmationToken}/confirm`);

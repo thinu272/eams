@@ -2,6 +2,7 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
+const PaymentSubmission = require('../models/PaymentSubmission');
 
 const mapTicket = (ticket) => ({
   _id: ticket._id,
@@ -40,11 +41,28 @@ const getDashboardData = async (req, res, next) => {
       .populate('eventId', 'name startDate endDate venue status')
       .sort({ createdAt: -1 });
 
+    // Fetch payment submissions for bank transfer orders
+    const orderIds = buyerOrders.map((order) => order._id);
+    const bankTransferOrderIds = buyerOrders
+      .filter((order) => order.paymentMethod === 'bank_transfer')
+      .map((order) => order._id);
+    
+    const paymentSubmissions = bankTransferOrderIds.length > 0 
+      ? await PaymentSubmission.find({ orderId: { $in: bankTransferOrderIds } })
+          .populate('verifiedBy', 'name email')
+          .sort({ submittedAt: -1 })
+      : [];
+    
+    // Create a map of orderId to payment submission for easy lookup
+    const paymentSubmissionMap = {};
+    paymentSubmissions.forEach((submission) => {
+      paymentSubmissionMap[submission.orderId.toString()] = submission;
+    });
+
     const attendeeRecords = await Attendee.find({ email })
       .select('_id ticket event confirmationStatus isConfirmed qrCode qrToken allowedZones categoryName fullName photo notes')
       .populate('event', 'name startDate endDate venue status zones');
 
-    const orderIds = buyerOrders.map((order) => order._id);
     const attendeeIds = attendeeRecords.map((a) => a._id);
     const attendeeTicketIds = attendeeRecords.map((a) => a.ticket).filter(Boolean);
 
@@ -65,20 +83,42 @@ const getDashboardData = async (req, res, next) => {
 
     const previousOrders = buyerOrders
       .filter((o) => o.eventId?.endDate && new Date(o.eventId.endDate) < now)
-      .map((o) => ({
-        _id: o._id,
-        orderNumber: o.orderNumber,
-        totalAmount: o.totalAmount,
-        status: o.status,
-        createdAt: o.createdAt,
-        event: o.eventId ? {
-          _id: o.eventId._id,
-          name: o.eventId.name,
-          startDate: o.eventId.startDate,
-          endDate: o.eventId.endDate,
-          venue: o.eventId.venue,
-        } : null,
-      }));
+      .map((o) => {
+        const paymentSubmission = paymentSubmissionMap[o._id.toString()];
+        return {
+          _id: o._id,
+          orderNumber: o.orderNumber,
+          totalAmount: o.totalAmount,
+          status: o.status,
+          paymentMethod: o.paymentMethod,
+          paymentStatus: o.paymentStatus,
+          createdAt: o.createdAt,
+          paymentSubmission: paymentSubmission ? {
+            _id: paymentSubmission._id,
+            payerName: paymentSubmission.payerName,
+            payerEmail: paymentSubmission.payerEmail,
+            payerPhone: paymentSubmission.payerPhone,
+            bankUsed: paymentSubmission.bankUsed,
+            transferDate: paymentSubmission.transferDate,
+            transferTime: paymentSubmission.transferTime,
+            referenceNumber: paymentSubmission.referenceNumber,
+            amountPaid: paymentSubmission.amountPaid,
+            receiptFile: paymentSubmission.receiptFile,
+            receiptFileType: paymentSubmission.receiptFileType,
+            verificationStatus: paymentSubmission.verificationStatus,
+            rejectionReason: paymentSubmission.rejectionReason,
+            submittedAt: paymentSubmission.submittedAt,
+            verifiedAt: paymentSubmission.verifiedAt,
+          } : null,
+          event: o.eventId ? {
+            _id: o.eventId._id,
+            name: o.eventId.name,
+            startDate: o.eventId.startDate,
+            endDate: o.eventId.endDate,
+            venue: o.eventId.venue,
+          } : null,
+        };
+      });
 
     let assignedEvents = [];
     if (req.user.assignedEvents?.length) {

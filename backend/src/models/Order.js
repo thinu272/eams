@@ -61,17 +61,25 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED'],
+    enum: ['PENDING', 'PENDING_PAYMENT', 'PENDING_VERIFICATION', 'CONFIRMED', 'CANCELLED', 'EXPIRED'],
     default: 'PENDING',
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['card', 'bank_transfer'],
+    default: 'card',
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'success', 'failed'],
+    enum: ['pending', 'pending_verification', 'paid', 'rejected', 'expired'],
     default: 'pending',
   },
   paymentDetails: {
     type: mongoose.Schema.Types.Mixed,
     default: {},
+  },
+  reservationExpiry: {
+    type: Date,
   },
   confirmationToken: {
     type: String,

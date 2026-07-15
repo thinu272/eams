@@ -36,7 +36,7 @@ router.post('/', [
       });
     }
 
-    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId } = req.body;
+    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId, paymentMethod } = req.body;
 
     // Validate event exists
     const event = await Event.findById(eventId);
@@ -128,6 +128,7 @@ router.post('/', [
       notificationChannel: notificationChannel || 'email',
       tickets: validatedTickets,
       totalAmount,
+      paymentMethod,
       status: 'PENDING_PAYMENT',
       paymentStatus: 'pending',
       confirmationToken
@@ -321,7 +322,7 @@ const getOrderByTokenHandler = async (req, res) => {
   try {
     console.log('[GET /api/orders/:token] Received request for token:', req.params.token);
     const order = await Order.findOne({ confirmationToken: req.params.token })
-      .populate('eventId', 'name venue startDate endDate status categories');
+      .populate('eventId', 'name venue startDate endDate status categories settings');
 
     console.log('[GET /api/orders/:token] Query result:', order ? 'Found' : 'Not Found');
 
@@ -347,6 +348,7 @@ const getOrderByTokenHandler = async (req, res) => {
       data: {
         order: {
           ...order.toObject(),
+          currency: order.eventId?.settings?.currency || 'LKR',
           event: order.eventId ? {
             _id: order.eventId._id,
             name: order.eventId.name,
@@ -354,7 +356,8 @@ const getOrderByTokenHandler = async (req, res) => {
             endDate: order.eventId.endDate,
             status: order.eventId.status,
             venue: order.eventId.venue,
-            categories: order.eventId.categories
+            categories: order.eventId.categories,
+            settings: order.eventId.settings
           } : null
         },
         tickets,

@@ -112,7 +112,7 @@ const Dashboard = () => {
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order #{order.orderNumber}</p>
                               <h3 className="mt-1 text-xl font-black text-slate-900 group-hover:text-brand-main transition-colors">{order.event?.name}</h3>
-                              <p className="text-sm font-bold text-slate-500 mt-1">LKR {Number(order.totalAmount || 0).toLocaleString()}</p>
+                              <p className="text-sm font-bold text-slate-500 mt-1">{order.currency || order.event?.settings?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}</p>
                             </div>
                             <Link to={`/buyer/orders/${order._id}`} className="p-3 rounded-xl bg-slate-50 text-slate-400 hover:bg-brand-main hover:text-white transition-all">
                                <ChevronRightIcon className="h-5 w-5" />

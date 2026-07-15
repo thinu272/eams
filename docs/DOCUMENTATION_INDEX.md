@@ -14,12 +14,13 @@ This directory contains the main developer and product documentation for ENTRYNE
 | Buyer ticket assignment flow | [BUYER_CONFIRMATION_PORTAL_GUIDE.md](BUYER_CONFIRMATION_PORTAL_GUIDE.md) |
 | Checkout system | [CHECKOUT_SYSTEM_README.md](CHECKOUT_SYSTEM_README.md) |
 | Photo verification | [PHOTO_CONFIRMATION_GUIDE.md](PHOTO_CONFIRMATION_GUIDE.md) |
+| Direct bank transfer payment management | [payment-management-system.md](payment-management-system.md) |
 
 ## Current Operational Areas
 
-- **Public events and checkout:** Public listing, private ticket codes, order confirmation, and buyer assignment.
-- **Admin workspace:** Global events, users, organisations, settings, reports, and `/admin/live`.
-- **Organiser workspace:** Event customization, attendees, tickets, zones, team management, verification, reports, notifications, and `/organiser/live`.
+- **Public events and checkout:** Public listing, private ticket codes, order confirmation, buyer assignment, and bank transfer payments.
+- **Admin workspace:** Global events, users, organisations, settings, reports, payment management, and `/admin/live`.
+- **Organiser workspace:** Event customization, attendees, tickets, zones, team management, verification, reports, notifications, payment management, and `/organiser/live`.
 - **Staff operations:** Entry scan, zone scan, manual search, and activity logs.
 - **Auditor workspace:** Compliance dashboard, logs, and reports.
 

@@ -354,6 +354,10 @@ const notifyPhotoRejection = async ({ attendee, reason, resubmitToken }) => {
 };
 
 const notifyPhotoRejectionNotification = async ({ attendee, event, reason }) => {
+  if (!attendee?.resubmitToken) {
+    return;
+  }
+
   const resubmitToken = attendee.resubmitToken;
   await notifyPhotoRejection({ attendee, reason, resubmitToken });
 
@@ -424,6 +428,61 @@ const notifyBuyerTicketProgress = async ({
   });
 };
 
+const notifyTicketInvalidationRefund = async ({
+  attendee,
+  ticket,
+  order,
+  event,
+  refundAmount,
+  reason,
+  inventoryReleased = false,
+}) => {
+  const { sendTicketInvalidationRefund } = require('../utils/email');
+  const buyer = order ? {
+    name: order.buyerName,
+    email: order.buyerEmail,
+    phone: order.buyerPhone,
+  } : null;
+
+  await sendTicketInvalidationRefund({
+    buyer,
+    attendee,
+    event,
+    ticket,
+    order,
+    refundAmount,
+    reason,
+    inventoryReleased,
+  }).catch((error) => {
+    console.error('TICKET INVALIDATION REFUND EMAIL ERROR:', error);
+  });
+
+  if (order?.buyerId) {
+    await createNotification(
+      order.buyerId,
+      'Ticket Invalidated & Refund Initiated',
+      `Ticket #${ticket?.ticketNumber || ''} was invalidated after maximum photo resubmissions. Refund of ${event?.settings?.currency || 'LKR'} ${Number(refundAmount || 0).toLocaleString()} initiated.`,
+      'warning',
+      { orderId: order._id, ticketId: ticket?._id, attendeeId: attendee?._id, eventId: event?._id },
+    );
+  }
+
+  if (attendee?.email && attendee.email !== buyer?.email) {
+    await sendTicketInvalidationRefund({
+      buyer: { name: attendee.fullName, email: attendee.email, phone: attendee.phone },
+      attendee,
+      event,
+      ticket,
+      order,
+      refundAmount,
+      reason,
+      inventoryReleased,
+    }).catch((error) => {
+      console.error('ATTENDEE INVALIDATION REFUND EMAIL ERROR:', error);
+    });
+  }
+};
+
 const notifyUserCredentials = async (user, tempPassword) => {
   console.log(`NOTIFY: Sending credentials to ${user.email} with temp password ${tempPassword}`);
   const tasks = [];
@@ -491,6 +550,7 @@ module.exports = {
   notifyPhotoRejection,
   notifyPhotoRejectionNotification,
   notifyBuyerTicketProgress,
+  notifyTicketInvalidationRefund,
   notifyUserCredentials,
   notifyVerification,
   notifyPasswordReset,

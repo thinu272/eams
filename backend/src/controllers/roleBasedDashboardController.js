@@ -6,6 +6,7 @@ const EntryLog = require('../models/EntryLog');
 const ZoneLog = require('../models/ZoneLog');
 const User = require('../models/User');
 const Role = require('../models/Role');
+const PaymentSubmission = require('../models/PaymentSubmission');
 
 const getRoleBasedDashboardData = async (req, res, next) => {
   try {
@@ -59,7 +60,8 @@ const getAdminDashboardData = async (user) => {
     activeEvents,
     pendingVerifications,
     todayCheckIns,
-    systemHealth
+    systemHealth,
+    pendingPaymentSubmissions
   ] = await Promise.all([
     Event.countDocuments(),
     User.countDocuments(),
@@ -79,7 +81,8 @@ const getAdminDashboardData = async (user) => {
       action: 'check_in',
       accessGranted: true 
     }),
-    getSystemHealthMetrics()
+    getSystemHealthMetrics(),
+    PaymentSubmission.countDocuments({ verificationStatus: 'pending' })
   ]);
 
   // Recent activity
@@ -95,6 +98,13 @@ const getAdminDashboardData = async (user) => {
     { $group: { _id: '$role', count: { $sum: 1 } } }
   ]);
 
+  // Recent pending payment submissions
+  const recentPaymentSubmissions = await PaymentSubmission.find({ verificationStatus: 'pending' })
+    .populate('orderId', 'orderNumber totalAmount buyerEmail buyerName')
+    .populate('verifiedBy', 'name email')
+    .sort({ submittedAt: -1 })
+    .limit(10);
+
   return {
     overview: {
       totalEvents,
@@ -104,6 +114,7 @@ const getAdminDashboardData = async (user) => {
       activeEvents,
       pendingVerifications,
       todayCheckIns,
+      pendingPaymentSubmissions,
       systemHealth
     },
     charts: {
@@ -111,6 +122,25 @@ const getAdminDashboardData = async (user) => {
       usersByRole
     },
     recentActivity,
+    recentPaymentSubmissions: recentPaymentSubmissions.map(sub => ({
+      _id: sub._id,
+      payerName: sub.payerName,
+      payerEmail: sub.payerEmail,
+      bankUsed: sub.bankUsed,
+      transferDate: sub.transferDate,
+      transferTime: sub.transferTime,
+      referenceNumber: sub.referenceNumber,
+      amountPaid: sub.amountPaid,
+      verificationStatus: sub.verificationStatus,
+      submittedAt: sub.submittedAt,
+      order: sub.orderId ? {
+        _id: sub.orderId._id,
+        orderNumber: sub.orderId.orderNumber,
+        totalAmount: sub.orderId.totalAmount,
+        buyerEmail: sub.orderId.buyerEmail,
+        buyerName: sub.orderId.buyerName,
+      } : null,
+    })),
     permissions: {
       canViewAllEvents: true,
       canManageAllUsers: true,
@@ -131,7 +161,8 @@ const getOrganiserDashboardData = async (user) => {
     totalRevenue,
     activeEvents,
     pendingVerifications,
-    todayCheckIns
+    todayCheckIns,
+    pendingPaymentSubmissions
   ] = await Promise.all([
     Event.countDocuments({ _id: { $in: assignedEvents } }),
     Attendee.countDocuments({ event: { $in: assignedEvents } }),
@@ -154,7 +185,8 @@ const getOrganiserDashboardData = async (user) => {
       timestamp: { $gte: new Date(now.setHours(0, 0, 0, 0)) },
       action: 'check_in',
       accessGranted: true 
-    })
+    }),
+    PaymentSubmission.countDocuments({ verificationStatus: 'pending' })
   ]);
 
   // Recent activity for assigned events
@@ -163,6 +195,21 @@ const getOrganiserDashboardData = async (user) => {
   // Events list with stats
   const eventsWithStats = await getEventsWithStats(assignedEvents);
 
+  // Recent pending payment submissions for assigned events
+  const ordersForAssignedEvents = await Order.find({ eventId: { $in: assignedEvents } }).select('_id');
+  const orderIdsForAssignedEvents = ordersForAssignedEvents.map(o => o._id);
+  
+  const recentPaymentSubmissions = orderIdsForAssignedEvents.length > 0
+    ? await PaymentSubmission.find({ 
+        orderId: { $in: orderIdsForAssignedEvents },
+        verificationStatus: 'pending'
+      })
+      .populate('orderId', 'orderNumber totalAmount buyerEmail buyerName eventId')
+      .populate('verifiedBy', 'name email')
+      .sort({ submittedAt: -1 })
+      .limit(10)
+    : [];
+
   return {
     overview: {
       totalEvents,
@@ -170,10 +217,31 @@ const getOrganiserDashboardData = async (user) => {
       totalRevenue: totalRevenue[0]?.total || 0,
       activeEvents,
       pendingVerifications,
-      todayCheckIns
+      todayCheckIns,
+      pendingPaymentSubmissions
     },
     events: eventsWithStats,
     recentActivity,
+    recentPaymentSubmissions: recentPaymentSubmissions.map(sub => ({
+      _id: sub._id,
+      payerName: sub.payerName,
+      payerEmail: sub.payerEmail,
+      bankUsed: sub.bankUsed,
+      transferDate: sub.transferDate,
+      transferTime: sub.transferTime,
+      referenceNumber: sub.referenceNumber,
+      amountPaid: sub.amountPaid,
+      verificationStatus: sub.verificationStatus,
+      submittedAt: sub.submittedAt,
+      order: sub.orderId ? {
+        _id: sub.orderId._id,
+        orderNumber: sub.orderId.orderNumber,
+        totalAmount: sub.orderId.totalAmount,
+        buyerEmail: sub.orderId.buyerEmail,
+        buyerName: sub.orderId.buyerName,
+        eventId: sub.orderId.eventId,
+      } : null,
+    })),
     permissions: {
       canManageEvents: true,
       canManageAttendees: true,
@@ -348,13 +416,65 @@ const getAttendeeDashboardData = async (user) => {
     getAttendeeActivity(user._id, 5)
   ]);
 
+  // Fetch payment submissions for bank transfer orders
+  const bankTransferOrderIds = orders
+    .filter((order) => order.paymentMethod === 'bank_transfer')
+    .map((order) => order._id);
+  
+  const paymentSubmissions = bankTransferOrderIds.length > 0 
+    ? await PaymentSubmission.find({ orderId: { $in: bankTransferOrderIds } })
+        .populate('verifiedBy', 'name email')
+        .sort({ submittedAt: -1 })
+    : [];
+  
+  // Create a map of orderId to payment submission for easy lookup
+  const paymentSubmissionMap = {};
+  paymentSubmissions.forEach((submission) => {
+    paymentSubmissionMap[submission.orderId.toString()] = submission;
+  });
+
   const currentTickets = tickets.filter(t => 
     t.event?.startDate && new Date(t.event.startDate) >= now
   );
 
   const previousOrders = orders.filter(o => 
     o.eventId?.endDate && new Date(o.eventId.endDate) < now
-  );
+  ).map((o) => {
+    const paymentSubmission = paymentSubmissionMap[o._id.toString()];
+    return {
+      _id: o._id,
+      orderNumber: o.orderNumber,
+      totalAmount: o.totalAmount,
+      status: o.status,
+      paymentMethod: o.paymentMethod,
+      paymentStatus: o.paymentStatus,
+      createdAt: o.createdAt,
+      paymentSubmission: paymentSubmission ? {
+        _id: paymentSubmission._id,
+        payerName: paymentSubmission.payerName,
+        payerEmail: paymentSubmission.payerEmail,
+        payerPhone: paymentSubmission.payerPhone,
+        bankUsed: paymentSubmission.bankUsed,
+        transferDate: paymentSubmission.transferDate,
+        transferTime: paymentSubmission.transferTime,
+        referenceNumber: paymentSubmission.referenceNumber,
+        amountPaid: paymentSubmission.amountPaid,
+        receiptFile: paymentSubmission.receiptFile,
+        receiptFileType: paymentSubmission.receiptFileType,
+        verificationStatus: paymentSubmission.verificationStatus,
+        rejectionReason: paymentSubmission.rejectionReason,
+        submittedAt: paymentSubmission.submittedAt,
+        verifiedAt: paymentSubmission.verifiedAt,
+      } : null,
+      event: o.eventId ? {
+        _id: o.eventId._id,
+        name: o.eventId.name,
+        startDate: o.eventId.startDate,
+        endDate: o.eventId.endDate,
+        venue: o.eventId.venue,
+      } : null,
+    };
+  });
 
   return {
     tickets: currentTickets,

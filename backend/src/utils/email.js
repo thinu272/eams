@@ -916,6 +916,50 @@ const sendAttendeePendingVerification = async (attendee, event) => {
   });
 };
 
+const sendTicketInvalidationRefund = async ({
+  buyer,
+  attendee,
+  event,
+  ticket,
+  order,
+  refundAmount,
+  reason,
+  inventoryReleased = false,
+}) => {
+  const currency = event?.settings?.currency || 'LKR';
+  const formattedAmount = `${currency} ${Number(refundAmount || 0).toLocaleString()}`;
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
+  const recipientEmail = buyer?.email || attendee?.email;
+  if (!recipientEmail) return;
+
+  const html = baseTemplate(`
+    <h2 class="h2">Ticket Invalidated & Refund Initiated</h2>
+    <div class="alert" style="background:#fef2f2; border-left-color:#ef4444; color:#991b1b;">
+      This ticket is no longer valid because the maximum number of photo resubmissions was reached.
+    </div>
+
+    <p>Dear <strong>${buyer?.name || attendee?.fullName || 'Customer'}</strong>,</p>
+    <p>Your ticket for <strong>${event?.name || 'the event'}</strong> has been invalidated after repeated photo verification failures.</p>
+
+    <div class="info-row"><span class="info-label">Ticket</span><span class="info-value">#${ticket?.ticketNumber || 'N/A'}</span></div>
+    <div class="info-row"><span class="info-label">Category</span><span class="info-value">${ticket?.categoryName || attendee?.categoryName || 'Ticket'}</span></div>
+    <div class="info-row"><span class="info-label">Refund Amount</span><span class="info-value" style="color:#15803d;">${formattedAmount}</span></div>
+    <div class="info-row"><span class="info-label">Order</span><span class="info-value">${order?.orderNumber || 'N/A'}</span></div>
+    <div class="info-row"><span class="info-label">Reason</span><span class="info-value">${reason}</span></div>
+    ${inventoryReleased ? '<p style="margin-top:16px;">The ticket has been returned to public availability for this category.</p>' : ''}
+
+    <p style="margin-top: 20px; font-size: 13px; color: #64748b;">
+      Refunds are processed back to the original payment method. Please allow a few business days for the amount to appear.
+    </p>
+  `, 'ENTRYNEX Ticket Refund', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `ENTRYNEX: Ticket Invalidated & Refund - ${event?.name || 'Event'}`,
+    html,
+  });
+};
+
 module.exports = {
   sendOrderConfirmation,
   sendAttendeeInvite,
@@ -933,4 +977,5 @@ module.exports = {
   sendRoleAssignmentEmail,
   sendAttendeeVerificationConfirmation,
   sendAttendeePendingVerification,
+  sendTicketInvalidationRefund,
 };

@@ -1,8 +1,10 @@
-import React from 'react';
-import { ArrowDownTrayIcon, ArrowRightIcon, CalendarIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import React, { useState } from 'react';
+import { ArrowDownTrayIcon, ArrowRightIcon, CalendarIcon, ShoppingBagIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { Link } from 'react-router-dom';
 
 const OrderControls = ({ orders, onDownloadOrder }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const formatDate = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -10,6 +12,16 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
       day: 'numeric',
       year: 'numeric',
     });
+  };
+
+  // Pagination logic
+  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedOrders = orders.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
   };
 
   return (
@@ -26,7 +38,7 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {orders.map((order) => {
+              {paginatedOrders.map((order) => {
                 const total = order.stats?.total || 0;
                 const assigned = order.stats?.assigned || 0;
                 const progressPercent = total > 0 ? Math.round((assigned / total) * 100) : 0;
@@ -103,6 +115,50 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <p className="text-xs text-slate-500 font-medium">
+            Showing {startIndex + 1} to {Math.min(endIndex, orders.length)} of {orders.length} orders
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <ChevronLeftIcon className="h-3.5 w-3.5" />
+              <span>Previous</span>
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => handlePageChange(page)}
+                  className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                    currentPage === page
+                      ? 'bg-brand-main text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <span>Next</span>
+              <ChevronRightIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

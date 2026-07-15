@@ -15,6 +15,7 @@ const CheckoutPage = () => {
     phone: '',
     notificationChannel: 'email',
   });
+  const [paymentMethod, setPaymentMethod] = useState('card');
   const [placing, setPlacing] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -112,17 +113,30 @@ const CheckoutPage = () => {
         buyerPhone: buyerInfo.phone.trim(),
         notificationChannel: buyerInfo.notificationChannel,
         tickets,
+        paymentMethod,
       };
 
-      const response = await createOrder(orderData);
+      if (paymentMethod === 'bank_transfer') {
+        // For bank transfer, create order and redirect to instructions page
+        const response = await createOrder(orderData);
+        
+        // Clear checkout data
+        localStorage.removeItem('checkoutData');
+        
+        // Redirect to bank transfer instructions page
+        navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
+      } else {
+        // For card payment, use existing flow
+        const response = await createOrder(orderData);
 
-      toast.success('Order placed successfully!');
+        toast.success('Order placed successfully!');
 
-      // Clear checkout data
-      localStorage.removeItem('checkoutData');
+        // Clear checkout data
+        localStorage.removeItem('checkoutData');
 
-      // Redirect to confirmation page
-      navigate(`/confirm/${response.data.data.confirmationToken}`);
+        // Redirect to confirmation page
+        navigate(`/confirm/${response.data.data.confirmationToken}`);
+      }
     } catch (error) {
       console.error('Order placement failed:', error);
       const errorMessage = error.response?.data?.message || 'Failed to place order. Please try again.';
@@ -251,6 +265,42 @@ const CheckoutPage = () => {
                     <option value="sms">SMS</option>
                     <option value="both">Email + SMS</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Payment Method *
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="card"
+                        checked={paymentMethod === 'card'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="ml-3">
+                        <span className="font-medium text-gray-900">Credit/Debit Card</span>
+                        <p className="text-sm text-gray-500">Instant payment with card</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="bank_transfer"
+                        checked={paymentMethod === 'bank_transfer'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="ml-3">
+                        <span className="font-medium text-gray-900">Direct Bank Transfer</span>
+                        <p className="text-sm text-gray-500">Transfer to bank account (verification within 48 hours)</p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="pt-4">

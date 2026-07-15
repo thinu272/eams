@@ -18,6 +18,8 @@ import {
   CalendarIcon,
   MapPinIcon,
   ShieldCheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
 const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
@@ -44,10 +46,25 @@ const BuyerHomePage = () => {
   const [passes, setPasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingIds, setDownloadingIds] = useState({});
+  const [resendingIds, setResendingIds] = useState({});
 
   // Filtering / Search States for passes
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [passesCurrentPage, setPassesCurrentPage] = useState(1);
+  const passesPerPage = 9;
+
+  const handleResend = async (ticketId) => {
+    setResendingIds(prev => ({ ...prev, [ticketId]: true }));
+    try {
+      await api.post(`/tickets/${ticketId}/resend-invite`);
+      toast.success('Invite code resent successfully!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Resend failed');
+    } finally {
+      setResendingIds(prev => ({ ...prev, [ticketId]: false }));
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -140,17 +157,37 @@ const BuyerHomePage = () => {
         (pass.event?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (pass.ticketNumber || '').toLowerCase().includes(searchQuery.toLowerCase());
       
-      const isPendingVerification = pass.status === 'PENDING_VERIFICATION' || 
-        (pass.status === 'ASSIGNED' && pass.attendee?.photo && pass.event?.requirePhotoVerification);
+      const isPhotoVerified = String(pass.attendee?.photoVerificationStatus || '').toLowerCase() === 'verified';
+      const isPhotoRejected = String(pass.attendee?.photoVerificationStatus || '').toLowerCase() === 'rejected';
+      const isPendingVerification = !isPhotoVerified && !isPhotoRejected && (
+        pass.status === 'PENDING_VERIFICATION' ||
+        (pass.status === 'ASSIGNED' && pass.attendee?.photo && pass.event?.requirePhotoVerification)
+      );
+      const isInvalidated = pass.status === 'CANCELLED' || pass.refundStatus === 'refunded';
+      const isInvited = pass.status === 'INVITED';
+      
       const matchesStatus = 
         statusFilter === 'all' ||
-        (statusFilter === 'active' && pass.status === 'CONFIRMED') ||
+        (statusFilter === 'active' && (pass.status === 'CONFIRMED' || isPhotoVerified)) ||
         (statusFilter === 'verification' && isPendingVerification) ||
-        (statusFilter === 'pending' && pass.status !== 'CONFIRMED' && !isPendingVerification);
+        (statusFilter === 'rejected' && isPhotoRejected) ||
+        (statusFilter === 'invited' && isInvited) ||
+        (statusFilter === 'cancelled' && isInvalidated) ||
+        (statusFilter === 'pending' && pass.status !== 'CONFIRMED' && !isPhotoVerified && !isPendingVerification && !isPhotoRejected && !isInvalidated && !isInvited);
 
       return matchesSearch && matchesStatus;
     });
   }, [passes, searchQuery, statusFilter]);
+
+  // Pagination for passes
+  const passesTotalPages = Math.ceil(filteredPasses.length / passesPerPage);
+  const passesStartIndex = (passesCurrentPage - 1) * passesPerPage;
+  const passesEndIndex = passesStartIndex + passesPerPage;
+  const paginatedPasses = filteredPasses.slice(passesStartIndex, passesEndIndex);
+
+  const handlePassesPageChange = (page) => {
+    setPassesCurrentPage(page);
+  };
 
   return (
     <BuyerLayout>
@@ -312,6 +349,9 @@ const BuyerHomePage = () => {
                     <option value="all">All Passes</option>
                     <option value="active">Active</option>
                     <option value="verification">Awaiting Verification</option>
+                    <option value="rejected">Photo Rejected</option>
+                    <option value="invited">Invited</option>
+                    <option value="cancelled">Cancelled/Invalidated</option>
                     <option value="pending">Pending</option>
                   </select>
                   <FunnelIcon className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
@@ -320,15 +360,63 @@ const BuyerHomePage = () => {
             </div>
             
             {filteredPasses.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {filteredPasses.map(pass => (
-                  <TicketCard
-                    key={pass._id}
-                    pass={pass}
-                    onDownload={() => handleDownload(pass.attendee?.qrToken, pass.ticketNumber, pass._id)}
-                    downloading={!!downloadingIds[pass._id]}
-                  />
-                ))}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {paginatedPasses.map(pass => (
+                    <TicketCard
+                      key={pass._id}
+                      pass={pass}
+                      onDownload={() => handleDownload(pass.attendee?.qrToken, pass.ticketNumber, pass._id)}
+                      downloading={!!downloadingIds[pass._id]}
+                      onResend={() => handleResend(pass._id)}
+                      resending={!!resendingIds[pass._id]}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {passesTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-2 pt-4">
+                    <p className="text-xs text-slate-500 font-medium">
+                      Showing {passesStartIndex + 1} to {Math.min(passesEndIndex, filteredPasses.length)} of {filteredPasses.length} passes
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handlePassesPageChange(passesCurrentPage - 1)}
+                        disabled={passesCurrentPage === 1}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        <ChevronLeftIcon className="h-3.5 w-3.5" />
+                        <span>Previous</span>
+                      </button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: passesTotalPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => handlePassesPageChange(page)}
+                            className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                              passesCurrentPage === page
+                                ? 'bg-brand-main text-white shadow-sm'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={() => handlePassesPageChange(passesCurrentPage + 1)}
+                        disabled={passesCurrentPage === passesTotalPages}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        <span>Next</span>
+                        <ChevronRightIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 bg-white rounded-[32px] border border-dashed border-slate-200">

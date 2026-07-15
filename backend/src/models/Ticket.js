@@ -17,6 +17,16 @@ const ticketSchema = new mongoose.Schema({
     default: 'PENDING',
   },
 
+  refundStatus: {
+    type: String,
+    enum: ['none', 'refunded'],
+    default: 'none',
+  },
+  refundAmount: { type: Number, default: 0 },
+  refundedAt: { type: Date },
+  invalidatedAt: { type: Date },
+  invalidationReason: { type: String },
+
   // Invite tracking
   inviteEmail: { type: String },
   invitePhone: { type: String },

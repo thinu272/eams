@@ -16,6 +16,7 @@ A comprehensive full-stack event access management platform built with modern we
 - **Advanced Ticketing**: Public/private tickets, inventory management, and secure checkout
 - **Photo Verification**: Attendee identity verification with photo upload and approval workflows
 - **Entry Control**: QR/RFID scanning, zone access management, and activity logging
+- **Direct Bank Transfer Payments**: Comprehensive bank transfer payment management with verification workflows, automatic order confirmation, and audit logging
 
 ### Communication & Notifications
 - **Multi-channel Notifications**: Email, SMS, and in-app notifications
@@ -215,11 +216,22 @@ eams/
 - `GET /api/admin/dashboard` - Admin dashboard data
 - `POST /api/admin/events` - Create event
 - `PUT /api/admin/events/:id` - Update event
+- `GET /api/admin/payments` - Get payment submissions (platform-wide)
+- `GET /api/payment-management/admin/*` - Payment management endpoints
 
 ### Protected Routes (Organiser)
 - `GET /api/organiser/dashboard` - Organiser dashboard
 - `POST /api/organiser/tickets` - Create ticket category
 - `GET /api/organiser/attendees` - List event attendees
+- `GET /api/organiser/payments` - Get payment submissions (event-scoped)
+- `GET /api/payment-management/organizer/*` - Payment management endpoints
+
+### Payment Management Routes
+- `GET /api/payment-management/organizer/` - Get payment submissions with filtering
+- `POST /api/payment-management/organizer/:submissionId/approve` - Approve payment
+- `POST /api/payment-management/organizer/:submissionId/reject` - Reject payment
+- `POST /api/payment-management/organizer/:submissionId/request-info` - Request more information
+- `GET /api/payment-management/admin/` - Platform-wide payment management
 
 ## <img src="https://img.shields.io/badge/-Roles-red.svg" alt="Roles"> User Roles & Permissions
 

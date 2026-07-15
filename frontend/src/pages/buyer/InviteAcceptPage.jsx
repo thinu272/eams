@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CalendarDaysIcon, CheckBadgeIcon, MapPinIcon, TicketIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { CalendarDaysIcon, CheckBadgeIcon, MapPinIcon, TicketIcon } from '@heroicons/react/24/solid';
 import { confirmInvite, getInviteInfo, respondToInvite } from '../../api/attendees';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import CameraCapture from '../../components/shared/CameraCapture';
+import PhotoValidationFeedback from '../../components/shared/PhotoValidationFeedback';
+import { usePhotoAiValidation } from '../../hooks/usePhotoAiValidation';
 import { CameraIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
 const phoneRegex = /^\+?[1-9]\d{1,14}$/;
@@ -38,6 +40,21 @@ const InviteAcceptPage = () => {
   const [photo, setPhoto] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [preview, setPreview] = useState(null);
+  const {
+    validationErrors,
+    allowOverride,
+    setAllowOverride,
+    qualityAnalysis,
+    faceAnalysis,
+    validating,
+    validateFile,
+    resetValidation,
+    appendValidationToFormData,
+    canSubmitPhoto,
+    modelLoadFailed,
+    imageRef,
+    overlayRef,
+  } = usePhotoAiValidation();
 
   useEffect(() => {
     getInviteInfo(token)
@@ -57,8 +74,6 @@ const InviteAcceptPage = () => {
 
         if ((payload?.inviteStatus || 'PENDING') === 'ACCEPTED') {
           setStep('form');
-        } else if (payload?.inviteStatus === 'DECLINED') {
-          setStep('declined');
         } else {
           setStep('preview');
         }
@@ -71,24 +86,19 @@ const InviteAcceptPage = () => {
 
   const venueText = useMemo(() => formatVenue(invite?.eventVenue), [invite]);
 
-  const handleRespond = async (response) => {
+  const handleAccept = async () => {
     setResponding(true);
     try {
-      const { data } = await respondToInvite({ token, response });
+      const { data } = await respondToInvite({ token, response: 'ACCEPTED' });
       setInvite((current) => ({
         ...current,
-        inviteStatus: data?.data?.inviteStatus || response,
+        inviteStatus: data?.data?.inviteStatus || 'ACCEPTED',
         inviteRespondedAt: data?.data?.respondedAt || new Date().toISOString(),
       }));
-      if (response === 'ACCEPTED') {
-        setStep('form');
-        toast.success('Invitation accepted. Please complete your details.');
-      } else {
-        setStep('declined');
-        toast.success('Invitation declined.');
-      }
+      setStep('form');
+      toast.success('Invitation accepted. Please complete your details.');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Unable to record your response.');
+      toast.error(err.response?.data?.message || 'Unable to accept invitation.');
     } finally {
       setResponding(false);
     }
@@ -105,6 +115,9 @@ const InviteAcceptPage = () => {
     if (!photo) {
       return toast.error('Identity Verification Photo is required');
     }
+    if (!canSubmitPhoto(true)) {
+      return toast.error('Please fix photo validation issues or allow override.');
+    }
     if (form.phone && !phoneRegex.test(form.phone.trim())) {
       return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     }
@@ -119,6 +132,7 @@ const InviteAcceptPage = () => {
       fd.append('dateOfBirth', form.dateOfBirth);
       if (form.email) fd.append('email', form.email);
       if (photo) fd.append('photo', photo);
+      appendValidationToFormData(fd);
 
       await confirmInvite(fd);
       setDone(true);
@@ -205,38 +219,13 @@ const InviteAcceptPage = () => {
                 <div className="rounded-3xl border border-slate-200 p-6">
                   <h2 className="text-2xl font-bold text-slate-900">Review Invitation</h2>
                   <p className="mt-3 text-sm leading-6 text-slate-600">
-                    Accept this invitation to continue to the attendee confirmation form. If you decline, the organiser can reassign the ticket later.
+                    Accept this invitation to continue to the attendee confirmation form and complete your entry details.
                   </p>
-                  <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                    <Button className="flex-1 justify-center" loading={responding} onClick={() => handleRespond('ACCEPTED')}>
+                  <div className="mt-8">
+                    <Button className="w-full justify-center" loading={responding} onClick={handleAccept}>
                       Accept Invitation
                     </Button>
-                    <button
-                      type="button"
-                      disabled={responding}
-                      onClick={() => handleRespond('DECLINED')}
-                      className="flex-1 rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                    >
-                      Decline
-                    </button>
                   </div>
-                </div>
-              )}
-
-              {step === 'declined' && (
-                <div className="rounded-3xl border border-red-200 bg-red-50 p-6">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
-                    <XCircleIcon className="h-8 w-8 text-red-600" />
-                  </div>
-                  <h2 className="mt-5 text-2xl font-bold text-slate-900">Invitation Declined</h2>
-                  <p className="mt-3 text-sm text-slate-600">You have declined this invitation.</p>
-                  <button
-                    type="button"
-                    onClick={() => handleRespond('ACCEPTED')}
-                    className="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Change to Accept
-                  </button>
                 </div>
               )}
 
@@ -278,7 +267,8 @@ const InviteAcceptPage = () => {
                           <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
                             {photo ? (
                               <div className="relative h-full w-full">
-                                <img src={preview} alt="Preview" className="h-full w-full rounded-xl object-cover shadow-md" />
+                                <img ref={imageRef} src={preview} alt="Preview" className="h-full w-full rounded-xl object-cover shadow-md" />
+                                <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
                                 <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
                                   <PhotoIcon className="h-6 w-6 text-white" />
                                 </div>
@@ -289,12 +279,12 @@ const InviteAcceptPage = () => {
                                 <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload</p>
                               </div>
                             )}
-                            <input type="file" accept="image/*" onChange={(e) => {
+                            <input type="file" accept="image/*" onChange={async (e) => {
                               const file = e.target.files?.[0];
-                              if (file) {
-                                setPhoto(file);
-                                setPreview(URL.createObjectURL(file));
-                              }
+                              if (!file) return;
+                              await validateFile(file);
+                              setPhoto(file);
+                              setPreview(URL.createObjectURL(file));
                             }} className="hidden" />
                           </label>
 
@@ -310,14 +300,25 @@ const InviteAcceptPage = () => {
 
                         {showCamera && (
                           <CameraCapture 
-                            onCapture={(file) => {
+                            onCapture={async (file) => {
+                              await validateFile(file);
                               setPhoto(file);
                               setPreview(URL.createObjectURL(file));
+                              setShowCamera(false);
                             }} 
                             onClose={() => setShowCamera(false)} 
                           />
                         )}
                       </div>
+                      <PhotoValidationFeedback
+                        validationErrors={validationErrors}
+                        qualityAnalysis={qualityAnalysis}
+                        faceAnalysis={faceAnalysis}
+                        allowOverride={allowOverride}
+                        onAllowOverrideChange={setAllowOverride}
+                        modelLoadFailed={modelLoadFailed}
+                        validating={validating}
+                      />
                       <p className="mt-2 text-xs text-slate-500">Recommended for entry verification.</p>
                     </div>
                   </div>

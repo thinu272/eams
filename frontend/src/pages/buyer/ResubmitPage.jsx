@@ -1,11 +1,29 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getResubmitInfo, resubmitPhoto } from '../../api/attendees';
+import { getAssetUrl } from '../../utils/backend';
 import { photoQualityChecker, photoEnhancer } from '../../utils/photoQualityChecker';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import CameraCapture from '../../components/shared/CameraCapture';
-import { CameraIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import { CameraIcon, PhotoIcon, ArrowLeftIcon, ExclamationTriangleIcon, CalendarIcon, MapPinIcon } from '@heroicons/react/24/outline';
+
+const useIsMobileDevice = () => {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  });
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event) => setIsMobile(event.matches);
+    handleChange(mediaQuery);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  return isMobile;
+};
 
 const ResubmitPage = () => {
   const { token } = useParams();
@@ -26,6 +44,8 @@ const ResubmitPage = () => {
   const [enhancedPreview, setEnhancedPreview] = useState(null);
   const [activeFilter, setActiveFilter] = useState('none');
   const [showCamera, setShowCamera] = useState(false);
+  const [invalidated, setInvalidated] = useState(null);
+  const isMobile = useIsMobileDevice();
 
   const imageRef = useRef(null);
   const overlayRef = useRef(null);
@@ -38,7 +58,12 @@ const ResubmitPage = () => {
         setAttendee(response.data.data.attendee);
         setEvent(response.data.data.event);
       } catch (err) {
-        toast.error(err.response?.data?.message || 'Invalid resubmit link');
+        const payload = err.response?.data;
+        if (payload?.data?.invalidated) {
+          setInvalidated(payload.data);
+          return;
+        }
+        toast.error(payload?.message || 'Invalid resubmit link');
         navigate('/');
       } finally {
         setLoading(false);
@@ -397,309 +422,379 @@ const ResubmitPage = () => {
     }
   };
 
+  const handleCapturedPhoto = async (file) => {
+    const errors = await validatePhoto(file);
+    setValidationErrors(errors);
+    setAllowOverride(errors.length > 0);
+    setEnhancedPreview(null);
+    setActiveFilter('none');
+    setPhoto(file);
+    setPreview(URL.createObjectURL(file));
+    setShowCamera(false);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent sm:h-12 sm:w-12" />
       </div>
     );
   }
 
-  if (!attendee) return null;
+  if (!attendee && !invalidated) return null;
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Resubmit Photo</h1>
-          <p className="text-gray-600 mt-2">Your previous photo was rejected</p>
-        </div>
-
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
-          <h3 className="font-medium text-red-800">Rejection Reason</h3>
-          <p className="text-red-700 mt-1">{attendee.rejectionReason}</p>
-          <p className="text-sm text-red-600 mt-2">
-            Resubmission {attendee.resubmitCount}/3
-          </p>
-        </div>
-
-        {attendee.photo && (
-          <div className="mb-6">
-            <h3 className="font-medium text-gray-900 mb-2">Previous Photo</h3>
-            <img
-              src={getAssetUrl(attendee.photo)}
-              alt="Previous"
-              className="w-full h-48 object-cover rounded-md border"
-            />
+  if (invalidated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+        <div className="w-full max-w-lg rounded-[2rem] border border-red-200 bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100">
+            <ExclamationTriangleIcon className="h-10 w-10 text-red-600" />
           </div>
-        )}
-
-        <div className="mb-6">
-          <h3 className="font-medium text-gray-900 mb-2">Photo Requirements</h3>
-          <ul className="text-sm text-gray-600 space-y-1">
-            <li>• Clear face visible</li>
-            <li>• Good lighting</li>
-            <li>• No blur or distortion</li>
-            <li>• Recent photo</li>
-            <li>• File size: 50KB - 5MB</li>
-            <li>• Format: JPG or PNG</li>
-          </ul>
-          {modelLoadFailed && (
-            <p className="mt-3 text-sm text-amber-700">
-              Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.
+          <h2 className="mt-6 text-2xl font-bold text-slate-900">Ticket Invalidated</h2>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            Maximum photo resubmissions were reached. This ticket is no longer valid.
+          </p>
+          {invalidated.refundAmount > 0 && (
+            <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+              Refund initiated: LKR {Number(invalidated.refundAmount).toLocaleString()}
             </p>
           )}
+          {invalidated.ticketNumber && (
+            <p className="mt-3 text-xs font-mono text-slate-500">Ticket #{invalidated.ticketNumber}</p>
+          )}
+          <p className="mt-4 text-xs text-slate-500">
+            The ticket has been returned to public availability where applicable. Refunds are processed to the original payment method.
+          </p>
         </div>
+      </div>
+    );
+  }
 
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Face-match Threshold ({(faceMatchThreshold * 100).toFixed(0)}%)</label>
-          <input
-            type="range"
-            min="0.4"
-            max="0.6"
-            step="0.01"
-            value={faceMatchThreshold}
-            onChange={(e) => setFaceMatchThreshold(Number(e.target.value))}
-            className="w-full"
-          />
-          <p className="text-xs text-gray-500 mt-1">Adjust similarity threshold between 0.4 and 0.6</p>
-        </div>
+  const eventName = event?.name || 'Event';
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    : 'Date to be announced';
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Provide New Photo
-            </label>
-            <div className="flex gap-3">
-              <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 transition-all hover:border-blue-500 hover:bg-blue-50">
-                <PhotoIcon className="h-6 w-6 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mt-2 group-hover:text-blue-700">Upload</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  className="hidden"
-                />
-              </label>
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f8fafc_45%,_#e2e8f0)] px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 lg:px-8">
+      <div className="mx-auto max-w-5xl">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back
+        </button>
 
-              <button
-                type="button"
-                onClick={() => setShowCamera(true)}
-                className="flex-1 group relative flex h-[100px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 transition-all hover:border-blue-500 hover:bg-blue-50"
-              >
-                <CameraIcon className="h-6 w-6 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mt-2 group-hover:text-blue-700">Live Camera</span>
-              </button>
-            </div>
-
-            {showCamera && (
-              <CameraCapture 
-                onCapture={async (file) => {
-                  const errors = await validatePhoto(file);
-                  setValidationErrors(errors);
-                  setAllowOverride(errors.length > 0);
-                  setEnhancedPreview(null);
-                  setActiveFilter('none');
-                  setPhoto(file);
-                  setPreview(URL.createObjectURL(file));
-                }} 
-                onClose={() => setShowCamera(false)} 
-              />
-            )}
+        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
+          <div className="bg-slate-950 px-5 py-8 text-white sm:px-8 sm:py-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300">Photo Resubmission</p>
+            <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">Resubmit Verification Photo</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              {isMobile
+                ? 'Use your camera for the clearest face photo, then submit for organizer review.'
+                : 'Upload a clear replacement photo from your device for organizer review.'}
+            </p>
           </div>
 
-          {validationErrors.length > 0 && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-              <ul className="text-sm text-yellow-800">
-                {validationErrors.map((error, index) => (
-                  <li key={index}>• {error}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {preview && (
-            <div className="mb-4">
-              <h3 className="font-medium text-gray-900 mb-2">Preview & Quality Analysis</h3>
-
-              {/* Quality Rating */}
-              {qualityAnalysis && (
-                <div className="mb-3 p-3 rounded-md border-2" style={{
-                  borderColor: {
-                    'Good': '#10b981',
-                    'Medium': '#f59e0b',
-                    'Poor': '#ef4444',
-                  }[qualityAnalysis.qualityRating?.rating] || '#d1d5db',
-                  backgroundColor: {
-                    'Good': '#ecfdf5',
-                    'Medium': '#fffbeb',
-                    'Poor': '#fef2f2',
-                  }[qualityAnalysis.qualityRating?.rating] || '#f9fafb',
-                }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium" style={{
-                      color: {
-                        'Good': '#059669',
-                        'Medium': '#d97706',
-                        'Poor': '#dc2626',
-                      }[qualityAnalysis.qualityRating?.rating],
-                    }}>
-                      Quality: {qualityAnalysis.qualityRating?.rating}
-                    </span>
-                    <span className="text-xs font-semibold" style={{
-                      color: {
-                        'Good': '#059669',
-                        'Medium': '#d97706',
-                        'Poor': '#dc2626',
-                      }[qualityAnalysis.qualityRating?.rating],
-                    }}>
-                      Score {qualityAnalysis.qualityRating?.score}%
-                    </span>
+          <div className="grid gap-6 p-5 sm:gap-8 sm:p-8 lg:grid-cols-[0.95fr_1.05fr]">
+            {/* Left column — context */}
+            <div className="space-y-4 sm:space-y-5">
+              <div className="rounded-3xl border border-red-200 bg-red-50 p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                  <div className="min-w-0 text-left">
+                    <h3 className="text-sm font-bold text-red-800">Rejection Reason</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-red-700">
+                      {attendee.rejectionReason || 'Your previous photo did not meet verification requirements.'}
+                    </p>
+                    <p className="mt-2 text-xs font-semibold text-red-600">
+                      Resubmission {attendee.resubmitCount || 0}/3
+                    </p>
                   </div>
-                  
-                  {/* Quality Metrics */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {qualityAnalysis.resolution && (
-                      <div>
-                        <span className="text-gray-600">Resolution:</span>
-                        <span className={qualityAnalysis.resolution.valid ? 'text-green-600' : 'text-red-600'}>
-                          {' '}{qualityAnalysis.resolution.dimensions?.width}x{qualityAnalysis.resolution.dimensions?.height}
-                        </span>
+                </div>
+              </div>
+
+              {event && (
+                <div className="space-y-3">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Event</p>
+                    <p className="mt-2 text-sm font-bold text-slate-900">{eventName}</p>
+                    <div className="mt-3 space-y-2 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4 shrink-0 text-blue-600" />
+                        <span>{eventDate}</span>
                       </div>
-                    )}
-                    {qualityAnalysis.brightness && (
-                      <div>
-                        <span className="text-gray-600">Brightness:</span>
-                        <span className={qualityAnalysis.brightness.valid ? 'text-green-600' : 'text-red-600'}>
-                          {' '}{qualityAnalysis.brightness.brightness}
-                        </span>
-                      </div>
-                    )}
-                    {qualityAnalysis.blur && (
-                      <div>
-                        <span className="text-gray-600">Sharpness:</span>
-                        <span className={qualityAnalysis.blur.valid ? 'text-green-600' : 'text-red-600'}>
-                          {' '}{qualityAnalysis.blur.sharpness}
-                        </span>
-                      </div>
-                    )}
-                    {qualityAnalysis.contrast && (
-                      <div>
-                        <span className="text-gray-600">Contrast:</span>
-                        <span className={qualityAnalysis.contrast.valid ? 'text-green-600' : 'text-red-600'}>
-                          {' '}{qualityAnalysis.contrast.contrast}
-                        </span>
-                      </div>
-                    )}
+                      {event?.venue?.name && (
+                        <div className="flex items-center gap-2">
+                          <MapPinIcon className="h-4 w-4 shrink-0 text-blue-600" />
+                          <span>{event.venue.name}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Photo Preview */}
-              <div className="relative mb-3 rounded-md overflow-hidden border border-gray-300">
-                <img
-                  ref={imageRef}
-                  src={enhancedPreview || preview}
-                  alt="Preview"
-                  className="w-full h-48 object-cover"
-                />
-                <canvas
-                  ref={overlayRef}
-                  className="absolute inset-0 pointer-events-none"
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </div>
-
-              {/* Enhancement Filters */}
-              <div className="mb-3">
-                <label className="text-xs text-gray-600 font-medium block mb-2">Auto-Enhance</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => resetPreview()}
-                    className={`px-2 py-1 text-xs rounded transition ${
-                      activeFilter === 'none'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Original
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyEnhancementFilter('brighten')}
-                    className={`px-2 py-1 text-xs rounded transition ${
-                      activeFilter === 'brighten'
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Brighten
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyEnhancementFilter('enhance')}
-                    className={`px-2 py-1 text-xs rounded transition ${
-                      activeFilter === 'enhance'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Enhance
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyEnhancementFilter('vivid')}
-                    className={`px-2 py-1 text-xs rounded transition ${
-                      activeFilter === 'vivid'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Vivid
-                  </button>
+              {attendee.photo && (
+                <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <h3 className="text-sm font-bold text-slate-900">Previous Photo</h3>
+                  <img
+                    src={getAssetUrl(attendee.photo)}
+                    alt="Previous submission"
+                    className="mt-3 max-h-56 w-full rounded-2xl border border-slate-200 object-cover sm:max-h-64"
+                  />
                 </div>
-              </div>
+              )}
 
-              {/* Face & Face Match Info */}
-              {faceAnalysis && (
-                <div className="text-xs text-gray-600 space-y-1 bg-gray-50 p-2 rounded">
-                  <p>Face count: <strong>{faceAnalysis.faceCount}</strong></p>
-                  <p>Confidence: <strong>{(faceAnalysis.confidence * 100).toFixed(1)}%</strong></p>
-                  {faceAnalysis.matchDistance != null && (
-                    <>
-                      <p>Match similarity: <strong>{(faceAnalysis.matchSimilarity * 100).toFixed(1)}%</strong></p>
-                      <p>Threshold: <strong>{(faceAnalysis.matchThreshold * 100).toFixed(1)}%</strong></p>
-                    </>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5 text-left">
+                <h3 className="text-sm font-bold text-slate-900">Photo Requirements</h3>
+                <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
+                  <li>• Clear face visible, facing the camera</li>
+                  <li>• Good lighting, no heavy shadows</li>
+                  <li>• No blur, sunglasses, or hats</li>
+                  <li>• Recent photo (JPG or PNG, 50KB–5MB)</li>
+                </ul>
+                {modelLoadFailed && (
+                  <p className="mt-3 text-xs leading-relaxed text-amber-700">
+                    Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Right column — upload form */}
+            <div className="rounded-3xl border border-slate-200 p-4 sm:p-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-800">
+                    Face-match Threshold ({(faceMatchThreshold * 100).toFixed(0)}%)
+                  </label>
+                  <input
+                    type="range"
+                    min="0.4"
+                    max="0.6"
+                    step="0.01"
+                    value={faceMatchThreshold}
+                    onChange={(e) => setFaceMatchThreshold(Number(e.target.value))}
+                    className="w-full accent-blue-600"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Adjust similarity threshold between 40% and 60%</p>
+                </div>
+
+                <div>
+                  <label className="mb-3 block text-sm font-bold text-slate-800">
+                    {isMobile ? 'Take or Upload New Photo' : 'Upload New Photo'}
+                  </label>
+                  <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {isMobile && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCamera(true)}
+                        className="flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 px-4 py-5 transition hover:border-blue-400 hover:bg-blue-100"
+                      >
+                        <CameraIcon className="h-7 w-7 text-blue-600" />
+                        <span className="mt-2 text-xs font-bold uppercase tracking-wide text-blue-800">Use Camera</span>
+                        <span className="mt-1 text-[11px] text-blue-600">Recommended on mobile</span>
+                      </button>
+                    )}
+
+                    <label className={`group relative flex min-h-[112px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-blue-500 hover:bg-blue-50 ${isMobile ? '' : ''}`}>
+                      <PhotoIcon className="h-7 w-7 text-slate-400 transition-colors group-hover:text-blue-500" />
+                      <span className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-600 group-hover:text-blue-700">
+                        {isMobile ? 'Choose from Gallery' : 'Upload File'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/*"
+                        capture={isMobile ? 'user' : undefined}
+                        onChange={handlePhotoChange}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {!isMobile && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCamera(true)}
+                        className="flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-blue-500 hover:bg-blue-50"
+                      >
+                        <CameraIcon className="h-7 w-7 text-slate-400" />
+                        <span className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-600">Use Webcam</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {showCamera && (
+                    <div className="mt-4">
+                      <CameraCapture
+                        onCapture={handleCapturedPhoto}
+                        onClose={() => setShowCamera(false)}
+                      />
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
 
-          {validationErrors.length > 0 && (
-            <div className="mb-4 flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                id="override-validation"
-                checked={allowOverride}
-                onChange={(e) => setAllowOverride(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="override-validation" className="cursor-pointer">
-                Ignore warnings and proceed (not recommended)
-              </label>
-            </div>
-          )}
+                {validationErrors.length > 0 && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+                    <ul className="space-y-1 text-sm text-amber-900">
+                      {validationErrors.map((error, index) => (
+                        <li key={index}>• {error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-          <Button
-            type="submit"
-            disabled={submitting || (validationErrors.length > 0 && !allowOverride)}
-            className="w-full"
-          >
-            {submitting ? 'Submitting...' : 'Submit Photo'}
-          </Button>
-        </form>
+                {preview && (
+                  <div className="space-y-4 text-left">
+                    <h3 className="text-sm font-bold text-slate-900">Preview & Quality Analysis</h3>
+
+                    {qualityAnalysis && (
+                      <div
+                        className="rounded-2xl border-2 p-4"
+                        style={{
+                          borderColor: {
+                            Good: '#10b981',
+                            Medium: '#f59e0b',
+                            Poor: '#ef4444',
+                          }[qualityAnalysis.qualityRating?.rating] || '#d1d5db',
+                          backgroundColor: {
+                            Good: '#ecfdf5',
+                            Medium: '#fffbeb',
+                            Poor: '#fef2f2',
+                          }[qualityAnalysis.qualityRating?.rating] || '#f9fafb',
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-slate-800">
+                            Quality: {qualityAnalysis.qualityRating?.rating}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-600">
+                            Score {qualityAnalysis.qualityRating?.score}%
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                          {qualityAnalysis.resolution && (
+                            <div>
+                              <span className="text-slate-600">Resolution:</span>
+                              <span className={qualityAnalysis.resolution.valid ? ' text-green-600' : ' text-red-600'}>
+                                {' '}{qualityAnalysis.resolution.dimensions?.width}x{qualityAnalysis.resolution.dimensions?.height}
+                              </span>
+                            </div>
+                          )}
+                          {qualityAnalysis.brightness && (
+                            <div>
+                              <span className="text-slate-600">Brightness:</span>
+                              <span className={qualityAnalysis.brightness.valid ? ' text-green-600' : ' text-red-600'}>
+                                {' '}{qualityAnalysis.brightness.brightness}
+                              </span>
+                            </div>
+                          )}
+                          {qualityAnalysis.blur && (
+                            <div>
+                              <span className="text-slate-600">Sharpness:</span>
+                              <span className={qualityAnalysis.blur.valid ? ' text-green-600' : ' text-red-600'}>
+                                {' '}{qualityAnalysis.blur.sharpness}
+                              </span>
+                            </div>
+                          )}
+                          {qualityAnalysis.contrast && (
+                            <div>
+                              <span className="text-slate-600">Contrast:</span>
+                              <span className={qualityAnalysis.contrast.valid ? ' text-green-600' : ' text-red-600'}>
+                                {' '}{qualityAnalysis.contrast.contrast}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200">
+                      <img
+                        ref={imageRef}
+                        src={enhancedPreview || preview}
+                        alt="Preview"
+                        className="max-h-[min(70vh,28rem)] w-full object-contain bg-slate-100"
+                      />
+                      <canvas
+                        ref={overlayRef}
+                        className="pointer-events-none absolute inset-0 h-full w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-semibold text-slate-600">Auto-Enhance</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: 'none', label: 'Original', active: 'bg-blue-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                          { id: 'brighten', label: 'Brighten', active: 'bg-yellow-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                          { id: 'enhance', label: 'Enhance', active: 'bg-blue-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                          { id: 'vivid', label: 'Vivid', active: 'bg-purple-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                        ].map((filter) => (
+                          <button
+                            key={filter.id}
+                            type="button"
+                            onClick={() => (filter.id === 'none' ? resetPreview() : applyEnhancementFilter(filter.id))}
+                            className={`rounded-xl px-3 py-2 text-xs font-bold transition ${activeFilter === filter.id ? filter.active : filter.idle}`}
+                          >
+                            {filter.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {faceAnalysis && (
+                      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
+                        <p>Face count: <strong>{faceAnalysis.faceCount}</strong></p>
+                        <p>Confidence: <strong>{(faceAnalysis.confidence * 100).toFixed(1)}%</strong></p>
+                        {faceAnalysis.matchDistance != null && (
+                          <>
+                            <p>Match similarity: <strong>{(faceAnalysis.matchSimilarity * 100).toFixed(1)}%</strong></p>
+                            <p>Threshold: <strong>{(faceAnalysis.matchThreshold * 100).toFixed(1)}%</strong></p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {validationErrors.length > 0 && (
+                  <label htmlFor="override-validation" className="flex items-start gap-3 text-left text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      id="override-validation"
+                      checked={allowOverride}
+                      onChange={(e) => setAllowOverride(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="cursor-pointer leading-relaxed">
+                      Ignore warnings and proceed (not recommended)
+                    </span>
+                  </label>
+                )}
+
+                <div className="sticky bottom-0 -mx-4 border-t border-slate-100 bg-white/95 px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+                  <Button
+                    type="submit"
+                    disabled={submitting || (validationErrors.length > 0 && !allowOverride)}
+                    className="w-full justify-center py-3 text-sm font-bold sm:py-2.5"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Photo for Review'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

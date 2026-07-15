@@ -14,6 +14,7 @@ import {
   SignalIcon,
   BuildingOffice2Icon,
   StarIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/solid';
 import { getCanonicalRole } from '../utils/rbac';
 
@@ -30,6 +31,8 @@ export const ROLE_NAVIGATION = {
           { to: '/admin/dashboard?section=organisers', label: 'Organisers', icon: UserGroupIcon },
           { to: '/admin/dashboard?section=users', label: 'Users', icon: UsersIcon },
           { to: '/admin/dashboard?section=tickets', label: 'Tickets', icon: ClipboardDocumentListIcon },
+          { to: '/admin/dashboard?section=bank-accounts', label: 'Bank Accounts', icon: BanknotesIcon },
+          { to: '/admin/dashboard?section=payments', label: 'Payments', icon: BanknotesIcon },
           { to: '/admin/dashboard?section=verification', label: 'Verification', icon: CheckBadgeIcon },
           { to: '/admin/dashboard?section=entry-logs', label: 'Entry Logs', icon: ClipboardDocumentListIcon },
           { to: '/admin/dashboard?section=zone-activity', label: 'Zone Activity', icon: ShieldCheckIcon },
@@ -51,6 +54,7 @@ export const ROLE_NAVIGATION = {
           { to: '/organiser/dashboard?section=customization', label: 'Event Customization', icon: ArrowUpTrayIcon },
           { to: '/organiser/dashboard?section=attendees', label: 'Attendees', icon: UserGroupIcon },
           { to: '/organiser/dashboard?section=tickets', label: 'Tickets', icon: TicketIcon },
+          { to: '/organiser/dashboard?section=payments', label: 'Payments', icon: BanknotesIcon },
           { to: '/organiser/dashboard?section=zones', label: 'Zones & Areas', icon: ShieldCheckIcon },
           { to: '/organiser/dashboard?section=suborganisers', label: 'Team Management', icon: UsersIcon },
           { to: '/organiser/dashboard?section=sponsor-packages', label: 'Sponsor Packages', icon: ClipboardDocumentListIcon },
