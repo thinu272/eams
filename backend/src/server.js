@@ -142,6 +142,19 @@ io.on("connection", (socket) => {
   });
 });
 
+// --- SWAGGER DOCS ---
+try {
+  const swaggerUi = require('swagger-ui-express');
+  const swaggerDocument = require('../../swagger.json');
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'EAMS API Docs'
+  }));
+} catch (e) {
+  console.log('Swagger docs not available:', e.message);
+}
+
 // --- ROUTES ---
 // Health check
 app.get("/", (req, res) => {

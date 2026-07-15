@@ -100,4 +100,23 @@ const orderSchema = new mongoose.Schema({
 // Index for efficient lookups
 orderSchema.index({ eventId: 1, createdAt: -1 });
 
+// Refund fields
+orderSchema.add({
+  refundStatus: {
+    type: String,
+    enum: ['none', 'pending', 'approved', 'rejected', 'completed'],
+    default: 'none'
+  },
+  refundReason: String,
+  refundRequestedAt: Date,
+  refundProcessedAt: Date,
+  refundedAmount: Number,
+  cancelReason: String,
+  cancelledAt: Date,
+  cancelledBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
+});
+
 module.exports = mongoose.model('Order', orderSchema);

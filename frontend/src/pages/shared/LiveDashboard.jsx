@@ -1,371 +1,580 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { getSocketUrl } from '../../utils/backend';
-import { format } from 'date-fns';
-import DashboardLayout from '../../components/layout/DashboardLayout';
-import { getAllEventsAdmin, getMyEvents } from '../../api/events';
-import { useAuth } from '../../context/AuthContext';
-import {
-  getDashboardStats,
-  getDashboardLogs,
-  getDashboardTimeline,
-} from '../../api/dashboard';
-import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+import { 
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie 
 } from 'recharts';
 import { 
-  CheckCircleIcon, 
-  ArrowRightOnRectangleIcon, 
-  MapPinIcon, 
-  ArrowLeftOnRectangleIcon, 
-  XCircleIcon, 
-  NoSymbolIcon, 
-  TagIcon 
-} from '@heroicons/react/24/solid';
+  UsersIcon, TicketIcon, ClockIcon, ShieldCheckIcon, ArrowUpIcon, ArrowDownIcon, 
+  SignalIcon, MapPinIcon, QrCodeIcon, ChartBarIcon 
+} from '@heroicons/react/24/outline';
+import DashboardLayout from '../../components/layout/DashboardLayout';
+import Card, { CardHeader } from '../../components/ui/Card';
+import Badge from '../../components/ui/Badge';
+import { Table, Th, Td, Tr } from '../../components/ui/Table';
+import { getOrganiserWorkspace } from '../../api/organiser';
 
-/* ─── constants ───────────────────────────────────────────────── */
-const ZONE_COLORS = ['#3b82f6','#0ea5e9','#6366f1','#7c3aed','#ec4899','#f43f5e','#14b8a6'];
-const CAT_COLORS  = ['#2563eb','#0284c7','#4f46e5','#9333ea','#db2777','#0891b2','#0d9488'];
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-const actionColors = {
-  'CHECK-IN':   'text-sky-400',
-  'CHECK-OUT':  'text-blue-400',
-  'ZONE ENTRY': 'text-purple-400',
-  'ZONE EXIT':  'text-gray-400',
-  'DENIED ENTRY':'text-red-400',
-  'DENIED EXIT':'text-red-400',
-  'ZONE DENIED':'text-red-400',
-  'DUPLICATE SCAN':'text-amber-500',
+// Format number with commas
+const formatNumber = (num) => num?.toLocaleString() || '0';
+
+// Format currency
+const formatCurrency = (amount, currency = 'LKR') => {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
 };
 
-const actionIcons = {
-  'CHECK-IN':   CheckCircleIcon,
-  'CHECK-OUT':  ArrowRightOnRectangleIcon,
-  'ZONE ENTRY': MapPinIcon,
-  'ZONE EXIT':  ArrowLeftOnRectangleIcon,
-  'DENIED ENTRY': XCircleIcon,
-  'DENIED EXIT': XCircleIcon,
-  'ZONE DENIED': NoSymbolIcon,
-  'DUPLICATE SCAN': NoSymbolIcon,
+// Format time
+const formatTime = (dateString) => {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 };
 
-/* ─── stat card ───────────────────────────────────────────────── */
-const LiveStat = ({ label, value, delta, color, icon }) => {
-  const colours = {
-    blue:   'from-blue-600 to-blue-700',
-    green:  'from-blue-500 to-blue-700',
-    red:    'from-rose-500 to-rose-700',
-    purple: 'from-violet-500 to-violet-700',
-    amber:  'from-sky-500 to-sky-700',
-  };
-  return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${colours[color] || colours.blue} p-5 shadow-lg`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-white/60">{label}</p>
-          <p className="mt-2 text-4xl font-black tabular-nums text-white">{value ?? 0}</p>
-          {delta != null && (
-            <p className="mt-1 text-xs font-medium text-white/70">
-              {delta > 0 ? `+${delta}` : delta} this hour
-            </p>
-          )}
-        </div>
-        <div className="text-white/30">{icon}</div>
-      </div>
-    </div>
-  );
-};
-
-/* ─── section header ──────────────────────────────────────────── */
-const SectionHeader = ({ title, subtitle }) => (
-  <div className="mb-4">
-    <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-    {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
-  </div>
-);
-
-/* ─── chart card wrapper ──────────────────────────────────────── */
-const ChartCard = ({ children, title, subtitle, className = '' }) => (
-  <div className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${className}`}>
-    {title && <SectionHeader title={title} subtitle={subtitle} />}
-    {children}
-  </div>
-);
-
-/* ─── activity item ───────────────────────────────────────────── */
-const updateZoneOccupancy = (zones = [], zoneName, delta) => {
-  if (!zoneName) return zones;
-  const existing = zones.find((zone) => zone.zoneName === zoneName);
-  const nextZones = existing ? zones : [...zones, { zoneName, entries: 0, exits: 0, occupancy: 0 }];
-
-  return nextZones.map((zone) => {
-    if (zone.zoneName !== zoneName) return zone;
-    return {
-      ...zone,
-      entries: Math.max((zone.entries || 0) + (delta.entries || 0), 0),
-      exits: Math.max((zone.exits || 0) + (delta.exits || 0), 0),
-      occupancy: Math.max((zone.occupancy || 0) + (delta.occupancy || 0), 0),
-    };
+const LiveEventDashboard = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const eventId = searchParams.get('eventId');
+  
+  const [loading, setLoading] = useState(true);
+  const [event, setEvent] = useState(null);
+  const [stats, setStats] = useState({
+    totalTickets: 0,
+    ticketsSold: 0,
+    confirmedAttendees: 0,
+    checkedInCount: 0,
+    totalRevenue: 0,
+    zoneOccupancy: 0
   });
-};
-
-const ActivityItem = ({ log, isNew }) => {
-  const action = log.action || '';
-  const colorClass = actionColors[action] || 'text-gray-500';
-  const Icon = actionIcons[action] || '•';
-  const name = log.name || log.attendee?.fullName || log.snapshot?.fullName || 'Unknown';
-  const zone = log.zoneName || log.gateName || '';
-  const ts   = log.timestamp ? format(new Date(log.timestamp), 'HH:mm:ss') : '';
-
-  return (
-    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-500 ${isNew ? 'bg-blue-50 border border-blue-100' : 'hover:bg-gray-50'}`}>
-      <div className="w-7 text-center flex-shrink-0 flex items-center justify-center">
-        {Icon === '•' ? <span className="text-gray-400">•</span> : <Icon className={`h-6 w-6 ${colorClass}`} />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
-        <p className="text-xs text-gray-500 truncate">{zone}</p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className={`text-xs font-bold ${colorClass}`}>{action}</p>
-        <p className="text-xs text-gray-400">{ts}</p>
-      </div>
-    </div>
-  );
-};
-
-/* ─── main component ──────────────────────────────────────────── */
-const LiveDashboard = ({ readOnly = false }) => {
-  const { isAdmin } = useAuth();
-  const [events, setEvents]     = useState([]);
-  const [selected, setSelected] = useState('');
-  const [stats, setStats]       = useState(null);
-  const [timeline, setTimeline] = useState([]);
-  const [activity, setActivity] = useState([]);
-  const [newIds, setNewIds]     = useState(new Set());
-  const [lastFetch, setLastFetch] = useState(null);
+  const [charts, setCharts] = useState({
+    checkinsOverTime: [],
+    revenueByCategory: [],
+    ticketStatusDistribution: []
+  });
+  const [recentEntries, setRecentEntries] = useState([]);
+  const [zoneOccupancy, setZoneOccupancy] = useState([]);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [notifications, setNotifications] = useState([]);
+  
   const socketRef = useRef(null);
 
-  /* Load events */
-  useEffect(() => {
-    const loadEvents = isAdmin
-      ? getAllEventsAdmin({ limit: 100 })
-      : getMyEvents();
-
-    loadEvents.then(r => {
-      const evs = r.data?.data?.events || [];
-      setEvents(evs);
-      if (evs.length) setSelected(evs[0]._id);
-    }).catch(() => {
-      setEvents([]);
-      setSelected('');
-    });
-  }, [isAdmin]);
-
-  const fetchAll = useCallback(async (eventId) => {
-    if (!eventId) return;
+  // Fetch initial data
+  const fetchInitialData = useCallback(async () => {
     try {
-      const [sr, lr, tr] = await Promise.all([
-        getDashboardStats({ eventId }),
-        getDashboardLogs({ eventId, limit: 20 }),
-        getDashboardTimeline({ eventId }),
-      ]);
-      setStats(sr.data?.data);
-      setActivity(lr.data?.data?.logs || []);
-      setTimeline(tr.data?.data?.timeline || []);
-      setLastFetch(new Date());
-    } catch { /* ignore */ }
+      setLoading(true);
+      const response = await getOrganiserWorkspace({ eventId });
+      const data = response.data?.data;
+      
+      if (data) {
+        setEvent(data.event);
+        setStats({
+          totalTickets: data.overview?.totalTickets || 0,
+          ticketsSold: data.overview?.ticketsSold || 0,
+          confirmedAttendees: data.overview?.confirmedAttendees || 0,
+          checkedInCount: data.overview?.checkedInCount || 0,
+          totalRevenue: data.overview?.totalRevenue || 0,
+          zoneOccupancy: data.overview?.zoneOccupancy || 0
+        });
+        setCharts({
+          checkinsOverTime: data.charts?.checkinsOverTime || [],
+          revenueByCategory: data.charts?.revenueByCategory || [],
+          ticketStatusDistribution: data.charts?.ticketStatusDistribution || []
+        });
+        setRecentEntries(data.entryLogs || []);
+        setZoneOccupancy(data.zoneOccupancy || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [eventId]);
+
+  // Initialize Socket.IO connection
+  useEffect(() => {
+    const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    socketRef.current = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10
+    });
+
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      setConnectionStatus('connected');
+      console.log('Socket connected:', socket.id);
+      if (eventId) {
+        socket.emit('join_dashboard', { eventId });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      setConnectionStatus('disconnected');
+      console.log('Socket disconnected');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setConnectionStatus('error');
+    });
+
+    // Listen for real-time updates
+    socket.on('event_update', (data) => {
+      console.log('Event update received:', data);
+      fetchInitialData();
+    });
+
+    socket.on('check_in', (data) => {
+      console.log('Check-in received:', data);
+      setRecentEntries(prev => [data, ...prev.slice(0, 49)]);
+      setStats(prev => ({
+        ...prev,
+        checkedInCount: (prev.checkedInCount || 0) + 1
+      }));
+      addNotification({
+        type: 'success',
+        title: 'Check-in',
+        message: `${data.attendeeName} checked in at ${data.gateName || 'entry'}`
+      });
+    });
+
+    socket.on('check_in_denied', (data) => {
+      console.log('Check-in denied:', data);
+      addNotification({
+        type: 'error',
+        title: 'Access Denied',
+        message: `${data.attendeeName} - ${data.reason}`
+      });
+    });
+
+    socket.on('zone_scan', (data) => {
+      console.log('Zone scan received:', data);
+      addNotification({
+        type: 'info',
+        title: 'Zone Access',
+        message: `${data.attendeeName} ${data.action === 'ENTRY' ? 'entered' : 'exited'} ${data.zoneName}`
+      });
+    });
+
+    socket.on('ticket_sold', (data) => {
+      console.log('Ticket sold:', data);
+      setStats(prev => ({
+        ...prev,
+        ticketsSold: (prev.ticketsSold || 0) + (data.quantity || 1),
+        totalRevenue: (prev.totalRevenue || 0) + (data.amount || 0)
+      }));
+      addNotification({
+        type: 'success',
+        title: 'Ticket Sale',
+        message: `New ticket sold: ${data.categoryName}`
+      });
+    });
+
+    socket.on('payment_approved', (data) => {
+      console.log('Payment approved:', data);
+      addNotification({
+        type: 'success',
+        title: 'Payment',
+        message: `Payment approved: ${formatCurrency(data.amount)}`
+      });
+    });
+
+    return () => {
+      if (eventId) {
+        socket.emit('leave_dashboard', { eventId });
+      }
+      socket.disconnect();
+    };
+  }, [eventId, fetchInitialData]);
+
+  // Add notification
+  const addNotification = useCallback((notification) => {
+    const id = Date.now();
+    setNotifications(prev => [{ ...notification, id }, ...prev.slice(0, 9)]);
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
   }, []);
 
-  /* Initial fetch + re-fetch on event change */
+  // Initial data fetch
   useEffect(() => {
-    if (!selected) return;
-    fetchAll(selected);
-  }, [selected, fetchAll]);
+    fetchInitialData();
+  }, [fetchInitialData]);
 
-  /* Socket.io real-time updates */
+  // Refresh data periodically when socket is disconnected
   useEffect(() => {
-    if (!selected) return;
+    if (connectionStatus !== 'connected') {
+      const interval = setInterval(fetchInitialData, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [connectionStatus, fetchInitialData]);
 
-    const socket = io(getSocketUrl());
-    socketRef.current = socket;
-    socket.emit('join_dashboard', { eventId: selected });
-
-    const handleRealtimeUpdate = (data) => {
-      const incomingEventId = data?.eventId ? String(data.eventId) : '';
-      if (incomingEventId && incomingEventId !== String(selected)) return;
-
-      const newEntry = {
-        ...data,
-        _id: data._id || `live-${data.source || 'event'}-${Date.now()}`,
-        timestamp: data.timestamp || new Date().toISOString(),
-      };
-
-      setActivity(prev => [newEntry, ...prev].slice(0, 20));
-
-      setNewIds(prev => new Set([...prev, newEntry._id]));
-      setTimeout(() => {
-        setNewIds(prev => { const n = new Set(prev); n.delete(newEntry._id); return n; });
-      }, 3000);
-
-      // Bump counters instantly
-      if (data.accessGranted && data.action === 'CHECK-IN') {
-        setStats(prev => prev ? {
-          ...prev,
-          checkedInCount: (prev.checkedInCount || 0) + 1,
-        } : prev);
-      } else if (data.accessGranted && data.action === 'ZONE ENTRY') {
-        setStats(prev => prev ? {
-          ...prev,
-          zoneOccupancy: updateZoneOccupancy(prev.zoneOccupancy, data.zoneName, { entries: 1, occupancy: 1 }),
-        } : prev);
-      } else if (data.accessGranted && data.action === 'ZONE EXIT') {
-        setStats(prev => prev ? {
-          ...prev,
-          zoneOccupancy: updateZoneOccupancy(prev.zoneOccupancy, data.zoneName, { exits: 1, occupancy: -1 }),
-        } : prev);
-      } else if (!data.accessGranted) {
-        setStats(prev => prev ? {
-          ...prev,
-          deniedCount: (prev.deniedCount || 0) + 1,
-        } : prev);
-      }
-
-      // Refresh timeline every new event
-      getDashboardTimeline({ eventId: selected })
-        .then(r => setTimeline(r.data?.data?.timeline || []))
-        .catch(() => {});
+  // Metric Card Component
+  const MetricCard = ({ title, value, subtitle, icon: Icon, trend, color = 'blue' }) => {
+    const colorClasses = {
+      blue: 'bg-blue-50 text-blue-600',
+      green: 'bg-green-50 text-green-600',
+      amber: 'bg-amber-50 text-amber-600',
+      red: 'bg-red-50 text-red-600',
+      purple: 'bg-purple-50 text-purple-600'
     };
 
-    socket.on('entry_update', handleRealtimeUpdate);
-    socket.on('zone_update', handleRealtimeUpdate);
+    return (
+      <Card className="rounded-2xl border-slate-200">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-slate-500">{title}</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{value}</p>
+            {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+            {trend && (
+              <div className={`mt-2 flex items-center text-sm ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {trend > 0 ? <ArrowUpIcon className="w-4 h-4 mr-1" /> : <ArrowDownIcon className="w-4 h-4 mr-1" />}
+                {Math.abs(trend)}% from last hour
+              </div>
+            )}
+          </div>
+          <div className={`rounded-xl p-3 ${colorClasses[color]}`}>
+            <Icon className="w-6 h-6" />
+          </div>
+        </div>
+      </Card>
+    );
+  };
 
-    return () => socket.disconnect();
-  }, [selected]);
+  // Get connection status badge
+  const getConnectionBadge = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <Badge variant="green">Live</Badge>;
+      case 'disconnected':
+        return <Badge variant="amber">Reconnecting...</Badge>;
+      case 'error':
+        return <Badge variant="red">Connection Error</Badge>;
+      default:
+        return <Badge variant="gray">Connecting...</Badge>;
+    }
+  };
 
-  /* Derived data */
-  const zoneData = stats?.zoneOccupancy || [];
-  const catData  = (stats?.byCategory || []).map(c => ({ name: c.categoryName || c._id || 'Other', value: c.count }));
-  const wristbandsIssued = stats?.checkedInCount || 0; // proxy - scan path gives wb
+  if (loading && !event) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+            <p className="mt-4 text-slate-600">Loading live dashboard...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Live Dashboard {readOnly && <span className="ml-2 text-xs rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 font-semibold">READ-ONLY</span>}
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Real-time event monitoring | auto-updates via WebSocket
-              {lastFetch && <span className="ml-2 text-gray-400">· Last sync {format(lastFetch, 'HH:mm:ss')}</span>}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-900">
+                {event?.name || 'Live Event Dashboard'}
+              </h1>
+              {getConnectionBadge()}
+            </div>
+            <p className="mt-1 text-slate-500">
+              Real-time event monitoring and analytics
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-xs font-semibold text-blue-600">LIVE</span>
-            </div>
-            {events.length > 1 && (
-              <select
-                value={selected}
-                onChange={e => setSelected(e.target.value)}
-                className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
-              >
-                {events.map(ev => <option key={ev._id} value={ev._id}>{ev.name}</option>)}
-              </select>
-            )}
+            <button
+              onClick={fetchInitialData}
+              className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+            <button
+              onClick={() => navigate(`/organiser/dashboard${eventId ? `?eventId=${eventId}` : ''}`)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
+            >
+              <ChartBarIcon className="w-4 h-4" />
+              Full Dashboard
+            </button>
           </div>
         </div>
 
-        {/* Live counters */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <LiveStat label="Checked In"       value={stats?.checkedInCount}       color="green"  icon={<CheckCircleIcon className="h-10 w-10" />} />
-          <LiveStat label="Currently Inside" value={Math.max((stats?.checkedInCount || 0) - (stats?.zoneOccupancy?.reduce((a,z) => a + z.exits, 0) || 0), 0)} color="blue" icon={<MapPinIcon className="h-10 w-10" />} />
-          <LiveStat label="Denied Entry"     value={stats?.deniedCount}          color="red"    icon={<XCircleIcon className="h-10 w-10" />} />
-          <LiveStat label="Wristbands"       value={wristbandsIssued}            color="purple" icon={<TagIcon className="h-10 w-10" />} />
+        {/* Notifications Toast */}
+        {notifications.length > 0 && (
+          <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`p-4 rounded-xl shadow-lg border ${
+                  notification.type === 'success' ? 'bg-green-50 border-green-200' :
+                  notification.type === 'error' ? 'bg-red-50 border-red-200' :
+                  notification.type === 'warning' ? 'bg-amber-50 border-amber-200' :
+                  'bg-blue-50 border-blue-200'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    notification.type === 'success' ? 'bg-green-100 text-green-600' :
+                    notification.type === 'error' ? 'bg-red-100 text-red-600' :
+                    notification.type === 'warning' ? 'bg-amber-100 text-amber-600' :
+                    'bg-blue-100 text-blue-600'
+                  }`}>
+                    {notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : 'ℹ'}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-slate-900">{notification.title}</p>
+                    <p className="text-sm text-slate-600">{notification.message}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard
+            title="Total Tickets"
+            value={formatNumber(stats.ticketsSold)}
+            subtitle={`of ${formatNumber(stats.totalTickets)} capacity`}
+            icon={TicketIcon}
+            color="blue"
+          />
+          <MetricCard
+            title="Confirmed"
+            value={formatNumber(stats.confirmedAttendees)}
+            subtitle="attendees"
+            icon={UsersIcon}
+            color="green"
+          />
+          <MetricCard
+            title="Checked In"
+            value={formatNumber(stats.checkedInCount)}
+            subtitle={`${stats.confirmedAttendees ? Math.round((stats.checkedInCount / stats.confirmedAttendees) * 100) : 0}% attendance`}
+            icon={ShieldCheckIcon}
+            color="purple"
+          />
+          <MetricCard
+            title="Revenue"
+            value={formatCurrency(stats.totalRevenue)}
+            subtitle="total collected"
+            icon={ChartBarIcon}
+            color="amber"
+          />
         </div>
 
-        {/* Charts row */}
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          {/* Timeline */}
-          <ChartCard title="Check-in Timeline" subtitle="Entries per hour today" className="xl:col-span-2">
-            {timeline.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={timeline} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Check-ins Over Time */}
+          <Card className="rounded-2xl border-slate-200">
+            <CardHeader 
+              title="Check-ins Over Time" 
+              subtitle="Hourly check-in distribution"
+            />
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={charts.checkinsOverTime}>
                   <defs>
-                    <linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    <linearGradient id="checkinGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                  <Tooltip formatter={(v) => [`${v} check-ins`, 'Count']} />
-                  <Area type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} fill="url(#timelineGrad)" />
+                  <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="count" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    fill="url(#checkinGradient)" 
+                  />
                 </AreaChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex h-52 items-center justify-center text-gray-400 text-sm">No check-ins yet today</div>
-            )}
-          </ChartCard>
+            </div>
+          </Card>
 
-          {/* Category donut */}
-          <ChartCard title="Category Breakdown" subtitle="Attendees by ticket type">
-            {catData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={catData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} label={false}>
-                    {catData.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v, name) => [v, name]} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-52 items-center justify-center text-gray-400 text-sm">No category data</div>
-            )}
-          </ChartCard>
-        </div>
-
-        {/* Zone + Activity row */}
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.6fr]">
-          {/* Zone occupancy */}
-          <ChartCard title="Zone Occupancy" subtitle="Current occupancy vs total entries">
-            {zoneData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={zoneData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="zoneName" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="entries"   name="Total Entries"       fill="#6366f1" radius={[4,4,0,0]} />
-                  <Bar dataKey="occupancy" name="Current Occupancy"   fill="#3b82f6" radius={[4,4,0,0]} />
-                  <Bar dataKey="exits"     name="Exits"               fill="#0ea5e9" radius={[4,4,0,0]} />
+          {/* Revenue by Category */}
+          <Card className="rounded-2xl border-slate-200">
+            <CardHeader 
+              title="Revenue by Category" 
+              subtitle="Revenue distribution across ticket types"
+            />
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={charts.revenueByCategory} layout="vertical">
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    formatter={(value) => formatCurrency(value)}
+                  />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
+                    {charts.revenueByCategory.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex h-56 items-center justify-center text-gray-400 text-sm">No zone data yet</div>
-            )}
-          </ChartCard>
-
-          {/* Live activity feed */}
-          <ChartCard title="Live Activity Feed" subtitle="Last 20 events">
-            <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 280 }}>
-              {activity.length === 0 && (
-                <div className="py-10 text-center text-sm text-gray-400">No events yet | waiting for first scan…</div>
-              )}
-              {activity.map((log) => (
-                <ActivityItem key={log._id || log.timestamp} log={log} isNew={newIds.has(log._id)} />
-              ))}
             </div>
-          </ChartCard>
+          </Card>
+        </div>
+
+        {/* Zone Occupancy & Recent Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Zone Occupancy */}
+          <Card className="lg:col-span-1 rounded-2xl border-slate-200">
+            <CardHeader 
+              title="Zone Occupancy" 
+              subtitle="Current zone distribution"
+            />
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={zoneOccupancy}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    dataKey="occupancy"
+                    nameKey="zoneName"
+                    paddingAngle={2}
+                  >
+                    {zoneOccupancy.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="px-4 pb-4">
+              <div className="flex flex-wrap gap-2 justify-center">
+                {zoneOccupancy.map((zone, index) => (
+                  <div key={zone.zoneName} className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                    <span className="text-xs text-slate-600">{zone.zoneName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Recent Activity */}
+          <Card className="lg:col-span-2 rounded-2xl border-slate-200" padding={false}>
+            <div className="px-6 pt-6 pb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900">Recent Activity</h3>
+                <p className="text-sm text-slate-500">Latest entry logs and events</p>
+              </div>
+              <Badge variant="blue">{recentEntries.length} entries</Badge>
+            </div>
+            <div className="overflow-x-auto max-h-80">
+              <Table>
+                <thead>
+                  <Tr>
+                    <Th>Attendee</Th>
+                    <Th>Gate/Zone</Th>
+                    <Th>Status</Th>
+                    <Th>Time</Th>
+                  </Tr>
+                </thead>
+                <tbody>
+                  {recentEntries.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={4} className="text-center text-slate-500 py-8">
+                        No recent activity
+                      </Td>
+                    </Tr>
+                  ) : (
+                    recentEntries.slice(0, 10).map((entry, index) => (
+                      <Tr key={entry._id || index}>
+                        <Td>
+                          <div>
+                            <p className="font-medium text-slate-900">{entry.attendee?.fullName || entry.snapshot?.fullName || 'Unknown'}</p>
+                            <p className="text-xs text-slate-500">{entry.attendee?.categoryName || entry.snapshot?.categoryName || '-'}</p>
+                          </div>
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-2">
+                            <MapPinIcon className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-700">{entry.gateName || entry.zoneName || '-'}</span>
+                          </div>
+                        </Td>
+                        <Td>
+                          {entry.accessGranted ? (
+                            <Badge variant="green">Allowed</Badge>
+                          ) : (
+                            <Badge variant="red">Denied</Badge>
+                          )}
+                        </Td>
+                        <Td className="text-sm text-slate-500">
+                          {entry.timestamp ? formatTime(entry.timestamp) : '-'}
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            </div>
+          </Card>
+        </div>
+
+        {/* Quick Stats Footer */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center gap-2 mb-2">
+              <SignalIcon className="w-5 h-5" />
+              <span className="text-sm opacity-80">Check-in Rate</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {stats.confirmedAttendees ? Math.round((stats.checkedInCount / stats.confirmedAttendees) * 100) : 0}%
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center gap-2 mb-2">
+              <TicketIcon className="w-5 h-5" />
+              <span className="text-sm opacity-80">Capacity Used</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {stats.totalTickets ? Math.round((stats.ticketsSold / stats.totalTickets) * 100) : 0}%
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center gap-2 mb-2">
+              <UsersIcon className="w-5 h-5" />
+              <span className="text-sm opacity-80">Remaining</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {formatNumber(stats.totalTickets - stats.ticketsSold)}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center gap-2 mb-2">
+              <ClockIcon className="w-5 h-5" />
+              <span className="text-sm opacity-80">Avg/hr (last 3h)</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {formatNumber(Math.round(stats.checkedInCount / 3))}
+            </p>
+          </div>
         </div>
       </div>
     </DashboardLayout>
   );
 };
 
-export default LiveDashboard;
+export default LiveEventDashboard;

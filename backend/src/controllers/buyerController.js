@@ -751,4 +751,116 @@ module.exports = {
       next(err);
     }
   },
+  cancelOrder: async (req, res, next) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.orderId)) {
+        return res.status(400).json({ success: false, message: 'Invalid order ID.' });
+      }
+      const email = normalizeEmail(req.user.email);
+      const { reason } = req.body;
+
+      const order = await Order.findById(req.params.orderId);
+      if (!order || normalizeEmail(order.buyerEmail) !== email) {
+        return res.status(404).json({ success: false, message: 'Order not found.' });
+      }
+
+      // Only allow cancellation for PENDING or CONFIRMED orders
+      if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot cancel order with status: ${order.status}`
+        });
+      }
+
+      // Update order status
+      order.status = 'CANCELLED';
+      order.cancelReason = reason || 'No reason provided';
+      order.cancelledAt = new Date();
+      order.cancelledBy = req.user._id;
+      await order.save();
+
+      // Update all tickets in the order
+      await Ticket.updateMany(
+        { order: order._id },
+        {
+          $set: {
+            status: 'CANCELLED',
+            invalidatedAt: new Date(),
+            invalidationReason: reason || 'Order cancelled'
+          }
+        }
+      );
+
+      res.json({
+        success: true,
+        message: 'Order cancelled successfully',
+        data: { orderId: order._id, status: order.status }
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+  requestRefund: async (req, res, next) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.orderId)) {
+        return res.status(400).json({ success: false, message: 'Invalid order ID.' });
+      }
+      const email = normalizeEmail(req.user.email);
+      const { reason } = req.body;
+
+      if (!reason || reason.trim().length < 10) {
+        return res.status(400).json({
+          success: false,
+          message: 'Refund reason must be at least 10 characters.'
+        });
+      }
+
+      const order = await Order.findById(req.params.orderId);
+      if (!order || normalizeEmail(order.buyerEmail) !== email) {
+        return res.status(404).json({ success: false, message: 'Order not found.' });
+      }
+
+      // Only allow refunds for CONFIRMED orders
+      if (order.status !== 'CONFIRMED') {
+        return res.status(400).json({
+          success: false,
+          message: `Refund only available for confirmed orders. Current status: ${order.status}`
+        });
+      }
+
+      // Check if refund already requested
+      if (order.refundStatus === 'pending') {
+        return res.status(400).json({
+          success: false,
+          message: 'Refund request already pending for this order.'
+        });
+      }
+
+      // Update order refund status
+      order.refundStatus = 'pending';
+      order.refundReason = reason;
+      order.refundRequestedAt = new Date();
+      await order.save();
+
+      // Update all confirmed tickets to REFUND_PENDING
+      await Ticket.updateMany(
+        { order: order._id, status: 'CONFIRMED' },
+        {
+          $set: {
+            refundStatus: 'pending',
+            refundRequestReason: reason,
+            refundRequestedAt: new Date()
+          }
+        }
+      );
+
+      res.json({
+        success: true,
+        message: 'Refund request submitted successfully. Our team will review within 3-5 business days.',
+        data: { orderId: order._id, refundStatus: 'pending' }
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
