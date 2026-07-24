@@ -245,32 +245,52 @@ const ManualLookup = ({ selectedEvent, gateId, onCheckin, scanning }) => {
             No attendees found
           </div>
         )}
-        {results.map((a) => (
-          <div key={a._id} className="rounded-2xl border border-gray-700 bg-gray-800 p-4 flex items-center gap-4">
-            {a.photo
-              ? <img src={buildAssetUrl(a.photo)} alt={a.fullName} className="h-14 w-14 rounded-xl object-cover border border-gray-600 flex-shrink-0" />
-              : <div className="h-14 w-14 rounded-xl bg-gray-700 flex items-center justify-center flex-shrink-0 text-gray-400"><UserIcon className="h-8 w-8" /></div>
-            }
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-white truncate">{a.fullName}</p>
-              <p className="text-sm text-gray-400">{a.categoryName} · {a.phone || a.email || ''}</p>
-              <div className="flex gap-2 mt-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  a.confirmationStatus === 'confirmed' ? 'bg-blue-900 text-blue-300' : 'bg-sky-900 text-sky-300'
-                }`}>{a.confirmationStatus}</span>
-                {a.checkedIn && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 font-medium">Already In</span>}
-                {a.wristbandId && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300 font-medium flex items-center"><TagIcon className="h-3 w-3 mr-1" /> Wristband</span>}
+        {results.map((a) => {
+          const isReserved = a.confirmationStatus?.toLowerCase() === 'reserved' || a.orderId?.status === 'RESERVED';
+          return (
+            <div key={a._id} className="rounded-2xl border border-gray-700 bg-gray-800 p-4 flex items-center gap-4">
+              {a.photo
+                ? <img src={buildAssetUrl(a.photo)} alt={a.fullName} className="h-14 w-14 rounded-xl object-cover border border-gray-600 flex-shrink-0" />
+                : <div className="h-14 w-14 rounded-xl bg-gray-700 flex items-center justify-center flex-shrink-0 text-gray-400"><UserIcon className="h-8 w-8" /></div>
+              }
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white truncate">{a.fullName}</p>
+                <p className="text-sm text-gray-400">{a.categoryName} · {a.phone || a.email || ''}</p>
+                <div className="flex gap-2 mt-1">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    isReserved 
+                      ? 'bg-amber-900 text-amber-300' 
+                      : a.confirmationStatus === 'confirmed' 
+                        ? 'bg-blue-900 text-blue-300' 
+                        : 'bg-sky-900 text-sky-300'
+                  }`}>
+                    {isReserved ? 'Reserved (Unpaid)' : a.confirmationStatus}
+                  </span>
+                  {a.checkedIn && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 font-medium">Already In</span>}
+                  {a.wristbandId && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300 font-medium flex items-center"><TagIcon className="h-3 w-3 mr-1" /> Wristband</span>}
+                </div>
               </div>
+              
+              {isReserved ? (
+                <button
+                  onClick={() => onCheckin(a)}
+                  disabled={scanning}
+                  className="rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-40 transition-colors flex-shrink-0"
+                >
+                  Confirm & Check In
+                </button>
+              ) : (
+                <button
+                  onClick={() => onCheckin(a)}
+                  disabled={scanning || a.checkedIn}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                >
+                  {a.checkedIn ? 'Done' : 'Check In'}
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => onCheckin(a)}
-              disabled={scanning || a.checkedIn}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            >
-              {a.checkedIn ? 'Done' : 'Check In'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -350,6 +370,20 @@ const EntryScannerPage = () => {
     if (!selectedEvent || !gateId || scanning) return;
     setScanning(true);
     try {
+      const isReserved = attendee.confirmationStatus?.toLowerCase() === 'reserved' || attendee.orderId?.status === 'RESERVED';
+      if (isReserved && attendee.orderId?._id) {
+        // Confirm cash payment first
+        toast.loading('Confirming cash payment...', { id: 'cash-confirm' });
+        try {
+          await api.post(`/entrance/confirm/${attendee.orderId._id}`);
+          toast.success('Cash payment confirmed', { id: 'cash-confirm' });
+        } catch (confirmErr) {
+          toast.error(confirmErr.response?.data?.message || 'Failed to confirm cash payment', { id: 'cash-confirm' });
+          setScanning(false);
+          return;
+        }
+      }
+      
       await checkInAttendee({ attendeeId: attendee._id, gateId, gateName: gateId, method: 'manual' });
       setResult({
         accessGranted: true,

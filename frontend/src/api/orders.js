@@ -3,9 +3,12 @@ import api from './client';
 // Create new order
 export const createOrder = (data) => api.post('/orders', data);
 
+// Create bank transfer order
+export const createBankTransferOrder = (data) => api.post('/bank-transfer/order', data);
+
 // Get order by confirmation token
 export const getOrderByToken = (token) => api.get(`/orders/confirm/${token}`);
-export const getBuyerOrderByToken = (token) => api.get(`/orders/${token}`);
+export const getBuyerOrderByToken = (token) =>  api.get(`/orders/confirm/${token}`);
 
 // Finalize order after all tickets are assigned
 export const finalizeOrder = (orderId) => api.post(`/orders/finalize/${orderId}`);

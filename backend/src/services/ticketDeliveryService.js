@@ -329,6 +329,12 @@ const sendBuyerPurchaseSummaryEmail = async ({ order: orderInput, event: eventIn
     return { delivered: false, skipped: true, reason: 'payment_not_successful' };
   }
 
+  // Skip bank transfer orders - they use sendBankTransferPaymentApproved instead
+  if (order.paymentMethod === 'bank_transfer') {
+    console.log(`SKIPPING purchase summary email for bank transfer order ${order.orderNumber}`);
+    return { delivered: false, skipped: true, reason: 'bank_transfer_order' };
+  }
+
   const pdfBuffer = await generateOrderSummaryPDF(order, event);
   await sendOrderConfirmation(order, event, { pdfBuffer });
   return { delivered: true };
@@ -344,6 +350,12 @@ const sendBuyerOrderCreatedEmail = async ({ order: orderInput, event: eventInput
   const event = eventInput?._id ? eventInput : await Event.findById(eventInput || order.eventId).lean();
   if (!event) {
     return { delivered: false, skipped: true, reason: 'event_not_found' };
+  }
+
+  // Skip bank transfer orders - they will receive different email workflow
+  if (order.paymentMethod === 'bank_transfer') {
+    console.log(`SKIPPING order created email for bank transfer order ${order.orderNumber}`);
+    return { delivered: false, skipped: true, reason: 'bank_transfer_order' };
   }
 
   const pdfBuffer = await generateOrderSummaryPDF(order, event);

@@ -78,7 +78,9 @@ const BankTransferInstructionsPage = () => {
   };
 
   const handleProceed = () => {
-    navigate(`/bank-transfer/submit/${orderId}`);
+    // Use the actual _id from order data, not the orderId from params
+    const orderIdToUse = instructions.order._id || orderId;
+    navigate(`/bank-transfer/submit/${orderIdToUse}`);
   };
 
   if (loading) {
@@ -103,6 +105,13 @@ const BankTransferInstructionsPage = () => {
 
   const { order, bankAccounts } = instructions;
   const currency = 'LKR'; // Should come from event settings
+  
+  // Check if payment has already been submitted
+  const isPaymentSubmitted = order.paymentStatus && 
+    order.paymentStatus !== 'pending' && 
+    order.paymentStatus !== 'awaiting_payment';
+  
+  const isExpired = timeLeft === 'Expired';
 
   return (
     <PublicLayout>
@@ -153,20 +162,37 @@ const BankTransferInstructionsPage = () => {
           </div>
 
           {/* Important Notice */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
-            <div className="flex items-start gap-3">
-              <ExclamationTriangleIcon className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-amber-900 mb-2">Important Notice</h3>
-                <ul className="text-sm text-amber-800 space-y-1">
-                  <li>â€¢ Please transfer the exact amount shown above</li>
-                  <li>â€¢ Your tickets will only be confirmed after payment verification</li>
-                  <li>â€¢ Verification is normally completed within 48 hours</li>
-                  <li>â€¢ Keep your payment receipt for submission</li>
-                </ul>
+          {isPaymentSubmitted ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
+              <div className="flex items-start gap-3">
+                <BanknotesIcon className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-green-900 mb-2">Payment Already Submitted</h3>
+                  <ul className="text-sm text-green-800 space-y-1">
+                    <li>• Your payment details have been submitted and are under review</li>
+                    <li>• You will receive an email once your payment is verified</li>
+                    <li>• Current status: {order.paymentStatus === 'pending_verification' ? 'Awaiting Verification' : order.paymentStatus}</li>
+                    <li>• Please allow up to 48 hours for verification</li>
+                  </ul>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
+              <div className="flex items-start gap-3">
+                <ExclamationTriangleIcon className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-amber-900 mb-2">Important Notice</h3>
+                  <ul className="text-sm text-amber-800 space-y-1">
+                    <li>• Please transfer the exact amount shown above</li>
+                    <li>• Your tickets will only be confirmed after payment verification</li>
+                    <li>• Verification is normally completed within 48 hours</li>
+                    <li>• Keep your payment receipt for submission</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bank Accounts */}
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -241,11 +267,11 @@ const BankTransferInstructionsPage = () => {
           <div className="flex justify-center">
             <button
               onClick={handleProceed}
-              disabled={timeLeft === 'Expired'}
+              disabled={isExpired || isPaymentSubmitted}
               className="inline-flex items-center gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-md"
             >
-              <span>I Have Made the Payment</span>
-              <ArrowRightIcon className="h-5 w-5" />
+              <span>{isPaymentSubmitted ? 'Payment Already Submitted' : isExpired ? 'Reservation Expired' : "I Have Made the Payment"}</span>
+              {!isExpired && !isPaymentSubmitted && <ArrowRightIcon className="h-5 w-5" />}
             </button>
           </div>
 
@@ -254,7 +280,7 @@ const BankTransferInstructionsPage = () => {
               onClick={() => navigate(-1)}
               className="text-blue-600 hover:text-blue-800 font-medium"
             >
-              â† Back to Checkout
+              ← Back to Checkout
             </button>
           </div>
         </div>

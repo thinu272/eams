@@ -17,6 +17,10 @@ const systemLogSchema = new mongoose.Schema({
     enum: [
       'login',
       'logout',
+      'payment_received',
+      'payment_approval',
+      'payment_rejection',
+      'payment_info_request',
       'ticket_creation',
       'ticket_scan',
       'event_update',

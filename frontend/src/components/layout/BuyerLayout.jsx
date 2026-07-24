@@ -9,6 +9,7 @@ import {
   BellIcon,
   ArrowRightOnRectangleIcon,
   GlobeAltIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline';
 
 const BuyerLayout = ({ children }) => {
@@ -20,6 +21,7 @@ const BuyerLayout = ({ children }) => {
     { to: '/buyer/home', label: 'Home', icon: HomeIcon, end: true },
     { to: '/buyer/orders', label: 'Orders', icon: TicketIcon },
     { to: '/buyer/tickets', label: 'Tickets', icon: TicketIcon },
+    { to: '/buyer/payment-history', label: 'Payments', icon: CreditCardIcon },
     { to: '/buyer/invites', label: 'Invites', icon: BellIcon },
     { to: '/buyer/profile', label: 'Profile', icon: UserCircleIcon },
   ]), []);

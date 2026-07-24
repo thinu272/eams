@@ -11,6 +11,7 @@ import HomePage from './pages/public/HomePage';
 import EventsListingPage from './pages/public/EventsListingPage';
 import EventDetailPage from './pages/public/EventDetailPage';
 import CheckoutPage from './pages/public/CheckoutPage';
+import CashEntranceInstructionsPage from './pages/buyer/CashEntranceInstructionsPage';
 import OrderConfirmationPage from './pages/public/OrderConfirmationPage';
 import AttendeeIdentityConfirmPage from './pages/public/AttendeeIdentityConfirmPage';
 import MaintenancePage from './pages/public/MaintenancePage';
@@ -18,6 +19,7 @@ import MaintenancePage from './pages/public/MaintenancePage';
 // Auth
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
+import SignupSuccessPage from './pages/auth/SignupSuccessPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import VerifyEmailPage from './pages/auth/VerifyEmailPage';
@@ -37,6 +39,7 @@ import BuyerTicketsPage from './pages/buyer/BuyerTicketsPage';
 import BuyerInvitesPage from './pages/buyer/BuyerInvitesPage';
 import BuyerProfilePage from './pages/buyer/BuyerProfilePage';
 import BuyerOrderHistoryPage from './pages/buyer/BuyerOrderHistoryPage';
+import BuyerPaymentHistoryPage from './pages/buyer/BuyerPaymentHistoryPage';
 import BuyerConfirmPassPage from './pages/buyer/BuyerConfirmPassPage';
 import BankTransferInstructionsPage from './pages/buyer/BankTransferInstructionsPage';
 import BankTransferSubmitPage from './pages/buyer/BankTransferSubmitPage';
@@ -72,6 +75,7 @@ import SubOrgTeam from './pages/suborg/SubOrgTeam';
 import SubOrgTickets from './pages/suborg/SubOrgTickets';
 import BulkUploadPage from './pages/suborg/BulkUploadPage';
 import SubOrgZoneManualSearchPage from './pages/suborg/SubOrgZoneManualSearchPage';
+import SubOrgPayments from './pages/suborg/SubOrgPayments';
 import EventEditPage from './pages/shared/EventEditPage';
 
 // Entry
@@ -120,6 +124,7 @@ const AppRoutes = () => (
     <Route path="/events/:id" element={<EventDetailPage />} />
     <Route path="/login" element={<LoginPage />} />
     <Route path="/signup" element={<SignupPage />} />
+    <Route path="/signup-success" element={<SignupSuccessPage />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
     <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
@@ -131,8 +136,13 @@ const AppRoutes = () => (
     <Route path="/confirm/:inviteToken" element={<AttendeeIdentityConfirmPage />} />
     <Route path="/invite/:token" element={<InviteAcceptPage />} />
     <Route path="/resubmit/:token" element={<ResubmitPage />} />
+    <Route path="/maintenance" element={<MaintenancePage />} />
+
+    {/* Orders & Checkout */}
     <Route path="/checkout" element={<CheckoutPage />} />
+    <Route path="/cash-entrance/instructions/:confirmationToken" element={<CashEntranceInstructionsPage />} />
     <Route path="/order/:token/confirm" element={<OrderConfirmationPage />} />
+
     <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
     <Route path="/dashboard/enhanced" element={<Protected><UserDashboardPage /></Protected>} />
     <Route path="/buyer/dashboard" element={<Protected roles={['BUYER']}><BuyerDashboardPage /></Protected>} />
@@ -144,6 +154,7 @@ const AppRoutes = () => (
     <Route path="/bank-transfer/thank-you/:orderId" element={<BankTransferThankYouPage />} />
     <Route path="/buyer/assign/:orderId" element={<Protected roles={['BUYER']}><BuyerOrderDetailsPage /></Protected>} />
     <Route path="/buyer/orders/:orderId" element={<Protected roles={['BUYER']}><BuyerOrderDetailsPage /></Protected>} />
+    <Route path="/buyer/payment-history" element={<Protected roles={['BUYER']}><BuyerPaymentHistoryPage /></Protected>} />
     <Route path="/buyer/invites" element={<Protected roles={['BUYER']}><BuyerInvitesPage /></Protected>} />
     <Route path="/buyer/profile" element={<Protected roles={['BUYER']}><BuyerProfilePage /></Protected>} />
     <Route path="/buyer/orders" element={<Protected roles={['BUYER']}><BuyerOrderHistoryPage /></Protected>} />
@@ -193,6 +204,7 @@ const AppRoutes = () => (
     <Route path="/suborg/logs" element={<Protected roles={['SubOrganiser']}><SubOrgActivityLogsPage /></Protected>} />
     <Route path="/suborg/team" element={<Protected roles={['SubOrganiser']}><SubOrgTeam /></Protected>} />
     <Route path="/suborg/tickets" element={<Protected roles={['SubOrganiser']}><SubOrgTickets /></Protected>} />
+    <Route path="/suborg/payments" element={<Protected roles={['SubOrganiser']}><SubOrgPayments /></Protected>} />
     <Route path="/suborg/upload" element={<Protected roles={['SubOrganiser']}><BulkUploadPage /></Protected>} />
     <Route path="/suborg/verify" element={<Protected roles={['SubOrganiser']}><Navigate to="/suborg/verification" replace /></Protected>} />
     <Route path="/suborganiser/verify-photos" element={<Protected roles={['SubOrganiser','MainOrganiser','MainAdmin']}><SubOrgVerificationPage /></Protected>} />

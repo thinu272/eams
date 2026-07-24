@@ -64,11 +64,33 @@ const systemConfigSchema = new mongoose.Schema({
     },
   },
   payment: {
-    gateway: { type: String, enum: ['none', 'stripe', 'payhere'], default: 'none' },
-    publishableKey: { type: String, default: '' },
-    secretKey: { type: String, default: '' },
-    defaultCurrency: { type: String, default: 'LKR' },
     enabled: { type: Boolean, default: false },
+    defaultGateway: { type: String, enum: ['stripe', 'payhere'], default: 'stripe' },
+    defaultCurrency: { type: String, default: 'LKR' },
+    multiGatewayEnabled: { type: Boolean, default: true },
+    gateways: {
+      stripe: {
+        enabled: { type: Boolean, default: false },
+        publishableKey: { type: String, default: '' },
+        secretKey: { type: String, default: '' }
+      },
+      payhere: {
+        enabled: { type: Boolean, default: false },
+        merchantId: { type: String, default: '' },
+        merchantSecret: { type: String, default: '' }
+      }
+    },
+    cashAtEntrance: {
+      enabled: { type: Boolean, default: true },
+      reservationExpiryHours: { type: Number, default: 48 },
+      terms: { type: String, default: 'Please arrive 30–60 minutes before the event to complete payment and collect your tickets.' },
+    },
+    bankTransfer: {
+      enabled: { type: Boolean, default: true },
+      accounts: { type: String, default: '' },
+      verificationSlaHours: { type: Number, default: 48 },
+      receiptUploadLimitMb: { type: Number, default: 5 },
+    },
   },
   security: {
     jwtTtlHours: { type: Number, default: 24 },

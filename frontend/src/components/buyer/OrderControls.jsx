@@ -43,6 +43,12 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
                 const assigned = order.stats?.assigned || 0;
                 const progressPercent = total > 0 ? Math.round((assigned / total) * 100) : 0;
                 const isComplete = progressPercent === 100;
+                
+                // Check if this is a cash at entrance reservation
+                const isCashReservation = order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance';
+                const isReserved = order.status === 'RESERVED';
+                const isAwaitingPayment = order.paymentStatus === 'awaiting_payment';
+                const shouldDisableActions = isCashReservation && (isReserved || isAwaitingPayment);
 
                 return (
                   <tr key={order._id} className="hover:bg-slate-50/50 transition-colors">
@@ -73,18 +79,31 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
                     {/* Status & Progress */}
                     <td className="px-6 py-4">
                       <div className="w-48">
-                        <div className="flex items-center justify-between text-xs font-semibold mb-1">
-                          <span className={isComplete ? 'text-emerald-600' : 'text-slate-500'}>
-                            {assigned} / {total} Assigned
-                          </span>
-                          <span className="text-slate-400">{progressPercent}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full bg-brand-main transition-all duration-500`}
-                            style={{ width: `${progressPercent}%` }}
-                          />
-                        </div>
+                        {shouldDisableActions ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs font-semibold">
+                              <span className="text-orange-600 font-bold">Reservation Pending Payment</span>
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              Payment must be completed at the venue before tickets can be issued.
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                              <span className={isComplete ? 'text-emerald-600' : 'text-slate-500'}>
+                                {assigned} / {total} Assigned
+                              </span>
+                              <span className="text-slate-400">{progressPercent}%</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full bg-brand-main transition-all duration-500`}
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </td>
 
@@ -94,18 +113,29 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
                         <button
                           onClick={() => onDownloadOrder(order._id)}
                           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
-                          title="Download Receipt / Order Summary PDF"
+                          title={shouldDisableActions ? "Download Reservation PDF" : "Download Receipt / Order Summary PDF"}
                         >
                           <ArrowDownTrayIcon className="h-4 w-4" />
-                          <span className="hidden sm:inline">Receipt</span>
+                          <span className="hidden sm:inline">{shouldDisableActions ? 'Reservation' : 'Receipt'}</span>
                         </button>
-                        <Link
-                          to={`/buyer/assign/${order._id}`}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-brand-main px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark active:scale-95 transition-all"
-                        >
-                          <span>Manage</span>
-                          <ArrowRightIcon className="h-3.5 w-3.5" />
-                        </Link>
+                        {shouldDisableActions ? (
+                          <button
+                            disabled
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-300 px-3 py-1.5 text-xs font-bold text-slate-500 shadow-sm cursor-not-allowed"
+                            title="Payment must be completed at the venue before tickets can be issued"
+                          >
+                            <span>Manage</span>
+                            <ArrowRightIcon className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <Link
+                            to={`/buyer/assign/${order._id}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-brand-main px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark active:scale-95 transition-all"
+                          >
+                            <span>Manage</span>
+                            <ArrowRightIcon className="h-3.5 w-3.5" />
+                          </Link>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -8,12 +8,15 @@
 
 A comprehensive full-stack event access management platform built with modern web technologies for ticketed events, entry control, attendee verification, and organiser operations.
 
+> 📄 **[Full Project Scope Document →](docs/PROJECT_SCOPE.md)** — Detailed coverage of all 20+ modules, 93 page components, 9 user roles, 30+ API route modules, and complete technical architecture.
+
 ## Table of Contents
 
 - [Features](#features)
   - [Core Functionality](#core-functionality)
   - [Communication \& Notifications](#communication--notifications)
   - [Security \& Access Control](#security--access-control)
+- [Project Scope](#project-scope)
 - [User Roles](#user-roles)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -23,6 +26,22 @@ A comprehensive full-stack event access management platform built with modern we
 - [Development](#development)
 - [Deployment](#deployment)
 - [Documentation](#documentation)
+
+---
+
+## Project Scope
+
+For a comprehensive breakdown of all system modules, data models, integration points, and deployment architecture, see the **[Full Project Scope Document](docs/PROJECT_SCOPE.md)**.
+
+The scope document covers:
+- **20+ functional modules** — Event lifecycle, ticketing, orders, payments, attendee verification, entry control, zones, sponsors, and more
+- **9 user roles** with detailed permission matrix
+- **93 frontend page components** across 13 role-based sections
+- **30+ backend API route modules** with 19 MongoDB data models
+- **Real-time architecture** via Socket.IO rooms and broadcasts
+- **Multi-channel notification engine** (Email, SMS, WhatsApp)
+- **Security layer** with JWT, MFA, RBAC, rate limiting, and audit trails
+- **Deployment configurations** for local, LAN, Docker, and production
 
 ---
 
@@ -772,11 +791,18 @@ Additional documentation available in the `docs/` directory:
 
 | Document | Description |
 |----------|-------------|
+| [PROJECT_SCOPE.md](docs/PROJECT_SCOPE.md) | **Full project scope & objectives** — comprehensive coverage of all modules, architecture, and features |
 | [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) | Detailed installation instructions |
 | [API_REFERENCE.md](docs/API_REFERENCE.md) | Complete API reference |
 | [USER_DASHBOARD_GUIDE.md](docs/USER_DASHBOARD_GUIDE.md) | Role-specific user guides |
 | [BUYER_CONFIRMATION_PORTAL_GUIDE.md](docs/BUYER_CONFIRMATION_PORTAL_GUIDE.md) | Buyer portal documentation |
 | [PHOTO_CONFIRMATION_GUIDE.md](docs/PHOTO_CONFIRMATION_GUIDE.md) | Photo verification workflow |
+| [SYSTEM_FEATURES_SUMMARY.md](docs/SYSTEM_FEATURES_SUMMARY.md) | Feature pillars summary |
+| [CHECKOUT_SYSTEM_README.md](docs/CHECKOUT_SYSTEM_README.md) | Checkout system details |
+| [MAINTENANCE_MODE_SETUP.md](docs/MAINTENANCE_MODE_SETUP.md) | Maintenance mode configuration |
+| [VISUAL_ARCHITECTURE_DIAGRAMS.md](docs/VISUAL_ARCHITECTURE_DIAGRAMS.md) | Architecture diagrams |
+| [payment-management-system.md](docs/payment-management-system.md) | Payment management system |
+| [LAN_RUN.md](LAN_RUN.md) | Local network deployment |
 
 ---
 
@@ -796,9 +822,17 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for seamless event management**
+**Built By CBNIT for seamless event management**
 
 ## Changelog
+
+### Version 2.1.0 (2026-07-24)
+
+#### Documentation
+- **Project Scope Document**: Added comprehensive scope document covering all 20+ modules, 93 page components, 9 user roles, 30+ API routes, and complete technical architecture
+- **Updated README**: Added project scope section, expanded documentation table with all available docs
+
+---
 
 ### Version 2.0.0 (2026-07-15)
 

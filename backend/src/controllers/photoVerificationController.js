@@ -5,6 +5,7 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { notifyPhotoRejectionNotification, notifyStatusChange } = require('../services/notificationService');
 const { finalizePhotoApproval, finalizePhotoRejection, withUploadedPhoto } = require('../services/ticketDeliveryService');
+const { hasZoneAccess } = require('../middleware/verificationScope');
 
 const listPendingPhotos = async (req, res, next) => {
   try {
@@ -24,6 +25,9 @@ const listPendingPhotos = async (req, res, next) => {
 };
 
 const verifyPhoto = async (req, res, next) => {
+  if (!hasZoneAccess(req.user, attendee)) {
+    return res.status(403).json({ success:false, message:"Unauthorized zone." });
+  }
   try {
     const { attendeeId, status, reason } = req.body;
     if (!attendeeId || !mongoose.Types.ObjectId.isValid(attendeeId)) {

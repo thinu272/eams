@@ -49,8 +49,7 @@ const SignupPage = () => {
         role: form.role
       });
 
-      toast.success('Registration successful. Please check your email to verify your account.');
-      navigate('/login');
+      navigate('/signup-success');
     } catch (err) {
       const message = err.response?.data?.message || 'Authorization matrix conflict';
       toast.error(message);

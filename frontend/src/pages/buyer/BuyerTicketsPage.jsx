@@ -82,6 +82,9 @@ const BuyerTicketsPage = () => {
     if (paymentMethodFilter === 'all') {
       return sortedOrders;
     }
+    if (paymentMethodFilter === 'cash_entrance') {
+      return sortedOrders.filter(order => ['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod));
+    }
     return sortedOrders.filter(order => order.paymentMethod === paymentMethodFilter);
   }, [sortedOrders, paymentMethodFilter]);
 
@@ -179,6 +182,17 @@ const BuyerTicketsPage = () => {
                   <BanknotesIcon className="h-4 w-4" />
                   <span>Bank Transfer</span>
                 </button>
+                <button
+                  onClick={() => setPaymentMethodFilter('cash_entrance')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    paymentMethodFilter === 'cash_entrance'
+                      ? 'bg-brand-main text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <TicketIcon className="h-4 w-4" />
+                  <span>Cash at Entrance</span>
+                </button>
               </div>
             </div>
           </div>
@@ -266,12 +280,22 @@ const BuyerTicketsPage = () => {
                                 <CreditCardIcon className="h-3 w-3" />
                                 <span>Card</span>
                               </>
-                            ) : (
+                            ) : order.paymentMethod === 'bank_transfer' ? (
                               <>
                                 <BanknotesIcon className="h-3 w-3" />
                                 <span>Bank Transfer</span>
                               </>
-                            )}
+                            ) : ['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) ? (
+                              <>
+                                <TicketIcon className="h-3 w-3" />
+                                <span>Cash at Entrance</span>
+                              </>
+                            ) : null}
+                          </span>
+                        )}
+                        {order.status === 'RESERVED' && (
+                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-amber-200">
+                            🟡 Awaiting Payment at Entrance
                           </span>
                         )}
                       </div>
@@ -311,6 +335,18 @@ const BuyerTicketsPage = () => {
                     </div>
                   </div>
 
+                  {/* Reserved warning notice */}
+                  {order.status === 'RESERVED' && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
+                      <p className="font-semibold">
+                        Your ticket has been reserved. Please pay at the event entrance to activate your entry pass.
+                      </p>
+                      <p className="mt-1 font-medium text-amber-600">
+                        All entry passes, QR codes, guest invites, and download functions will remain locked until cash payment is processed at the venue entrance.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Categories detail */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 border-t border-slate-100 pt-5">
                     {order.categories?.map((c) => (
@@ -329,21 +365,33 @@ const BuyerTicketsPage = () => {
                   {/* Action Bar */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 pt-5">
                     <p className="text-base font-extrabold text-slate-900">
-                      Total Paid: {order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}
+                      {order.status === 'RESERVED' ? 'Total to Pay:' : 'Total Paid:'} {order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}
                     </p>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                       <button
-                        onClick={() => handleDownloadOrder(order._id)}
-                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
+                        onClick={() => order.status !== 'RESERVED' && handleDownloadOrder(order._id)}
+                        disabled={order.status === 'RESERVED'}
+                        className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all ${
+                          order.status === 'RESERVED' 
+                            ? 'opacity-40 cursor-not-allowed bg-slate-100' 
+                            : 'hover:bg-slate-50 active:scale-95'
+                        }`}
+                        title={order.status === 'RESERVED' ? 'Pay at venue entrance to activate ticket download.' : ''}
                       >
                         <ArrowDownTrayIcon className="h-4 w-4" />
                         <span>Order Receipt</span>
                       </button>
 
                       <Link
-                        to={`/buyer/assign/${order._id}`}
-                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-main px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-dark active:scale-95 transition-all"
+                        to={order.status === 'RESERVED' ? '#' : `/buyer/assign/${order._id}`}
+                        onClick={(e) => order.status === 'RESERVED' && e.preventDefault()}
+                        className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all ${
+                          order.status === 'RESERVED' 
+                            ? 'opacity-40 cursor-not-allowed bg-slate-400' 
+                            : 'bg-brand-main hover:bg-brand-dark active:scale-95'
+                        }`}
+                        title={order.status === 'RESERVED' ? 'Awaiting payment confirmation at entrance.' : ''}
                       >
                         <span>Manage Attendees</span>
                         <ArrowRightIcon className="h-3.5 w-3.5" />

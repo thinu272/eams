@@ -72,9 +72,9 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                  Awaiting Verification
                </span>
              )}
-             {pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' && (
+             {(pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid' && (
                <span className="flex items-center gap-1.5 text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 px-2.5 py-0.5 rounded-full">
-                 Waiting for Payment Approval
+                 Waiting for Payment
                </span>
              )}
             {!isInvalidated && pass.status !== 'INVITED' && !isConfirmed && !isPhotoRejected && !isPendingVerification && (
@@ -220,7 +220,7 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                     <span>{resending ? 'Resending...' : 'Resend Invite'}</span>
                   </button>
                 ) : (
-                  pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' ? (
+                  (pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid' ? (
                      <div className="flex flex-col gap-2">
                        <p className="text-xs text-yellow-700">
                          Your payment is awaiting verification. Ticket features will become available after payment approval (typically within 48 hours).

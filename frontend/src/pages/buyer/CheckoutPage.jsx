@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createOrder } from '../../api/orders';
+import { getPaymentConfig } from '../../api/payment';
 import PublicLayout from '../../components/layout/PublicLayout';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -16,6 +17,8 @@ const CheckoutPage = () => {
     notificationChannel: 'email',
   });
   const [paymentMethod, setPaymentMethod] = useState('card');
+  const [selectedGateway, setSelectedGateway] = useState('');
+  const [gatewayConfig, setGatewayConfig] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -29,6 +32,22 @@ const CheckoutPage = () => {
     try {
       const parsed = JSON.parse(data);
       setCheckoutData(parsed);
+
+      // Fetch payment gateway config for this event
+      if (parsed.eventId) {
+        getPaymentConfig(parsed.eventId)
+          .then(res => {
+            if (res.success) {
+              setGatewayConfig(res.data);
+              setSelectedGateway(res.data.defaultGateway || 'payhere');
+            }
+          })
+          .catch(err => {
+            console.warn('Could not fetch payment config, using defaults:', err);
+            setGatewayConfig({ gateways: ['payhere'], defaultGateway: 'payhere', paymentMethods: ['card'] });
+            setSelectedGateway('payhere');
+          });
+      }
     } catch (error) {
       console.error('Invalid checkout data:', error);
       toast.error('Invalid checkout data');
@@ -114,6 +133,7 @@ const CheckoutPage = () => {
         notificationChannel: buyerInfo.notificationChannel,
         tickets,
         paymentMethod,
+        gateway: paymentMethod === 'card' ? selectedGateway : undefined,
       };
 
       if (paymentMethod === 'bank_transfer') {
@@ -125,17 +145,32 @@ const CheckoutPage = () => {
         
         // Redirect to bank transfer instructions page
         navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
-      } else {
-        // For card payment, use existing flow
+      } else if (paymentMethod === 'cash') {
+        // For cash on entrance reservation
         const response = await createOrder(orderData);
-
-        toast.success('Order placed successfully!');
+        toast.success('Reservation placed successfully!');
+        
+        // Clear checkout data
+        localStorage.removeItem('checkoutData');
+        
+        // Redirect to Cash Entrance Instructions
+        navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);
+      } else {
+        // For card payment — multi-gateway
+        const response = await createOrder(orderData);
+        const resData = response.data.data;
 
         // Clear checkout data
         localStorage.removeItem('checkoutData');
 
-        // Redirect to confirmation page
-        navigate(`/confirm/${response.data.data.confirmationToken}`);
+        if (resData.gatewayUsed === 'stripe' && resData.stripeSessionUrl) {
+          // Redirect to Stripe Checkout
+          window.location.href = resData.stripeSessionUrl;
+        } else {
+          // PayHere flow — redirect to confirmation page (existing behavior)
+          toast.success('Order placed successfully!');
+          navigate(`/confirm/${resData.confirmationToken}`);
+        }
       }
     } catch (error) {
       console.error('Order placement failed:', error);
@@ -272,7 +307,7 @@ const CheckoutPage = () => {
                     Payment Method *
                   </label>
                   <div className="space-y-3">
-                    <label className="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <label className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${paymentMethod === 'card' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
                       <input
                         type="radio"
                         name="paymentMethod"
@@ -286,22 +321,90 @@ const CheckoutPage = () => {
                         <p className="text-sm text-gray-500">Instant payment with card</p>
                       </div>
                     </label>
-                    <label className="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+
+                    {/* Gateway sub-selection — only shown when card is selected and multiple gateways exist */}
+                    {paymentMethod === 'card' && gatewayConfig && gatewayConfig.gateways && gatewayConfig.gateways.length > 1 && (
+                      <div className="ml-7 pl-4 border-l-2 border-blue-200 space-y-2">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Choose Payment Provider</p>
+                        {gatewayConfig.gateways.includes('payhere') && (
+                          <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedGateway === 'payhere' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <input
+                              type="radio"
+                              name="gateway"
+                              value="payhere"
+                              checked={selectedGateway === 'payhere'}
+                              onChange={(e) => setSelectedGateway(e.target.value)}
+                              className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="ml-2.5">
+                              <span className="text-sm font-medium text-gray-900">PayHere</span>
+                              <p className="text-xs text-gray-500">Local Sri Lankan payment gateway</p>
+                            </div>
+                          </label>
+                        )}
+                        {gatewayConfig.gateways.includes('stripe') && (
+                          <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedGateway === 'stripe' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <input
+                              type="radio"
+                              name="gateway"
+                              value="stripe"
+                              checked={selectedGateway === 'stripe'}
+                              onChange={(e) => setSelectedGateway(e.target.value)}
+                              className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="ml-2.5">
+                              <span className="text-sm font-medium text-gray-900">Stripe</span>
+                              <p className="text-xs text-gray-500">International card payments</p>
+                            </div>
+                          </label>
+                        )}
+                      </div>
+                    )}
+
+                    <label className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
                       <input
                         type="radio"
                         name="paymentMethod"
-                        value="bank_transfer"
-                        checked={paymentMethod === 'bank_transfer'}
+                        value="cash"
+                        checked={paymentMethod === 'cash'}
                         onChange={(e) => setPaymentMethod(e.target.value)}
                         className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                       />
                       <div className="ml-3">
-                        <span className="font-medium text-gray-900">Direct Bank Transfer</span>
-                        <p className="text-sm text-gray-500">Transfer to bank account (verification within 48 hours)</p>
+                        <span className="font-medium text-gray-900">Cash at Entrance (Pay on Event Day)</span>
+                        <p className="text-sm text-gray-500">Pay at the venue on the day of the event</p>
                       </div>
                     </label>
                   </div>
                 </div>
+
+                {paymentMethod === 'cash' && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 text-sm space-y-3">
+                    <h4 className="font-bold text-amber-800 flex items-center gap-1.5">
+                      ⚠️ Pay at the Venue
+                    </h4>
+                    <p className="font-semibold">
+                      Your tickets will be reserved until the event. Payment must be made at the entrance before entry is granted.
+                    </p>
+                    <p>
+                      Please arrive at least <span className="font-bold text-amber-900">30–60 minutes before the event starts</span> to complete payment and avoid delays.
+                    </p>
+                    <p className="text-xs text-amber-700 font-medium">
+                      Failure to arrive within the reservation period may result in cancellation of your reservation.
+                    </p>
+                    
+                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        required
+                        className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-xs text-amber-800 select-none">
+                        I accept that I must pay at the venue entrance and failure to arrive early may result in cancellation. *
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 <div className="pt-4">
                   <Button

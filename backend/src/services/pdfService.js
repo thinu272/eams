@@ -235,11 +235,178 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
   doc.text(`Event Organizer: ${orgName}`, 65, y + 34);
   doc.text('Support Contact: support@entrynex.com', 65, y + 48);
   doc.text('QR Validation Notice: Tickets in this order are secure and must be assigned to attendees for gate entry.', 65, y + 62, { width: 465 });
+
+  if (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) && order.status === 'RESERVED') {
+    doc.fillColor('#dc2626').fontSize(9).font('Helvetica-Bold').text('NOTE: Tickets will only be issued after the payments are completed at the counter.', 65, y + 74, { width: 465 });
+  }
   
   doc.fillColor(accentColor).fontSize(8).font('Helvetica-Bold').text('Powered by ENTRYNEX', 380, y + 15, { align: 'right', width: 150 });
+});
+
+const generateReservationPDF = async (order, event) => buildBuffer(async (doc) => {
+  const primaryColor = '#0a1128';
+  const secondaryColor = '#64748b';
+  const accentColor = '#ea580c';
+  const warningColor = '#dc2626';
+  const ticketRows = order.tickets || [];
+  const currency = event?.settings?.currency || 'LKR';
+
+  const path = require('path');
+  const fs = require('fs');
+  const logoPath = path.resolve(process.cwd(), '../frontend/public/logo.png');
+  const hasLogo = fs.existsSync(logoPath);
+
+  // Generate Reservation QR Code (for lookup, not entry)
+  const qrBuffer = await QRCode.toBuffer(order.confirmationToken, {
+    errorCorrectionLevel: 'H',
+    margin: 1,
+    color: { dark: '#000000', light: '#ffffff' },
+  });
+
+  // Header Section
+  const headerHeight = 120;
+  doc.rect(0, 0, doc.page.width, headerHeight).fill(primaryColor);
+  
+  let textStartX = 50;
+  let textY = 45;
+  if (hasLogo) {
+    doc.fillColor('#ffffff').roundedRect(40, 20, 80, 80, 20).fill();
+    doc.image(logoPath, 45, 25, { width: 70, height: 70, fit: [70, 70], align: 'center', valign: 'center' });
+    textStartX = 140;
+  } else {
+    doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('ENTRYNEX', 50, 45);
+    textStartX = 180;
+  }
+  
+  doc.fillColor('#ffffff').fontSize(15).font('Helvetica-Bold').text('Reservation Confirmation', textStartX, textY);
+  doc.fontSize(10).font('Helvetica').fillColor('#cbd5e1').text('NOT AN ENTRY TICKET - Payment Required', textStartX, textY + 22);
+
+  doc.fillColor(primaryColor).fontSize(20).text(event.name || 'Event Reservation', 0, 135, { width: doc.page.width, align: 'center' });
+  doc.moveTo(50, 160).lineTo(545, 160).stroke('#e2e8f0');
+
+  // IMPORTANT NOTICE BOX
+  doc.fillColor('#fef2f2').rect(50, 175, 495, 60).fill();
+  doc.save();
+  doc.strokeColor('#dc2626').lineWidth(2).roundedRect(50, 175, 495, 60, 8).stroke();
+  doc.restore();
+  
+  doc.fillColor(warningColor).fontSize(11).font('Helvetica-Bold').text('THIS DOCUMENT IS NOT AN ENTRY TICKET', 65, 190, { width: 465 });
+  doc.fillColor('#991b1b').fontSize(9).font('Helvetica').text('Tickets will only be issued after payment has been completed at the event payment counter.', 65, 208, { width: 465 });
+
+  // Buyer Details
+  doc.fillColor(secondaryColor).fontSize(10).text('BUYER DETAILS', 50, 255);
+  doc.fillColor('#000000').fontSize(13).text(order.buyerName || 'Buyer', 50, 270);
+  doc.fontSize(11).text(order.buyerEmail || '', 50, 288);
+  if (order.buyerPhone) {
+    doc.text(order.buyerPhone, 50, 306);
+  }
+
+  // Order Information
+  doc.fillColor(secondaryColor).fontSize(10).text('ORDER NUMBER', 50, 340);
+  doc.fillColor('#000000').fontSize(12).text(order.orderNumber || '-', 50, 355);
+
+  doc.fillColor(secondaryColor).fontSize(10).text('RESERVATION NUMBER', 50, 380);
+  doc.fillColor('#000000').fontSize(12).text(order.confirmationToken || '-', 50, 395);
+
+  // Event Details
+  doc.fillColor(secondaryColor).fontSize(10).text('EVENT DETAILS', 50, 430);
+  doc.fillColor('#000000').fontSize(12).text(`${formatEventDate(event.startDate)} at ${formatEventTime(event.startDate)}`, 50, 445);
+  doc.fillColor('#000000').fontSize(12).text(formatVenue(event.venue), 50, 463, { width: 470 });
+
+  // Reserved Tickets
+  doc.fillColor(primaryColor).fontSize(14).text('Reserved Tickets', 50, 510);
+  let y = 538;
+  ticketRows.forEach((item, index) => {
+    if (y > 750) {
+      doc.addPage();
+      y = 50;
+    }
+    doc.fillColor('#000000').fontSize(12).text(`${index + 1}. ${item.categoryName}`, 60, y);
+    doc.text(`Qty: ${item.quantity}`, 330, y);
+    doc.text(`${currency} ${Number(item.price || 0).toLocaleString()}`, 430, y);
+    y += 24;
+  });
+
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, y + 8).lineTo(545, y + 8).stroke();
+  doc.restore();
+  
+  doc.fillColor(primaryColor).fontSize(14).font('Helvetica-Bold').text(`Amount Due: ${currency} ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
+  doc.fillColor(secondaryColor).fontSize(10).font('Helvetica').text('Payment Method: Cash at Entrance', 50, y + 46);
+
+  // Arrival Time Recommendation
+  y += 75;
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+  
+  doc.fillColor('#fff7ed').rect(50, y, 495, 80).fill();
+  doc.save();
+  doc.strokeColor('#ea580c').lineWidth(1).roundedRect(50, y, 495, 80, 8).stroke();
+  doc.restore();
+  
+  doc.fillColor(accentColor).fontSize(11).font('Helvetica-Bold').text('ARRIVAL TIME RECOMMENDATION', 65, y + 15);
+  doc.fillColor('#9a3412').fontSize(9).font('Helvetica').text('Please arrive 30–60 minutes before the event starts to complete your payment and collect your tickets.', 65, y + 32, { width: 465 });
+  doc.fillColor('#9a3412').fontSize(9).font('Helvetica').text('Late arrival may result in delays or reservation cancellation according to the event policy.', 65, y + 50, { width: 465 });
+
+  // QR Code Section
+  y += 100;
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+
+  doc.fillColor('#f8fafc').rect(50, y, 495, 120).fill();
+  doc.save();
+  doc.strokeColor('#e2e8f0').lineWidth(1).roundedRect(50, y, 495, 120, 8).stroke();
+  doc.restore();
+  
+  doc.image(qrBuffer, 60, y + 10, { width: 100 });
+  doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold').text('RESERVATION LOOKUP CODE', 175, y + 15);
+  doc.fillColor(secondaryColor).fontSize(8).font('Helvetica').text('Present this code at the payment counter for reservation lookup.', 175, y + 32, { width: 360 });
+  doc.fillColor(secondaryColor).fontSize(8).font('Helvetica').text('This is NOT an entry QR code - tickets will be issued after payment.', 175, y + 48, { width: 360 });
+
+  // Contact Information
+  y += 135;
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+  
+  const orgName = event.organiser?.name || event.organiserName || 'Authorized Event Organizer';
+  doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('CONTACT INFORMATION', 50, y);
+  doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
+  doc.text(`Event Organizer: ${orgName}`, 50, y + 18);
+  doc.text('Support Contact: support@entrynex.com', 50, y + 32);
+  doc.text('Venue Address: ' + formatVenue(event.venue), 50, y + 46, { width: 470 });
+
+  // Reservation Terms
+  y += 75;
+  if (y > 720) {
+    doc.addPage();
+    y = 50;
+  }
+  
+  doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('RESERVATION TERMS', 50, y);
+  doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
+  doc.text('- This reservation is valid only for the specified event and date.', 50, y + 18, { width: 470 });
+  doc.text('- Payment must be completed at the venue before tickets are issued.', 50, y + 32, { width: 470 });
+  doc.text('- Failure to arrive on time may result in reservation cancellation.', 50, y + 46, { width: 470 });
+  doc.text('- This reservation is non-transferable without prior approval.', 50, y + 60, { width: 470 });
+  doc.text('- All event policies and terms apply to this reservation.', 50, y + 74, { width: 470 });
+
+  // Footer
+  const footerY = doc.page.height - 40;
+  doc.fillColor(accentColor).fontSize(8).font('Helvetica-Bold').text('Powered by ENTRYNEX', doc.page.width - 170, footerY, { align: 'right', width: 150 });
 });
 
 module.exports = {
   generateTicketPDF,
   generateOrderSummaryPDF,
+  generateReservationPDF,
 };

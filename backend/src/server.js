@@ -181,6 +181,7 @@ app.use('/api/user', require('./routes/userPortal'));
 app.use('/api/short-links', require('./routes/shortLinks'));
 app.use('/api/organiser', require('./routes/organiser'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/buyer/payment-history', require('./routes/buyerPaymentHistory'));
 app.use('/api/buyer', require('./routes/buyerRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/sub', require('./routes/sub'));
@@ -188,7 +189,8 @@ app.use('/api/staff', require('./routes/staff'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/bank-transfer', require('./routes/bankTransfer'));
 app.use('/api/payment-management', require('./routes/paymentManagement'));
-app.use('/api/upload', require('./routes/upload'));
+app.use('/api/entrance', require('./routes/entrance'));
+app.use('/api/upload', require('./routes/upload'));;
 app.use('/api/devices', require('./routes/devices'));
 
 // --- DATABASE CONNECTION ---
@@ -203,6 +205,9 @@ mongoose
       initializeCleanupScheduler();
     }
     initializeBankTransferScheduler(io);
+    // Start cash-at-entrance reservation expiry job
+    const { startExpiryJob } = require('./jobs/expireReservations');
+    startExpiryJob();
   })
   .catch((err) => console.log("MongoDB connection error:", err));
 

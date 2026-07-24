@@ -39,14 +39,21 @@ const userHasEventAccess = async (user, event) => {
 const userHasZoneAccess = (user, zoneName, zoneId) => {
   if (!zoneName && !zoneId) return false;
   const role = normalizeRole(user?.role);
-  if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(role)) return true;
-  if (![ROLES.STAFF, ROLES.VOLUNTEER].includes(role)) return false;
-
+  
+  // High-level administrators always have full access
+  if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) return true;
+  
+  // Other roles (SubOrganiser, Staff, Volunteer, Auditor, None) must have explicit zone access
   const assignedZones = [
     ...(user.assignedZones || []).map(String),
     ...(user.responsibilities?.zoneIds || []).map(String),
   ].filter(Boolean);
-  if (!assignedZones.length) return true;
+
+  // Wildcard check for all zones
+  if (assignedZones.includes('all') || assignedZones.includes('ALL_ZONES')) return true;
+
+  // If the team member has no zones assigned, they cannot access any zone
+  if (!assignedZones.length) return false;
 
   return assignedZones.includes(String(zoneName)) || assignedZones.includes(String(zoneId));
 };

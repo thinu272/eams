@@ -50,9 +50,11 @@ const buildTicketSummary = (ticket) => ({
 const getBuyerOrders = async (req, res, next) => {
   try {
     const email = normalizeEmail(req.user.email);
-    const orders = await Order.find({ buyerEmail: email })
-      .populate('eventId', 'name startDate venue settings')
-      .sort({ createdAt: -1 });
+      const userId = req.user?._id?.toString();
+      const orderQuery = userId
+        ? { $or: [{ buyerEmail: email }, { buyerId: userId }] }
+        : { buyerEmail: email };
+      const orders = await Order.find(orderQuery)
 
     const orderIds = orders.map((order) => order._id);
     const tickets = await Ticket.find({ order: { $in: orderIds } })
@@ -136,8 +138,12 @@ const getBuyerOrderDetails = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid order ID.' });
     }
     const email = normalizeEmail(req.user.email);
+    const userId = req.user?._id?.toString();
     const order = await Order.findById(req.params.orderId).populate('eventId', 'name startDate venue endDate settings');
-    if (!order || normalizeEmail(order.buyerEmail) !== email) {
+    const isOwnerByEmail = order && normalizeEmail(order.buyerEmail) === email;
+    const isOwnerByUserId = order && userId && order.buyerId && order.buyerId.toString() === userId;
+
+    if (!order || (!isOwnerByEmail && !isOwnerByUserId)) {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
     const tickets = await Ticket.find({ order: order._id })
@@ -372,7 +378,11 @@ module.exports = {
   getBuyerTickets: async (req, res, next) => {
     try {
       const email = normalizeEmail(req.user.email);
-      const orders = await Order.find({ buyerEmail: email })
+      const userId = req.user?._id?.toString();
+      const orderQuery = userId
+        ? { $or: [{ buyerEmail: email }, { buyerId: userId }] }
+        : { buyerEmail: email };
+      const orders = await Order.find(orderQuery)
         .populate('eventId', 'name startDate endDate venue coverImage description settings instructions status')
         .sort({ createdAt: -1 });
 

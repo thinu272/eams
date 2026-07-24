@@ -82,6 +82,12 @@ const buildShortUrl = async (targetPath, label) => {
 };
 
 const notifyOrderConfirmation = async ({ order, event, buyerPhone, notificationChannel }) => {
+  // Skip bank transfer orders - they will receive confirmation after payment approval
+  if (order.paymentMethod === 'bank_transfer') {
+    console.log(`SKIPPING immediate confirmation for bank transfer order ${order.orderNumber} - will be sent after payment approval`);
+    return;
+  }
+  
   const channels = await parseChannels(notificationChannel, event);
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
   const tasks = [];
@@ -539,6 +545,78 @@ const notifyAttendeePendingVerification = async ({ attendee, event }) => {
   });
 };
 
+// ──────────────────────────────────────────────
+// Cash at Entrance notification helpers
+// ──────────────────────────────────────────────
+const { sendWithProvider, baseTemplate } = require('../utils/email');
+const { generateOrderSummaryPDF } = require('./pdfService');
+
+const sendCashReservationEmail = async (buyer, order, event) => {
+  const html = baseTemplate(`
+    <h2>Your Tickets Have Been Reserved</h2>
+    <p>Dear ${buyer.name},</p>
+    <p>Your reservation for order <strong>#${order.orderNumber}</strong> has been successfully placed.</p>
+    <div style="margin: 20px 0; padding: 15px; background-color: #f1f5f9; border-radius: 8px;">
+      <strong>Order Number:</strong> ${order.orderNumber}<br/>
+      <strong>Event:</strong> ${event.name}<br/>
+      <strong>Amount Due:</strong> ${order.totalAmount}<br/>
+      <strong>Payment Method:</strong> Cash at Entrance<br/>
+      <strong>Status:</strong> Reserved
+    </div>
+    <h3>Payment Instructions</h3>
+    <p>Payment will be collected at the venue entrance.</p>
+    <p><strong>Arrival Instructions:</strong> Please arrive at the venue <strong>30–60 minutes before the event</strong> to complete payment and collect your tickets.</p>
+    <p style="color: #dc2626; font-weight: bold;">Your tickets are currently reserved. Ticket confirmation and attendee verification will begin only after payment has been completed at the venue.</p>
+    <p>Your reservation will expire if payment is not collected at the venue.</p>
+  `, 'Your Tickets Have Been Reserved');
+
+  const pdfBuffer = await generateOrderSummaryPDF(order, event);
+
+  await sendWithProvider({
+    to: buyer.email,
+    subject: `Your Tickets Have Been Reserved - #${order.orderNumber}`,
+    html,
+    attachments: [{
+      content: pdfBuffer.toString('base64'),
+      filename: `Reservation-Summary-${order.orderNumber}.pdf`,
+      type: 'application/pdf',
+      disposition: 'attachment'
+    }]
+  });
+};
+
+const sendCashReservationSMS = async (phone, order) => {
+  await sendSMS(
+    phone,
+    `ENTRYNEX: Your reservation #${order.orderNumber} has been placed. Please arrive 30–60 minutes before the event to complete payment and collect your tickets.`,
+    { rateKey: `cash-res:${phone}` }
+  );
+};
+
+const sendCashPaymentConfirmedEmail = async (buyer, order) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const html = baseTemplate(`
+    <h2>Payment Received – Tickets Confirmed!</h2>
+    <p>Dear ${buyer.name},</p>
+    <p>Your cash payment for order <strong>#${order.orderNumber}</strong> has been received and your tickets are now confirmed.</p>
+    <div style="margin: 20px 0; padding: 15px; background-color: #f1f5f9; border-radius: 8px;">
+      <strong>Order Number:</strong> ${order.orderNumber}<br/>
+      <strong>Amount Paid:</strong> ${order.totalAmount}<br/>
+      <strong>Status:</strong> Confirmed
+    </div>
+    <p>Your QR codes are now active. You can download your tickets from your dashboard.</p>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${frontendUrl}/order/${order.confirmationToken}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View Order Details</a>
+    </div>
+  `, 'Payment Confirmed');
+
+  await sendWithProvider({
+    to: buyer.email,
+    subject: `Payment Confirmed - #${order.orderNumber}`,
+    html,
+  });
+};
+
 module.exports = {
   notifyOrderConfirmation,
   notifyInvite,
@@ -557,6 +635,9 @@ module.exports = {
   notifyOTP,
   notifyRoleAssignment,
   notifyAttendeePendingVerification,
+  sendCashReservationEmail,
+  sendCashReservationSMS,
+  sendCashPaymentConfirmedEmail,
   notifySponsorWelcome: async (user, tempPassword, event, pkg, confirmationToken) => {
     const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
     // 1. Send Login Credentials Email
@@ -583,3 +664,4 @@ module.exports = {
   parseChannels,
   createNotification,
 };
+

@@ -74,3 +74,12 @@ export const deleteSponsorPackage = (id, eventId) => api.delete(`/organiser/spon
 export const getSponsors = (params) => api.get('/organiser/sponsors', { params });
 export const createSponsor = (payload, params) => api.post('/organiser/sponsors', payload, { params });
 export const deleteSponsor = (id, eventId) => api.delete(`/organiser/sponsors/${id}`, { params: { eventId } });
+
+// Payment management for organizers
+export const getAllPayments = (params) => api.get('/payment-management/organizer', { params });
+export const getPaymentStatistics = (params) => api.get('/payment-management/organizer/statistics', { params });
+export const getPaymentDetails = (submissionId) => api.get(`/payment-management/organizer/${submissionId}`);
+export const approvePayment = (submissionId, data) => api.post(`/payment-management/organizer/${submissionId}/approve`, data);
+export const rejectPayment = (submissionId, data) => api.post(`/payment-management/organizer/${submissionId}/reject`, data);
+export const requestPaymentInfo = (submissionId, data) => api.post(`/payment-management/organizer/${submissionId}/request-info`, data);
+export const exportPayments = (params) => api.get('/payment-management/organizer/export', { params, responseType: 'blob' });

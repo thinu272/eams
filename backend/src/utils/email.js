@@ -960,6 +960,454 @@ const sendTicketInvalidationRefund = async ({
   });
 };
 
+const sendCashReservationEmail = async (order, event) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const confirmUrl = `${frontendUrl}/cash-entrance/instructions/${order.confirmationToken}`;
+  
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+  const eventTime = event?.startDate
+    ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'TBD';
+  
+  let ticketsHtml = '';
+  if (order.tickets && order.tickets.length > 0) {
+    ticketsHtml = `
+      <div style="margin: 16px 0; background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; font-size: 11px; color: #64748b; font-weight: 700; tracking: 0.05em;">
+            <th style="padding: 12px 16px; text-align: left;">Category</th>
+            <th style="padding: 12px 16px; text-align: center;">Qty</th>
+            <th style="padding: 12px 16px; text-align: right;">Price</th>
+          </tr>
+          ${order.tickets.map(t => `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 12px 16px; font-size: 13px; color: #334155; font-weight: 500;">${t.categoryName}</td>
+              <td style="padding: 12px 16px; font-size: 13px; color: #475569; text-align: center;">${t.quantity}</td>
+              <td style="padding: 12px 16px; font-size: 13px; color: #475569; text-align: right;">${currency} ${Number(t.price).toLocaleString()}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    `;
+  }
+
+  const html = baseTemplate(`
+    <h2 class="h2">Your Reservation Has Been Successfully Placed</h2>
+    
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p>Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Event Name</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date & Time</span><span class="info-value">${eventDate} at ${eventTime}</span></div>
+    <div class="info-row"><span class="info-label">Venue</span><span class="info-value">${event.venue?.name || 'TBD'}, ${event.venue?.city || ''}</span></div>
+    <div class="info-row"><span class="info-label">Ticket Summary</span><span class="info-value">${order.tickets.map(t => `${t.quantity} x ${t.categoryName}`).join(', ')}</span></div>
+    <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${order.tickets.reduce((sum, t) => sum + t.quantity, 0)}</span></div>
+    <div class="info-row"><span class="info-label">Total Amount to Pay</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
+    <div class="info-row"><span class="info-label">Payment Method</span><span class="info-value">Cash at Entrance</span></div>
+    <div class="info-row"><span class="info-label">Reservation Status</span><span class="info-value" style="color: #ea580c; font-weight: 700;">Reserved</span></div>
+    <div class="info-row"><span class="info-label">Payment Status</span><span class="info-value" style="color: #dc2626; font-weight: 700;">Awaiting Payment</span></div>
+    
+    ${ticketsHtml}
+
+    <div style="margin: 24px 0; padding: 20px; background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #991b1b; font-size: 16px; font-weight: 700;">IMPORTANT NOTICE</h3>
+      <p style="margin: 8px 0; color: #7f1d1d; line-height: 1.6;">
+        <strong>Your tickets have been reserved but have NOT been issued yet.</strong>
+      </p>
+      <p style="margin: 8px 0; color: #7f1d1d; line-height: 1.6;">
+        Your tickets will only be issued after payment has been successfully completed at the event entrance or designated payment counter.
+      </p>
+    </div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #fff7ed; border-left: 4px solid #ea580c; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #9a3412; font-size: 16px; font-weight: 700;">ARRIVAL TIME RECOMMENDATION</h3>
+      <p style="margin: 8px 0; color: #7c2d12; line-height: 1.6;">
+        Please arrive <strong>30–60 minutes before the event starts</strong> to complete your payment and collect your tickets. Late arrival may result in delays or reservation cancellation according to the event policy.
+      </p>
+    </div>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${confirmUrl}">View Reservation Instructions</a>
+    </div>
+
+    <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 24px 0;">
+      <h3 style="margin-top: 0; color: #0f172a; font-size: 15px;">Venue Instructions</h3>
+      <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.6;">
+        <li>Payment will be collected at the designated entrance desk.</li>
+        <li><strong style="color: #dc2626;">Tickets will be issued after the payments are completed at the counter.</strong></li>
+        <li>Your tickets will remain inactive until payment is received.</li>
+        <li>Failure to arrive on time may result in your reservation being cancelled.</li>
+      </ul>
+    </div>
+  `, 'ENTRYNEX Event Reservation', orgName);
+
+  const { generateReservationPDF } = require('../services/pdfService');
+  const pdfBuffer = await generateReservationPDF(order, event);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `Your Reservation Has Been Successfully Placed - ${event.name}`,
+    html,
+    attachments: [{
+      content: pdfBuffer.toString('base64'),
+      filename: `Reservation-Confirmation-${order.orderNumber}.pdf`,
+      type: 'application/pdf',
+      disposition: 'attachment'
+    }]
+  });
+};
+
+const sendCashPaymentConfirmationEmail = async (order, event, attendees = []) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Authorized Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const confirmUrl = `${frontendUrl}/order/${order.confirmationToken}/confirm`;
+  
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+  const eventTime = event?.startDate
+    ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'TBD';
+  
+  let ticketsHtml = '';
+  if (order.tickets && order.tickets.length > 0) {
+    ticketsHtml = `
+      <div style="margin: 16px 0; background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; font-size: 11px; color: #64748b; font-weight: 700; tracking: 0.05em;">
+            <th style="padding: 12px 16px; text-align: left;">Category</th>
+            <th style="padding: 12px 16px; text-align: center;">Qty</th>
+            <th style="padding: 12px 16px; text-align: right;">Price</th>
+          </tr>
+          ${order.tickets.map(t => `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 12px 16px; font-size: 13px; color: #334155; font-weight: 500;">${t.categoryName}</td>
+              <td style="padding: 12px 16px; font-size: 13px; color: #475569; text-align: center;">${t.quantity}</td>
+              <td style="padding: 12px 16px; font-size: 13px; color: #475569; text-align: right;">${currency} ${Number(t.price).toLocaleString()}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </div>
+    `;
+  }
+
+  const html = baseTemplate(`
+    <h2 class="h2">Payment Confirmed – Your Tickets Have Been Issued</h2>
+    <div class="alert">Your payment has been received. Your tickets are now confirmed and ready for use.</div>
+
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p>Thank you for your payment for <strong>${event.name}</strong>. Your tickets have been successfully issued.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Event Name</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date & Time</span><span class="info-value">${eventDate} at ${eventTime}</span></div>
+    <div class="info-row"><span class="info-label">Venue</span><span class="info-value">${event.venue?.name || 'TBD'}, ${event.venue?.city || ''}</span></div>
+    <div class="info-row"><span class="info-label">Payment Amount</span><span class="info-value" style="color:#16a34a; font-weight: 800;">${formattedAmount}</span></div>
+    <div class="info-row"><span class="info-label">Payment Status</span><span class="info-value" style="color: #16a34a; font-weight: 700;">Paid</span></div>
+    <div class="info-row"><span class="info-label">Order Status</span><span class="info-value" style="color: #16a34a; font-weight: 700;">Confirmed</span></div>
+    
+    ${ticketsHtml}
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${confirmUrl}">Download Ticket</a>
+      <div style="margin-top: 16px;">
+        <a class="btn" href="${confirmUrl}" style="background: #64748b;">Complete Your Pass</a>
+      </div>
+      ${attendees.length > 1 ? `
+      <div style="margin-top: 16px;">
+        <a class="btn" href="${confirmUrl}" style="background: #64748b;">Invite Guests</a>
+      </div>
+      ` : ''}
+      <div style="margin-top: 16px;">
+        <a class="btn" href="${confirmUrl}" style="background: #64748b;">View Order Details</a>
+      </div>
+    </div>
+
+    <div style="background: #f0fdf4; border-radius: 8px; padding: 16px; margin: 24px 0;">
+      <h3 style="margin-top: 0; color: #166534; font-size: 15px;">What's Next?</h3>
+      <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.6;">
+        <li>Your tickets are now active and ready for entry.</li>
+        <li>Download your tickets or access them via the ENTRYNEX app.</li>
+        <li>Present your QR code at the venue entrance for scanning.</li>
+        <li>Complete attendee details if not already done.</li>
+      </ul>
+    </div>
+  `, 'ENTRYNEX Event Confirmation', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `Payment Confirmed – Your Tickets Have Been Issued - ${event.name}`,
+    html,
+  });
+};
+
+// ============================================
+// DIRECT BANK TRANSFER EMAIL TEMPLATES
+// ============================================
+
+/**
+ * Email 1: Payment Submission Received
+ * Sent immediately after buyer submits bank transfer details
+ */
+const sendBankTransferPaymentSubmitted = async (order, event, paymentSubmission) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const confirmUrl = `${frontendUrl}/bank-transfer/instructions/${order.confirmationToken}`;
+
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+  const eventTime = event?.startDate
+    ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'TBD';
+
+  const html = baseTemplate(`
+    <h2 class="h2">We've Received Your Payment Submission</h2>
+    
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p>Thank you for submitting your bank transfer payment for <strong>${event.name}</strong>.</p>
+    <p>We have successfully received your payment details and uploaded receipt.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Payment Method</span><span class="info-value">Direct Bank Transfer</span></div>
+    <div class="info-row"><span class="info-label">Payment Status</span><span class="info-value" style="color: #ea580c; font-weight: 700;">Pending Verification</span></div>
+    <div class="info-row"><span class="info-label">Order Status</span><span class="info-value" style="color: #ea580c; font-weight: 700;">On Hold</span></div>
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date</span><span class="info-value">${eventDate} at ${eventTime}</span></div>
+    <div class="info-row"><span class="info-label">Amount</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #fff7ed; border-left: 4px solid #ea580c; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #9a3412; font-size: 16px; font-weight: 700;">What's Next?</h3>
+      <p style="margin: 8px 0; color: #7c2d12; line-height: 1.6;">
+        Our team will verify your payment within <strong>48 hours</strong>.
+      </p>
+      <p style="margin: 8px 0; color: #7c2d12; line-height: 1.6;">
+        Once approved, you will receive another email confirming your order and providing access to your tickets.
+      </p>
+    </div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #991b1b; font-size: 16px; font-weight: 700;">Current Status</h3>
+      <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #7f1d1d; font-size: 13px; line-height: 1.8;">
+        <li>Your tickets are reserved but not yet active.</li>
+        <li>Ticket confirmation has not yet been completed.</li>
+        <li>QR Codes are not yet active.</li>
+        <li>Ticket management features are temporarily unavailable.</li>
+      </ul>
+    </div>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${confirmUrl}">View Payment Details</a>
+    </div>
+
+    <p style="margin-top: 24px; color: #64748b; font-size: 13px; line-height: 1.6;">
+      If you have any questions, please contact the event organizer or our support team.
+    </p>
+  `, 'ENTRYNEX - Payment Submitted', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `We've Received Your Payment Submission - ${order.orderNumber}`,
+    html,
+  });
+};
+
+/**
+ * Email 2: Payment Approved / Order Confirmed
+ * Sent after organizer approves the bank transfer payment
+ */
+const sendBankTransferPaymentApproved = async (order, event) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const orderUrl = `${frontendUrl}/order/${order.confirmationToken}/confirm`;
+  const assignUrl = `${frontendUrl}/buyer/orders/${order._id}`;
+
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+  const eventTime = event?.startDate
+    ? new Date(event.startDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'TBD';
+
+  const html = baseTemplate(`
+    <h2 class="h2">Your Order Has Been Confirmed – Your Tickets Are Ready</h2>
+    
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p style="font-size: 18px; color: #166534; font-weight: 600;">Great news!</p>
+    <p>Your bank transfer has been successfully verified by the event management team.</p>
+    <p>Your order has now been <strong style="color: #166534;">confirmed</strong>.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date</span><span class="info-value">${eventDate} at ${eventTime}</span></div>
+    <div class="info-row"><span class="info-label">Payment Status</span><span class="info-value" style="color: #166534; font-weight: 700;">Paid</span></div>
+    <div class="info-row"><span class="info-label">Order Status</span><span class="info-value" style="color: #166534; font-weight: 700;">Confirmed</span></div>
+    <div class="info-row"><span class="info-label">Amount Paid</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #f0fdf4; border-left: 4px solid #166534; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #166534; font-size: 16px; font-weight: 700;">Your Tickets Are Now Active</h3>
+      <p style="margin: 8px 0; color: #166534; line-height: 1.6;">
+        You can now complete your attendee details and manage your tickets.
+      </p>
+    </div>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${orderUrl}">View Order</a>
+    </div>
+
+    <p style="margin-top: 24px; color: #64748b; font-size: 13px; line-height: 1.6;">
+      Thank you for choosing ENTRYNEX. We look forward to seeing you at the event!
+    </p>
+  `, 'ENTRYNEX - Order Confirmed', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `Your Order Has Been Confirmed – Your Tickets Are Ready - ${order.orderNumber}`,
+    html,
+  });
+};
+
+/**
+ * Email 3: Payment Rejected
+ * Sent when organizer rejects the bank transfer payment
+ */
+const sendBankTransferPaymentRejected = async (order, event, rejectionReason) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const resubmitUrl = `${frontendUrl}/bank-transfer/submit/${order._id}`;
+  const contactUrl = `mailto:?subject=Order ${order.orderNumber} - Payment Issue`;
+
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+
+  const html = baseTemplate(`
+    <h2 class="h2">Payment Verification Unsuccessful</h2>
+    
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p>Unfortunately, we were unable to verify your submitted bank transfer.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date</span><span class="info-value">${eventDate}</span></div>
+    <div class="info-row"><span class="info-label">Amount</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #fef2f2; border-left: 4px solid #dc2626; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #991b1b; font-size: 16px; font-weight: 700;">Reason</h3>
+      <p style="margin: 8px 0; color: #7f1d1d; line-height: 1.6;">${rejectionReason || 'Payment details could not be verified.'}</p>
+    </div>
+
+    <div style="margin: 24px 0; padding: 20px; background: #fff7ed; border-left: 4px solid #ea580c; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #9a3412; font-size: 16px; font-weight: 700;">Your Order Status</h3>
+      <p style="margin: 8px 0; color: #7c2d12; line-height: 1.6;">
+        Your tickets are still on hold. Your order will remain pending until a valid payment has been received and approved.
+      </p>
+    </div>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${resubmitUrl}">Upload New Receipt</a>
+      <div style="margin-top: 12px;">
+        <a class="btn" href="${contactUrl}" style="background: #64748b;">Contact Organizer</a>
+      </div>
+    </div>
+  `, 'ENTRYNEX - Payment Not Verified', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `Payment Verification Unsuccessful - ${order.orderNumber}`,
+    html,
+  });
+};
+
+/**
+ * Email 4: More Information Required
+ * Sent when organizer requests additional payment information
+ */
+const sendBankTransferMoreInfoRequired = async (order, event, message) => {
+  if (!order || !event) return;
+  
+  const recipientEmail = order.buyerEmail;
+  if (!recipientEmail) return;
+
+  const currency = event?.settings?.currency || 'LKR';
+  const orgName = event?.organiserName || event?.organiser?.name || 'Event Organizer';
+  const formattedAmount = `${currency} ${Number(order.totalAmount || 0).toLocaleString()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const resubmitUrl = `${frontendUrl}/bank-transfer/submit/${order._id}`;
+
+  const eventDate = event?.startDate
+    ? new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+
+  const html = baseTemplate(`
+    <h2 class="h2">Additional Information Required for Your Payment</h2>
+    
+    <p>Dear <strong>${order.buyerName || 'Customer'}</strong>,</p>
+    <p>The event management team requires additional information before your payment can be verified.</p>
+
+    <div class="info-row"><span class="info-label">Order Number</span><span class="info-value" style="font-weight: 800; color: #0f172a;">${order.orderNumber}</span></div>
+    <div class="info-row"><span class="info-label">Event</span><span class="info-value">${event.name}</span></div>
+    <div class="info-row"><span class="info-label">Event Date</span><span class="info-value">${eventDate}</span></div>
+    <div class="info-row"><span class="info-label">Amount</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
+
+    ${message ? `
+    <div style="margin: 24px 0; padding: 20px; background: #eff6ff; border-left: 4px solid #2563eb; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1e40af; font-size: 16px; font-weight: 700;">Message from Organizer</h3>
+      <p style="margin: 8px 0; color: #1e3a8a; line-height: 1.6;">${message}</p>
+    </div>
+    ` : ''}
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a class="btn" href="${resubmitUrl}">Update Payment Details</a>
+    </div>
+  `, 'ENTRYNEX - Additional Information Required', orgName);
+
+  await sendWithProvider({
+    to: recipientEmail,
+    subject: `Additional Information Required for Your Payment - ${order.orderNumber}`,
+    html,
+  });
+};
+
 module.exports = {
   sendOrderConfirmation,
   sendAttendeeInvite,
@@ -978,4 +1426,11 @@ module.exports = {
   sendAttendeeVerificationConfirmation,
   sendAttendeePendingVerification,
   sendTicketInvalidationRefund,
+  sendCashReservationEmail,
+  sendCashPaymentConfirmationEmail,
+  // Direct Bank Transfer Email Templates
+  sendBankTransferPaymentSubmitted,
+  sendBankTransferPaymentApproved,
+  sendBankTransferPaymentRejected,
+  sendBankTransferMoreInfoRequired,
 };

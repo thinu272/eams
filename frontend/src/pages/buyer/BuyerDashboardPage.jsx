@@ -17,7 +17,7 @@ const PaymentMethodOptions = [
   { value: 'all', label: 'All Methods' },
   { value: 'card', label: 'Card' },
   { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'cash', label: 'Cash' },
+  { value: 'cash_entrance', label: 'Cash' },
 ];
 
 const BuyerDashboardPage = () => {
@@ -42,6 +42,7 @@ const BuyerDashboardPage = () => {
   // Filter by payment method
   const filteredOrders = useMemo(() => {
     if (filterMethod === 'all') return orders;
+    if (filterMethod === 'cash_entrance') return orders.filter((o) => ['cash_on_entrance', 'cash_at_entrance'].includes(o.paymentMethod));
     return orders.filter((o) => o.paymentMethod === filterMethod);
   }, [orders, filterMethod]);
 
@@ -130,6 +131,13 @@ const BuyerDashboardPage = () => {
               const total = order.stats?.total || 0;
               const assigned = order.stats?.assigned || 0;
               const progressPercent = total > 0 ? Math.round((assigned / total) * 100) : 0;
+              
+              // Check if order is awaiting payment
+              const isAwaitingPayment = 
+                (order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid') ||
+                (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) && order.status === 'RESERVED') ||
+                (order.paymentStatus === 'pending_verification' || order.paymentStatus === 'awaiting_payment');
+              
               return (
                 <div
                   key={order._id}
@@ -138,7 +146,7 @@ const BuyerDashboardPage = () => {
                   <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
                     {/* Event & Order info */}
                     <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase rounded-md border border-slate-200">
                           Order #{order.orderNumber}
                         </span>
@@ -150,9 +158,9 @@ const BuyerDashboardPage = () => {
                             {order.paymentMethod.replace('_', ' ')}
                           </span>
                         )}
-                        {order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && (
-                          <span className="ml-2 text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 px-2.5 py-0.5 rounded-full">
-                            Waiting for Payment Approval
+                        {isAwaitingPayment && (
+                          <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                            Reserved - Awaiting Payment
                           </span>
                         )}
                       </div>
@@ -169,6 +177,13 @@ const BuyerDashboardPage = () => {
                           {order.event?.venue?.name || 'Venue TBD'}
                         </span>
                       </div>
+                      {isAwaitingPayment && (
+                        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3">
+                          <p className="text-xs font-medium text-amber-800">
+                            Ticket features will become available after your payment has been verified.
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Progress */}
@@ -178,7 +193,7 @@ const BuyerDashboardPage = () => {
                         <span>{progressPercent}%</span>
                       </div>
                       <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-brand-main" style={{ width: `${progressPercent}%` }} />
+                        <div className={`h-full rounded-full ${isAwaitingPayment ? 'bg-amber-400' : 'bg-brand-main'}`} style={{ width: `${progressPercent}%` }} />
                       </div>
                     </div>
                   </div>
