@@ -13,9 +13,12 @@ const ticketSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ['PENDING', 'PENDING_VERIFICATION', 'ASSIGNED', 'INVITED', 'CONFIRMED', 'CANCELLED'],
+    enum: ['PENDING', 'PENDING_VERIFICATION', 'ASSIGNED', 'INVITED', 'CONFIRMED', 'CANCELLED', 'RESERVED', 'SOLD'],
     default: 'PENDING',
   },
+
+  // QR activation flag for cash at entrance payments
+  qrActive: { type: Boolean, default: false },
 
   refundStatus: {
     type: String,

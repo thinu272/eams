@@ -58,15 +58,87 @@ const generatePayHereData = async (order, event) => {
 };
 
 /**
- * Stripe Integration (Placeholder)
+ * Stripe Checkout Session
  */
 const createStripeSession = async (order, event) => {
-  console.log('Stripe session creation would happen here');
-  return null;
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const stripeKey = config.payment?.gateways?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeKey) {
+    throw new Error('Stripe secret key is not configured');
+  }
+
+  const stripe = require('stripe')(stripeKey);
+  const currency = (config.payment?.defaultCurrency || 'LKR').toLowerCase();
+
+  const lineItems = order.tickets.map(ticket => ({
+    price_data: {
+      currency,
+      product_data: {
+        name: `${event.name} - ${ticket.categoryName}`,
+      },
+      unit_amount: Math.round(ticket.price * 100),
+    },
+    quantity: ticket.quantity,
+  }));
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: lineItems,
+    mode: 'payment',
+    success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/order/${order.confirmationToken}/success`,
+    cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/${event._id}`,
+    metadata: {
+      orderId: order._id.toString(),
+      eventId: event._id.toString(),
+      orderNumber: order.orderNumber,
+    },
+    customer_email: order.buyerEmail,
+  });
+
+  return session;
+};
+
+/**
+ * Returns which card gateways are enabled + the default
+ */
+const getActiveGateways = async () => {
+  const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
+  const gateways = config.payment?.gateways || {};
+  const active = [];
+
+  if (gateways.payhere?.enabled !== false) {
+    active.push('payhere');
+  }
+  if (gateways.stripe?.enabled === true) {
+    active.push('stripe');
+  }
+
+  return {
+    activeGateways: active,
+    defaultGateway: config.payment?.defaultGateway || (active[0] || 'payhere'),
+    currency: config.payment?.defaultCurrency || 'LKR',
+  };
+};
+
+/**
+ * Dispatcher — call the right provider based on gateway name
+ */
+const createPaymentSession = async (order, event, gateway) => {
+  if (gateway === 'stripe') {
+    const session = await createStripeSession(order, event);
+    return { provider: 'stripe', sessionUrl: session.url, sessionId: session.id };
+  }
+
+  // Default to PayHere
+  const payHereData = await generatePayHereData(order, event);
+  return { provider: 'payhere', paymentData: payHereData };
 };
 
 module.exports = {
   getPayHereHash,
   generatePayHereData,
-  createStripeSession
+  createStripeSession,
+  getActiveGateways,
+  createPaymentSession,
 };

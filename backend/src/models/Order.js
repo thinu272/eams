@@ -61,17 +61,17 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PENDING_PAYMENT', 'PENDING_VERIFICATION', 'CONFIRMED', 'CANCELLED', 'EXPIRED'],
+    enum: ['PENDING', 'PENDING_PAYMENT', 'PENDING_VERIFICATION', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'RESERVED'],
     default: 'PENDING',
   },
   paymentMethod: {
     type: String,
-    enum: ['card', 'bank_transfer'],
+    enum: ['card', 'bank_transfer', 'cash_on_entrance', 'cash_at_entrance'],
     default: 'card',
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'pending_verification', 'paid', 'rejected', 'expired'],
+    enum: ['pending', 'pending_verification', 'paid', 'rejected', 'expired', 'awaiting_payment', 'success', 'failed'],
     default: 'pending',
   },
   paymentDetails: {
@@ -118,5 +118,24 @@ orderSchema.add({
     ref: 'User'
   }
 });
+
+  // Gateway tracking fields
+  orderSchema.add({
+    gatewayUsed: {
+      type: String,
+      enum: ['stripe', 'payhere', null],
+      default: null,
+    },
+    stripeSessionId: {
+      type: String,
+    },
+    paidAt: {
+      type: Date,
+    },
+    paymentDetails: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+  });
 
 module.exports = mongoose.model('Order', orderSchema);

@@ -518,35 +518,42 @@ router.get('/attendees', requireEventAccess, requirePermission('canViewAttendees
     const skip = (page - 1) * limit;
     const filter = buildAttendeeFilter({ eventId, query: req.query });
 
-    // ENFORCE SCOPING: Sub-organisers only see attendees in categories they are assigned to
+    // ENFORCE SCOPING: Sub-organisers only see attendees in categories or zones they are assigned to
     const requesterRole = normalizeRole(req.user.role);
     if (requesterRole === ROLES.SUB_ORGANISER) {
       const event = await Event.findById(eventId).select('categories');
+      
+      // Get assigned categories
+      let myCategoryNames = [];
       if (event) {
-        const myCategoryNames = (event.categories || [])
+        myCategoryNames = (event.categories || [])
           .filter(cat => (cat.assignedSubOrganisers || []).some(id => String(id) === String(req.user._id)))
           .map(cat => cat.name);
-        
-        if (myCategoryNames.length > 0) {
-          // If a specific category was requested, ensure it's one they have access to
-          if (filter.categoryName) {
-            if (!myCategoryNames.includes(filter.categoryName)) {
-              return res.json({ success: true, data: { attendees: [], total: 0, page, pages: 0 } });
-            }
-          } else {
-            // Otherwise, filter by all their assigned categories
-            filter.categoryName = { $in: myCategoryNames };
-          }
-        } else {
-          // If not assigned to ANY category, they see nothing (or maybe everything? 
-          // Usually better to be restrictive if "private tickets" are involved)
-          // But if they are a sub-organiser, they might have general event access.
-          // The user said "with for that ticket can assign sub organizers to the if wanted".
-          // This implies delegation.
-          // However, if we don't find any assignments, we might want to check if they have general event access.
-          // For now, let's be restrictive to the categories they are assigned to if they ARE assigned to some.
-          // If they aren't assigned to ANY, we'll let them see all UNLESS there are private categories.
-        }
+      }
+
+      // Get assigned zones
+      const assignedZones = [
+        ...(req.user.assignedZones || []).map(String),
+        ...(req.user.responsibilities?.zoneIds || []).map(String),
+      ].filter(Boolean);
+
+      // Apply scoping filter
+      const scopingConditions = [];
+
+      if (myCategoryNames.length > 0) {
+        scopingConditions.push({ categoryName: { $in: myCategoryNames } });
+      }
+
+      if (assignedZones.length > 0) {
+        scopingConditions.push({ allowedZones: { $in: assignedZones } });
+      }
+
+      if (scopingConditions.length > 0) {
+        // If they have categories or zones assigned, they must match at least one (OR)
+        filter.$or = scopingConditions;
+      } else {
+        // If not assigned to any categories or zones, they see nothing
+        return res.json({ success: true, data: { attendees: [], total: 0, page, pages: 1 } });
       }
     }
 
@@ -1165,7 +1172,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
 
       const targetRole = normalizeRole(req.body.role || ROLES.SUB_ORGANISER);
       const requesterRole = normalizeRole(req.user.role);
-      const canHaveCheckpoints = [ROLES.STAFF, ROLES.VOLUNTEER].includes(targetRole);
+      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE].includes(targetRole);
 
     // 1. Role level check: Cannot create a user with equal or higher role
     if (ROLE_LEVELS[targetRole] >= ROLE_LEVELS[requesterRole]) {
@@ -1293,7 +1300,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
         },
         customRole: req.body.customRole || undefined,
         responsibilities: {
-          zoneIds: req.body.responsibilities?.zoneIds || [],
+          zoneIds: Array.from(new Set([...(req.body.responsibilities?.zoneIds || []), ...(requestedAssignedZones || [])])),
           verificationAccess: !!req.body.responsibilities?.verificationAccess,
           entryAccess: !!req.body.responsibilities?.entryAccess,
         },
@@ -1366,7 +1373,7 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
         user.role = targetRole;
       }
       const effectiveRole = normalizeRole(req.body.role || user.role);
-      const canHaveCheckpoints = [ROLES.STAFF, ROLES.VOLUNTEER].includes(effectiveRole);
+      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE].includes(effectiveRole);
 
     const eventId = req.body.eventId || req.query.eventId || req.params.eventId || (user.assignedEvents && user.assignedEvents[0]) || (req.user.assignedEvents && req.user.assignedEvents[0]);
     const event = eventId && mongoose.Types.ObjectId.isValid(eventId) ? await Event.findById(eventId) : null;
@@ -1405,10 +1412,10 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
       ...(req.body.responsibilities || {}),
     };
 
-    if (event && req.body.responsibilities?.zoneIds) {
+    if (event) {
       const currentEventZoneIds = (event.zones || []).map(z => String(z.id || z.name)).filter(Boolean);
       const existingZonesFromOtherEvents = (user.responsibilities?.zoneIds || []).filter(zid => !currentEventZoneIds.includes(String(zid)));
-      const newZonesFromThisEvent = req.body.responsibilities.zoneIds || [];
+      const newZonesFromThisEvent = user.assignedZones;
       user.responsibilities.zoneIds = Array.from(new Set([...existingZonesFromOtherEvents, ...newZonesFromThisEvent]));
     }
 

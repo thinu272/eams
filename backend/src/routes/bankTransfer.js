@@ -6,8 +6,8 @@ const { upload } = require('../controllers/bankTransferController');
 
 // Public routes
 router.post('/order', bankTransferController.createBankTransferOrder);
-router.get('/instructions/:orderId', bankTransferController.getBankTransferInstructions);
-router.post('/submit/:orderId', upload.single('receipt'), bankTransferController.submitPaymentReceipt);
+router.get('/instructions/:orderIdOrToken', bankTransferController.getBankTransferInstructions);
+router.post('/submit/:orderIdOrToken', upload.single('receipt'), bankTransferController.submitPaymentReceipt);
 
 // Protected routes (require authentication)
 router.get('/payments', authenticate, bankTransferController.getPendingPayments);

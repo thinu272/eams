@@ -147,24 +147,34 @@ const BuyerOrderDetailsPage = () => {
               </div>
             </div>
 
-            {/* Metrics cards featuring Total Paid Price */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-2xl bg-brand-main/5 p-4 border border-brand-main/10">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-brand-main">Total Paid Price</p>
-                <p className="mt-1 text-base sm:text-xl font-bold text-brand-main truncate">{order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}</p>
+            {/* Order Status Display */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Order Status</p>
+                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'text-orange-700' : 'text-slate-900'}`}>
+                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'Reserved - Awaiting Payment' : order?.status || 'Pending'}
+                </p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Total Ticket Slots</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold text-slate-900">{stats.total}</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Payment Status</p>
+                <p className={`mt-1 text-sm font-bold ${order?.paymentStatus === 'awaiting_payment' ? 'text-red-700' : order?.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-slate-900'}`}>
+                  {order?.paymentStatus === 'awaiting_payment' ? 'Awaiting Payment' : order?.paymentStatus === 'paid' ? 'Paid' : order?.paymentStatus || 'Pending'}
+                </p>
               </div>
-              <div className="rounded-2xl bg-emerald-50 p-4 border border-emerald-100">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700">Assigned</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold text-emerald-900">{stats.assigned}</p>
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Ticket Status</p>
+                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'text-red-700' : 'text-slate-900'}`}>
+                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'Not Yet Issued' : 'Issued'}
+                </p>
               </div>
-              <div className="rounded-2xl bg-amber-50 p-4 border border-amber-100">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-700">Pending Actions</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold text-amber-900">{stats.pending}</p>
-              </div>
+            </div>
+
+            {/* Payment Method Display */}
+            <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Payment Method</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">
+                {order?.paymentMethod === 'cash_at_entrance' || order?.paymentMethod === 'cash_on_entrance' ? 'Cash at Entrance' : order?.paymentMethod || 'Card'}
+              </p>
             </div>
           </div>
         )}
@@ -174,6 +184,32 @@ const BuyerOrderDetailsPage = () => {
             <h3 className="text-lg font-bold text-slate-900">Manage Ticket Slots</h3>
             <p className="text-xs text-slate-500 font-medium">Assign a guest email to activate each pass slot.</p>
           </div>
+
+          {/* Reserved Order Notice */}
+          {!loading && ((['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid')) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm flex gap-3">
+              <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-amber-900">Tickets Will Be Issued Only After Payment Verification</h4>
+                <p className="text-sm text-amber-800 mt-1">
+                  {order?.paymentMethod === 'bank_transfer' 
+                    ? 'Your payment is currently being verified. Ticket features will be available after the organizer approves your payment.'
+                    : 'Payment must be completed at the event venue before your tickets can be issued. You cannot assign or download tickets until payment is received at the payment counter.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Post-Payment Notice */}
+          {!loading && ['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'CONFIRMED' && order?.paymentStatus === 'paid' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm flex gap-3">
+              <CheckCircleIcon className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-emerald-900">Payment Confirmed – Tickets Issued</h4>
+                <p className="text-sm text-emerald-800 mt-1">Your payment has been received and your tickets have been issued. You can now assign attendees, download tickets, and view QR codes.</p>
+              </div>
+            </div>
+          )}
 
           {loading && (
             <div className="space-y-4">
@@ -198,6 +234,7 @@ const BuyerOrderDetailsPage = () => {
                   onAssign={handleAssign}
                   onResend={handleResend}
                   onViewQr={() => setQrTicket(ticket)}
+                  isAwaitingVenuePayment={['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED' || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid')}
                 />
               ))}
             </div>
@@ -245,7 +282,7 @@ const BuyerOrderDetailsPage = () => {
   );
 };
 
-const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
+const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr, isAwaitingVenuePayment }) => {
   const [form, setForm] = useState({ fullName: '', email: '', phone: '' });
 
   useEffect(() => {
@@ -322,7 +359,7 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
 
           <button
             onClick={() => onAssign(ticket._id, form)}
-            disabled={saving || !form.email.trim()}
+            disabled={saving || !form.email.trim() || isAwaitingVenuePayment}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-main px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-dark transition-all active:scale-95 disabled:opacity-50"
           >
             {saving ? (
@@ -399,19 +436,18 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr }) => {
       )}
 
       {isConfirmed && ticket.attendee?.qrCode && (
-        <div className="rounded-2xl bg-emerald-50/50 p-3 border border-emerald-100 flex items-center justify-between gap-3 pt-3">
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-emerald-800 flex items-center gap-1">
-              <CheckCircleIcon className="h-4 w-4" /> Pass Activated
-            </p>
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-1.5 text-xs text-brand-main font-semibold">
+            <CheckCircleIcon className="h-4 w-4" />
+            <span>Ticket Active</span>
           </div>
           <button
-            type="button"
-            onClick={onViewQr}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all active:scale-95"
+            onClick={() => onViewQr(ticket)}
+            disabled={isAwaitingVenuePayment}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 disabled:opacity-50 transition-all"
           >
-            <QrCodeIcon className="h-3.5 w-3.5" />
-            <span>View QR</span>
+            <QrCodeIcon className="h-3.5 w-3.5 text-slate-400" />
+            <span>View QR Code</span>
           </button>
         </div>
       )}

@@ -10,6 +10,7 @@ const { processOrderFinalConfirmation } = require('../services/finalConfirmation
 const { finalizePhotoApproval, finalizePhotoRejection, withUploadedPhoto } = require('../services/ticketDeliveryService');
 const { notifyPhotoRejectionNotification } = require('../services/notificationService');
 const { logActivity } = require('../utils/logger');
+const { hasZoneAccess, getAssignedZones } = require('../middleware/verificationScope');
 
 // Check organiser event access
 const hasEventAccess = async (user, eventId) => {
@@ -46,6 +47,13 @@ router.get('/pending', protect, requirePermission('canVerifyPhotos'), async (req
     }
 
     const filter = withUploadedPhoto({ event: eventId, isActive: true });
+    const role = req.user.role;
+    if (role === "SubOrganiser") {
+        const assignedZones = getAssignedZones(req.user);
+        filter.allowedZones = {
+            $in: assignedZones
+        };
+    }
 
     if (status) filter.photoVerificationStatus = status;
 
@@ -112,6 +120,15 @@ router.post('/approve', protect, requirePermission('canVerifyPhotos'), async (re
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
 
+    if (!hasZoneAccess(req.user, attendee)) {
+
+    return res.status(403).json({
+        success: false,
+        message: "You are not assigned to this attendee's zone."
+    });
+
+    }
+
     const updated = await finalizePhotoApproval(attendee, {
       verifiedBy: req.user._id,
       confirmedBy: 'organiser',
@@ -167,6 +184,13 @@ router.post('/reject', protect, requirePermission('canVerifyPhotos'), async (req
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
 
+    if (!hasZoneAccess(req.user, attendee)) {
+    return res.status(403).json({
+        success:false,
+        message:"You are not assigned to this attendee's zone."
+    });
+    }
+
     const updated = await finalizePhotoRejection(attendee, {
       reason,
       verifiedBy: req.user._id,
@@ -211,6 +235,7 @@ router.get('/stats', protect, requirePermission('canVerifyPhotos'), async (req, 
           event: new mongoose.Types.ObjectId(eventId),
           isActive: true,
           photo: { $exists: true, $nin: [null, ''] },
+          allowedZones:{$in:getAssignedZones(req.user)}
         },
       },
       {

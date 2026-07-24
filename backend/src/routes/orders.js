@@ -7,7 +7,8 @@ const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
-const { generatePayHereData } = require('../services/paymentService');
+const { sendCashReservationEmail } = require('../utils/email');
+const { generatePayHereData, createPaymentSession, getActiveGateways } = require('../services/paymentService');
 const { sendBuyerOrderCreatedEmail } = require('../services/ticketDeliveryService');
 const SystemConfig = require('../models/SystemConfig');
 const { optionalProtect } = require('../middleware/auth'); // I'll assume optionalProtect might be useful or I'll just use req.user if present
@@ -36,7 +37,7 @@ router.post('/', [
       });
     }
 
-    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId, paymentMethod } = req.body;
+    const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId, paymentMethod, gateway } = req.body;
 
     // Validate event exists
     const event = await Event.findById(eventId);
@@ -118,7 +119,26 @@ router.post('/', [
     // Generate unique confirmation token
     const confirmationToken = uuidv4();
 
-    // Create order
+    // Determine order status based on payment method
+    const isCashEntrance = paymentMethod === 'cash_on_entrance' || paymentMethod === 'cash_at_entrance' || paymentMethod === 'cash';
+    const isBankTransfer = paymentMethod === 'bank_transfer';
+    
+    let orderStatus, ticketStatus, orderPaymentStatus;
+    
+    if (isCashEntrance) {
+      orderStatus = 'RESERVED';
+      ticketStatus = 'RESERVED';
+      orderPaymentStatus = 'awaiting_payment';
+    } else if (isBankTransfer) {
+      orderStatus = 'PENDING_PAYMENT';
+      ticketStatus = 'RESERVED';
+      orderPaymentStatus = 'pending';
+    } else {
+      orderStatus = 'PENDING_PAYMENT';
+      ticketStatus = 'PENDING';
+      orderPaymentStatus = 'pending';
+    }
+
     const order = new Order({
       eventId,
       buyerId: buyerId || (req.user ? req.user._id : undefined),
@@ -128,9 +148,9 @@ router.post('/', [
       notificationChannel: notificationChannel || 'email',
       tickets: validatedTickets,
       totalAmount,
-      paymentMethod,
-      status: 'PENDING_PAYMENT',
-      paymentStatus: 'pending',
+      paymentMethod: paymentMethod === 'cash' ? 'cash_at_entrance' : paymentMethod,
+      status: orderStatus,
+      paymentStatus: orderPaymentStatus,
       confirmationToken
     });
 
@@ -151,9 +171,10 @@ router.post('/', [
           categoryName: ticketSummary.categoryName,
           allowedZones: category.allowedZones || [],
           price: ticketSummary.price,
-          status: 'PENDING',
+          status: ticketStatus,
           slotIndex: slotIndex,
           ticketNumber: `${order.orderNumber}-${slotIndex}`,
+          qrCode: null, // QR code should be inactive for reserved orders
         });
         ticketPromises.push(ticket.save());
         slotIndex++;
@@ -185,15 +206,37 @@ router.post('/', [
       tickets: validatedTickets
     });
 
-    await sendBuyerOrderCreatedEmail({
-      order,
-      event,
-    }).catch((error) => {
-      console.error('ORDER CREATED EMAIL ERROR:', error);
-    });
+    if (isCashEntrance) {
+      await sendCashReservationEmail(order, event).catch((error) => {
+        console.error('CASH RESERVATION EMAIL ERROR:', error);
+      });
+    } else {
+      await sendBuyerOrderCreatedEmail({
+        order,
+        event,
+      }).catch((error) => {
+        console.error('ORDER CREATED EMAIL ERROR:', error);
+      });
+    }
 
-    // Generate Payment Data (PayHere)
-    const paymentData = await generatePayHereData(order, event);
+    // Generate Payment Data based on gateway
+    let paymentData = null;
+    let stripeSessionUrl = null;
+
+    if (paymentMethod === 'card' || !paymentMethod) {
+      const chosenGateway = gateway || (await getActiveGateways()).defaultGateway;
+      order.gatewayUsed = chosenGateway;
+
+      const sessionResult = await createPaymentSession(order, event, chosenGateway);
+
+      if (chosenGateway === 'stripe') {
+        stripeSessionUrl = sessionResult.sessionUrl;
+        order.stripeSessionId = sessionResult.sessionId;
+      } else {
+        paymentData = sessionResult.paymentData;
+      }
+      await order.save();
+    }
 
     res.status(201).json({
       success: true,
@@ -202,7 +245,9 @@ router.post('/', [
         orderNumber: order.orderNumber,
         confirmationToken: order.confirmationToken,
         totalAmount: order.totalAmount,
-        paymentData // Frontend will use this to auto-submit form to PayHere
+        gatewayUsed: order.gatewayUsed || null,
+        stripeSessionUrl: stripeSessionUrl || null,
+        paymentData: paymentData || null,
       },
       message: 'Order created. Proceed to payment.'
     });
@@ -332,6 +377,56 @@ const getOrderByTokenHandler = async (req, res) => {
         success: false,
         message: 'Order not found'
       });
+    }
+
+    // Check if order is reserved/awaiting payment and block access
+    // EXCEPT for cash_at_entrance orders - they need to see instructions
+    const isReservedOrder = order.status === 'RESERVED' || 
+                           order.paymentStatus === 'awaiting_payment' ||
+                           order.paymentStatus === 'pending_verification';
+    
+    const isCashAtEntrance = order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance';
+    const isBankTransfer = order.paymentMethod === 'bank_transfer';
+    
+    // Block reserved orders EXCEPT cash_at_entrance (which needs instructions page)
+    if (isReservedOrder && isBankTransfer) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your reservation is awaiting payment. Ticket features will be available after payment is completed.',
+        requiresPayment: true
+      });
+    }
+    
+    // For cash at entrance orders, allow access but mark as awaiting payment
+    if (isReservedOrder && isCashAtEntrance) {
+      // Get tickets for this order
+      const tickets = await Ticket.find({ order: order._id })
+        .populate('attendee', 'fullName email confirmationToken')
+        .sort({ slotIndex: 1 });
+      
+      const response = {
+        success: true,
+        data: {
+          order: {
+            ...order.toObject(),
+            currency: order.eventId?.settings?.currency || 'LKR',
+            event: order.eventId ? {
+              _id: order.eventId._id,
+              name: order.eventId.name,
+              startDate: order.eventId.startDate,
+              endDate: order.eventId.endDate,
+              status: order.eventId.status,
+              venue: order.eventId.venue,
+              categories: order.eventId.categories,
+              settings: order.eventId.settings
+            } : null
+          },
+          tickets,
+          isCashAtEntrance: true,
+          paymentPending: true
+        }
+      };
+      return res.json(response);
     }
 
     // Get individual tickets for this order

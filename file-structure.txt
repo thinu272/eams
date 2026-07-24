@@ -1,0 +1,393 @@
+﻿├── backend
+│   ├── scripts
+│   │   ├── migrations
+│   │   │   └── seed_email_and_event_defaults.js
+│   │   ├── check_roles.js
+│   │   └── sync_legacy_data.js
+│   ├── src
+│   │   ├── config
+│   │   │   └── database.js
+│   │   ├── controllers
+│   │   │   ├── adminController.js
+│   │   │   ├── attendeeController.js
+│   │   │   ├── bankTransferController.js
+│   │   │   ├── buyerController.js
+│   │   │   ├── cashEntranceController.js
+│   │   │   ├── dashboardController.js
+│   │   │   ├── entranceController.js
+│   │   │   ├── organiserController.js
+│   │   │   ├── paymentManagementController.js
+│   │   │   ├── photoVerificationController.js
+│   │   │   └── roleBasedDashboardController.js
+│   │   ├── jobs
+│   │   │   └── expireReservations.js
+│   │   ├── middleware
+│   │   │   ├── adminAuth.js
+│   │   │   ├── auth.js
+│   │   │   ├── errorHandler.js
+│   │   │   ├── maintenanceMode.js
+│   │   │   ├── organiserAuth.js
+│   │   │   ├── requestLogger.js
+│   │   │   ├── s3Upload.js
+│   │   │   ├── sessionControl.js
+│   │   │   └── verificationScope.js
+│   │   ├── models
+│   │   │   ├── Attendee.js
+│   │   │   ├── AuditLog.js
+│   │   │   ├── BankAccount.js
+│   │   │   ├── Company.js
+│   │   │   ├── EntryLog.js
+│   │   │   ├── Event.js
+│   │   │   ├── Notification.js
+│   │   │   ├── Order.js
+│   │   │   ├── PaymentSubmission.js
+│   │   │   ├── RequestLog.js
+│   │   │   ├── Role.js
+│   │   │   ├── ShortLink.js
+│   │   │   ├── Sponsor.js
+│   │   │   ├── SystemConfig.js
+│   │   │   ├── SystemLog.js
+│   │   │   ├── Ticket.js
+│   │   │   ├── User.js
+│   │   │   ├── UserDevice.js
+│   │   │   └── ZoneLog.js
+│   │   ├── routes
+│   │   │   ├── adminRoutes.js
+│   │   │   ├── attendees.js
+│   │   │   ├── audit.js
+│   │   │   ├── auth.js
+│   │   │   ├── bankTransfer.js
+│   │   │   ├── buyerPaymentHistory.js
+│   │   │   ├── buyerRoutes.js
+│   │   │   ├── confirm.js
+│   │   │   ├── dashboard.js
+│   │   │   ├── devices.js
+│   │   │   ├── entrance.js
+│   │   │   ├── entry.js
+│   │   │   ├── events.js
+│   │   │   ├── invite.js
+│   │   │   ├── notifications.js
+│   │   │   ├── orders.js
+│   │   │   ├── organiser.js
+│   │   │   ├── payment.js
+│   │   │   ├── paymentManagement.js
+│   │   │   ├── shortLinks.js
+│   │   │   ├── sponsor.js
+│   │   │   ├── staff.js
+│   │   │   ├── sub.js
+│   │   │   ├── superAdmin.js
+│   │   │   ├── tickets.js
+│   │   │   ├── upload.js
+│   │   │   ├── userPortal.js
+│   │   │   ├── users.js
+│   │   │   ├── verification.js
+│   │   │   └── zone.js
+│   │   ├── scripts
+│   │   │   └── seed.js
+│   │   ├── services
+│   │   │   ├── finalConfirmationService.js
+│   │   │   ├── notificationService.js
+│   │   │   ├── paymentService.js
+│   │   │   ├── pdfService.js
+│   │   │   ├── photoUploadService.js
+│   │   │   ├── photoValidationService.js
+│   │   │   ├── s3Service.js
+│   │   │   ├── shortLinkService.js
+│   │   │   ├── smsService.js
+│   │   │   ├── ticketDeliveryService.js
+│   │   │   └── whatsappService.js
+│   │   ├── utils
+│   │   │   ├── bankTransferScheduler.js
+│   │   │   ├── clear.js
+│   │   │   ├── email.js
+│   │   │   ├── logger.js
+│   │   │   ├── rbac.js
+│   │   │   ├── s3Cleanup.js
+│   │   │   ├── seed.js
+│   │   │   ├── socket.js
+│   │   │   └── verify_expired_event.js
+│   │   └── server.js
+│   ├── .env
+│   ├── .env.example
+│   ├── debug_config.js
+│   ├── debug_events.js
+│   ├── error.log
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── swagger.json
+│   ├── test-output.pdf
+│   ├── testPdfStandAlone.js
+│   └── update_sms.js
+├── docs
+│   ├── BUYER_CONFIRMATION_PORTAL_GUIDE.md
+│   ├── CHECKOUT_SYSTEM_README.md
+│   ├── CONFIRMATION_PORTAL_QUICK_REF.md
+│   ├── DOCUMENTATION_INDEX.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   ├── MAINTENANCE_MODE_SETUP.md
+│   ├── payment-management-system.md
+│   ├── PHOTO_CONFIRMATION_GUIDE.md
+│   ├── PHOTO_CONFIRMATION_IMPLEMENTATION.md
+│   ├── PHOTO_CONFIRMATION_INDEX.md
+│   ├── PHOTO_CONFIRMATION_QUICK_REF.md
+│   ├── PHOTO_CONFIRMATION_SUMMARY.md
+│   ├── PHOTO_CONFIRMATION_VERIFICATION.md
+│   ├── PHOTO_CONFIRMATION_VISUAL.md
+│   ├── QUICK_START.md
+│   ├── SETUP_GUIDE.md
+│   ├── SYSTEM_FEATURES_SUMMARY.md
+│   ├── TESTING_GUIDE_CONFIRMATION_PORTAL.md
+│   ├── TROUBLESHOOTING_CONFIRMATION_PORTAL.md
+│   ├── USER_DASHBOARD_GUIDE.md
+│   └── VISUAL_ARCHITECTURE_DIAGRAMS.md
+├── frontend
+│   ├── public
+│   │   ├── index.html
+│   │   ├── logo.png
+│   │   └── socket.io-client.js
+│   ├── src
+│   │   ├── api
+│   │   │   ├── admin.js
+│   │   │   ├── adminPaymentManagement.js
+│   │   │   ├── attendee.js
+│   │   │   ├── attendees.js
+│   │   │   ├── audit.js
+│   │   │   ├── buyer.js
+│   │   │   ├── buyerOrders.js
+│   │   │   ├── buyerPaymentHistory.js
+│   │   │   ├── client.js
+│   │   │   ├── confirm.js
+│   │   │   ├── dashboard.js
+│   │   │   ├── entry.js
+│   │   │   ├── events.js
+│   │   │   ├── index.js
+│   │   │   ├── notifications.js
+│   │   │   ├── orders.js
+│   │   │   ├── organiser.js
+│   │   │   ├── payment.js
+│   │   │   ├── photoVerification.js
+│   │   │   ├── shortLinks.js
+│   │   │   ├── sponsor.js
+│   │   │   ├── staff.js
+│   │   │   ├── sub.js
+│   │   │   ├── subPaymentManagement.js
+│   │   │   ├── superAdmin.js
+│   │   │   ├── userPortal.js
+│   │   │   ├── users.js
+│   │   │   ├── verification.js
+│   │   │   └── zone.js
+│   │   ├── components
+│   │   │   ├── admin
+│   │   │   │   └── EventForm.jsx
+│   │   │   ├── attendee
+│   │   │   │   ├── AttendeeLayout.jsx
+│   │   │   │   ├── AttendeeTicketCard.jsx
+│   │   │   │   ├── PhotoUpload.jsx
+│   │   │   │   ├── QRCodeDisplay.jsx
+│   │   │   │   └── TicketCard.jsx
+│   │   │   ├── auth
+│   │   │   │   └── PermissionGuard.jsx
+│   │   │   ├── buyer
+│   │   │   │   ├── EmptyState.jsx
+│   │   │   │   ├── OrderCard.jsx
+│   │   │   │   ├── OrderControls.jsx
+│   │   │   │   └── TicketCard.jsx
+│   │   │   ├── common
+│   │   │   │   └── QRCodeDisplay.jsx
+│   │   │   ├── dashboard
+│   │   │   │   ├── ActivityFeed.jsx
+│   │   │   │   ├── ActivityItem.jsx
+│   │   │   │   ├── ChartCard.jsx
+│   │   │   │   ├── DashboardCharts.jsx
+│   │   │   │   ├── EventCard.jsx
+│   │   │   │   ├── LiveActivityFeed.jsx
+│   │   │   │   ├── MetricsGrid.jsx
+│   │   │   │   ├── PermissionBasedLayout.jsx
+│   │   │   │   ├── QRCodeDisplay.jsx
+│   │   │   │   ├── RoleBasedNavigation.jsx
+│   │   │   │   ├── StatsCard.jsx
+│   │   │   │   ├── TicketCard.jsx
+│   │   │   │   └── UserDashboard.jsx
+│   │   │   ├── events
+│   │   │   │   ├── EventCard.jsx
+│   │   │   │   ├── EventFilters.jsx
+│   │   │   │   ├── EventForm.jsx
+│   │   │   │   ├── EventHeader.jsx
+│   │   │   │   ├── PublicEventCard.jsx
+│   │   │   │   ├── QRScannerComponent.jsx
+│   │   │   │   ├── SummaryCard.jsx
+│   │   │   │   └── TicketSelector.jsx
+│   │   │   ├── layout
+│   │   │   │   ├── BottomNav.jsx
+│   │   │   │   ├── BuyerLayout.jsx
+│   │   │   │   ├── DashboardLayout.jsx
+│   │   │   │   ├── PublicLayout.jsx
+│   │   │   │   ├── Sidebar.jsx
+│   │   │   │   └── Topbar.jsx
+│   │   │   ├── organiser
+│   │   │   │   └── StatsCard.jsx
+│   │   │   ├── photo
+│   │   │   │   └── PhotoReviewModal.jsx
+│   │   │   ├── shared
+│   │   │   │   ├── CameraCapture.jsx
+│   │   │   │   ├── EmptyState.jsx
+│   │   │   │   ├── LoadingSkeleton.jsx
+│   │   │   │   └── PhotoValidationFeedback.jsx
+│   │   │   ├── staff
+│   │   │   │   ├── ActivityList.jsx
+│   │   │   │   ├── ResultCard.jsx
+│   │   │   │   └── SearchBar.jsx
+│   │   │   ├── suborg
+│   │   │   │   ├── AttendeeTable.jsx
+│   │   │   │   ├── ScannerComponent.jsx
+│   │   │   │   └── ZoneCard.jsx
+│   │   │   └── ui
+│   │   │       ├── Badge.jsx
+│   │   │       ├── Button.jsx
+│   │   │       ├── Card.jsx
+│   │   │       ├── Input.jsx
+│   │   │       ├── Modal.jsx
+│   │   │       ├── Select.jsx
+│   │   │       ├── Stat.jsx
+│   │   │       └── Table.jsx
+│   │   ├── config
+│   │   │   └── roleNavigation.js
+│   │   ├── context
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── MaintenanceModeContext.jsx
+│   │   ├── data
+│   │   │   └── mockEvents.js
+│   │   ├── hooks
+│   │   │   ├── usePermissions.js
+│   │   │   └── usePhotoAiValidation.js
+│   │   ├── layouts
+│   │   │   └── OrganiserLayout.jsx
+│   │   ├── pages
+│   │   │   ├── admin
+│   │   │   │   ├── admin.js
+│   │   │   │   ├── AdminDashboard.jsx
+│   │   │   │   ├── AdminEventFormPage.jsx
+│   │   │   │   ├── AdminEvents.jsx
+│   │   │   │   ├── AdminPaymentManagement.jsx
+│   │   │   │   ├── AdminReports.jsx
+│   │   │   │   ├── AdminSettings.jsx
+│   │   │   │   ├── AdminSettingsPanel.jsx
+│   │   │   │   ├── AdminUsers.jsx
+│   │   │   │   ├── verification.js
+│   │   │   │   └── VerificationDashboard.jsx
+│   │   │   ├── attendee
+│   │   │   │   ├── AttendeeConfirmationPage.jsx
+│   │   │   │   ├── AttendeeDashboardPage.jsx
+│   │   │   │   ├── AttendeeEventsPage.jsx
+│   │   │   │   ├── AttendeeNotificationsPage.jsx
+│   │   │   │   ├── AttendeeProfilePage.jsx
+│   │   │   │   ├── AttendeeTicketsPage.jsx
+│   │   │   │   ├── AttendeeTicketViewPage.jsx
+│   │   │   │   └── ResubmitPhotoPage.jsx
+│   │   │   ├── auditor
+│   │   │   │   ├── AuditorDashboard.jsx
+│   │   │   │   ├── AuditorLogsPage.jsx
+│   │   │   │   ├── AuditorReportsPage.jsx
+│   │   │   │   └── AuditorSystemLogsPage.jsx
+│   │   │   ├── auth
+│   │   │   │   ├── ChangeTempPasswordPage.jsx
+│   │   │   │   ├── ForgotPasswordPage.jsx
+│   │   │   │   ├── LoginPage.jsx
+│   │   │   │   ├── MfaSetupPage.jsx
+│   │   │   │   ├── PasswordChangePage.jsx
+│   │   │   │   ├── ResetPasswordPage.jsx
+│   │   │   │   ├── SignupPage.jsx
+│   │   │   │   ├── SignupSuccessPage.jsx
+│   │   │   │   └── VerifyEmailPage.jsx
+│   │   │   ├── buyer
+│   │   │   │   ├── AttendeeConfirmPage.jsx
+│   │   │   │   ├── BankTransferInstructionsPage.jsx
+│   │   │   │   ├── BankTransferSubmitPage.jsx
+│   │   │   │   ├── BankTransferThankYouPage.jsx
+│   │   │   │   ├── BuyerConfirmPassPage.jsx
+│   │   │   │   ├── BuyerDashboardPage.jsx
+│   │   │   │   ├── BuyerHomePage.jsx
+│   │   │   │   ├── BuyerInvitesPage.jsx
+│   │   │   │   ├── BuyerOrderDetailsPage.jsx
+│   │   │   │   ├── BuyerOrderHistoryPage.jsx
+│   │   │   │   ├── BuyerPaymentHistoryPage.jsx
+│   │   │   │   ├── BuyerProfilePage.jsx
+│   │   │   │   ├── BuyerTicketsPage.jsx
+│   │   │   │   ├── CashEntranceInstructionsPage.jsx
+│   │   │   │   ├── CheckoutPage.jsx
+│   │   │   │   ├── ConfirmOrderPage.jsx
+│   │   │   │   ├── InviteAcceptPage.jsx
+│   │   │   │   ├── ResubmitPage.jsx
+│   │   │   │   └── TicketWalletPage.jsx
+│   │   │   ├── enhanced
+│   │   │   │   └── UserDashboardPage.jsx
+│   │   │   ├── entry
+│   │   │   │   ├── EntryScannerPage.jsx
+│   │   │   │   └── ZoneScannerPage.jsx
+│   │   │   ├── organiser
+│   │   │   │   ├── EntryLogsPage.jsx
+│   │   │   │   ├── OrganiserAttendees.jsx
+│   │   │   │   ├── OrganiserDashboard.jsx
+│   │   │   │   ├── OrganiserSettings.jsx
+│   │   │   │   ├── OrganiserTeam.jsx
+│   │   │   │   ├── PaymentsDashboard.jsx
+│   │   │   │   └── ReportsPage.jsx
+│   │   │   ├── public
+│   │   │   │   ├── AttendeeIdentityConfirmPage.jsx
+│   │   │   │   ├── CheckoutPage.jsx
+│   │   │   │   ├── EventDetailPage.jsx
+│   │   │   │   ├── EventsListingPage.jsx
+│   │   │   │   ├── HomePage.jsx
+│   │   │   │   ├── MaintenancePage.jsx
+│   │   │   │   ├── OrderConfirmationPage.jsx
+│   │   │   │   └── ShortLinkRedirectPage.jsx
+│   │   │   ├── shared
+│   │   │   │   ├── EventEditPage.jsx
+│   │   │   │   ├── LiveDashboard.jsx
+│   │   │   │   └── ReportsDashboard.jsx
+│   │   │   ├── sponsor
+│   │   │   │   └── SponsorDashboard.jsx
+│   │   │   ├── staff
+│   │   │   │   ├── StaffActivityLogPage.jsx
+│   │   │   │   ├── StaffDashboardPage.jsx
+│   │   │   │   ├── StaffManualSearchPage.jsx
+│   │   │   │   ├── StaffScanPage.jsx
+│   │   │   │   ├── staffUtils.js
+│   │   │   │   ├── StaffZoneAccessPage.jsx
+│   │   │   │   └── StaffZoneManualSearchPage.jsx
+│   │   │   ├── suborg
+│   │   │   │   ├── BulkUploadPage.jsx
+│   │   │   │   ├── PhotoVerifyPage.jsx
+│   │   │   │   ├── SubOrgActivityLogsPage.jsx
+│   │   │   │   ├── SubOrgAttendees.jsx
+│   │   │   │   ├── SubOrgDashboard.jsx
+│   │   │   │   ├── SubOrgEntryScannerPage.jsx
+│   │   │   │   ├── SubOrgPayments.jsx
+│   │   │   │   ├── SubOrgTeam.jsx
+│   │   │   │   ├── SubOrgTickets.jsx
+│   │   │   │   ├── SubOrgVerificationPage.jsx
+│   │   │   │   ├── SubOrgZoneManualSearchPage.jsx
+│   │   │   │   ├── SubOrgZoneScannerPage.jsx
+│   │   │   │   └── SubOrgZonesPage.jsx
+│   │   │   ├── Dashboard.jsx
+│   │   │   └── NotFoundPage.jsx
+│   │   ├── utils
+│   │   │   ├── backend.js
+│   │   │   ├── faceApiValidation.js
+│   │   │   ├── photoQualityChecker.js
+│   │   │   ├── rbac.js
+│   │   │   └── socket.js
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   ├── index.js
+│   │   └── setupProxy.js
+│   ├── .env
+│   ├── .env.example
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   └── tailwind.config.js
+├── .gitignore
+├── file-structure.txt
+├── LAN_RUN.md
+└── README.md

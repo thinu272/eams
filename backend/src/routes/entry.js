@@ -2,10 +2,16 @@ const express = require('express');
 const router = express.Router();
 const EntryLog = require('../models/EntryLog');
 const Attendee = require('../models/Attendee');
+const Order = require('../models/Order');
+const Ticket = require('../models/Ticket');
 const mongoose = require('mongoose');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
 const { normalizeRole, ROLES } = require('../utils/rbac');
+const { v4: uuidv4 } = require('uuid');
+const QRCode = require('qrcode');
+const { sendOrderConfirmation, sendCashPaymentConfirmationEmail } = require('../utils/email');
+const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
 
 const normalizeGate = (value) => (value || '').trim();
 const parseScannedToken = (value) => {
@@ -671,6 +677,205 @@ router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'su
       },
     });
   } catch (err) { next(err); }
+});
+
+// POST /api/entry/receive-payment - Receive cash payment for reservation
+router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff'), async (req, res, next) => {
+  try {
+    const { confirmationToken, orderNumber, amountReceived, notes, gateId, gateName, deviceId } = req.body;
+    const io = req.app.get('io');
+
+    if (!confirmationToken && !orderNumber) {
+      return res.status(400).json({ success: false, message: 'confirmationToken or orderNumber required.' });
+    }
+
+    // Find the order
+    let order;
+    if (confirmationToken) {
+      order = await Order.findOne({ confirmationToken }).populate('eventId');
+    } else if (orderNumber) {
+      order = await Order.findOne({ orderNumber }).populate('eventId');
+    }
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Reservation not found.' });
+    }
+
+    // Check if this is a cash reservation
+    if (!['cash_at_entrance', 'cash_on_entrance'].includes(order.paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'This order is not a cash at entrance reservation.' });
+    }
+
+    // Check if already paid
+    if (order.paymentStatus === 'paid' || order.status === 'CONFIRMED') {
+      return res.status(400).json({ success: false, message: 'Payment has already been received for this reservation.' });
+    }
+
+    // Check event access
+    if (!(await userHasEventAccess(req.user, order.eventId?._id || order.eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    // Verify amount matches
+    if (amountReceived && Number(amountReceived) < order.totalAmount) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Insufficient payment. Required: ${order.totalAmount}, Received: ${amountReceived}` 
+      });
+    }
+
+    // Update order status
+    order.status = 'CONFIRMED';
+    order.paymentStatus = 'paid';
+    order.paidAt = new Date();
+    order.paymentDetails = {
+      ...order.paymentDetails,
+      paymentReceivedAt: new Date(),
+      paymentReceivedBy: req.user._id,
+      paymentReceivedByName: req.user.name || req.user.email,
+      amountReceived: amountReceived || order.totalAmount,
+      notes: notes || '',
+      gateId: gateId || gateName || 'Payment Counter',
+    };
+    await order.save();
+
+    // Update ticket statuses to SOLD
+    const tickets = await Ticket.find({ order: order._id });
+    for (const ticket of tickets) {
+      ticket.status = 'SOLD';
+      await ticket.save();
+    }
+
+    // Generate QR codes and create attendees if they don't exist
+    const attendees = [];
+    for (const ticket of tickets) {
+      // Check if attendee already exists for this ticket
+      let attendee = await Attendee.findOne({ ticket: ticket._id });
+      
+      if (!attendee) {
+        // Create placeholder attendee for ticket issuance
+        const qrToken = uuidv4();
+        const qrCode = await QRCode.toDataURL(qrToken);
+        
+        attendee = new Attendee({
+          event: order.eventId._id,
+          ticket: ticket._id,
+          order: order._id,
+          qrToken,
+          qrCode,
+          fullName: order.buyerName,
+          email: order.buyerEmail,
+          phone: order.buyerPhone,
+          categoryId: ticket.categoryId,
+          categoryName: ticket.categoryName,
+          allowedZones: ticket.allowedZones || [],
+          confirmationStatus: 'confirmed',
+          isConfirmed: true,
+          confirmedAt: new Date(),
+          confirmedBy: req.user._id,
+          photoVerificationStatus: 'verified',
+          isActive: true,
+        });
+        await attendee.save();
+      } else {
+        // Update existing attendee
+        if (!attendee.qrToken) {
+          attendee.qrToken = uuidv4();
+        }
+        attendee.qrCode = await QRCode.toDataURL(attendee.qrToken);
+        attendee.confirmationStatus = 'confirmed';
+        attendee.isConfirmed = true;
+        attendee.confirmedAt = new Date();
+        attendee.confirmedBy = req.user._id;
+        attendee.isActive = true;
+        await attendee.save();
+      }
+      
+      // Update ticket with attendee reference
+      ticket.attendee = attendee._id;
+      await ticket.save();
+      
+      attendees.push(attendee);
+    }
+
+    // Send post-payment notifications
+    try {
+      // Send payment confirmation email
+      await sendCashPaymentConfirmationEmail(order, order.eventId, attendees);
+      
+      // Send final ticket notifications to attendees
+      for (const attendee of attendees) {
+        await notifyFinalTicket({
+          attendee,
+          event: order.eventId,
+          phone: attendee.phone,
+          notificationChannel: 'both',
+        });
+      }
+      
+      // Send buyer summary
+      await notifyBuyerFinalSummary({
+        order,
+        event: order.eventId,
+        attendees,
+      });
+    } catch (notificationError) {
+      console.error('Notification error:', notificationError);
+      // Continue even if notifications fail
+    }
+
+    // Log the payment collection
+    const resolvedGate = normalizeGate(gateName || gateId || 'Payment Counter');
+    const logEntry = await EntryLog.create({
+      event: order.eventId._id,
+      order: order._id,
+      gateId: resolvedGate,
+      gateName: resolvedGate,
+      action: 'payment_received',
+      method: 'cash',
+      deviceId,
+      accessGranted: true,
+      processedBy: req.user._id,
+      snapshot: {
+        orderNumber: order.orderNumber,
+        amount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+      },
+    });
+
+    // Emit dashboard event
+    emitDashboardEvent(io, 'payment_received', order.eventId._id.toString(), {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      amount: order.totalAmount,
+      processedBy: req.user.name || req.user.email,
+      timestamp: new Date(),
+    });
+
+    res.json({
+      success: true,
+      message: 'Payment received successfully. Tickets have been issued.',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        paymentStatus: order.paymentStatus,
+        orderStatus: order.status,
+        ticketsIssued: tickets.length,
+        attendees: attendees.map(a => ({
+          _id: a._id,
+          fullName: a.fullName,
+          qrCode: a.qrCode,
+          categoryName: a.categoryName,
+        })),
+        log: logEntry,
+      },
+    });
+  } catch (err) {
+    console.error('Payment collection error:', err);
+    next(err);
+  }
 });
 
 module.exports = router;

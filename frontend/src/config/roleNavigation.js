@@ -79,6 +79,7 @@ export const ROLE_NAVIGATION = {
           { to: '/suborg/dashboard', label: 'Overview', icon: HomeIcon },
           { to: '/suborg/zones', label: 'My Zones', icon: ShieldCheckIcon },
           { to: '/suborg/tickets', label: 'Tickets', icon: TicketIcon },
+          { to: '/suborg/payments', label: 'Payments', icon: BanknotesIcon },
           { to: '/suborg/attendees', label: 'Attendees', icon: UserGroupIcon },
           { to: '/suborg/team', label: 'Team Management', icon: UsersIcon },
           { to: '/suborg/verification', label: 'Verification', icon: CheckBadgeIcon },

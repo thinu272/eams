@@ -4,6 +4,7 @@ import { ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, WalletIcon } from '@her
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent } from '../../api/events';
 import { createOrder } from '../../api/orders';
+import { getPaymentConfig } from '../../api/payment';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { io } from 'socket.io-client';
@@ -55,7 +56,26 @@ const CheckoutPage = () => {
     if (methods?.cash ?? true) return 'cash';
     return 'card';
   });
+  const [selectedGateway, setSelectedGateway] = useState('');
+  const [gatewayConfig, setGatewayConfig] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Fetch payment gateway config on mount
+  useEffect(() => {
+    if (!eventId) return;
+    getPaymentConfig(eventId)
+      .then(res => {
+        if (res.success) {
+          setGatewayConfig(res.data);
+          setSelectedGateway(res.data.defaultGateway || 'payhere');
+        }
+      })
+      .catch(err => {
+        console.warn('Could not fetch payment config:', err);
+        setGatewayConfig({ gateways: ['payhere'], defaultGateway: 'payhere' });
+        setSelectedGateway('payhere');
+      });
+  }, [eventId]);
 
   useEffect(() => {
     if (!user) return;
@@ -173,38 +193,46 @@ const CheckoutPage = () => {
         buyerPhone: buyerDetails.phone,
         tickets,
         paymentMethod,
+        gateway: paymentMethod === 'card' ? selectedGateway : undefined,
       };
 
       const response = await createOrder(orderData);
 
       if (response.data.success) {
-        // If it's a card payment, use PayHere integration
-        if (paymentMethod === 'card' && response.data.data.paymentData) {
-          toast.success('Redirecting to secure payment gateway...');
-          
-          // Create and submit a hidden form to PayHere
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = process.env.REACT_APP_PAYHERE_URL || 'https://sandbox.payhere.lk/pay/checkout'; // Use sandbox by default
-          
-          Object.entries(response.data.data.paymentData).forEach(([key, value]) => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-          });
-          
-          document.body.appendChild(form);
-          form.submit();
+        if (paymentMethod === 'card') {
+          const resData = response.data.data;
+
+          if (resData.gatewayUsed === 'stripe' && resData.stripeSessionUrl) {
+            // Redirect to Stripe Checkout
+            toast.success('Redirecting to Stripe...');
+            window.location.href = resData.stripeSessionUrl;
+          } else if (resData.paymentData) {
+            // PayHere form submission
+            toast.success('Redirecting to secure payment gateway...');
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = process.env.REACT_APP_PAYHERE_URL || 'https://sandbox.payhere.lk/pay/checkout';
+            Object.entries(resData.paymentData).forEach(([key, value]) => {
+              const input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = key;
+              input.value = value;
+              form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
+          } else {
+            toast.success('Order placed successfully!');
+            navigate(`/order/${resData.confirmationToken}/confirm`);
+          }
         } else if (paymentMethod === 'bank_transfer') {
           toast.success('Order created! Redirecting to instructions...');
           navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
         } else {
-          // For Cash, just go to confirmation
-          toast.success('Order created successfully!');
+          // For Cash, navigate to instructions
+          toast.success('Reservation placed successfully!');
           const confirmationToken = response.data.data.confirmationToken;
-          navigate(`/order/${confirmationToken}/confirm`);
+          navigate(`/cash-entrance/instructions/${confirmationToken}`);
         }
       } else {
         toast.error(response.data.message || 'Failed to create order');
@@ -326,26 +354,67 @@ const CheckoutPage = () => {
                 <div className="p-4 xs:p-6 sm:p-8 space-y-4">
                    {/* Option 1: Card */}
                    {enabledMethods.card && (
-                     <div 
-                        onClick={() => setPaymentMethod('card')}
-                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
-                          paymentMethod === 'card' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                        }`}
-                     >
-                        <div className="flex items-center justify-between gap-2">
-                           <div className="flex items-center gap-3 xs:gap-4">
-                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'}`}>
-                                 <CreditCardIcon className="h-6 w-6" />
-                              </div>
-                              <div>
-                                 <p className="font-black text-slate-900 text-sm xs:text-base">Standard Checkout</p>
-                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
-                              </div>
-                           </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
-                             paymentMethod === 'card' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
-                           }`} />
-                        </div>
+                     <div className="space-y-3">
+                       <div 
+                          onClick={() => setPaymentMethod('card')}
+                          className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
+                            paymentMethod === 'card' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                          }`}
+                       >
+                          <div className="flex items-center justify-between gap-2">
+                             <div className="flex items-center gap-3 xs:gap-4">
+                                <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                   <CreditCardIcon className="h-6 w-6" />
+                                </div>
+                                <div>
+                                   <p className="font-black text-slate-900 text-sm xs:text-base">Standard Checkout</p>
+                                   <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
+                                </div>
+                             </div>
+                             <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
+                               paymentMethod === 'card' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
+                             }`} />
+                          </div>
+                       </div>
+                       
+                       {/* Gateway sub-selection — only shown when card is selected and multiple gateways exist */}
+                       {paymentMethod === 'card' && gatewayConfig && gatewayConfig.gateways && gatewayConfig.gateways.length > 1 && (
+                         <div className="ml-6 pl-4 border-l-2 border-blue-200 space-y-2 mt-2">
+                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Choose Payment Provider</p>
+                           {gatewayConfig.gateways.includes('payhere') && (
+                             <label className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-colors ${selectedGateway === 'payhere' ? 'border-blue-400 bg-white shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
+                               <input
+                                 type="radio"
+                                 name="gateway"
+                                 value="payhere"
+                                 checked={selectedGateway === 'payhere'}
+                                 onChange={(e) => setSelectedGateway(e.target.value)}
+                                 className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                               />
+                               <div className="ml-3">
+                                 <span className="text-sm font-black text-slate-900">PayHere</span>
+                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Local Sri Lankan gateway</p>
+                               </div>
+                             </label>
+                           )}
+                           {gatewayConfig.gateways.includes('stripe') && (
+                             <label className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-colors ${selectedGateway === 'stripe' ? 'border-blue-400 bg-white shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
+                               <input
+                                 type="radio"
+                                 name="gateway"
+                                 value="stripe"
+                                 checked={selectedGateway === 'stripe'}
+                                 onChange={(e) => setSelectedGateway(e.target.value)}
+                                 className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                               />
+                               <div className="ml-3">
+                                 <span className="text-sm font-black text-slate-900">Stripe</span>
+                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">International card payments</p>
+                               </div>
+                             </label>
+                           )}
+                         </div>
+                       )}
                      </div>
                    )}
 

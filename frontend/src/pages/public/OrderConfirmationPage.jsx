@@ -22,6 +22,7 @@ const OrderConfirmationPage = () => {
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [requiresPayment, setRequiresPayment] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState(null);
   const [inviteEmailByTicket, setInviteEmailByTicket] = useState({});
   const [invitePhoneByTicket, setInvitePhoneByTicket] = useState({});
@@ -38,7 +39,10 @@ const OrderConfirmationPage = () => {
       setPayload(response.data.data);
       setError('');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Unable to load this order confirmation link.');
+      const errorMessage = err?.response?.data?.message || 'Unable to load this order confirmation link.';
+      const requiresPaymentFlag = err?.response?.data?.requiresPayment;
+      setError(errorMessage);
+      setRequiresPayment(requiresPaymentFlag || false);
     } finally {
       setLoading(false);
     }
@@ -231,17 +235,26 @@ const OrderConfirmationPage = () => {
     return (
       <PublicLayout>
         <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
-          <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-600 mb-8">
+          <div className={`inline-flex h-20 w-20 items-center justify-center rounded-full mb-8 ${requiresPayment ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'}`}>
              <InformationCircleIcon className="h-10 w-10" />
           </div>
-          <h1 className="text-4xl font-black text-slate-950 uppercase tracking-tight">Security Check Failed</h1>
-          <p className="mt-6 text-lg text-slate-500 font-medium max-w-2xl mx-auto">{error || 'This order link is no longer valid or has expired for security reasons.'}</p>
+          <h1 className="text-4xl font-black text-slate-950 uppercase tracking-tight">
+            {requiresPayment ? 'Payment Required' : 'Security Check Failed'}
+          </h1>
+          <p className="mt-6 text-lg text-slate-500 font-medium max-w-2xl mx-auto">
+            {error || 'This order link is no longer valid or has expired for security reasons.'}
+          </p>
+          {requiresPayment && (
+            <p className="mt-4 text-sm text-slate-600">
+              Please complete your payment at the venue or wait for bank transfer verification to access ticket features.
+            </p>
+          )}
           <div className="mt-10">
             <Link
-              to="/events"
+              to="/buyer/dashboard"
               className="inline-flex rounded-full bg-slate-950 px-8 py-4 text-sm font-black uppercase tracking-widest text-white transition hover:bg-blue-600"
             >
-              Browse Public Events
+              Go to Dashboard
             </Link>
           </div>
         </div>
