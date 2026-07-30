@@ -8,23 +8,23 @@ import Modal from '../../components/ui/Modal';
 import { getSubOrgTeam, createSubOrgTeamMember, updateSubOrgTeamMember, getSubZones } from '../../api/sub';
 import toast from 'react-hot-toast';
 
-const emptyTeamMember = { 
-  name: '', 
-  email: '', 
-  phone: '', 
-  password: '', 
+const emptyTeamMember = {
+  name: '',
+  email: '',
+  phone: '',
+  password: '',
   role: 'Staff',
   operationScope: 'entry',
   assignedGates: ['Main Gate'],
   assignedZones: [],
-  permissions: { 
-    canAddAttendees: false, 
-    canVerifyPhotos: false, 
-    canInviteAttendees: false, 
-    canBulkUpload: false, 
-    canEntryAccess: true 
+  permissions: {
+    canAddAttendees: false,
+    canVerifyPhotos: false,
+    canInviteAttendees: false,
+    canBulkUpload: false,
+    canEntryAccess: true
   },
-  
+
 };
 
 const scopeDescriptions = {
@@ -160,7 +160,7 @@ const SubOrgTeam = () => {
         : (form.assignedZones || []).map(String).filter(Boolean);
 
       if (form._id) {
-        await updateSubOrgTeamMember(form._id, {
+        const res = await updateSubOrgTeamMember(form._id, {
           ...form,
           eventId: currentEventId,
           assignedGates,
@@ -171,6 +171,10 @@ const SubOrgTeam = () => {
           },
         });
         toast.success('Member updated');
+        // Update local state with the returned user data
+        if (res.data?.data?.user) {
+          setTeam(prev => prev.map(u => u._id === form._id ? res.data.data.user : u));
+        }
       } else {
         await createSubOrgTeamMember({
           ...form,
@@ -185,7 +189,9 @@ const SubOrgTeam = () => {
         toast.success('Member created');
       }
       setModalOpen(false);
-      loadData();
+      if (!form._id) {
+        loadData();
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Action failed');
     }
@@ -490,31 +496,34 @@ const SubOrgTeam = () => {
                 </p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {myZones.map((zone) => (
-                    <label key={zone.id} className={`flex items-center gap-3 rounded-lg border p-3 text-sm transition-colors cursor-pointer ${
-                      form.operationScope === 'entry'
-                        ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
-                        : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'
-                    }`}>
-                      <input
-                        type="checkbox"
-                        disabled={form.operationScope === 'entry'}
-                        checked={(form.assignedZones || []).includes(zone.id || zone.name)}
-                        onChange={(e) => {
-                          const zid = zone.id || zone.name;
-                          const next = e.target.checked 
-                            ? [...new Set([...(form.assignedZones || []), zid])]
-                            : (form.assignedZones || []).filter(item => item !== zid);
-                          setForm(curr => ({ 
-                            ...curr,
-                            assignedZones: next,
-                          }));
-                        }}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="font-medium">{zone.name}</span>
-                    </label>
-                  ))}
+                  {myZones.map((zone) => {
+                    const zoneId = String(zone.id || zone.name);
+                    const isChecked = (form.assignedZones || []).some(z => String(z) === zoneId);
+                    return (
+                      <label key={zone.id || zone.name} className={`flex items-center gap-3 rounded-lg border p-3 text-sm transition-colors cursor-pointer ${
+                        form.operationScope === 'entry'
+                          ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                          : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          disabled={form.operationScope === 'entry'}
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...new Set([...(form.assignedZones || []), zoneId])]
+                              : (form.assignedZones || []).filter(item => String(item) !== zoneId);
+                            setForm(curr => ({
+                              ...curr,
+                              assignedZones: next,
+                            }));
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="font-medium">{zone.name}</span>
+                      </label>
+                    );
+                  })}
                   {myZones.length === 0 && (
                     <p className="text-xs italic text-slate-400 py-3 col-span-2 text-center">No zones assigned to you yet.</p>
                   )}
@@ -539,6 +548,7 @@ const SubOrgTeam = () => {
                 ['canVerifyPhotos', 'Verify Attendee Photos'],
                 ['canEntryAccess', 'Process Gate Entry'],
                 ['canInviteAttendees', 'Send Invites'],
+                ['canCollectCash', 'Collect Cash / Confirm Cash Payments'],
               ].map(([key, label]) => (
                 <label key={key} className={`flex items-center gap-3 rounded-lg border p-3 text-sm transition-colors cursor-pointer ${
                   key === 'canEntryAccess' && isCheckpointRole && form.operationScope === 'zone'

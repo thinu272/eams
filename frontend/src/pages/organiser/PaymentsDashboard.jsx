@@ -492,9 +492,32 @@ const PaymentsDashboard = ({ eventId }) => {
                           >
                             View Payment
                           </button>
-                          {payment.paymentMethod === 'bank_transfer' && payment.receiptFile && (
+                          {payment.paymentMethod === 'bank_transfer' && payment.submissionId && (
                             <button
-                              onClick={() => window.open(payment.receiptFile, '_blank')}
+                              onClick={async () => {
+                                try {
+                                  const token = localStorage.getItem('entrynex_token');
+                                  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+                                  const response = await fetch(`${apiUrl}/bank-transfer/receipt/${payment.submissionId}`, {
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`
+                                    }
+                                  });
+                                  
+                                  if (response.ok) {
+                                    const blob = await response.blob();
+                                    const blobUrl = window.URL.createObjectURL(blob);
+                                    window.open(blobUrl, '_blank');
+                                  } else {
+                                    const errorData = await response.json().catch(() => ({}));
+                                    console.error('Failed to load receipt:', errorData);
+                                    toast.error(errorData.message || 'Failed to load receipt');
+                                  }
+                                } catch (error) {
+                                  console.error('Error viewing receipt:', error);
+                                  toast.error('Error viewing receipt');
+                                }
+                              }}
                               className="px-2 py-1 text-xs font-semibold text-slate-600 border border-slate-200 rounded hover:bg-slate-50 hover:text-slate-900 transition"
                             >
                               View Receipt
@@ -773,18 +796,39 @@ const PaymentsDashboard = ({ eventId }) => {
                     <p className="font-bold text-slate-900">{formatCurrency(paymentDetails.paymentSubmission.amountPaid)}</p>
                   </div>
                 </div>
-                {(paymentDetails.paymentSubmission.receiptFile || selectedPayment?.receiptFile) && (
+                {paymentDetails.paymentSubmission?._id && (
                   <div className="mt-4">
                     <p className="text-slate-500 mb-2">Payment Receipt</p>
-                    <a
-                      href={paymentDetails.paymentSubmission.receiptFile || selectedPayment?.receiptFile}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('entrynex_token');
+                          const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+                          const response = await fetch(`${apiUrl}/bank-transfer/receipt/${paymentDetails.paymentSubmission._id}`, {
+                            headers: {
+                              'Authorization': `Bearer ${token}`
+                            }
+                          });
+                          
+                          if (response.ok) {
+                            const blob = await response.blob();
+                            const blobUrl = window.URL.createObjectURL(blob);
+                            window.open(blobUrl, '_blank');
+                          } else {
+                            const errorData = await response.json().catch(() => ({}));
+                            console.error('Failed to load receipt:', errorData);
+                            toast.error(errorData.message || 'Failed to load receipt');
+                          }
+                        } catch (error) {
+                          console.error('Error viewing receipt:', error);
+                          toast.error('Error viewing receipt');
+                        }
+                      }}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
                     >
                       <DocumentArrowDownIcon className="h-4 w-4" />
                       View Receipt
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>

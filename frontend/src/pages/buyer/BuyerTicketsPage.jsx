@@ -21,7 +21,12 @@ import {
   FunnelIcon,
 } from '@heroicons/react/24/outline';
 
+import { useAuth } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
+
 const BuyerTicketsPage = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,6 +43,32 @@ const BuyerTicketsPage = () => {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  useEffect(() => {
+    if (!user || !user._id) return;
+
+    const socketUrl = getSocketUrl();
+    const socket = io(socketUrl, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join_buyer', { userId: user._id });
+    });
+
+    socket.on('order_status_changed', (data) => {
+      toast.success(`Order #${data.orderNumber} status updated to ${data.paymentStatus || data.status}!`);
+      fetchOrders();
+    });
+
+    return () => {
+      socket.emit('leave_buyer', { userId: user._id });
+      socket.disconnect();
+    };
+  }, [user]);
 
   const empty = !loading && orders.length === 0;
 
@@ -293,9 +324,14 @@ const BuyerTicketsPage = () => {
                             ) : null}
                           </span>
                         )}
-                        {order.status === 'RESERVED' && (
+                        {order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success' && (
                           <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-amber-200">
-                            🟡 Awaiting Payment at Entrance
+                            On Hold / Payment Verification Pending
+                          </span>
+                        )}
+                        {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && (
+                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-amber-200">
+                            Payment Pending / Reserved
                           </span>
                         )}
                       </div>
@@ -335,17 +371,27 @@ const BuyerTicketsPage = () => {
                     </div>
                   </div>
 
-                  {/* Reserved warning notice */}
-                  {order.status === 'RESERVED' && (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
-                      <p className="font-semibold">
-                        Your ticket has been reserved. Please pay at the event entrance to activate your entry pass.
-                      </p>
-                      <p className="mt-1 font-medium text-amber-600">
-                        All entry passes, QR codes, guest invites, and download functions will remain locked until cash payment is processed at the venue entrance.
-                      </p>
-                    </div>
-                  )}
+                   {/* Reserved warning notice */}
+                   {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && (
+                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
+                       <p className="font-semibold">
+                         Your ticket has been reserved. Please pay at the event entrance to activate your entry pass.
+                       </p>
+                       <p className="mt-1 font-medium text-amber-600">
+                         All entry passes, QR codes, guest invites, and download functions will remain locked until cash payment is processed at the venue entrance.
+                       </p>
+                     </div>
+                   )}
+                   {order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success' && (
+                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
+                       <p className="font-semibold">
+                         Your bank transfer payment details are submitted and on hold for verification.
+                       </p>
+                       <p className="mt-1 font-medium text-amber-600">
+                         All entry passes, QR codes, guest invites, and download functions will remain locked until verification is complete (normally within 48 hours).
+                       </p>
+                     </div>
+                   )}
 
                   {/* Categories detail */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 border-t border-slate-100 pt-5">
@@ -369,33 +415,43 @@ const BuyerTicketsPage = () => {
                     </p>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
-                      <button
-                        onClick={() => order.status !== 'RESERVED' && handleDownloadOrder(order._id)}
-                        disabled={order.status === 'RESERVED'}
-                        className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all ${
-                          order.status === 'RESERVED' 
-                            ? 'opacity-40 cursor-not-allowed bg-slate-100' 
-                            : 'hover:bg-slate-50 active:scale-95'
-                        }`}
-                        title={order.status === 'RESERVED' ? 'Pay at venue entrance to activate ticket download.' : ''}
-                      >
-                        <ArrowDownTrayIcon className="h-4 w-4" />
-                        <span>Order Receipt</span>
-                      </button>
+                      {(() => {
+                        const isCashReserved = (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED';
+                        const isBankPending = order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success';
+                        const isLocked = isCashReserved || isBankPending;
+                        
+                        return (
+                          <>
+                            <button
+                              onClick={() => !isLocked && handleDownloadOrder(order._id)}
+                              disabled={isLocked}
+                              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all ${
+                                isLocked 
+                                  ? 'opacity-40 cursor-not-allowed bg-slate-100' 
+                                  : 'hover:bg-slate-50 active:scale-95'
+                              }`}
+                              title={isLocked ? 'Payment must be verified to activate ticket download.' : ''}
+                            >
+                              <ArrowDownTrayIcon className="h-4 w-4" />
+                              <span>Order Receipt</span>
+                            </button>
 
-                      <Link
-                        to={order.status === 'RESERVED' ? '#' : `/buyer/assign/${order._id}`}
-                        onClick={(e) => order.status === 'RESERVED' && e.preventDefault()}
-                        className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all ${
-                          order.status === 'RESERVED' 
-                            ? 'opacity-40 cursor-not-allowed bg-slate-400' 
-                            : 'bg-brand-main hover:bg-brand-dark active:scale-95'
-                        }`}
-                        title={order.status === 'RESERVED' ? 'Awaiting payment confirmation at entrance.' : ''}
-                      >
-                        <span>Manage Attendees</span>
-                        <ArrowRightIcon className="h-3.5 w-3.5" />
-                      </Link>
+                            <Link
+                              to={isLocked ? '#' : `/buyer/assign/${order._id}`}
+                              onClick={(e) => isLocked && e.preventDefault()}
+                              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all ${
+                                isLocked 
+                                  ? 'opacity-40 cursor-not-allowed bg-slate-400' 
+                                  : 'bg-brand-main hover:bg-brand-dark active:scale-95'
+                              }`}
+                              title={isLocked ? 'Awaiting payment confirmation/verification.' : ''}
+                            >
+                              <span>Manage Attendees</span>
+                              <ArrowRightIcon className="h-3.5 w-3.5" />
+                            </Link>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

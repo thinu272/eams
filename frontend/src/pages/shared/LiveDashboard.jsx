@@ -61,6 +61,13 @@ const LiveEventDashboard = () => {
   const fetchInitialData = useCallback(async () => {
     try {
       setLoading(true);
+      // Clear stale data from previous event
+      setStats({ totalTickets: 0, ticketsSold: 0, confirmedAttendees: 0, checkedInCount: 0, totalRevenue: 0, zoneOccupancy: 0 });
+      setCharts({ checkinsOverTime: [], revenueByCategory: [], ticketStatusDistribution: [] });
+      setRecentEntries([]);
+      setZoneOccupancy([]);
+      setNotifications([]);
+
       const response = await getOrganiserWorkspace({ eventId });
       const data = response.data?.data;
       
@@ -91,6 +98,16 @@ const LiveEventDashboard = () => {
 
   // Initialize Socket.IO connection
   useEffect(() => {
+    // Cleanup previous socket connection if exists
+    if (socketRef.current) {
+      const oldSocket = socketRef.current;
+      if (eventId) {
+        oldSocket.emit('leave_dashboard', { eventId });
+      }
+      oldSocket.disconnect();
+      socketRef.current = null;
+    }
+
     const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
     socketRef.current = io(socketUrl, {
       transports: ['websocket', 'polling'],
@@ -181,10 +198,13 @@ const LiveEventDashboard = () => {
     });
 
     return () => {
-      if (eventId) {
-        socket.emit('leave_dashboard', { eventId });
+      if (socketRef.current) {
+        if (eventId) {
+          socketRef.current.emit('leave_dashboard', { eventId });
+        }
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
-      socket.disconnect();
     };
   }, [eventId, fetchInitialData]);
 

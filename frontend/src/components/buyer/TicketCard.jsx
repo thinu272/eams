@@ -67,17 +67,24 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                 <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Photo Rejected
               </span>
             )}
-            {isPendingVerification && (
-               <span className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full animate-pulse">
-                 Awaiting Verification
-               </span>
+             {isPendingVerification && (
+                <span className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full animate-pulse">
+                  Awaiting Verification
+                </span>
              )}
-             {(pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid' && (
-               <span className="flex items-center gap-1.5 text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 px-2.5 py-0.5 rounded-full">
-                 Waiting for Payment
-               </span>
-             )}
-            {!isInvalidated && pass.status !== 'INVITED' && !isConfirmed && !isPhotoRejected && !isPendingVerification && (
+             {(() => {
+               const isCashUnpaid = (pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid';
+               const isBankUnpaid = pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' && pass.paymentStatus !== 'success';
+               if (isCashUnpaid || isBankUnpaid) {
+                 return (
+                   <span className="flex items-center gap-1.5 text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 px-2.5 py-0.5 rounded-full">
+                     Waiting for Payment
+                   </span>
+                 );
+               }
+               return null;
+             })()}
+            {!isInvalidated && pass.status !== 'INVITED' && !isConfirmed && !isPhotoRejected && !isPendingVerification && !((pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid' && pass.paymentStatus !== 'success') && (
               <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-0.5 rounded-full">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
                 Pending Action
@@ -220,27 +227,29 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                     <span>{resending ? 'Resending...' : 'Resend Invite'}</span>
                   </button>
                 ) : (
-                  (pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid' ? (
-                     <div className="flex flex-col gap-2">
-                       <p className="text-xs text-yellow-700">
-                         Your payment is awaiting verification. Ticket features will become available after payment approval (typically within 48 hours).
-                       </p>
-                       <div className="flex flex-wrap items-center gap-2">
-                         <button
-                           disabled
-                           className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
-                           title="Waiting for payment approval"
-                         >
-                           <ShieldCheckIcon className="h-3.5 w-3.5" />
-                           <span>Confirm Pass</span>
-                         </button>
-                         <button
-                           disabled
-                           className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
-                           title="Waiting for payment approval"
-                         >
-                           <UserPlusIcon className="h-3.5 w-3.5" />
-                           <span>Invite Guest</span>
+                  ((pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' && pass.paymentStatus !== 'success') || ((pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid')) ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-yellow-700">
+                          {pass.paymentMethod === 'bank_transfer' 
+                            ? 'Your payment is awaiting verification. Ticket features will become available after payment approval (typically within 48 hours).'
+                            : 'Payment must be completed at the event venue before your tickets can be issued.'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            disabled
+                            className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
+                            title="Waiting for payment approval"
+                          >
+                            <ShieldCheckIcon className="h-3.5 w-3.5" />
+                            <span>Confirm Pass</span>
+                          </button>
+                          <button
+                            disabled
+                            className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
+                            title="Waiting for payment approval"
+                          >
+                            <UserPlusIcon className="h-3.5 w-3.5" />
+                            <span>Invite Guest</span>
                          </button>
                        </div>
                      </div>

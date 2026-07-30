@@ -76,6 +76,9 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
                 if (['Bulk Upload'].includes(item.label)) {
                   return user?.permissions?.canBulkUpload === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
                 }
+                if (['Cash Collection'].includes(item.label)) {
+                  return user?.permissions?.canCollectCash === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
+                }
                 return true;
               }),
             }))

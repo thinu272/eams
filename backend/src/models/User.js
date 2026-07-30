@@ -68,9 +68,14 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
-  customRole: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Role',
+  // Explicit permission flags for better type safety and validation
+  canCollectCash: {
+    type: Boolean,
+    default: false,
+  },
+  canApproveBankTransfer: {
+    type: Boolean,
+    default: false,
   },
   responsibilities: {
     zoneIds: [{ type: String }],

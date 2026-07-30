@@ -271,10 +271,12 @@ const getSubOrganiserDashboardData = async (user) => {
     }),
     Attendee.countDocuments({ 
       event: { $in: assignedEvents },
+      allowedZones: { $in: assignedZones },
       photoVerificationStatus: 'pending' 
     }),
     EntryLog.countDocuments({ 
       event: { $in: assignedEvents },
+      zone: { $in: assignedZones },
       timestamp: { $gte: new Date(now.setHours(0, 0, 0, 0)) },
       action: 'check_in',
       accessGranted: true 

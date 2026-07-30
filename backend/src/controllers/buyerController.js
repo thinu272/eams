@@ -18,7 +18,7 @@ const buildTicketSummary = (ticket) => ({
   ticketNumber: ticket.ticketNumber,
   status: ticket.status,
   categoryId: ticket.categoryId,
-  categoryName: ticket.categoryName,
+  categoryName: ticket.categoryId?.name || ticket.categoryName,
   allowedZones: ticket.allowedZones || [],
   slotIndex: ticket.slotIndex,
   inviteEmail: ticket.inviteEmail,
@@ -54,7 +54,14 @@ const getBuyerOrders = async (req, res, next) => {
       const orderQuery = userId
         ? { $or: [{ buyerEmail: email }, { buyerId: userId }] }
         : { buyerEmail: email };
+      
+      // Add status filter if provided
+      if (req.query.status && req.query.status !== 'all') {
+        orderQuery.status = req.query.status;
+      }
+      
       const orders = await Order.find(orderQuery)
+        .populate('eventId', 'name startDate venue settings')
 
     const orderIds = orders.map((order) => order._id);
     const tickets = await Ticket.find({ order: { $in: orderIds } })
@@ -98,6 +105,9 @@ const getBuyerOrders = async (req, res, next) => {
         status: order.status,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+        buyerPhone: order.buyerPhone,
         confirmationStatus: allConfirmed ? 'All Confirmed' : 'Pending',
         createdAt: order.createdAt,
         paymentSubmission: paymentSubmission ? {
@@ -123,6 +133,7 @@ const getBuyerOrders = async (req, res, next) => {
           startDate: order.eventId.startDate,
           venue: order.eventId.venue,
           currency: order.eventId.settings?.currency || 'LKR',
+          mainOrganisers: order.eventId.mainOrganisers || [],
         } : null,
         progress: { confirmed, total },
       };
@@ -139,15 +150,21 @@ const getBuyerOrderDetails = async (req, res, next) => {
     }
     const email = normalizeEmail(req.user.email);
     const userId = req.user?._id?.toString();
-    const order = await Order.findById(req.params.orderId).populate('eventId', 'name startDate venue endDate settings');
+    const order = await Order.findById(req.params.orderId).populate({
+      path: 'eventId',
+      select: 'name startDate venue endDate settings mainOrganisers',
+      populate: { path: 'mainOrganisers', select: 'name email phone' }
+    });
     const isOwnerByEmail = order && normalizeEmail(order.buyerEmail) === email;
     const isOwnerByUserId = order && userId && order.buyerId && order.buyerId.toString() === userId;
 
     if (!order || (!isOwnerByEmail && !isOwnerByUserId)) {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
+
     const tickets = await Ticket.find({ order: order._id })
       .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken photoVerificationStatus photoRejectionReason resubmitToken')
+      .populate('categoryId', 'name')
       .sort({ slotIndex: 1 });
 
     const confirmed = tickets.filter((t) => t.status === 'CONFIRMED').length;
@@ -198,6 +215,7 @@ const getBuyerOrderDetails = async (req, res, next) => {
             endDate: order.eventId.endDate,
             venue: order.eventId.venue,
             currency: order.eventId.settings?.currency || 'LKR',
+            mainOrganisers: order.eventId.mainOrganisers || [],
           } : null,
           progress: { confirmed, total: tickets.length },
         },

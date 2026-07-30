@@ -15,6 +15,17 @@ const listPendingPhotos = async (req, res, next) => {
       filter.event = eventId;
     }
 
+    // Sub-organisers only see attendees in their assigned zones
+    const { normalizeRole, ROLES } = require('../utils/rbac');
+    const role = normalizeRole(req.user.role);
+    if (role === ROLES.SUB_ORGANISER) {
+      const { getAssignedZones } = require('../middleware/verificationScope');
+      const myZones = getAssignedZones(req.user);
+      if (myZones.length > 0) {
+        filter.allowedZones = { $in: myZones };
+      }
+    }
+
     const attendees = await Attendee.find(filter)
       .populate('event', 'name startDate venue')
       .populate('order', 'buyerName buyerEmail buyerPhone orderNumber')
@@ -25,9 +36,6 @@ const listPendingPhotos = async (req, res, next) => {
 };
 
 const verifyPhoto = async (req, res, next) => {
-  if (!hasZoneAccess(req.user, attendee)) {
-    return res.status(403).json({ success:false, message:"Unauthorized zone." });
-  }
   try {
     const { attendeeId, status, reason } = req.body;
     if (!attendeeId || !mongoose.Types.ObjectId.isValid(attendeeId)) {
@@ -40,6 +48,11 @@ const verifyPhoto = async (req, res, next) => {
 
     const attendee = await Attendee.findById(attendeeId).populate('event').populate('order');
     if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+
+    // Zone access check — must happen AFTER attendee is loaded
+    if (!hasZoneAccess(req.user, attendee)) {
+      return res.status(403).json({ success: false, message: 'Unauthorized zone.' });
+    }
 
     if (normalized === 'rejected') {
       const rejectedAttendee = await finalizePhotoRejection(attendee, {

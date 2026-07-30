@@ -103,11 +103,14 @@ const listSubOrganisers = async (req, res, next) => {
 const createSubOrganiser = async (req, res, next) => {
   try {
     const eventId = resolveEventId(req.user);
+    const { canCollectCash, canApproveBankTransfer, ...rest } = req.body;
     const payload = {
-      ...req.body,
+      ...rest,
       role: normalizeRole('SubOrganiser'),
       assignedEvents: [eventId],
       status: 'Active',
+      canCollectCash: canCollectCash || false,
+      canApproveBankTransfer: canApproveBankTransfer || false,
     };
     const user = await User.create(payload);
     
@@ -139,16 +142,35 @@ const createSubOrganiser = async (req, res, next) => {
 
 const updateSubOrganiserStatus = async (req, res, next) => {
   try {
-    const { status } = req.body;
-    if (!['Active', 'Inactive', 'active', 'inactive'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status.' });
-    }
     const eventId = resolveEventId(req.user);
+    const { status, name, email, phone, password, canCollectCash, canApproveBankTransfer } = req.body;
+    
+    // Handle both simple status updates and full user updates
+    const updateData = {};
+    
+    if (status && ['Active', 'Inactive', 'active', 'inactive'].includes(status)) {
+      updateData.status = status === 'active' ? 'Active' : status === 'inactive' ? 'Inactive' : status;
+    }
+    
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (phone) updateData.phone = phone;
+    if (password) updateData.password = password;
+    if (canCollectCash !== undefined) {
+      updateData.canCollectCash = canCollectCash;
+      updateData.permissions = { canCollectCash };
+    }
+    if (canApproveBankTransfer !== undefined) {
+      updateData.canApproveBankTransfer = canApproveBankTransfer;
+      updateData.permissions = { ...updateData.permissions, canApproveBankTransfer };
+    }
+    
     const user = await User.findOneAndUpdate(
       { _id: req.params.id, assignedEvents: eventId },
-      { status: status === 'active' ? 'Active' : status === 'inactive' ? 'Inactive' : status },
+      updateData,
       { new: true }
     ).select('-password');
+    
     if (!user) return res.status(404).json({ success: false, message: 'Sub organiser not found.' });
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }

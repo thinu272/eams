@@ -5,7 +5,7 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { getPayHereHash, createPaymentSession, getActiveGateways } = require('../services/paymentService');
 const { notifyOrderConfirmation } = require('../services/notificationService');
-const { emitDashboardEvent } = require('../utils/socket');
+const { emitDashboardEvent, emitBuyerEvent } = require('../utils/socket');
 
 /**
  * GET /api/payment/config/:eventId
@@ -161,6 +161,15 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
           gateway: 'stripe',
         });
 
+        if (order.buyerId) {
+          emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            status: 'CONFIRMED',
+            paymentStatus: order.paymentStatus,
+          });
+        }
+
         // Send confirmation notification
         const eventDoc = await Event.findById(eventId);
         if (eventDoc) {
@@ -265,6 +274,15 @@ router.post('/notify', async (req, res) => {
           gateway: 'payhere',
         });
 
+        if (order.buyerId) {
+          emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            status: 'CONFIRMED',
+            paymentStatus: order.paymentStatus,
+          });
+        }
+
         const event = await Event.findById(eventId);
         if (event) {
           await notifyOrderConfirmation({
@@ -348,7 +366,7 @@ router.post('/cash-reservation/:orderId/info', cashEntranceController.submitRese
 // Protected: staff confirms cash payment received at venue
 router.post('/cash-confirm/:orderId', authenticate, cashEntranceController.confirmCashPayment);
 
-// Protected: fetch cash orders for organizer dashboard
+// Protected: get cash orders for staff dashboard
 router.get('/cash-orders', authenticate, cashEntranceController.getCashOrders);
 
 module.exports = router;

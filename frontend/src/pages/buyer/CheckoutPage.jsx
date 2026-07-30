@@ -154,7 +154,7 @@ const CheckoutPage = () => {
         localStorage.removeItem('checkoutData');
         
         // Redirect to Cash Entrance Instructions
-        navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);
+        navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);
       } else {
         // For card payment — multi-gateway
         const response = await createOrder(orderData);

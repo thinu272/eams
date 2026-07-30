@@ -87,6 +87,7 @@ import StaffManualSearchPage from './pages/staff/StaffManualSearchPage';
 import StaffZoneManualSearchPage from './pages/staff/StaffZoneManualSearchPage';
 import StaffActivityLogPage from './pages/staff/StaffActivityLogPage';
 import StaffDashboardPage from './pages/staff/StaffDashboardPage';
+import StaffCashCollectionPage from './pages/staff/StaffCashCollectionPage';
 
 // Auditor
 import AuditorDashboard from './pages/auditor/AuditorDashboard';
@@ -218,6 +219,7 @@ const AppRoutes = () => (
     <Route path="/staff/activity" element={<Protected roles={['Staff', 'Volunteer']}><StaffActivityLogPage /></Protected>} />
     <Route path="/staff/verification" element={<Protected roles={['Staff', 'Volunteer']}><SubOrgVerificationPage /></Protected>} />
     <Route path="/staff/upload" element={<Protected roles={['Staff', 'Volunteer']}><BulkUploadPage /></Protected>} />
+    <Route path="/staff/cash-collection" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><StaffCashCollectionPage /></Protected>} />
     <Route path="/entry" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/entry-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/zone-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><ZoneScannerPage /></Protected>} />
