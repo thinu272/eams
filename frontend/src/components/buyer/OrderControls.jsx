@@ -48,7 +48,8 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
                 const isCashReservation = order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance';
                 const isReserved = order.status === 'RESERVED';
                 const isAwaitingPayment = order.paymentStatus === 'awaiting_payment';
-                const shouldDisableActions = isCashReservation && (isReserved || isAwaitingPayment);
+                const isBankPending = order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success';
+                const shouldDisableActions = (isCashReservation && (isReserved || isAwaitingPayment)) || isBankPending;
 
                 return (
                   <tr key={order._id} className="hover:bg-slate-50/50 transition-colors">
@@ -79,16 +80,20 @@ const OrderControls = ({ orders, onDownloadOrder }) => {
                     {/* Status & Progress */}
                     <td className="px-6 py-4">
                       <div className="w-48">
-                        {shouldDisableActions ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-semibold">
-                              <span className="text-orange-600 font-bold">Reservation Pending Payment</span>
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Payment must be completed at the venue before tickets can be issued.
-                            </div>
-                          </div>
-                        ) : (
+                         {shouldDisableActions ? (
+                           <div className="space-y-1">
+                             <div className="flex items-center justify-between text-xs font-semibold">
+                               <span className="text-orange-600 font-bold">
+                                 {isBankPending ? 'On Hold / Verification Pending' : 'Reservation Pending Payment'}
+                               </span>
+                             </div>
+                             <div className="text-xs text-slate-500">
+                               {isBankPending 
+                                 ? 'Payment verification will normally be completed within 48 hours.'
+                                 : 'Payment must be completed at the venue before tickets can be issued.'}
+                             </div>
+                           </div>
+                         ) : (
                           <>
                             <div className="flex items-center justify-between text-xs font-semibold mb-1">
                               <span className={isComplete ? 'text-emerald-600' : 'text-slate-500'}>

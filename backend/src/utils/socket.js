@@ -13,4 +13,9 @@ const emitDashboardEvent = (io, channel, eventId, payload) => {
   }
 };
 
-module.exports = { emitDashboardEvent };
+const emitBuyerEvent = (io, buyerId, channel, payload) => {
+  if (!io || !buyerId) return;
+  io.to(`buyer:${buyerId}`).emit(channel, payload);
+};
+
+module.exports = { emitDashboardEvent, emitBuyerEvent };

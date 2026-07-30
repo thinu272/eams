@@ -4,6 +4,9 @@ import BuyerLayout from '../../components/layout/BuyerLayout';
 import { getBuyerTickets } from '../../api/buyer';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 import {
   CalendarIcon,
   MapPinIcon,
@@ -20,10 +23,24 @@ const PaymentMethodOptions = [
   { value: 'cash_entrance', label: 'Cash' },
 ];
 
+const StatusOptions = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'reserved', label: 'Reserved' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 const BuyerDashboardPage = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterMethod, setFilterMethod] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterEvent, setFilterEvent] = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
@@ -39,12 +56,88 @@ const BuyerDashboardPage = () => {
     fetchOrders();
   }, []);
 
-  // Filter by payment method
+  // Socket connection for real-time updates
+  useEffect(() => {
+    if (!user || !user._id) return;
+
+    const socketUrl = getSocketUrl();
+    const socket = io(socketUrl, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join_buyer', { userId: user._id });
+    });
+
+    socket.on('order_status_changed', (data) => {
+      toast.success(`Order #${data.orderNumber} status updated to ${data.paymentStatus || data.status}!`);
+      fetchOrders();
+    });
+
+    socket.on('payment_approved', (data) => {
+      toast.success(`Payment for order #${data.orderNumber} has been approved!`);
+      fetchOrders();
+    });
+
+    socket.on('payment_submitted', (data) => {
+      toast.info(`Payment submitted for order #${data.orderNumber}`);
+      fetchOrders();
+    });
+
+    return () => {
+      socket.emit('leave_buyer', { userId: user._id });
+      socket.disconnect();
+    };
+  }, [user]);
+
+  // Filter by payment method, status, event, and date range
   const filteredOrders = useMemo(() => {
-    if (filterMethod === 'all') return orders;
-    if (filterMethod === 'cash_entrance') return orders.filter((o) => ['cash_on_entrance', 'cash_at_entrance'].includes(o.paymentMethod));
-    return orders.filter((o) => o.paymentMethod === filterMethod);
-  }, [orders, filterMethod]);
+    let result = orders;
+
+    // Filter by payment method
+    if (filterMethod !== 'all') {
+      if (filterMethod === 'cash_entrance') {
+        result = result.filter((o) => ['cash_on_entrance', 'cash_at_entrance'].includes(o.paymentMethod));
+      } else {
+        result = result.filter((o) => o.paymentMethod === filterMethod);
+      }
+    }
+
+    // Filter by status
+    if (filterStatus !== 'all') {
+      const status = filterStatus.toLowerCase();
+      result = result.filter((o) => {
+        const orderStatus = (o.status || '').toLowerCase();
+        const paymentStatus = (o.paymentStatus || '').toLowerCase();
+        return orderStatus === status || paymentStatus === status;
+      });
+    }
+
+    // Filter by event
+    if (filterEvent !== 'all' && filterEvent) {
+      result = result.filter((o) => {
+        const eventName = o.eventName || o.event?.name || '';
+        return eventName.toLowerCase().includes(filterEvent.toLowerCase());
+      });
+    }
+
+    // Filter by date range
+    if (filterDateFrom) {
+      const fromDate = new Date(filterDateFrom);
+      result = result.filter((o) => new Date(o.createdAt) >= fromDate);
+    }
+
+    if (filterDateTo) {
+      const toDate = new Date(filterDateTo);
+      toDate.setHours(23, 59, 59, 999); // End of the day
+      result = result.filter((o) => new Date(o.createdAt) <= toDate);
+    }
+
+    return result;
+  }, [orders, filterMethod, filterStatus, filterEvent, filterDateFrom, filterDateTo]);
 
   const sortedOrders = useMemo(() => {
     return [...filteredOrders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -92,7 +185,7 @@ const BuyerDashboardPage = () => {
             <h2 className="text-xl font-extrabold text-slate-900">Ticket Progress & Payments</h2>
             <p className="text-xs text-slate-500 font-medium">Track activation status and filter by the payment method you used.</p>
           </div>
-          <div className="flex gap-4 shrink-0 w-full md:w-auto items-center">
+          <div className="flex flex-wrap gap-3 shrink-0 w-full md:w-auto items-center">
             <select
               value={filterMethod}
               onChange={(e) => { setFilterMethod(e.target.value); setCurrentPage(1); }}
@@ -102,6 +195,47 @@ const BuyerDashboardPage = () => {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              {StatusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Search events..."
+              value={filterEvent}
+              onChange={(e) => { setFilterEvent(e.target.value); setCurrentPage(1); }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm w-40"
+            />
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => { setFilterDateFrom(e.target.value); setCurrentPage(1); }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => { setFilterDateTo(e.target.value); setCurrentPage(1); }}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+            <button
+              onClick={() => {
+                setFilterMethod('all');
+                setFilterStatus('all');
+                setFilterEvent('all');
+                setFilterDateFrom('');
+                setFilterDateTo('');
+                setCurrentPage(1);
+              }}
+              className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm hover:bg-slate-100 transition"
+            >
+              Clear
+            </button>
             <Link
               to="/events"
               className="inline-flex items-center gap-2 rounded-2xl bg-brand-main px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-dark transition"
@@ -138,6 +272,17 @@ const BuyerDashboardPage = () => {
                 (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) && order.status === 'RESERVED') ||
                 (order.paymentStatus === 'pending_verification' || order.paymentStatus === 'awaiting_payment');
               
+              // Determine status label based on payment method
+              const getAwaitingPaymentLabel = () => {
+                if (order.paymentMethod === 'bank_transfer') {
+                  return 'On Hold - Payment Verification Pending';
+                }
+                if (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod)) {
+                  return 'Reserved - Awaiting Payment';
+                }
+                return 'Awaiting Payment';
+              };
+              
               return (
                 <div
                   key={order._id}
@@ -160,7 +305,7 @@ const BuyerDashboardPage = () => {
                         )}
                         {isAwaitingPayment && (
                           <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-full">
-                            Reserved - Awaiting Payment
+                            {getAwaitingPaymentLabel()}
                           </span>
                         )}
                       </div>

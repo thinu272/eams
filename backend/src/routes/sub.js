@@ -62,7 +62,21 @@ const getAssignedZoneIds = (user, event) => {
     .map((zone) => zone.id || zone.name)
     .filter(Boolean);
 
-  return Array.from(new Set([...fromResponsibilities, ...fromEventAssignment]));
+  const fromCategoryAssignment = [];
+  if (user?.responsibilities?.categoryIds && user.responsibilities.categoryIds.length > 0) {
+    const userCategoryIds = user.responsibilities.categoryIds.map(String);
+    (event?.categories || []).forEach(category => {
+      if (userCategoryIds.includes(String(category.id))) {
+        (category.allowedZones || []).forEach(zoneId => {
+          if (!fromCategoryAssignment.includes(String(zoneId))) {
+            fromCategoryAssignment.push(String(zoneId));
+          }
+        });
+      }
+    });
+  }
+
+  return Array.from(new Set([...fromResponsibilities, ...fromEventAssignment, ...fromCategoryAssignment]));
 };
 
 const getPermittedCategories = (user, event) => {
@@ -187,7 +201,7 @@ const resolveScopedEvent = async (user, explicitEventId) => {
   return { event };
 };
 
-const buildScopedAttendeeFilter = (eventId, scopeZoneKeys) => {
+const buildScopedAttendeeFilter = (eventId, scopeZoneKeys, permittedCategoryIds = null) => {
   const filter = { event: eventId, isActive: true };
 
   if (scopeZoneKeys && scopeZoneKeys.length > 0) {
@@ -196,6 +210,11 @@ const buildScopedAttendeeFilter = (eventId, scopeZoneKeys) => {
       { allowedZones: { $size: 0 } },
       { allowedZones: { $exists: false } }
     ];
+  }
+
+  // Add category filtering if permitted categories are specified
+  if (permittedCategoryIds && permittedCategoryIds.length > 0) {
+    filter.categoryId = { $in: permittedCategoryIds };
   }
 
   return filter;
@@ -262,7 +281,9 @@ router.get('/dashboard', async (req, res, next) => {
     const assignedZoneIds = getAssignedZoneIds(req.user, event);
     const scopedZones = getScopedZoneObjects(event, assignedZoneIds);
     const scopeZoneKeys = getScopeZoneKeys(event, assignedZoneIds);
-    const attendeeFilter = buildScopedAttendeeFilter(event._id, scopeZoneKeys);
+    const permittedCategories = getPermittedCategories(req.user, event);
+    const permittedCategoryIds = permittedCategories.map(cat => String(cat.id));
+    const attendeeFilter = buildScopedAttendeeFilter(event._id, scopeZoneKeys, permittedCategoryIds);
 
     const [totalAttendees, checkedInCount, pendingVerifications, entryLogs, zoneLogs] = await Promise.all([
       Attendee.countDocuments(attendeeFilter),
@@ -391,8 +412,10 @@ router.get('/attendees', async (req, res, next) => {
 
     const assignedZoneIds = getAssignedZoneIds(req.user, event);
     const scopeZoneKeys = getScopeZoneKeys(event, assignedZoneIds);
+    const permittedCategories = getPermittedCategories(req.user, event);
+    const permittedCategoryIds = permittedCategories.map(cat => String(cat.id));
     const { search, category, status, verificationStatus, page = 1, limit = 20 } = req.query;
-    const filter = buildScopedAttendeeFilter(event._id, scopeZoneKeys);
+    const filter = buildScopedAttendeeFilter(event._id, scopeZoneKeys, permittedCategoryIds);
 
     if (category) filter.categoryId = category;
     if (status) {
@@ -516,6 +539,15 @@ router.post('/verify', async (req, res, next) => {
       const hasOverlap = attendeeZones.length === 0 || attendeeZones.some((zone) => scopeZoneKeys.includes(zone));
       if (!hasOverlap) {
         return res.status(403).json({ success: false, message: 'Attendee is outside your assigned zones.' });
+      }
+    }
+
+    // Check ticket category access for sub-organizers
+    const permittedCategories = getPermittedCategories(req.user, event);
+    const permittedCategoryIds = permittedCategories.map(cat => String(cat.id));
+    if (permittedCategoryIds.length > 0 && attendee.categoryId) {
+      if (!permittedCategoryIds.includes(String(attendee.categoryId))) {
+        return res.status(403).json({ success: false, message: 'You do not have permission to verify attendees in this ticket category.' });
       }
     }
 

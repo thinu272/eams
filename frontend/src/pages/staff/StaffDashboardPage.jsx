@@ -102,6 +102,15 @@ const StaffDashboardPage = () => {
       badge: 'Audit Log',
       theme: 'from-slate-700 to-slate-900 shadow-slate-500/20',
       active: true
+    },
+    {
+      title: 'Cash Collection',
+      desc: 'Verify and collect entrance cash payments for reserved ticket orders.',
+      icon: UserIcon,
+      path: '/staff/cash-collection',
+      badge: 'Cash Desk',
+      theme: 'from-amber-600 to-orange-600 shadow-amber-500/20',
+      active: ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(user?.role) || user?.canCollectCash === true || user?.permissions?.canCollectCash === true
     }
   ];
 

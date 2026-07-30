@@ -88,8 +88,7 @@ const getScopedEvent = async (req) => {
       .populate('mainOrganisers', 'name email phone')
       .populate({
         path: 'subOrganisers',
-        select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
-        populate: { path: 'customRole', select: 'name slug permissions zoneIds' },
+        select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
       })
       .lean();
   }
@@ -104,8 +103,7 @@ const getScopedEvent = async (req) => {
         .populate('mainOrganisers', 'name email phone')
         .populate({
           path: 'subOrganisers',
-          select: 'name email phone status permissions assignedEvents assignedGates assignedZones customRole responsibilities',
-          populate: { path: 'customRole', select: 'name slug permissions zoneIds' },
+          select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
         })
         .lean();
     }
@@ -359,13 +357,11 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
       Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).skip(notificationsSkip).limit(limit).lean(),
       Notification.countDocuments({ 'metadata.eventId': eventId }),
       getTicketCategorySummary(req.scopedEvent),
-      Role.find({ event: eventId }).sort({ createdAt: -1 }).lean(),
       User.find({
         assignedEvents: toObjectId(eventId),
-        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] },
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
       })
-        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
-        .populate('customRole')
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy')
         .populate('createdBy', 'name email role')
         .sort({ role: 1, createdAt: -1 })
         .skip(teamSkip)
@@ -373,7 +369,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
         .lean(),
       User.countDocuments({
         assignedEvents: toObjectId(eventId),
-        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] },
+        role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
       }),
       Ticket.aggregate([
         { $match: { event: toObjectId(eventId), status: { $ne: 'CANCELLED' } } },
@@ -454,7 +450,6 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
         teamPage,
         teamPages: Math.ceil(teamTotal / limit) || 1,
         teamTotal,
-        customRoles,
         verificationQueue: pendingVerificationRows,
         verificationPage,
         verificationPages: Math.ceil(pendingVerificationTotal / limit) || 1,
@@ -1129,32 +1124,18 @@ router.get('/sub-organisers', requireEventAccess, requireScopedEvent, async (req
     
     const query = {
       assignedEvents: req.scopedEvent._id,
-      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE] }
+      role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] }
     };
 
     if (isMainOrganiser) {
       // Main Organisers see everyone assigned to this event
       users = await User.find(query)
-        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
-        .populate('customRole')
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy')
         .lean();
     } else {
-      // Sub-Organisers see:
-      // 1. team members they created for this event
-      // 2. existing members assigned to the event that share their zone scope
-      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-
-      if (myZoneIds.length > 0) {
-        query.$or = [
-          { createdBy: req.user._id },
-          { 'responsibilities.zoneIds': { $in: myZoneIds } }
-        ];
-      }
-      // If global (no zones), they see all members assigned to the event with these roles
-
+      // Sub-Organisers see all team members assigned to the same event
       users = await User.find(query)
-        .select('name email phone role status permissions assignedEvents assignedGates assignedZones customRole responsibilities createdBy')
-        .populate('customRole')
+        .select('name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy')
         .lean();
     }
       
@@ -1172,7 +1153,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
 
       const targetRole = normalizeRole(req.body.role || ROLES.SUB_ORGANISER);
       const requesterRole = normalizeRole(req.user.role);
-      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE].includes(targetRole);
+      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR].includes(targetRole);
 
     // 1. Role level check: Cannot create a user with equal or higher role
     if (ROLE_LEVELS[targetRole] >= ROLE_LEVELS[requesterRole]) {
@@ -1291,14 +1272,15 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
           assignedEvents: [event._id],
           assignedGates: Array.from(new Set(requestedAssignedGates)),
           assignedZones: Array.from(new Set(requestedAssignedZones)),
+          canCollectCash: !!req.body.canCollectCash,
           permissions: {
           canAddAttendees: !!req.body.permissions?.canAddAttendees,
           canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
           canInviteAttendees: !!req.body.permissions?.canInviteAttendees,
           canBulkUpload: !!req.body.permissions?.canBulkUpload,
           canEntryAccess: !!req.body.permissions?.canEntryAccess,
+          canCollectCash: !!req.body.canCollectCash,
         },
-        customRole: req.body.customRole || undefined,
         responsibilities: {
           zoneIds: Array.from(new Set([...(req.body.responsibilities?.zoneIds || []), ...(requestedAssignedZones || [])])),
           verificationAccess: !!req.body.responsibilities?.verificationAccess,
@@ -1310,7 +1292,7 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
 
     // Add to event personnel collections
     const userIdStr = String(user._id);
-    if (targetRole === ROLES.SUB_ORGANISER || targetRole === ROLES.NONE) {
+    if (targetRole === ROLES.SUB_ORGANISER) {
       event.subOrganisers = Array.from(new Set([...(event.subOrganisers || []).map(String), userIdStr])).map(toObjectId);
     } else if (targetRole === ROLES.STAFF) {
       event.staff = Array.from(new Set([...(event.staff || []).map(String), userIdStr])).map(toObjectId);
@@ -1351,18 +1333,6 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     if (!user) return res.status(404).json({ success: false, message: 'Team member not found.' });
 
     const requesterRole = normalizeRole(req.user.role);
-    
-    // Authorization check: Sub-organisers can only edit users they created or those in their zones
-    if (requesterRole === ROLES.SUB_ORGANISER) {
-      const createdByMe = String(user.createdBy) === String(req.user._id);
-      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-      const userZoneIds = (user.responsibilities?.zoneIds || []).map(String);
-      const inMyZone = myZoneIds.length > 0 && userZoneIds.some(id => myZoneIds.includes(id));
-
-      if (!createdByMe && !inMyZone) {
-        return res.status(403).json({ success: false, message: 'You can only manage team members you created or who are assigned to your zones.' });
-      }
-    }
 
     // Role level check if role is being changed
       if (req.body.role) {
@@ -1373,7 +1343,7 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
         user.role = targetRole;
       }
       const effectiveRole = normalizeRole(req.body.role || user.role);
-      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR, ROLES.NONE].includes(effectiveRole);
+      const canHaveCheckpoints = [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR].includes(effectiveRole);
 
     const eventId = req.body.eventId || req.query.eventId || req.params.eventId || (user.assignedEvents && user.assignedEvents[0]) || (req.user.assignedEvents && req.user.assignedEvents[0]);
     const event = eventId && mongoose.Types.ObjectId.isValid(eventId) ? await Event.findById(eventId) : null;
@@ -1396,9 +1366,17 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     user.name = req.body.name ?? user.name;
     user.phone = req.body.phone ?? user.phone;
     user.status = req.body.status ?? user.status;
+    
+    // Handle canCollectCash permission specifically
+    if (req.body.canCollectCash !== undefined) {
+      user.canCollectCash = req.body.canCollectCash;
+    }
+    
     user.permissions = {
       ...(user.permissions || {}),
       ...(req.body.permissions || {}),
+      // Ensure canCollectCash is synced in permissions
+      ...(req.body.canCollectCash !== undefined ? { canCollectCash: req.body.canCollectCash } : {}),
     };
     user.assignedGates = canHaveCheckpoints && Array.isArray(req.body.assignedGates)
       ? Array.from(new Set(req.body.assignedGates.map(String).filter(Boolean)))
@@ -1406,7 +1384,6 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     user.assignedZones = canHaveCheckpoints && Array.isArray(req.body.assignedZones)
       ? Array.from(new Set(req.body.assignedZones.map(String).filter(Boolean)))
       : [];
-    user.customRole = req.body.customRole ?? user.customRole;
     user.responsibilities = {
       ...(user.responsibilities?.toObject ? user.responsibilities.toObject() : user.responsibilities || {}),
       ...(req.body.responsibilities || {}),
@@ -1427,7 +1404,7 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
       event.volunteers = (event.volunteers || []).filter(id => String(id) !== userIdStr);
       event.auditors = (event.auditors || []).filter(id => String(id) !== userIdStr);
 
-      if (targetRole === ROLES.SUB_ORGANISER || targetRole === ROLES.NONE) {
+      if (targetRole === ROLES.SUB_ORGANISER) {
         event.subOrganisers.push(toObjectId(userIdStr));
       } else if (targetRole === ROLES.STAFF) {
         event.staff.push(toObjectId(userIdStr));
@@ -1440,7 +1417,13 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     }
 
     await user.save();
-    res.json({ success: true, data: { user }, message: 'Sub-organiser updated.' });
+    
+    // Return the updated user with all necessary fields for frontend sync
+    const updatedUser = await User.findById(user._id)
+      .select('name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy')
+      .lean();
+    
+    res.json({ success: true, data: { user: updatedUser }, message: 'Sub-organiser updated.' });
 
     // Create notification for team member update
     await buildActivityNotification({
@@ -1847,110 +1830,6 @@ router.post('/notifications/:id/resend', requireEventAccess, async (req, res, ne
     });
 
     res.json({ success: true, message: 'Notification re-queued.' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/custom-roles', requireEventAccess, async (req, res, next) => {
-  try {
-    const eventId = resolveEventId(req);
-    const roles = await Role.find({ event: eventId }).sort({ createdAt: -1 });
-    res.json({ success: true, data: { roles } });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/custom-roles', requireEventAccess, async (req, res, next) => {
-  try {
-    const eventId = resolveEventId(req);
-    const role = await Role.create({
-      name: req.body.name,
-      slug: slugify(req.body.name || req.body.slug),
-      description: req.body.description || '',
-      event: eventId,
-      permissions: {
-        canViewDashboard: !!req.body.permissions?.canViewDashboard,
-        canManageEvents: !!req.body.permissions?.canManageEvents,
-        canManageTickets: !!req.body.permissions?.canManageTickets,
-        canViewAttendees: !!req.body.permissions?.canViewAttendees,
-        canEditAttendees: !!req.body.permissions?.canEditAttendees,
-        canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
-        canScanEntry: !!req.body.permissions?.canScanEntry,
-        canManageZones: !!req.body.permissions?.canManageZones,
-        canInviteAttendees: !!req.body.permissions?.canInviteAttendees,
-        canBulkUpload: !!req.body.permissions?.canBulkUpload,
-        canViewReports: !!req.body.permissions?.canViewReports,
-        canViewLogs: !!req.body.permissions?.canViewLogs,
-        canManageSponsors: !!req.body.permissions?.canManageSponsors,
-        canViewTransactions: !!req.body.permissions?.canViewTransactions,
-        canManageSettings: !!req.body.permissions?.canManageSettings,
-      },
-      zoneIds: req.body.zoneIds || [],
-      createdBy: req.user._id,
-    });
-    res.status(201).json({ success: true, data: { role }, message: 'Custom role created.' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.put('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
-  try {
-    const role = await Role.findById(req.params.id);
-    if (!role) return res.status(404).json({ success: false, message: 'Role not found.' });
-    role.name = req.body.name ?? role.name;
-    role.slug = req.body.slug ? slugify(req.body.slug) : role.slug;
-    role.description = req.body.description ?? role.description;
-    
-    // Explicitly update all permissions safely
-    const reqPerms = req.body.permissions || {};
-    const existingPerms = role.permissions?.toObject ? role.permissions.toObject() : role.permissions || {};
-    
-    role.permissions = {
-      canViewDashboard: reqPerms.canViewDashboard !== undefined ? !!reqPerms.canViewDashboard : !!existingPerms.canViewDashboard,
-      canManageEvents: reqPerms.canManageEvents !== undefined ? !!reqPerms.canManageEvents : !!existingPerms.canManageEvents,
-      canManageTickets: reqPerms.canManageTickets !== undefined ? !!reqPerms.canManageTickets : !!existingPerms.canManageTickets,
-      canViewAttendees: reqPerms.canViewAttendees !== undefined ? !!reqPerms.canViewAttendees : !!existingPerms.canViewAttendees,
-      canEditAttendees: reqPerms.canEditAttendees !== undefined ? !!reqPerms.canEditAttendees : !!existingPerms.canEditAttendees,
-      canVerifyPhotos: reqPerms.canVerifyPhotos !== undefined ? !!reqPerms.canVerifyPhotos : !!existingPerms.canVerifyPhotos,
-      canScanEntry: reqPerms.canScanEntry !== undefined ? !!reqPerms.canScanEntry : !!existingPerms.canScanEntry,
-      canManageZones: reqPerms.canManageZones !== undefined ? !!reqPerms.canManageZones : !!existingPerms.canManageZones,
-      canInviteAttendees: reqPerms.canInviteAttendees !== undefined ? !!reqPerms.canInviteAttendees : !!existingPerms.canInviteAttendees,
-      canBulkUpload: reqPerms.canBulkUpload !== undefined ? !!reqPerms.canBulkUpload : !!existingPerms.canBulkUpload,
-      canViewReports: reqPerms.canViewReports !== undefined ? !!reqPerms.canViewReports : !!existingPerms.canViewReports,
-      canViewLogs: reqPerms.canViewLogs !== undefined ? !!reqPerms.canViewLogs : !!existingPerms.canViewLogs,
-      canManageSponsors: reqPerms.canManageSponsors !== undefined ? !!reqPerms.canManageSponsors : !!existingPerms.canManageSponsors,
-      canViewTransactions: reqPerms.canViewTransactions !== undefined ? !!reqPerms.canViewTransactions : !!existingPerms.canViewTransactions,
-      canManageSettings: reqPerms.canManageSettings !== undefined ? !!reqPerms.canManageSettings : !!existingPerms.canManageSettings,
-    };
-    
-    role.zoneIds = req.body.zoneIds || role.zoneIds;
-    await role.save();
-    res.json({ success: true, data: { role }, message: 'Custom role updated.' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/custom-roles/:id', requireEventAccess, async (req, res, next) => {
-  try {
-    const roleId = req.params.id;
-    const role = await Role.findById(roleId);
-    if (!role) return res.status(404).json({ success: false, message: 'Role not found.' });
-
-    // Check if any sub-organisers are currently assigned this custom role
-    const assignedUser = await User.findOne({ customRole: roleId });
-    if (assignedUser) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete custom role because it is currently assigned to ${assignedUser.name || 'a team member'}.`,
-      });
-    }
-
-    await Role.findByIdAndDelete(roleId);
-    res.json({ success: true, message: 'Custom role deleted successfully.' });
   } catch (err) {
     next(err);
   }

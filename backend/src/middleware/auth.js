@@ -15,7 +15,7 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Not authorised. No token.' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password').populate('customRole');
+    const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
     }
@@ -24,20 +24,6 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
     }
 
-    if (user.customRole) {
-      const customPerms = user.customRole.permissions?.toObject ? user.customRole.permissions.toObject() : user.customRole.permissions;
-      user.permissions = {
-        ...(customPerms || {}),
-        ...(user.permissions || {}),
-      };
-      if (user.customRole.zoneIds && user.customRole.zoneIds.length > 0) {
-        if (!user.responsibilities) user.responsibilities = {};
-        user.responsibilities.zoneIds = Array.from(new Set([
-          ...(user.responsibilities.zoneIds || []).map(String),
-          ...user.customRole.zoneIds.map(String)
-        ]));
-      }
-    }
     
     // Normalize role for robust RBAC
     user.rbacRole = getCanonicalRole(user.role);

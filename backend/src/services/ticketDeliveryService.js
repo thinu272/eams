@@ -325,7 +325,7 @@ const sendBuyerPurchaseSummaryEmail = async ({ order: orderInput, event: eventIn
     return { delivered: false, skipped: true, reason: 'event_not_found' };
   }
 
-  if (order.paymentStatus !== 'success') {
+  if (order.paymentStatus !== 'success' && order.paymentStatus !== 'paid') {
     return { delivered: false, skipped: true, reason: 'payment_not_successful' };
   }
 

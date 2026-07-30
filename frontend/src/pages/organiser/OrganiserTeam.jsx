@@ -9,7 +9,9 @@ import { TrashIcon, PencilIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/
 const OrganiserTeam = () => {
   const [users, setUsers] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [editMode, setEditMode] = useState(false);
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', canCollectCash: false });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,13 +34,58 @@ const OrganiserTeam = () => {
       await createSubOrganiser(form);
       toast.success('Sub organiser invited successfully');
       setOpen(false);
-      setForm({ name: '', email: '', phone: '', password: '' });
+      setForm({ name: '', email: '', phone: '', password: '', canCollectCash: false });
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Invite failed');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEdit = (user) => {
+    setEditMode(true);
+    setEditingUserId(user._id);
+    setForm({
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      password: '',
+      canCollectCash: user.canCollectCash || false,
+    });
+    setOpen(true);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!form.name || !form.email || !form.phone) {
+      return toast.error('Please fill in all required fields');
+    }
+    setSubmitting(true);
+    try {
+      const updateData = { name: form.name, email: form.email, phone: form.phone, canCollectCash: form.canCollectCash };
+      if (form.password) {
+        updateData.password = form.password;
+      }
+      await updateSubOrganiserStatus(editingUserId, updateData);
+      toast.success('Team member updated successfully');
+      setOpen(false);
+      setEditMode(false);
+      setEditingUserId(null);
+      setForm({ name: '', email: '', phone: '', password: '', canCollectCash: false });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Update failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setOpen(false);
+    setEditMode(false);
+    setEditingUserId(null);
+    setForm({ name: '', email: '', phone: '', password: '', canCollectCash: false });
   };
 
   const toggleStatus = async (id, currentStatus) => {
@@ -48,6 +95,16 @@ const OrganiserTeam = () => {
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Status update failed');
+    }
+  };
+
+  const toggleCashCollection = async (id, currentCanCollectCash) => {
+    try {
+      await updateSubOrganiserStatus(id, { canCollectCash: !currentCanCollectCash });
+      toast.success('Cash collection permission updated successfully');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Permission update failed');
     }
   };
 
@@ -98,6 +155,7 @@ const OrganiserTeam = () => {
                     <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
                     <th className="px-6 py-4 text-left font-semibold text-slate-900">Email</th>
                     <th className="px-6 py-4 text-left font-semibold text-slate-900">Phone</th>
+                    <th className="px-6 py-4 text-left font-semibold text-slate-900">Cash Collection</th>
                     <th className="px-6 py-4 text-left font-semibold text-slate-900">Status</th>
                     <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                   </tr>
@@ -113,6 +171,20 @@ const OrganiserTeam = () => {
                       </td>
                       <td className="px-6 py-4 text-slate-700">{u.email}</td>
                       <td className="px-6 py-4 text-slate-700">{u.phone || '—'}</td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => toggleCashCollection(u._id, u.canCollectCash || u.permissions?.canCollectCash)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            (u.canCollectCash || u.permissions?.canCollectCash) ? 'bg-green-600' : 'bg-slate-300'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              (u.canCollectCash || u.permissions?.canCollectCash) ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           {u.status === 'Active' ? (
@@ -134,6 +206,15 @@ const OrganiserTeam = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleEdit(u)}
+                            className="text-xs"
+                          >
+                            <PencilIcon className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
                           <Button 
                             size="sm" 
                             variant="outline"
@@ -166,14 +247,11 @@ const OrganiserTeam = () => {
         </div>
       </div>
 
-      {/* Add Team Member Modal */}
+      {/* Add/Edit Team Member Modal */}
       <Modal 
         open={open} 
-        onClose={() => {
-          setOpen(false);
-          setForm({ name: '', email: '', phone: '', password: '' });
-        }} 
-        title="Add New Team Member"
+        onClose={handleCloseModal}
+        title={editMode ? "Edit Team Member" : "Add New Team Member"}
         size="lg"
       >
         <div className="mb-6">
@@ -184,13 +262,13 @@ const OrganiserTeam = () => {
               </svg>
             </div>
             <div>
-              <h3 className="font-semibold text-blue-900">Add Team Member</h3>
-              <p className="text-sm text-blue-700">Create a new sub-organiser account with access to your event</p>
+              <h3 className="font-semibold text-blue-900">{editMode ? "Edit Team Member" : "Add Team Member"}</h3>
+              <p className="text-sm text-blue-700">{editMode ? "Update team member details and permissions" : "Create a new sub-organiser account with access to your event"}</p>
             </div>
           </div>
         </div>
 
-        <form onSubmit={handleCreate} className="space-y-6">
+        <form onSubmit={editMode ? handleUpdate : handleCreate} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -236,17 +314,44 @@ const OrganiserTeam = () => {
 
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Temporary Password *
+                {editMode ? 'New Password (leave blank to keep current)' : 'Temporary Password *'}
               </label>
               <input 
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
-                placeholder="Create a secure temporary password"
+                placeholder={editMode ? "Enter new password or leave blank" : "Create a secure temporary password"}
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                required
+                required={!editMode}
               />
-              <p className="text-xs text-slate-500 mt-1">Member will be asked to change this on first login</p>
+              <p className="text-xs text-slate-500 mt-1">{editMode ? "Only fill if you want to change the password" : "Member will be asked to change this on first login"}</p>
+            </div>
+          </div>
+
+          {/* Payment Permissions Section */}
+          <div className="border-t pt-6">
+            <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h1m4 0h1M3 7h18" />
+              </svg>
+              Payment Permissions
+            </h4>
+            
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={form.canCollectCash}
+                  onChange={(e) => setForm((f) => ({ ...f, canCollectCash: e.target.checked }))}
+                  className="mt-1 w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="font-semibold text-slate-900">Collect Cash Payments</p>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Allows this team member to view assigned Cash at Entrance reservations, collect payments at the event venue, and confirm received cash payments.
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -264,7 +369,7 @@ const OrganiserTeam = () => {
               className="flex-1 py-3"
               onClick={() => {
                 setOpen(false);
-                setForm({ name: '', email: '', phone: '', password: '' });
+                setForm({ name: '', email: '', phone: '', password: '', canCollectCash: false });
               }}
             >
               Cancel

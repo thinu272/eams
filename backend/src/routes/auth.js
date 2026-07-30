@@ -268,6 +268,40 @@ router.post('/register', [
   } catch (err) { next(err); }
 });
 
+// POST /api/auth/resend-verification
+router.post('/resend-verification', [
+  body('email').isEmail().withMessage('Valid email required'),
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.json({ success: true, message: 'Verification email resent if account exists.' });
+    }
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: 'This account is already verified. Please log in.' });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+
+    user.emailVerificationToken = hashedToken;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const verifyUrl = `${frontendUrl}/verify-email/${verificationToken}`;
+
+    await notificationService.notifyVerification(user, verifyUrl);
+
+    res.json({ success: true, message: 'Verification email resent successfully.' });
+  } catch (err) { next(err); }
+});
+
 // GET /api/auth/verify-email/:token
 router.get('/verify-email/:token', async (req, res, next) => {
   try {

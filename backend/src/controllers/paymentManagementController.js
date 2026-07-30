@@ -7,7 +7,7 @@ const Attendee = require('../models/Attendee');
 const Notification = require('../models/Notification');
 const { logActivity } = require('../utils/logger');
 const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
-const { emitDashboardEvent } = require('../utils/socket');
+const { emitDashboardEvent, emitBuyerEvent } = require('../utils/socket');
 const { sendBankTransferPaymentApproved, sendBankTransferPaymentRejected, sendBankTransferMoreInfoRequired } = require('../utils/email');
 const { sendBuyerPurchaseSummaryEmail } = require('../services/ticketDeliveryService');
 const { sendSMS } = require('../services/smsService');
@@ -549,6 +549,15 @@ const approvePayment = async (req, res, next) => {
       submissionId: paymentSubmission?._id,
       amount: paymentSubmission?.amountPaid || order.totalAmount,
     });
+    if (order.buyerId) {
+      emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        action: 'approved',
+      });
+    }
     
     res.json({ 
       success: true, 
@@ -732,6 +741,16 @@ const rejectPayment = async (req, res, next) => {
       amount: paymentSubmission?.amountPaid || order.totalAmount,
       rejectionReason,
     });
+    if (order.buyerId) {
+      emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        action: 'rejected',
+        reason: rejectionReason,
+      });
+    }
     
     res.json({ 
       success: true, 
@@ -889,6 +908,18 @@ const requestMoreInfo = async (req, res, next) => {
       },
     });
     
+    const io = req.app.get('io');
+    if (order.buyerId) {
+      emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        action: 'needs_info',
+        message: message?.trim(),
+      });
+    }
+    
     res.json({ 
       success: true, 
       message: 'Information request sent successfully.',
@@ -960,7 +991,7 @@ const getPaymentStatistics = async (req, res, next) => {
            return res.json({ success: true, data: { overview: {}, recentPayments: [] } });
         }
         
-        filter['tickets.categoryName'] = { $in: assignedCategoryNames };
+        // Don't apply filter at Order level - will handle in aggregation pipeline
       }
     }
     
@@ -993,6 +1024,18 @@ const getPaymentStatistics = async (req, res, next) => {
       });
     }
 
+    // For sub-organizers, we need to count orders that have at least one ticket in their assigned categories
+    let countFilter = filter;
+    if (role === 'sub_organiser' || role === 'suborganiser') {
+      // For counting, we need to find orders that have tickets in assigned categories
+      const ordersWithAssignedCategories = await Order.find({
+        ...filter,
+        'tickets.categoryName': { $in: assignedCategoryNames }
+      }).select('_id');
+      const orderIds = ordersWithAssignedCategories.map(o => o._id);
+      countFilter = { _id: { $in: orderIds } };
+    }
+
     const [
       totalPayments,
       approvedPayments,
@@ -1006,22 +1049,22 @@ const getPaymentStatistics = async (req, res, next) => {
       cashReservations,
       cashCollectedData,
     ] = await Promise.all([
-      Order.countDocuments(filter),
-      Order.countDocuments({ ...filter, paymentStatus: { $in: ['paid', 'success'] } }),
-      Order.countDocuments({ ...filter, paymentStatus: { $in: ['pending', 'pending_verification', 'awaiting_payment'] } }),
-      Order.countDocuments({ ...filter, paymentStatus: { $in: ['rejected'] } }),
+      Order.countDocuments(countFilter),
+      Order.countDocuments({ ...countFilter, paymentStatus: { $in: ['paid', 'success'] } }),
+      Order.countDocuments({ ...countFilter, paymentStatus: { $in: ['pending', 'pending_verification', 'awaiting_payment'] } }),
+      Order.countDocuments({ ...countFilter, paymentStatus: { $in: ['rejected'] } }),
       Order.aggregate(revenuePipeline),
       Order.aggregate(pendingRevenuePipeline),
       Order.aggregate(totalRevenuePipeline),
-      Order.countDocuments({ ...filter, paymentMethod: 'bank_transfer', paymentStatus: { $in: ['pending', 'pending_verification'] } }),
-      Order.countDocuments({ ...filter, paymentMethod: 'bank_transfer', paymentStatus: { $in: ['paid', 'success'] } }),
-      Order.countDocuments({ ...filter, paymentMethod: { $in: ['cash_at_entrance', 'cash_on_entrance'] }, paymentStatus: { $in: ['pending', 'awaiting_payment', 'reserved'] } }),
+      Order.countDocuments({ ...countFilter, paymentMethod: 'bank_transfer', paymentStatus: { $in: ['pending', 'pending_verification'] } }),
+      Order.countDocuments({ ...countFilter, paymentMethod: 'bank_transfer', paymentStatus: { $in: ['paid', 'success'] } }),
+      Order.countDocuments({ ...countFilter, paymentMethod: { $in: ['cash_at_entrance', 'cash_on_entrance'] }, paymentStatus: { $in: ['pending', 'awaiting_payment', 'reserved'] } }),
       Order.aggregate(cashCollectedPipeline)
     ]);
     
     // Needs info is tracked in PaymentSubmission
     let needsInfoPayments = 0;
-    const orderIdsResult = await Order.find(filter).select('_id');
+    const orderIdsResult = await Order.find(countFilter).select('_id');
     const orderIds = orderIdsResult.map(o => o._id);
     if (orderIds.length > 0) {
        needsInfoPayments = await PaymentSubmission.countDocuments({ 
@@ -1030,7 +1073,7 @@ const getPaymentStatistics = async (req, res, next) => {
        });
     }
 
-    const recentOrders = await Order.find(filter)
+    const recentOrders = await Order.find(countFilter)
       .sort({ createdAt: -1 })
       .limit(10)
       .lean();

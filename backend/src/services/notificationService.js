@@ -604,9 +604,12 @@ const sendCashPaymentConfirmedEmail = async (buyer, order) => {
       <strong>Amount Paid:</strong> ${order.totalAmount}<br/>
       <strong>Status:</strong> Confirmed
     </div>
-    <p>Your QR codes are now active. You can download your tickets from your dashboard.</p>
+    <p>Your QR codes are now active. You can now complete your attendee details and download your tickets from your dashboard.</p>
     <div style="text-align: center; margin: 30px 0;">
       <a href="${frontendUrl}/order/${order.confirmationToken}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View Order Details</a>
+    </div>
+    <div style="text-align: center; margin: 15px 0;">
+      <a href="${frontendUrl}/buyer/tickets" style="background-color: #10b981; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Complete Your Pass</a>
     </div>
   `, 'Payment Confirmed');
 

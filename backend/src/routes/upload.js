@@ -5,6 +5,8 @@ const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { deleteImageFromS3 } = require('../services/s3Service');
 const User = require('../models/User');
 const Attendee = require('../models/Attendee');
+const path = require('path');
+const fs = require('fs');
 
 /**
  * POST /api/upload/profile-photo
@@ -107,6 +109,80 @@ router.post('/system-asset', protect, upload.single('photo'), handleS3Upload('sy
   } catch (error) {
     console.error('SYSTEM ASSET UPLOAD ERROR:', error);
     res.status(500).json({ success: false, message: 'Server error during upload' });
+  }
+});
+
+/**
+ * GET /api/upload/file
+ * Generic file serving endpoint for uploaded files (receipts, etc.)
+ * Requires authentication and security checks
+ */
+router.get('/file', protect, async (req, res) => {
+  try {
+    const { path: filePath } = req.query;
+    
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    console.log('Requested file path:', filePath);
+    
+    // Handle both absolute and relative paths
+    let resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+    
+    console.log('Resolved path:', resolvedPath);
+    console.log('Uploads directory:', path.resolve(process.cwd(), 'uploads'));
+    
+    // Security check: ensure file is within uploads directory
+    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    // Normalize paths for comparison (case-insensitive for Windows)
+    const normalizedResolved = path.normalize(resolvedPath).toLowerCase();
+    const normalizedUploads = path.normalize(uploadsDir).toLowerCase();
+    
+    console.log('Normalized resolved path:', normalizedResolved);
+    console.log('Normalized uploads directory:', normalizedUploads);
+    
+    if (!normalizedResolved.startsWith(normalizedUploads)) {
+      console.error('Security check failed - path outside uploads directory');
+      console.error('Resolved path does not start with uploads directory');
+      return res.status(403).json({ success: false, message: 'Invalid file path' });
+    }
+    
+    if (!fs.existsSync(resolvedPath)) {
+      console.error('File not found:', resolvedPath);
+      return res.status(404).json({ success: false, message: 'File not found' });
+    }
+    
+    // Determine content type based on file extension
+    const ext = path.extname(resolvedPath).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    if (ext === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (ext === '.jpg' || ext === '.jpeg') {
+      contentType = 'image/jpeg';
+    } else if (ext === '.png') {
+      contentType = 'image/png';
+    } else if (ext === '.gif') {
+      contentType = 'image/gif';
+    }
+    
+    // Send file
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(resolvedPath)}"`);
+    
+    const fileStream = fs.createReadStream(resolvedPath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (err) => {
+      console.error('Error streaming file:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Error serving file' });
+      }
+    });
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

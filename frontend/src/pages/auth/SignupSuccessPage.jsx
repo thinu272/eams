@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getDashboardPathForRole } from '../../config/roleNavigation';
+import api from '../../api/client';
 import toast from 'react-hot-toast';
 import {
   EnvelopeIcon,
@@ -20,8 +21,14 @@ const SignupSuccessPage = () => {
   }, [user, navigate]);
 
   const handleResendVerification = async () => {
-    // This would call an API to resend verification email
-    toast.success('Verification email resent successfully!');
+    const email = prompt('Please enter your email to resend verification:');
+    if (!email) return;
+    try {
+      await api.post('/auth/resend-verification', { email });
+      toast.success('Verification email resent successfully!');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resend verification email');
+    }
   };
 
   return (

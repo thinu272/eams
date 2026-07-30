@@ -50,6 +50,7 @@ exports.createCashReservation = async (req, res) => {
 
     const order = new Order({
       eventId,
+      buyerId: req.user?._id,
       buyerName,
       buyerEmail,
       buyerPhone,
@@ -149,6 +150,17 @@ exports.submitReservationInfo = async (req, res) => {
 exports.confirmCashPayment = async (req, res) => {
   try {
     const { orderId } = req.params;
+
+    // RBAC check: allow higher roles or staff with explicit canCollectCash permission
+    const { normalizeRole, ROLES } = require('../utils/rbac');
+    const role = normalizeRole(req.user.role);
+    const isHigherRole = [ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(role);
+    const hasExplicitPermission = req.user.canCollectCash === true || (req.user.permissions && req.user.permissions.canCollectCash === true);
+
+    if (!isHigherRole && !hasExplicitPermission) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to collect cash or confirm payments.' });
+    }
+
     const order = await Order.findById(orderId).populate('eventId');
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.paymentMethod !== 'cash_at_entrance') {
@@ -171,11 +183,47 @@ exports.confirmCashPayment = async (req, res) => {
 
     // Notifications
     try { await sendCashPaymentConfirmedEmail({ email: order.buyerEmail, name: order.buyerName }, order); } catch (e) { console.error('Cash payment confirmed email error', e); }
+    
+    // SMS notification
+    if (order.buyerPhone) {
+      try {
+        const { sendSMS } = require('../services/smsService');
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        await sendSMS(
+          order.buyerPhone,
+          `ENTRYNEX: Your cash payment for Order ${order.orderNumber} has been received and your order is now confirmed. Complete your pass here: ${frontendUrl}/buyer/orders`
+        );
+      } catch (smsErr) {
+        console.error('Error sending cash payment confirmation SMS:', smsErr);
+      }
+    }
 
     // Log activity and emit dashboard event
-    await logActivity({ req, action: 'cash_payment_confirm', eventId: order.eventId?._id, details: { orderId: order._id } });
+    await logActivity({ 
+      req, 
+      action: 'cash_payment_confirm', 
+      eventId: order.eventId?._id, 
+      details: { 
+        orderId: order._id,
+        confirmedBy: req.user._id,
+        collectorName: req.user.name,
+      } 
+    });
+
     const io = req.app.get('io');
     emitDashboardEvent(io, 'cash_payment_confirmed', order.eventId?._id, { orderId: order._id });
+
+    // Emit socket event to buyer room
+    const { emitBuyerEvent } = require('../utils/socket');
+    if (order.buyerId) {
+      emitBuyerEvent(io, String(order.buyerId), 'order_status_changed', {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        action: 'approved',
+      });
+    }
 
     res.json({ success: true, message: 'Cash payment confirmed' });
   } catch (err) {
@@ -191,6 +239,24 @@ exports.getCashOrders = async (req, res) => {
     if (!eventId) {
       return res.status(400).json({ success: false, message: 'eventId is required' });
     }
+
+    // Role-based validation
+    const { normalizeRole, ROLES } = require('../utils/rbac');
+    const role = normalizeRole(req.user.role);
+    const isHigherRole = [ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER, ROLES.SUB_ORGANISER].includes(role);
+    const hasExplicitPermission = req.user.canCollectCash === true || (req.user.permissions && req.user.permissions.canCollectCash === true);
+
+    if (!isHigherRole && !hasExplicitPermission) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to view cash orders.' });
+    }
+
+    // Verify staff is assigned to the event
+    if (!isHigherRole) {
+      const isAssigned = (req.user.assignedEvents || []).map(String).includes(String(eventId));
+      if (!isAssigned) {
+        return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
+      }
+    }
     
     // Status can be 'pending' (RESERVED) or 'approved' (CONFIRMED)
     let orderStatus = {};
@@ -198,11 +264,36 @@ exports.getCashOrders = async (req, res) => {
     else if (status === 'approved') orderStatus = { status: 'CONFIRMED' };
     else if (status === 'rejected') orderStatus = { status: 'CANCELLED' };
     
-    const orders = await Order.find({
+    let query = {
       eventId,
       paymentMethod: { $in: ['cash_on_entrance', 'cash_at_entrance'] },
       ...orderStatus
-    }).sort({ createdAt: -1 });
+    };
+
+    // Filter by staff allowed zones if they are scoped to particular zones/ticket categories
+    let orders;
+    if (!isHigherRole && (req.user.assignedZones?.length > 0 || req.user.responsibilities?.zoneIds?.length > 0)) {
+      const myZones = req.user.assignedZones || req.user.responsibilities?.zoneIds || [];
+      
+      // Get the event to find categories allowed in these zones
+      const event = await Event.findById(eventId).lean();
+      if (event) {
+        // Find categories that are allowed in the staff's assigned zones
+        const allowedCategoryNames = event.categories
+          .filter(cat => cat.allowedZones && cat.allowedZones.some(zone => myZones.includes(zone)))
+          .map(cat => cat.name);
+        
+        if (allowedCategoryNames.length > 0) {
+          // Filter orders to only include those with tickets from allowed categories
+          query['tickets.categoryName'] = { $in: allowedCategoryNames };
+        } else {
+          // If no allowed categories, return empty result
+          return res.json({ success: true, data: [] });
+        }
+      }
+    }
+
+    orders = await Order.find(query).sort({ createdAt: -1 });
     
     res.json({ success: true, data: orders });
   } catch (err) {

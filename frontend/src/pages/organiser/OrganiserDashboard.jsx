@@ -28,10 +28,6 @@ import {
   deleteTicketCategory,
   createSubOrganiser,
   updateSubOrganiser,
-  getCustomRoles,
-  createCustomRole,
-  updateCustomRole,
-  deleteCustomRole,
   updateVerificationStatus,
   resendInvite,
   cancelInvite,
@@ -92,28 +88,6 @@ const emptySubOrg = {
   assignedZones: [],
 };
 const emptyZone = { name: '', description: '', capacity: 0, color: '#0F766E' };
-const emptyCustomRole = {
-  name: '',
-  description: '',
-  permissions: {
-    canViewDashboard: false,
-    canManageEvents: false,
-    canManageTickets: false,
-    canViewAttendees: false,
-    canEditAttendees: false,
-    canVerifyPhotos: false,
-    canScanEntry: false,
-    canManageZones: false,
-    canInviteAttendees: false,
-    canBulkUpload: false,
-    canViewReports: false,
-    canViewLogs: false,
-    canManageSponsors: false,
-    canViewTransactions: false,
-    canManageSettings: false,
-  },
-  zoneIds: []
-};
 
 const emptySponsorPackage = {
   name: '',
@@ -224,11 +198,7 @@ const OrganiserDashboard = () => {
   const [removeLogo, setRemoveLogo] = useState(false);
   const [removeBanner, setRemoveBanner] = useState(false);
   const [removeCover, setRemoveCover] = useState(false);
-  
-  const [customRoles, setCustomRoles] = useState([]);
-  const [customRoleModal, setCustomRoleModal] = useState(null);
-  const [customRolesLoading, setCustomRolesLoading] = useState(false);
-  const [activeTeamTab, setActiveTeamTab] = useState('members');
+
   const [sponsorPackageModal, setSponsorPackageModal] = useState(null);
   const [sponsorModal, setSponsorModal] = useState(null);
 
@@ -263,23 +233,9 @@ const OrganiserDashboard = () => {
     return nextEventId;
   };
 
-  const loadCustomRoles = async (selectedEventId = eventId) => {
-    if (!selectedEventId) return;
-    setCustomRolesLoading(true);
-    try {
-      const res = await getCustomRoles({ eventId: selectedEventId });
-      setCustomRoles(res.data?.data?.roles || []);
-    } catch (err) {
-      console.error('Failed to load custom roles:', err);
-    } finally {
-      setCustomRolesLoading(false);
-    }
-  };
-
   const loadWorkspace = async (selectedEventId = eventId) => {
     if (!selectedEventId) return;
     setLoading(true);
-    loadCustomRoles(selectedEventId);
     try {
       const response = await getOrganiserWorkspace({
         eventId: selectedEventId,
@@ -457,7 +413,7 @@ const OrganiserDashboard = () => {
       if (value) next.set(key, value);
       else next.delete(key);
       if (['search', 'status', 'category', 'limit'].includes(key)) {
-        ['page', 'invitesPage', 'entryLogsPage', 'notificationsPage', 'zoneLogsPage', 'teamPage', 'verificationPage', 'ticketsPage', 'sponsorPackagesPage', 'sponsorsPage', 'customRolesPage', 'activityFeedPage'].forEach((pageKey) => next.delete(pageKey));
+        ['page', 'invitesPage', 'entryLogsPage', 'notificationsPage', 'zoneLogsPage', 'teamPage', 'verificationPage', 'ticketsPage', 'sponsorPackagesPage', 'sponsorsPage', 'activityFeedPage'].forEach((pageKey) => next.delete(pageKey));
       }
       return next;
     });
@@ -471,7 +427,7 @@ const OrganiserDashboard = () => {
   const zoneLogs = workspace?.zoneLogs || [];
   const notifications = workspace?.notifications || [];
   const stats = workspace?.overview || {};
-  const teamMembers = workspace?.teamMembers || workspace?.subOrganisers || [];
+  const teamMembers = Array.isArray(workspace?.teamMembers) ? workspace.teamMembers : (Array.isArray(workspace?.subOrganisers) ? workspace.subOrganisers : []);
   const sponsorPackages = selectedEvent?.sponsorPackages || [];
   const sponsors = workspace?.sponsors || [];
   const totalTicketsCount = Number(stats.totalTickets || 0);
@@ -497,7 +453,6 @@ const OrganiserDashboard = () => {
   const ticketPage = paginateLocal(categories, 'ticketsPage');
   const sponsorPackagePage = paginateLocal(sponsorPackages, 'sponsorPackagesPage');
   const sponsorPage = paginateLocal(sponsors, 'sponsorsPage');
-  const customRolePage = paginateLocal(customRoles, 'customRolesPage');
   const activityFeedPage = paginateLocal(workspace?.activityFeed || [], 'activityFeedPage');
   const canViewPrivateTicketCode = (ticket) => {
     if (!ticket?.isPrivate) return false;
@@ -516,7 +471,7 @@ const OrganiserDashboard = () => {
   };
 
   const teamCounts = useMemo(() => {
-    const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, None: 0, total: teamMembers.length };
+    const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, total: teamMembers.length };
     teamMembers.forEach(m => {
       if (counts[m.role] !== undefined) {
         counts[m.role]++;
@@ -657,46 +612,6 @@ const OrganiserDashboard = () => {
       loadWorkspace();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Update failed');
-    }
-  };
-
-  const saveCustomRole = async () => {
-    if (!eventId) {
-      toast.error('Select an event first');
-      return;
-    }
-    if (!customRoleModal.name.trim()) {
-      toast.error('Role name is required');
-      return;
-    }
-
-    try {
-      const payload = {
-        ...customRoleModal,
-        eventId,
-      };
-      if (customRoleModal._id) {
-        await updateCustomRole(customRoleModal._id, payload);
-        toast.success('Custom role updated successfully');
-      } else {
-        await createCustomRole(payload);
-        toast.success('Custom role created successfully');
-      }
-      setCustomRoleModal(null);
-      loadCustomRoles(eventId);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save custom role');
-    }
-  };
-
-  const handleDeleteCustomRole = async (roleId) => {
-    if (!window.confirm('Are you sure you want to delete this custom role?')) return;
-    try {
-      await deleteCustomRole(roleId, eventId);
-      toast.success('Custom role deleted successfully');
-      loadCustomRoles(eventId);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete custom role');
     }
   };
 
@@ -1558,14 +1473,13 @@ const OrganiserDashboard = () => {
         {activeSection === 'suborganisers' && (
           <div className="space-y-6 animate-fade-in">
             {/* Team Overview Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 { label: 'Total Strength', value: teamCounts.total, color: 'text-slate-900', bg: 'bg-slate-100/70 border-slate-200/60' },
                 { label: 'Sub-Organisers', value: teamCounts.SubOrganiser, color: 'text-indigo-600', bg: 'bg-indigo-50/30 border-indigo-100' },
                 { label: 'Staff', value: teamCounts.Staff, color: 'text-blue-600', bg: 'bg-blue-50/30 border-blue-100' },
                 { label: 'Volunteers', value: teamCounts.Volunteer, color: 'text-cyan-600', bg: 'bg-cyan-50/30 border-cyan-100' },
                 { label: 'Auditors', value: teamCounts.Auditor, color: 'text-teal-600', bg: 'bg-teal-50/30 border-teal-100' },
-                { label: 'None (Custom)', value: teamCounts.None, color: 'text-slate-600', bg: 'bg-slate-50/30 border-slate-100' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
@@ -1574,224 +1488,205 @@ const OrganiserDashboard = () => {
               ))}
             </div>
 
-            {/* Tabs for switching between Team Members and Custom Roles */}
-            <div className="flex border-b border-slate-200 bg-white p-2 rounded-2xl shadow-sm gap-2">
-              <button 
-                onClick={() => setActiveTeamTab('members')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTeamTab === 'members' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
-              >
-                Team Members
-              </button>
-              <button 
-                onClick={() => setActiveTeamTab('roles')}
-                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${activeTeamTab === 'roles' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
-              >
-                Custom Roles & Permissions
-              </button>
+            {/* Smart Role Guidance Card */}
+            <div className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white p-5 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">ℹ</div>
+                <div>
+                  <h4 className="font-bold text-slate-900">Understanding Team Roles & Scopes</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Scopes determine if a user can approve tickets, scan entries, or edit event zones.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-600">
+                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-indigo-600">Sub-Organiser:</strong> Full Admin Access</span>
+                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-blue-600">Staff:</strong> Operations & Verification</span>
+                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-cyan-600">Volunteer:</strong> Scanner Only</span>
+                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-teal-600">Auditor:</strong> Read-Only Audit logs</span>
+              </div>
             </div>
 
-            {activeTeamTab === 'members' && (
-              <>
-                {/* Smart Role Guidance Card */}
-                <div className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white p-5 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">ℹ</div>
-                    <div>
-                      <h4 className="font-bold text-slate-900">Understanding Team Roles & Scopes</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Scopes determine if a user can approve tickets, scan entries, or edit event zones.</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-600">
-                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-indigo-600">Sub-Organiser:</strong> Full Admin Access</span>
-                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-blue-600">Staff:</strong> Operations & Verification</span>
-                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-cyan-600">Volunteer:</strong> Scanner Only</span>
-                    <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-teal-600">Auditor:</strong> Read-Only Audit logs</span>
-                  </div>
+            {/* Filters and Search Bar */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Team Control Centre</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Audit roles, assign entry scopes, and delegate ticket categories</p>
                 </div>
+                <Button onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}>Create Team Member</Button>
+              </div>
 
-                {/* Filters and Search Bar */}
-                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-black text-slate-900">Team Control Centre</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Audit roles, assign entry scopes, and delegate ticket categories</p>
-                    </div>
-                    <Button onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}>Create Team Member</Button>
-                  </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <input 
+                  value={teamSearch} 
+                  onChange={(e) => setTeamSearch(e.target.value)} 
+                  placeholder="Search by name, email, phone..." 
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
+                />
+                <select 
+                  value={teamRoleFilter} 
+                  onChange={(e) => setTeamRoleFilter(e.target.value)} 
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
+                >
+                  <option value="">All Roles</option>
+                  <option value="SubOrganiser">Sub-Organisers</option>
+                  <option value="Staff">Staff</option>
+                  <option value="Volunteer">Volunteers</option>
+                  <option value="Auditor">Auditors</option>
+                </select>
+                <select 
+                  value={teamStatusFilter} 
+                  onChange={(e) => setTeamStatusFilter(e.target.value)} 
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <input 
-                      value={teamSearch} 
-                      onChange={(e) => setTeamSearch(e.target.value)} 
-                      placeholder="Search by name, email, phone..." 
-                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
-                    />
-                    <select 
-                      value={teamRoleFilter} 
-                      onChange={(e) => setTeamRoleFilter(e.target.value)} 
-                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
-                    >
-                      <option value="">All Roles</option>
-                      <option value="SubOrganiser">Sub-Organisers</option>
-                      <option value="Staff">Staff</option>
-                      <option value="Volunteer">Volunteers</option>
-                      <option value="Auditor">Auditors</option>
-                      <option value="None">None (Custom Role)</option>
-                    </select>
-                    <select 
-                      value={teamStatusFilter} 
-                      onChange={(e) => setTeamStatusFilter(e.target.value)} 
-                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
-                    >
-                      <option value="">All Statuses</option>
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
-                  </div>
+            {/* Main Render List */}
+            {filteredTeamMembers.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
+                <p className="text-slate-500 font-medium">No team members match your active filters.</p>
+                {(teamSearch || teamRoleFilter || teamStatusFilter) && (
+                  <button onClick={() => { setTeamSearch(''); setTeamRoleFilter(''); setTeamStatusFilter(''); }} className="mt-3 text-sm font-bold text-blue-600 hover:underline">Reset Filters</button>
+                )}
+              </div>
+            ) : (teamSearch || teamRoleFilter || teamStatusFilter) ? (
+              // Search Results Unified List
+              <Card>
+                <CardHeader title="Search Results" subtitle={`Found ${filteredTeamMembers.length} matching team members`} />
+                <div className="overflow-hidden rounded-2xl border border-slate-100">
+                  <Table>
+                    <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                    <tbody>
+                      {filteredTeamMembers.map((user) => {
+                        const ownerName = user.role !== 'SubOrganiser' && teamMembers.find(m => m._id === (user.createdBy?._id || user.createdBy))?.name;
+                        return (
+                          <Tr key={user._id}>
+                            <Td>
+                              <div className="font-semibold text-slate-900">{user.name}</div>
+                              <div className="text-xs text-slate-500">{user.email} · {user.phone}</div>
+                              {ownerName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">Lead: {ownerName}</div>}
+                            </Td>
+                            <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span></Td>
+                            <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
+                            <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General Scope'}</Td>
+                            <Td>
+                              <div className="flex gap-2">
+                                <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit</button>
+                                <button className="text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle</button>
+                              </div>
+                            </Td>
+                          </Tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
                 </div>
+              </Card>
+            ) : (
+              // Grouped Hierarchical View
+              <div className="space-y-6">
+                {groupedTeamMembers.groups.map(({ lead, members }) => (
+                  <div key={lead._id} className="rounded-3xl border border-slate-200 bg-slate-50/50 p-6 space-y-4 hover:shadow-md transition-all">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">Sub-Organiser Node</span>
+                        <h3 className="mt-3 text-2xl font-black text-slate-900">{lead.name}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{lead.email} · {lead.phone}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
+                          <Badge color="indigo">{members.length} Assigned Members</Badge>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => handleEditTeamMember(lead)}>Edit Node</Button>
+                        <Button variant="outline" onClick={() => updateSubOrganiser(lead._id, { eventId, status: lead.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</Button>
+                      </div>
+                    </div>
 
-                {/* Main Render List */}
-                {filteredTeamMembers.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
-                    <p className="text-slate-500 font-medium">No team members match your active filters.</p>
-                    {(teamSearch || teamRoleFilter || teamStatusFilter) && (
-                      <button onClick={() => { setTeamSearch(''); setTeamRoleFilter(''); setTeamStatusFilter(''); }} className="mt-3 text-sm font-bold text-blue-600 hover:underline">Reset Filters</button>
-                    )}
-                  </div>
-                ) : (teamSearch || teamRoleFilter || teamStatusFilter) ? (
-                  // Search Results Unified List
-                  <Card>
-                    <CardHeader title="Search Results" subtitle={`Found ${filteredTeamMembers.length} matching team members`} />
-                    <div className="overflow-hidden rounded-2xl border border-slate-100">
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                       <Table>
-                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Scope</Th><Th>Zones / Gates</Th><Th>Actions</Th></tr></thead>
                         <tbody>
-                          {filteredTeamMembers.map((user) => {
-                            const ownerName = user.role !== 'SubOrganiser' && teamMembers.find(m => m._id === (user.createdBy?._id || user.createdBy))?.name;
-                            return (
-                              <Tr key={user._id}>
-                                <Td>
-                                  <div className="font-semibold text-slate-900">{user.name}</div>
-                                  <div className="text-xs text-slate-500">{user.email} · {user.phone}</div>
-                                  {ownerName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">Lead: {ownerName}</div>}
-                                </Td>
-                                <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span></Td>
-                                <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
-                                <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General Scope'}</Td>
-                                <Td>
-                                  <div className="flex gap-2">
-                                    <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit</button>
-                                    <button className="text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle</button>
-                                  </div>
-                                </Td>
-                              </Tr>
-                            );
-                          })}
+                          {members.map((user) => (
+                            <Tr key={user._id}>
+                              <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
+                              <Td>
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                  <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
+                                </div>
+                              </Td>
+                              <Td>
+                                <div className="flex flex-wrap gap-1">
+                                  {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
+                                  {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
+                                  {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
+                                </div>
+                              </Td>
+                              <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
+                              <Td>
+                                <div className="flex flex-col gap-1.5">
+                                  <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
+                                  <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
+                                </div>
+                              </Td>
+                            </Tr>
+                          ))}
+                          {members.length === 0 && (
+                            <tr><td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">No team members assigned under this sub organiser yet.</td></tr>
+                          )}
                         </tbody>
                       </Table>
                     </div>
-                  </Card>
-                ) : (
-                  // Grouped Hierarchical View
-                  <div className="space-y-6">
-                    {groupedTeamMembers.groups.map(({ lead, members }) => (
-                      <div key={lead._id} className="rounded-3xl border border-slate-200 bg-slate-50/50 p-6 space-y-4 hover:shadow-md transition-all">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">Sub-Organiser Node</span>
-                            <h3 className="mt-3 text-2xl font-black text-slate-900">{lead.name}</h3>
-                            <p className="mt-1 text-sm text-slate-500">{lead.email} · {lead.phone}</p>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
-                              <Badge color="indigo">{members.length} Assigned Members</Badge>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={() => handleEditTeamMember(lead)}>Edit Node</Button>
-                            <Button variant="outline" onClick={() => updateSubOrganiser(lead._id, { eventId, status: lead.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</Button>
-                          </div>
-                        </div>
+                  </div>
+                ))}
 
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                          <Table>
-                            <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Scope</Th><Th>Zones / Gates</Th><Th>Actions</Th></tr></thead>
-                            <tbody>
-                              {members.map((user) => (
-                                <Tr key={user._id}>
-                                  <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
-                                  <Td>
-                                    <div className="flex flex-col gap-1 items-start">
-                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span>
-                                      <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
-                                    </div>
-                                  </Td>
-                                  <Td>
-                                    <div className="flex flex-wrap gap-1">
-                                      {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
-                                      {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
-                                      {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
-                                    </div>
-                                  </Td>
-                                  <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
-                                  <Td>
-                                    <div className="flex flex-col gap-1.5">
-                                      <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
-                                      <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
-                                    </div>
-                                  </Td>
-                                </Tr>
-                              ))}
-                              {members.length === 0 && (
-                                <tr><td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">No team members assigned under this sub organiser yet.</td></tr>
-                              )}
-                            </tbody>
-                          </Table>
-                        </div>
-                      </div>
-                    ))}
-
-                    {groupedTeamMembers.directMembers.length > 0 && (
-                      <div className="rounded-3xl border border-slate-200 bg-white p-6 space-y-4 hover:shadow-md transition-all">
-                        <div>
-                          <h3 className="text-xl font-black text-slate-900">Direct Event Team</h3>
-                          <p className="mt-1 text-sm text-slate-500">Members assigned directly by the Main Organiser.</p>
-                        </div>
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                          <Table>
-                            <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
-                            <tbody>
-                              {groupedTeamMembers.directMembers.map((user) => (
-                                <Tr key={user._id}>
-                                  <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
-                                  <Td>
-                                    <div className="flex flex-col gap-1 items-start">
-                                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : user.role === 'None' ? 'bg-slate-100 text-slate-700' : 'bg-teal-100 text-teal-700'}`}>{user.customRole?.name || user.role}</span>
-                                      <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
-                                    </div>
-                                  </Td>
-                                  <Td>
-                                    <div className="flex flex-wrap gap-1">
-                                      {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
-                                      {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
-                                      {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
-                                    </div>
-                                  </Td>
-                                  <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
-                                  <Td>
-                                    <div className="flex flex-col gap-1.5">
-                                      <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
-                                      <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
-                                    </div>
-                                  </Td>
-                                </Tr>
-                              ))}
-                            </tbody>
-                          </Table>
-                        </div>
-                      </div>
-                    )}
+                {groupedTeamMembers.directMembers.length > 0 && (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 space-y-4 hover:shadow-md transition-all">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900">Direct Event Team</h3>
+                      <p className="mt-1 text-sm text-slate-500">Members assigned directly by the Main Organiser.</p>
+                    </div>
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                      <Table>
+                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                        <tbody>
+                          {groupedTeamMembers.directMembers.map((user) => (
+                            <Tr key={user._id}>
+                              <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
+                              <Td>
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
+                                  <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
+                                </div>
+                              </Td>
+                              <Td>
+                                <div className="flex flex-wrap gap-1">
+                                  {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
+                                  {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
+                                  {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
+                                </div>
+                              </Td>
+                              <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
+                              <Td>
+                                <div className="flex flex-col gap-1.5">
+                                  <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
+                                  <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
+                                </div>
+                              </Td>
+                            </Tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
                 <Pagination
                   page={workspace?.teamPage}
                   pages={workspace?.teamPages}
@@ -1799,107 +1694,6 @@ const OrganiserDashboard = () => {
                   pageKey="teamPage"
                   updateQuery={setQuery}
                 />
-              </>
-            )}
-
-            {activeTeamTab === 'roles' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900">Custom Role Registry</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Define granular access rules for your sub-organisers and staff</p>
-                  </div>
-                  <Button onClick={() => setCustomRoleModal({ ...emptyCustomRole })}>Create Custom Role</Button>
-                </div>
-
-                {customRolesLoading ? (
-                  <div className="text-center py-8 text-slate-400 text-sm">Loading custom roles...</div>
-                ) : customRoles.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
-                    <p className="text-slate-500 font-medium">No custom roles created for this event yet.</p>
-                    <button onClick={() => setCustomRoleModal({ ...emptyCustomRole })} className="mt-3 text-sm font-bold text-blue-600 hover:underline">
-                      Create one now
-                    </button>
-                  </div>
-                ) : (
-                  <Card>
-                    <div className="overflow-hidden rounded-2xl border border-slate-100">
-                      <Table>
-                        <thead>
-                          <tr>
-                            <Th>Role Name</Th>
-                            <Th>Description</Th>
-                            <Th>Permissions Enabled</Th>
-                            <Th>Zone Scope</Th>
-                            <Th>Actions</Th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {customRolePage.rows.map((role) => {
-                            const enabledPerms = Object.entries(role.permissions || {})
-                              .filter(([_, enabled]) => !!enabled)
-                              .map(([name]) => name.replace('can', ''));
-                            return (
-                              <Tr key={role._id}>
-                                <Td>
-                                  <div className="font-bold text-slate-900">{role.name}</div>
-                                  <div className="text-[10px] font-mono text-slate-400">slug: {role.slug}</div>
-                                </Td>
-                                <Td className="text-xs text-slate-600 max-w-xs truncate">{role.description || '-'}</Td>
-                                <Td>
-                                  <div className="flex flex-wrap gap-1 max-w-sm">
-                                    {enabledPerms.length === 0 ? (
-                                      <span className="text-[10px] text-slate-400">None</span>
-                                    ) : (
-                                      enabledPerms.map((p) => (
-                                        <span key={p} className="bg-slate-100 text-slate-700 text-[10px] font-medium px-2 py-0.5 rounded-full">
-                                          {p}
-                                        </span>
-                                      ))
-                                    )}
-                                  </div>
-                                </Td>
-                                <Td className="text-xs text-slate-600">
-                                  {(role.zoneIds || []).length === 0 
-                                    ? 'Global' 
-                                    : (role.zoneIds || []).map(zid => {
-                                        const zoneObj = selectedEvent?.zones?.find(z => z.id === zid || z.name === zid);
-                                        return zoneObj?.name || zid;
-                                      }).join(', ')
-                                  }
-                                </Td>
-                                <Td>
-                                  <div className="flex gap-2.5">
-                                    <button 
-                                      className="text-xs font-semibold text-blue-600 hover:underline" 
-                                      onClick={() => setCustomRoleModal({
-                                        ...emptyCustomRole,
-                                        ...role,
-                                        permissions: { ...emptyCustomRole.permissions, ...(role.permissions || {}) },
-                                        zoneIds: role.zoneIds || []
-                                      })}
-                                    >
-                                      Edit
-                                    </button>
-                                    <button 
-                                      className="text-xs font-semibold text-rose-600 hover:underline" 
-                                      onClick={() => handleDeleteCustomRole(role._id)}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </Td>
-                              </Tr>
-                            );
-                          })}
-                        </tbody>
-                      </Table>
-                    </div>
-                    <Pagination {...customRolePage} updateQuery={setQuery} />
-                  </Card>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -2314,7 +2108,6 @@ const OrganiserDashboard = () => {
                 <option value="Staff">Staff</option>
                 <option value="Volunteer">Volunteer</option>
                 <option value="Auditor">Auditor</option>
-                <option value="None">None</option>
               </select>
             </label>
             <label className="space-y-1 block">
@@ -2325,66 +2118,6 @@ const OrganiserDashboard = () => {
               <span className="text-xs font-bold uppercase text-slate-500">Phone</span>
               <input value={subOrgForm.phone} onChange={(e) => setSubOrgForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
             </label>
-            {['SubOrganiser', 'Staff', 'None'].includes(subOrgForm.role) && (
-              <label className="space-y-1 block sm:col-span-2">
-                <span className="text-xs font-bold uppercase text-slate-500">Custom Role Profile</span>
-                <select
-                  value={subOrgForm.customRole || ''}
-                  onChange={(e) => {
-                    const selectedRoleId = e.target.value || null;
-                    if (!selectedRoleId) {
-                      let permissions = {};
-                      if (subOrgForm.role === 'SubOrganiser') {
-                        permissions = {
-                          canAddAttendees: true,
-                          canVerifyPhotos: true,
-                          canInviteAttendees: true,
-                          canBulkUpload: true,
-                          canEntryAccess: true
-                        };
-                      } else if (subOrgForm.role === 'Staff') {
-                        permissions = {
-                          canAddAttendees: true,
-                          canVerifyPhotos: true,
-                          canInviteAttendees: true,
-                          canBulkUpload: false,
-                          canEntryAccess: true
-                        };
-                      } else {
-                        permissions = {
-                          canAddAttendees: false,
-                          canVerifyPhotos: false,
-                          canInviteAttendees: false,
-                          canBulkUpload: false,
-                          canEntryAccess: false
-                        };
-                      }
-                      setSubOrgForm(curr => ({ 
-                        ...curr, 
-                        customRole: null, 
-                        permissions: { ...curr.permissions, ...permissions } 
-                      }));
-                    } else {
-                      const matchedRole = customRoles.find(r => r._id === selectedRoleId);
-                      if (matchedRole) {
-                        setSubOrgForm(curr => ({ 
-                          ...curr, 
-                          customRole: selectedRoleId, 
-                          permissions: { ...curr.permissions, ...(matchedRole.permissions || {}) },
-                          assignedZones: matchedRole.zoneIds || curr.assignedZones || [] 
-                        }));
-                      }
-                    }
-                  }}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white"
-                >
-                  <option value="">Default Permissions (No Custom Role)</option>
-                  {customRoles.map((role) => (
-                    <option key={role._id} value={role._id}>{role.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
             {!subOrgForm._id && (
               <label className="space-y-1 block sm:col-span-2">
                 <span className="text-xs font-bold uppercase text-slate-500">Temporary Password</span>
@@ -2481,142 +2214,6 @@ const OrganiserDashboard = () => {
             </Button>
           </div>
         </div>
-      </Modal>
-
-      <Modal open={!!customRoleModal} onClose={() => setCustomRoleModal(null)} title={customRoleModal?._id ? 'Edit Custom Role' : 'Create Custom Role'} size="lg">
-        {customRoleModal && (
-          <div className="space-y-6">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1 block">
-                <span className="text-xs font-bold uppercase text-slate-500">Role Name</span>
-                <input 
-                  value={customRoleModal.name || ''} 
-                  onChange={(e) => setCustomRoleModal((current) => ({ ...current, name: e.target.value }))} 
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" 
-                  placeholder="e.g. Operations Coordinator" 
-                />
-              </label>
-              <label className="space-y-1 block">
-                <span className="text-xs font-bold uppercase text-slate-500">Description</span>
-                <input 
-                  value={customRoleModal.description || ''} 
-                  onChange={(e) => setCustomRoleModal((current) => ({ ...current, description: e.target.value }))} 
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" 
-                  placeholder="e.g. Manages sponsors and event settings" 
-                />
-              </label>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <span className="text-xs font-bold uppercase text-slate-500">Zone Access Scope</span>
-              <p className="text-[11px] text-slate-500 mt-1 mb-3">Limit this role's operations/scans to specific zones (Optional)</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(selectedEvent?.zones || []).map((zone) => {
-                  const zid = zone.id || zone.name;
-                  const isChecked = (customRoleModal.zoneIds || []).includes(zid);
-                  return (
-                    <label key={zone.id} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          const next = e.target.checked 
-                            ? [...new Set([...(customRoleModal.zoneIds || []), zid])]
-                            : (customRoleModal.zoneIds || []).filter(item => item !== zid);
-                          setCustomRoleModal(curr => ({ ...curr, zoneIds: next }));
-                        }}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      {zone.name}
-                    </label>
-                  );
-                })}
-                {(selectedEvent?.zones || []).length === 0 && (
-                  <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No custom zones configured yet.</div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 p-4 space-y-4">
-              <span className="text-xs font-bold uppercase text-slate-500 block">Permissions Scope</span>
-              
-              {[
-                {
-                  category: 'Dashboard & Configuration',
-                  items: [
-                    { key: 'canViewDashboard', label: 'Access Dashboard', desc: 'Allows viewing dashboard and overall stats' },
-                    { key: 'canManageSettings', label: 'Manage Settings', desc: 'Allows modifying event parameters and setup' },
-                    { key: 'canViewLogs', label: 'Access Activity Logs', desc: 'Allows auditing organizer log history' }
-                  ]
-                },
-                {
-                  category: 'Operations',
-                  items: [
-                    { key: 'canManageEvents', label: 'Manage Event Details', desc: 'Allows updating venue, artist, and type information' },
-                    { key: 'canManageZones', label: 'Manage Zones', desc: 'Allows creating and structuring zones' },
-                    { key: 'canManageSponsors', label: 'Manage Sponsors', desc: 'Allows onboarding and allocating sponsor packages' }
-                  ]
-                },
-                {
-                  category: 'Attendee & Ticketing',
-                  items: [
-                    { key: 'canManageTickets', label: 'Manage Ticket Types', desc: 'Allows defining prices, capacities, and restrictions' },
-                    { key: 'canViewAttendees', label: 'View Attendees', desc: 'Allows browsing registered attendees list' },
-                    { key: 'canEditAttendees', label: 'Register/Edit Attendees', desc: 'Allows adding and modifying attendee registry' },
-                    { key: 'canInviteAttendees', label: 'Resend Invitation Emails', desc: 'Allows sending notifications and tickets' },
-                    { key: 'canBulkUpload', label: 'Excel Bulk Import', desc: 'Allows mass importing guests' }
-                  ]
-                },
-                {
-                  category: 'Access Control',
-                  items: [
-                    { key: 'canScanEntry', label: 'Scan Gate Entry', desc: 'Allows scanning gate QR codes' },
-                    { key: 'canVerifyPhotos', label: 'Verify Photos', desc: 'Allows validating attendee photo uploads' }
-                  ]
-                },
-                {
-                  category: 'Finance & Reports',
-                  items: [
-                    { key: 'canViewReports', label: 'View Reports', desc: 'Allows downloading CSV/XLSX data sheets' },
-                    { key: 'canViewTransactions', label: 'View Transactions', desc: 'Allows auditing orders and payouts' }
-                  ]
-                }
-              ].map((cat) => (
-                <div key={cat.category} className="space-y-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block border-b border-slate-100 pb-1">{cat.category}</span>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {cat.items.map(({ key, label, desc }) => {
-                      const isChecked = !!customRoleModal.permissions?.[key];
-                      return (
-                        <label key={key} className={`flex items-start gap-2.5 rounded-xl border p-2.5 transition-all cursor-pointer ${isChecked ? 'border-indigo-200 bg-indigo-50/10 shadow-sm' : 'border-slate-100 bg-slate-50/30 hover:border-slate-200'}`}>
-                          <input 
-                            type="checkbox" 
-                            checked={isChecked} 
-                            onChange={(e) => setCustomRoleModal((current) => ({ 
-                              ...current, 
-                              permissions: { ...current.permissions, [key]: e.target.checked } 
-                            }))} 
-                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-slate-800">{label}</span>
-                            <span className="text-[10px] text-slate-500 mt-0.5 leading-normal">{desc}</span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-2">
-              <Button className="w-full py-3" onClick={saveCustomRole}>
-                {customRoleModal._id ? 'Update Custom Role' : 'Create Custom Role'}
-              </Button>
-            </div>
-          </div>
-        )}
       </Modal>
 
       <Modal open={!!sponsorPackageModal} onClose={() => setSponsorPackageModal(null)} title={sponsorPackageModal?.id ? 'Edit Sponsor Package' : 'Create Sponsor Package'} size="lg">

@@ -43,7 +43,7 @@ const userHasZoneAccess = (user, zoneName, zoneId) => {
   // High-level administrators always have full access
   if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) return true;
   
-  // Other roles (SubOrganiser, Staff, Volunteer, Auditor, None) must have explicit zone access
+  // Other roles (SubOrganiser, Staff, Volunteer, Auditor) must have explicit zone access
   const assignedZones = [
     ...(user.assignedZones || []).map(String),
     ...(user.responsibilities?.zoneIds || []).map(String),

@@ -51,12 +51,22 @@ const BuyerOrderDetailsPage = () => {
   const [savingTicketId, setSavingTicketId] = useState(null);
   const [qrTicket, setQrTicket] = useState(null);
 
+  const [paymentRequiredError, setPaymentRequiredError] = useState(null);
+
   const load = () => {
     setLoading(true);
+    setPaymentRequiredError(null);
     return getBuyerOrderDetails(orderId)
       .then((res) => {
         setOrder(res.data?.data?.order || null);
         setTickets(res.data?.data?.tickets || []);
+      })
+      .catch((err) => {
+        if (err.response?.status === 403 && err.response?.data?.paymentRequired) {
+          setPaymentRequiredError(err.response.data.message);
+        } else {
+          toast.error(err.response?.data?.message || 'Failed to load order details');
+        }
       })
       .finally(() => setLoading(false));
   };
@@ -121,7 +131,25 @@ const BuyerOrderDetailsPage = () => {
           <span>Back to Purchased Tickets</span>
         </Link>
 
-        {order && (
+        {paymentRequiredError ? (
+          <div className="rounded-[32px] bg-white p-8 shadow-sm border border-slate-200 text-center max-w-xl mx-auto my-8">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 mb-4">
+              <ExclamationTriangleIcon className="h-6 w-6" />
+            </div>
+            <h3 className="text-lg font-extrabold text-slate-900 mb-2">Payment Required</h3>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              {paymentRequiredError}
+            </p>
+            <div className="flex justify-center gap-4">
+              <Link
+                to="/buyer/tickets"
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Go to Dashboard
+              </Link>
+            </div>
+          </div>
+        ) : order && (
           <div className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
               <div className="space-y-1">
@@ -297,7 +325,8 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr, isAwaiti
     }
   }, [ticket]);
 
-  const isPending = ticket.status === 'PENDING';
+  // Tickets can be assigned when they are pending or sold (i.e., not yet assigned/invited)
+  const isPending = ticket.status === 'PENDING' || ticket.status === 'SOLD';
   const isInvited = ticket.status === 'INVITED';
   const isSubmitted = ticket.status === 'PENDING_VERIFICATION';
   const isConfirmed = ticket.status === 'CONFIRMED';
@@ -425,7 +454,7 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr, isAwaiti
           {isInvited && (
             <button
               onClick={() => onResend(ticket._id)}
-              disabled={saving}
+              disabled={saving || isAwaitingVenuePayment}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 active:scale-95 transition-all"
             >
               <ArrowPathIcon className="h-3.5 w-3.5" />
