@@ -268,7 +268,7 @@ const BuyerDashboardPage = () => {
               
               // Check if order is awaiting payment
               const isAwaitingPayment = 
-                (order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid') ||
+                (order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'success') ||
                 (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) && order.status === 'RESERVED') ||
                 (order.paymentStatus === 'pending_verification' || order.paymentStatus === 'awaiting_payment');
               

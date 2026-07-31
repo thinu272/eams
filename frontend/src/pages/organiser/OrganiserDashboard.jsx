@@ -427,7 +427,21 @@ const OrganiserDashboard = () => {
   const zoneLogs = workspace?.zoneLogs || [];
   const notifications = workspace?.notifications || [];
   const stats = workspace?.overview || {};
-  const teamMembers = Array.isArray(workspace?.teamMembers) ? workspace.teamMembers : (Array.isArray(workspace?.subOrganisers) ? workspace.subOrganisers : []);
+  const rawTeamMembers = [
+    ...(Array.isArray(workspace?.teamMembers?.rows)
+      ? workspace.teamMembers.rows
+      : Array.isArray(workspace?.teamMembers)
+      ? workspace.teamMembers
+      : []),
+    ...(Array.isArray(workspace?.subOrganisers?.rows)
+      ? workspace.subOrganisers.rows
+      : Array.isArray(workspace?.subOrganisers)
+      ? workspace.subOrganisers
+      : []),
+  ];
+  const teamMembers = Array.from(
+    new Map(rawTeamMembers.filter(Boolean).map((m) => [String(m._id || m.id), m])).values()
+  );
   const sponsorPackages = selectedEvent?.sponsorPackages || [];
   const sponsors = workspace?.sponsors || [];
   const totalTicketsCount = Number(stats.totalTickets || 0);
@@ -867,7 +881,7 @@ const OrganiserDashboard = () => {
                   </div>
                 </div>
                 <div className="mt-4 space-y-2">
-                  {teamMembers.slice(0, 2).map((member) => (
+                  {teamMembers.map((member) => (
                     <div key={member._id} className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3">
                       <div>
                         <p className="font-semibold text-slate-900">{member.name}</p>

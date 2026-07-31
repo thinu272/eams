@@ -179,20 +179,21 @@ const BuyerOrderDetailsPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Order Status</p>
-                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'text-orange-700' : 'text-slate-900'}`}>
-                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'Reserved - Awaiting Payment' : order?.status || 'Pending'}
+                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success') ? 'text-orange-700' : 'text-slate-900'}`}>
+                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success') ? 'Reserved - Awaiting Payment' : order?.status || 'Pending'}
                 </p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Payment Status</p>
-                <p className={`mt-1 text-sm font-bold ${order?.paymentStatus === 'awaiting_payment' ? 'text-red-700' : order?.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-slate-900'}`}>
+                <p className={`mt-1 text-sm font-bold ${order?.paymentStatus === 'awaiting_payment' ? 'text-red-700' : (order?.paymentStatus === 'paid' || order?.paymentStatus === 'success') ? 'text-emerald-700' : 'text-slate-900'}`}>
+{order?.paymentStatus === 'awaiting_payment' ? 'Awaiting Payment' : (order?.paymentStatus === 'paid' || order?.paymentStatus === 'success') ? 'Paid' : order?.paymentStatus || 'Pending'}
                   {order?.paymentStatus === 'awaiting_payment' ? 'Awaiting Payment' : order?.paymentStatus === 'paid' ? 'Paid' : order?.paymentStatus || 'Pending'}
                 </p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Ticket Status</p>
-                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'text-red-700' : 'text-slate-900'}`}>
-                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid') ? 'Not Yet Issued' : 'Issued'}
+                <p className={`mt-1 text-sm font-bold ${(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success') ? 'text-red-700' : 'text-slate-900'}`}>
+                  {(['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success') ? 'Not Yet Issued' : 'Issued'}
                 </p>
               </div>
             </div>
@@ -214,7 +215,7 @@ const BuyerOrderDetailsPage = () => {
           </div>
 
           {/* Reserved Order Notice */}
-          {!loading && ((['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid')) && (
+          {!loading && ((['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED') || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success')) && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm flex gap-3">
               <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
@@ -229,7 +230,7 @@ const BuyerOrderDetailsPage = () => {
           )}
 
           {/* Post-Payment Notice */}
-          {!loading && ['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'CONFIRMED' && order?.paymentStatus === 'paid' && (
+          {!loading && ( (['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'CONFIRMED' && order?.paymentStatus === 'paid') || (order?.paymentMethod === 'bank_transfer' && order?.status === 'CONFIRMED' && order?.paymentStatus === 'success') ) && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm flex gap-3">
               <CheckCircleIcon className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
@@ -262,7 +263,7 @@ const BuyerOrderDetailsPage = () => {
                   onAssign={handleAssign}
                   onResend={handleResend}
                   onViewQr={() => setQrTicket(ticket)}
-                  isAwaitingVenuePayment={['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED' || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'paid')}
+                  isAwaitingVenuePayment={['cash_on_entrance', 'cash_at_entrance'].includes(order?.paymentMethod) && order?.status === 'RESERVED' || (order?.paymentMethod === 'bank_transfer' && order?.paymentStatus !== 'success')}
                 />
               ))}
             </div>
