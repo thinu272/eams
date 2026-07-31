@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie 
 } from 'recharts';
+import { getMyEvents, getEvents } from '../../api/events';
+import EventSelector from '../../components/ui/EventSelector';
 import { 
   UsersIcon, TicketIcon, ClockIcon, ShieldCheckIcon, ArrowUpIcon, ArrowDownIcon, 
   SignalIcon, MapPinIcon, QrCodeIcon, ChartBarIcon 
@@ -13,6 +15,7 @@ import Card, { CardHeader } from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { getOrganiserWorkspace } from '../../api/organiser';
+import { getSocketUrl } from '../../utils/backend';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -32,10 +35,16 @@ const formatTime = (dateString) => {
 
 const LiveEventDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const eventId = searchParams.get('eventId');
+  const urlEventId = searchParams.get('eventId');
+  const [selectedEventId, setSelectedEventId] = useState(urlEventId || '');
   
   const [loading, setLoading] = useState(true);
+  // State for events list
+  const [availableEvents, setAvailableEvents] = useState([]);
+  // Loading flag for events fetching
+  const [isFetchingEvents, setIsFetchingEvents] = useState(true);
   const [event, setEvent] = useState(null);
   const [stats, setStats] = useState({
     totalTickets: 0,
@@ -68,7 +77,11 @@ const LiveEventDashboard = () => {
       setZoneOccupancy([]);
       setNotifications([]);
 
-      const response = await getOrganiserWorkspace({ eventId });
+      if (!selectedEventId) {
+        setLoading(false);
+        return;
+      }
+      const response = await getOrganiserWorkspace({ eventId: selectedEventId });
       const data = response.data?.data;
       
       if (data) {
@@ -94,26 +107,74 @@ const LiveEventDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [selectedEventId]);
+
+  // Fetch user events list
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        // Start loading
+        setIsFetchingEvents(true);
+        const res = await getMyEvents();
+        console.log('Full getMyEvents response body:', res?.data);
+        const events = res?.data?.data?.events || res?.data?.events || [];
+        console.log('Extracted events array length:', events.length);
+        if (events.length === 0) {
+          // Fallback to public events list if no assigned events
+          const publicRes = await getEvents();
+          console.log('Fallback public events response body:', publicRes?.data);
+          const publicEvents = (() => {
+            if (Array.isArray(publicRes?.data?.events)) return publicRes?.data?.events;
+            if (Array.isArray(publicRes?.data?.data?.events)) return publicRes?.data?.data?.events;
+            if (Array.isArray(publicRes?.data?.data)) return publicRes?.data?.data;
+            if (Array.isArray(publicRes?.data)) return publicRes?.data;
+            return [];
+          })();
+          console.log('Public events fetched count:', publicEvents.length);
+          setAvailableEvents(publicEvents);
+          if (!selectedEventId && publicEvents.length > 0) {
+            const firstId = publicEvents[0]._id || publicEvents[0].id || '';
+            setSelectedEventId(firstId);
+            navigate(`${location.pathname}?eventId=${firstId}`);
+          }
+        } else {
+          setAvailableEvents(events);
+          if (!selectedEventId && events.length > 0) {
+            const firstId = events[0]._id || events[0].id || '';
+            setSelectedEventId(firstId);
+            navigate(`${location.pathname}?eventId=${firstId}`);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load events', e);
+      } finally {
+        // End loading
+        setIsFetchingEvents(false);
+      }
+    };
+    fetchEvents();
+  }, []);
 
   // Initialize Socket.IO connection
   useEffect(() => {
     // Cleanup previous socket connection if exists
     if (socketRef.current) {
       const oldSocket = socketRef.current;
-      if (eventId) {
-        oldSocket.emit('leave_dashboard', { eventId });
+      if (selectedEventId) {
+        oldSocket.emit('leave_dashboard', { eventId: selectedEventId });
       }
       oldSocket.disconnect();
       socketRef.current = null;
     }
 
-    const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    const socketUrl = getSocketUrl(); // base URL without /api
     socketRef.current = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 10
+      reconnectionAttempts: 10,
+      // Ensure socket.io uses the default path
+      path: '/socket.io'
     });
 
     const socket = socketRef.current;
@@ -121,8 +182,8 @@ const LiveEventDashboard = () => {
     socket.on('connect', () => {
       setConnectionStatus('connected');
       console.log('Socket connected:', socket.id);
-      if (eventId) {
-        socket.emit('join_dashboard', { eventId });
+      if (selectedEventId) {
+        socket.emit('join_dashboard', { eventId: selectedEventId });
       }
     });
 
@@ -132,9 +193,13 @@ const LiveEventDashboard = () => {
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      setConnectionStatus('error');
-    });
+        console.error('Socket connection error:', error);
+        setConnectionStatus('error');
+        // Attempt a quick reconnection after short delay
+        setTimeout(() => {
+          socket.connect();
+        }, 3000);
+      });
 
     // Listen for real-time updates
     socket.on('event_update', (data) => {
@@ -167,6 +232,31 @@ const LiveEventDashboard = () => {
 
     socket.on('zone_scan', (data) => {
       console.log('Zone scan received:', data);
+      // Update zone occupancy state based on entry/exit
+      setZoneOccupancy(prev => {
+        const idx = prev.findIndex(z => z.zoneName === data.zoneName);
+        if (idx >= 0) {
+          const zone = { ...prev[idx] };
+          if (data.action === 'ENTRY') {
+            zone.entries = (zone.entries || 0) + 1;
+          } else if (data.action === 'EXIT') {
+            zone.exits = (zone.exits || 0) + 1;
+          }
+          zone.occupancy = Math.max((zone.entries || 0) - (zone.exits || 0), 0);
+          const updated = [...prev];
+          updated[idx] = zone;
+          return updated;
+        } else {
+          // If zone not present, create a new entry
+          const newZone = {
+            zoneName: data.zoneName,
+            entries: data.action === 'ENTRY' ? 1 : 0,
+            exits: data.action === 'EXIT' ? 1 : 0,
+            occupancy: data.action === 'ENTRY' ? 1 : 0
+          };
+          return [...prev, newZone];
+        }
+      });
       addNotification({
         type: 'info',
         title: 'Zone Access',
@@ -176,11 +266,24 @@ const LiveEventDashboard = () => {
 
     socket.on('ticket_sold', (data) => {
       console.log('Ticket sold:', data);
+      // Update overall stats
       setStats(prev => ({
         ...prev,
         ticketsSold: (prev.ticketsSold || 0) + (data.quantity || 1),
         totalRevenue: (prev.totalRevenue || 0) + (data.amount || 0)
       }));
+      // Update revenue by category chart data
+      setCharts(prev => {
+        const existing = prev.revenueByCategory.find(cat => cat.name === data.categoryName);
+        if (existing) {
+          // Increment the value for the matching category
+          existing.value = (existing.value || 0) + (data.amount || 0);
+        } else {
+          // Add a new category entry if it doesn't exist
+          prev.revenueByCategory.push({ name: data.categoryName, value: data.amount || 0 });
+        }
+        return { ...prev, revenueByCategory: [...prev.revenueByCategory] };
+      });
       addNotification({
         type: 'success',
         title: 'Ticket Sale',
@@ -190,23 +293,38 @@ const LiveEventDashboard = () => {
 
     socket.on('payment_approved', (data) => {
       console.log('Payment approved:', data);
+      // Ensure revenue is reflected (in case payment arrives after ticket_sold)
+      setStats(prev => ({
+        ...prev,
+        totalRevenue: (prev.totalRevenue || 0) + (data.amount || 0)
+      }));
+      // Update revenue by category similarly
+      setCharts(prev => {
+        const existing = prev.revenueByCategory.find(cat => cat.name === data.categoryName);
+        if (existing) {
+          existing.value = (existing.value || 0) + (data.amount || 0);
+        } else {
+          prev.revenueByCategory.push({ name: data.categoryName, value: data.amount || 0 });
+        }
+        return { ...prev, revenueByCategory: [...prev.revenueByCategory] };
+      });
       addNotification({
         type: 'success',
         title: 'Payment',
-        message: `Payment approved: ${formatCurrency(data.amount)}`
+        message: data.message || 'Payment approved'
       });
     });
 
     return () => {
       if (socketRef.current) {
-        if (eventId) {
-          socketRef.current.emit('leave_dashboard', { eventId });
+        if (selectedEventId) {
+          socketRef.current.emit('leave_dashboard', { eventId: selectedEventId });
         }
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [eventId, fetchInitialData]);
+  }, [selectedEventId, fetchInitialData]);
 
   // Add notification
   const addNotification = useCallback((notification) => {
@@ -221,15 +339,21 @@ const LiveEventDashboard = () => {
   // Initial data fetch
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+  }, [fetchInitialData, selectedEventId]);
 
   // Refresh data periodically when socket is disconnected
   useEffect(() => {
-    if (connectionStatus !== 'connected') {
+    if (connectionStatus !== 'connected' && selectedEventId) {
       const interval = setInterval(fetchInitialData, 30000);
       return () => clearInterval(interval);
     }
-  }, [connectionStatus, fetchInitialData]);
+  }, [connectionStatus, fetchInitialData, selectedEventId]);
+
+  // Recalculate total revenue when revenueByCategory chart data changes
+  useEffect(() => {
+    const total = (charts.revenueByCategory || []).reduce((sum, cat) => sum + (cat.value || 0), 0);
+    setStats(prev => ({ ...prev, totalRevenue: total }));
+  }, [charts.revenueByCategory]);
 
   // Metric Card Component
   const MetricCard = ({ title, value, subtitle, icon: Icon, trend, color = 'blue' }) => {
@@ -277,7 +401,7 @@ const LiveEventDashboard = () => {
     }
   };
 
-  if (loading && !event) {
+  if (loading && !event && selectedEventId) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
@@ -292,8 +416,26 @@ const LiveEventDashboard = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
+      <div className="space-y-4">
+        {/* Event Selector */}
+        {isFetchingEvents ? (
+          <div className="flex items-center gap-2">
+            <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            <span className="text-sm text-slate-600">Loading events…</span>
+          </div>
+        ) : (
+          <EventSelector
+            events={availableEvents}
+            selectedEventId={selectedEventId}
+            onSelect={(id) => {
+              setSelectedEventId(id);
+              navigate(`${location.pathname}${id ? `?eventId=${id}` : ''}`);
+            }}
+          />
+        )}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
@@ -317,7 +459,7 @@ const LiveEventDashboard = () => {
               Refresh
             </button>
             <button
-              onClick={() => navigate(`/organiser/dashboard${eventId ? `?eventId=${eventId}` : ''}`)}
+              onClick={() => navigate(`/organiser/dashboard${selectedEventId ? `?eventId=${selectedEventId}` : ''}`)}
               className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
             >
               <ChartBarIcon className="w-4 h-4" />
@@ -362,8 +504,8 @@ const LiveEventDashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Total Tickets"
-            value={formatNumber(stats.ticketsSold)}
-            subtitle={`of ${formatNumber(stats.totalTickets)} capacity`}
+            value={formatNumber(stats.totalTickets)}
+            subtitle={`${formatNumber(stats.ticketsSold)} sold`}
             icon={TicketIcon}
             color="blue"
           />
