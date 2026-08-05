@@ -184,7 +184,7 @@ router.get('/', async (req, res, next) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [events, total] = await Promise.all([
       Event.find(filter)
-        .select('name slug description venue startDate eventType customEventType categories coverImage bannerImage branding')
+        .select('name slug description venue startDate eventType customEventType categories coverImage bannerImage branding settings currency')
         .sort('startDate')
         .skip(skip)
         .limit(parseInt(limit)),
@@ -244,12 +244,53 @@ router.get('/admin/all', protect, restrictTo('main_admin'), async (req, res, nex
   } catch (err) { next(err); }
 });
 
-// GET /api/events/my/events - organiser's assigned events
-router.get('/my/events', protect, restrictTo('main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor'), async (req, res, next) => {
+// GET /api/events/my/events - organiser's assigned events, with admins seeing the full list
+router.get('/my/events', protect, async (req, res, next) => {
   try {
-    const events = await Event.find({ _id: { $in: req.user.assignedEvents } })
-            .populate('mainOrganisers', 'name email')
+    // Normalize role to match the canonical values defined in the User model.
+    const rawRole = String(req.user?.role || '');
+    const normalized = rawRole
+      .trim()
+      .toUpperCase()
+      .replace(/_/g, ''); // remove underscores for matching
+
+    // Map normalized roles to the keys used in RBAC checks.
+    const roleMap = {
+      MAINADMIN: 'main_admin',
+      SUPERADMIN: 'super_admin',
+      ADMIN: 'admin',
+      MAINORGANISER: 'main_organiser',
+      SUBORGANISER: 'sub_organiser',
+      STAFF: 'staff',
+      VOLUNTEER: 'volunteer',
+      AUDITOR: 'auditor',
+    };
+    const role = roleMap[normalized] || normalized.toLowerCase();
+
+    if (role === 'main_admin' || role === 'super_admin' || role === 'admin') {
+      const events = await Event.find()
+        .populate('mainOrganisers', 'name email')
+        .sort('-startDate');
+      return res.json({ success: true, data: { events } });
+    }
+
+    if (!['main_organiser', 'sub_organiser', 'staff', 'volunteer', 'auditor'].includes(role)) {
+      return res.status(403).json({ success: false, message: 'Unauthorized access to event list.' });
+    }
+
+    const assignedEventIds = (req.user.assignedEvents || [])
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    const events = await Event.find({
+      $or: [
+        { _id: { $in: assignedEventIds } },
+        { createdBy: req.user._id },
+        { mainOrganisers: req.user._id },
+      ],
+    })
+      .populate('mainOrganisers', 'name email')
       .sort('-startDate');
+
     res.json({ success: true, data: { events } });
   } catch (err) { next(err); }
 });

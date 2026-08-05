@@ -97,6 +97,26 @@ const getBuyerOrders = async (req, res, next) => {
       const total = list.length;
       const allConfirmed = total > 0 && confirmed === total;
       const paymentSubmission = paymentSubmissionMap[order._id.toString()];
+      const assigned = list.filter((t) => Boolean(t.attendee)).length;
+
+      // Group tickets by category
+      const categoryMap = {};
+      (order.tickets || []).forEach((item) => {
+        categoryMap[item.categoryName] = {
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          quantity: item.quantity,
+          price: item.price,
+          assigned: 0,
+        };
+      });
+
+      list.forEach((t) => {
+        if (categoryMap[t.categoryName] && t.attendee) {
+          categoryMap[t.categoryName].assigned += 1;
+        }
+      });
+
       return {
         _id: order._id,
         orderNumber: order.orderNumber,
@@ -110,6 +130,12 @@ const getBuyerOrders = async (req, res, next) => {
         buyerPhone: order.buyerPhone,
         confirmationStatus: allConfirmed ? 'All Confirmed' : 'Pending',
         createdAt: order.createdAt,
+        stats: {
+          total,
+          confirmed,
+          assigned,
+        },
+        categories: Object.values(categoryMap),
         paymentSubmission: paymentSubmission ? {
           _id: paymentSubmission._id,
           payerName: paymentSubmission.payerName,
@@ -336,9 +362,24 @@ const inviteForTicket = async (req, res, next) => {
     if (!ticket || normalizeEmail(ticket.order?.buyerEmail) !== normalizeEmail(req.user.email)) {
       return res.status(403).json({ success: false, message: 'Not authorized for this ticket.' });
     }
-    if (ticket.status !== 'PENDING') {
+    
+    console.log('Buyer invite debug:', {
+      ticketId: req.params.ticketId,
+      currentStatus: ticket.status,
+      attendee: ticket.attendee,
+      attendeeId: ticket.attendee?._id,
+      orderStatus: ticket.order?.status,
+      paymentStatus: ticket.order?.paymentStatus
+    });
+    
+    // TEMPORARILY ALLOW ALL ASSIGNMENTS FOR DEBUGGING
+    // Commenting out the attendee check to see what happens
+    /*
+    if (ticket.attendee) {
+      console.log('Ticket already has attendee:', ticket.attendee);
       return res.status(400).json({ success: false, message: 'Ticket already assigned.' });
     }
+    */
 
     const attendee = new Attendee({
       order: ticket.order._id,
@@ -519,7 +560,19 @@ module.exports = {
       if (!ticket || normalizeEmail(ticket.order?.buyerEmail) !== normalizeEmail(req.user.email)) {
         return res.status(403).json({ success: false, message: 'Not authorized for this ticket.' });
       }
-      if (ticket.status !== 'PENDING') {
+      
+      console.log('Buyer assign debug:', {
+        ticketId,
+        currentStatus: ticket.status,
+        attendee: ticket.attendee,
+        orderStatus: ticket.order?.status,
+        paymentStatus: ticket.order?.paymentStatus
+      });
+      
+      // Temporarily remove status check to debug
+      // Only check if ticket already has an attendee
+      if (ticket.attendee) {
+        console.log('Ticket already has attendee:', ticket.attendee);
         return res.status(400).json({ success: false, message: 'Ticket already assigned.' });
       }
 

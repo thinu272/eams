@@ -503,27 +503,36 @@ const AdminSettingsPanel = () => {
             {activeTab === 'integrations' && (
               <>
                 <div className="grid gap-6 md:grid-cols-2">
-                  <Field label="Image Storage Provider">
-                    <Select value={settings.integrations?.storageProvider || 'local'} onChange={(e) => updateSetting('integrations', 'storageProvider', e.target.value)}>
-                      <option value="local">Local Disk</option>
-                      <option value="aws">AWS S3</option>
-                      <option value="cloudinary">Cloudinary</option>
-                    </Select>
+                  {/* Azure Blob Storage Configuration */}
+                  <Field label="Azure Storage Connection String">
+                    <Input
+                      value={settings.integrations?.azureConnectionString || ''}
+                      onChange={(e) => updateSetting('integrations', 'azureConnectionString', e.target.value)}
+                      placeholder="DefaultEndpointsProtocol=https;AccountName=..."
+                    />
+                  </Field>
+                  <Field label="Azure Container Name">
+                    <Input
+                      value={settings.integrations?.azureContainer || ''}
+                      onChange={(e) => updateSetting('integrations', 'azureContainer', e.target.value)}
+                      placeholder="entrynex-photos"
+                    />
+                  </Field>
+                  <Field label="Azure Face API Endpoint (Optional)">
+                    <Input
+                      value={settings.integrations?.azureFaceEndpoint || ''}
+                      onChange={(e) => updateSetting('integrations', 'azureFaceEndpoint', e.target.value)}
+                      placeholder="https://<region>.api.cognitive.microsoft.com/face/v1.0"
+                    />
+                  </Field>
+                  <Field label="Azure Face API Key (Optional)">
+                    <Input
+                      type="password"
+                      value={settings.integrations?.azureFaceKey || ''}
+                      onChange={(e) => updateSetting('integrations', 'azureFaceKey', e.target.value)}
+                    />
                   </Field>
                 </div>
-                {settings.integrations?.storageProvider === 'aws' && (
-                  <div className="grid gap-6 md:grid-cols-2 p-4 bg-slate-50 rounded-xl border border-slate-200 mt-4">
-                    <Field label="AWS Access Key">
-                      <Input value={settings.integrations?.awsAccessKey || ''} onChange={(e) => updateSetting('integrations', 'awsAccessKey', e.target.value)} />
-                    </Field>
-                    <Field label="AWS Secret Key">
-                      <Input type="password" value={settings.integrations?.awsSecretKey || ''} onChange={(e) => updateSetting('integrations', 'awsSecretKey', e.target.value)} />
-                    </Field>
-                    <Field label="AWS Bucket Name">
-                      <Input value={settings.integrations?.awsBucket || ''} onChange={(e) => updateSetting('integrations', 'awsBucket', e.target.value)} />
-                    </Field>
-                  </div>
-                )}
                 <div className="grid gap-6 md:grid-cols-2 mt-6">
                   <Field label="Google Maps API Key (Optional)">
                     <Input type="password" value={settings.integrations?.mapsApiKey || ''} onChange={(e) => updateSetting('integrations', 'mapsApiKey', e.target.value)} />

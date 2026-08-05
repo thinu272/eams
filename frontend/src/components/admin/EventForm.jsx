@@ -259,16 +259,14 @@ const EventForm = ({ initialData, onSubmit, loading, companyOptions = [], organi
           </div>
 
           <div>
-            <label className="flex items-center gap-3">
-              <input type="checkbox" checked={settings.requirePhotoVerification} onChange={(e) => setSettings(s => ({ ...s, requirePhotoVerification: e.target.checked }))} />
-              <span className="text-sm">Enable Photo Verification</span>
-            </label>
+
           </div>
 
           <div>
+            {/* RFID Support - Under Development */}
             <label className="flex items-center gap-3">
-              <input type="checkbox" checked={settings.rfidEnabled} onChange={(e) => setSettings(s => ({ ...s, rfidEnabled: e.target.checked }))} />
-              <span className="text-sm">Enable RFID Support</span>
+              <input type="checkbox" checked={false} disabled />
+              <span className="text-sm">Enable RFID Support (Under Development)</span>
             </label>
           </div>
 
@@ -455,10 +453,7 @@ const EventForm = ({ initialData, onSubmit, loading, companyOptions = [], organi
       {tab === 'Advanced Settings' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <label className="flex items-center gap-3 text-sm font-semibold text-slate-600">
-              <input type="checkbox" checked={settings.requirePhotoVerification} onChange={(e) => setSettings((s) => ({ ...s, requirePhotoVerification: e.target.checked }))} />
-              Require Photo Verification
-            </label>
+
             <label className="flex items-center gap-3 text-sm font-semibold text-slate-600">
               <input type="checkbox" checked={settings.allowSelfConfirmation} onChange={(e) => setSettings((s) => ({ ...s, allowSelfConfirmation: e.target.checked }))} />
               Allow Self Confirmation

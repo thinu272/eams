@@ -372,7 +372,7 @@ const BuyerTicketsPage = () => {
                   </div>
 
                    {/* Reserved warning notice */}
-                   {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && (
+                   {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && !['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) && order.status !== 'CONFIRMED' && (
                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
                        <p className="font-semibold">
                          Your ticket has been reserved. Please pay at the event entrance to activate your entry pass.
@@ -382,7 +382,7 @@ const BuyerTicketsPage = () => {
                        </p>
                      </div>
                    )}
-                   {order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success' && (
+                   {order.paymentMethod === 'bank_transfer' && !['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) && order.status !== 'CONFIRMED' && (
                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
                        <p className="font-semibold">
                          Your bank transfer payment details are submitted and on hold for verification.
@@ -416,9 +416,10 @@ const BuyerTicketsPage = () => {
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                       {(() => {
-                        const isCashReserved = (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED';
-                        const isBankPending = order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success';
-                        const isLocked = isCashReserved || isBankPending;
+                        const isPaid = ['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) || order.status === 'CONFIRMED';
+                        const isCashReserved = (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && !isPaid;
+                        const isBankPending = order.paymentMethod === 'bank_transfer' && !isPaid;
+                        const isLocked = (isCashReserved || isBankPending) && !isPaid;
                         
                         return (
                           <>

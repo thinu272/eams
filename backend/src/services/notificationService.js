@@ -367,28 +367,7 @@ const notifyPhotoRejectionNotification = async ({ attendee, event, reason }) => 
   const resubmitToken = attendee.resubmitToken;
   await notifyPhotoRejection({ attendee, reason, resubmitToken });
 
-  if (attendee.order) {
-    const Order = require('../models/Order');
-    const order = await Order.findById(attendee.order);
-    if (order) {
-      const resubmitLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/attendee/resubmit-photo/${resubmitToken}`;
-      const buyer = { name: order.buyerName, email: order.buyerEmail, phone: order.buyerPhone };
-      
-      // Only send buyer notification if buyer email is different from attendee email
-      if (buyer.email && buyer.email.toLowerCase() !== attendee.email?.toLowerCase()) {
-        await sendBuyerPhotoRejection(buyer, event, attendee, reason, resubmitLink).catch((error) => {
-          console.error('BUYER PHOTO REJECTION EMAIL ERROR:', error);
-        });
-        if (buyer.phone) {
-          await sendSMS(
-            buyer.phone,
-            `ENTRYNEX: Attendee photo rejected for ${event?.name || 'event'}. Reason: ${reason}. Resubmit: ${resubmitLink}`,
-            { rateKey: `buyer-reject:${buyer.phone}` }
-          ).catch((error) => console.error('BUYER PHOTO REJECTION SMS ERROR:', error));
-        }
-      }
-    }
-  }
+  // Removed buyer notification - only send to attendee
 };
 
 const notifyBuyerTicketProgress = async ({

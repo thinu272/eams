@@ -73,7 +73,15 @@ const BuyerDashboardPage = () => {
     });
 
     socket.on('order_status_changed', (data) => {
-      toast.success(`Order #${data.orderNumber} status updated to ${data.paymentStatus || data.status}!`);
+      if (data.action === 'approved') {
+        toast.success(`Order #${data.orderNumber} payment has been approved!`);
+      } else if (data.action === 'rejected') {
+        toast.error(`Order #${data.orderNumber} payment has been rejected. ${data.reason || 'Please contact support.'}`);
+      } else if (data.action === 'needs_info') {
+        toast.info(`Order #${data.orderNumber} requires additional information: ${data.message || 'Please check your order details.'}`);
+      } else {
+        toast.success(`Order #${data.orderNumber} status updated to ${data.paymentStatus || data.status}!`);
+      }
       fetchOrders();
     });
 

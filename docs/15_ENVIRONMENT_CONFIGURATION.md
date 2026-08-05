@@ -60,3 +60,13 @@ The backend loads `SystemConfig` on each request that needs configuration (e.g.,
 
 ---
 *All information extracted from `.env.example`, `backend/src/models/SystemConfig.js`, and related usage in the code.*
+## Azure Integration Settings
+
+The migration replaces AWS S3 with Azure Blob Storage and AWS Face SDK with Azure Vision Face API. Ensure the following environment variables are set:
+
+- `AZURE_STORAGE_CONNECTION_STRING` – Connection string for the Azure Blob Storage account.
+- `AZURE_STORAGE_CONTAINER_NAME` – Name of the container used for uploads.
+- `AZURE_FACE_ENDPOINT` – Endpoint URL for the Azure Vision Face service (e.g., `https://<region>.api.cognitive.microsoft.com`).
+- `AZURE_FACE_KEY` – Subscription key for the Azure Vision Face API.
+
+These variables replace the previous AWS‑specific ones (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, etc.) and are referenced in `backend/src/models/SystemConfig.js` and the updated services.

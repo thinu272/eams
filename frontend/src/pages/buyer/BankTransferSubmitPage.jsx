@@ -189,7 +189,7 @@ const BankTransferSubmitPage = () => {
     );
   }
 
-  const currency = 'LKR';
+  const currency = orderData?.currency || orderData?.eventId?.settings?.currency || orderData?.event?.settings?.currency || 'LKR';
 
   return (
     <PublicLayout>

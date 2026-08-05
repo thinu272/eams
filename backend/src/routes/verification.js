@@ -24,6 +24,10 @@ const hasEventAccess = async (user, eventId) => {
   );
 };
 
+// Utility to escape regex special characters and limit length
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const normalizeSearch = (value) => String(value || '').trim();
+
 // GET /api/verification/pending - list pending photos with filters, pagination, sorting
 router.get('/pending', protect, requirePermission('canVerifyPhotos'), async (req, res, next) => {
   try {
@@ -62,10 +66,11 @@ router.get('/pending', protect, requirePermission('canVerifyPhotos'), async (req
     }
 
     if (search) {
+      const safeSearch = escapeRegex(normalizeSearch(search)).slice(0, 100);
       filter.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { nationalId: { $regex: search, $options: 'i' } },
+        { fullName: { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+        { nationalId: { $regex: safeSearch, $options: 'i' } },
       ];
     }
 

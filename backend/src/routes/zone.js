@@ -91,11 +91,11 @@ const buildDeniedResponse = async ({
       },
     });
 
-    emitDashboardEvent(io, 'zone_update', attendee.event.toString(), {
+    emitDashboardEvent(io, 'zone_scan', attendee.event.toString(), {
       source: 'zone',
       eventId: attendee.event,
-      name: attendee.fullName,
-      action: denialReason === 'DUPLICATE_SCAN' ? 'DUPLICATE SCAN' : 'ZONE DENIED',
+      attendeeName: attendee.fullName, // Use attendeeName for frontend compatibility
+      action: denialReason === 'DUPLICATE_SCAN' ? 'DUPLICATE' : 'DENIED',
       zoneName,
       timestamp: deniedLog.timestamp,
       accessGranted: false,
@@ -263,11 +263,11 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       },
     });
 
-    emitDashboardEvent(io, 'zone_update', event._id.toString(), {
+    emitDashboardEvent(io, 'zone_scan', event._id.toString(), {
       source: 'zone',
       eventId: event._id,
-      name: attendee.fullName,
-      action: action === 'ENTRY' ? 'ZONE ENTRY' : 'ZONE EXIT',
+      attendeeName: attendee.fullName,
+      action: action, // 'ENTRY' or 'EXIT'
       zoneName,
       timestamp: zoneLog.timestamp,
       accessGranted: true,

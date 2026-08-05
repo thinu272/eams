@@ -102,7 +102,7 @@ const checkPendingPaymentsAndReservations = async (io) => {
           <h2>Action Required: Complete Your Payment</h2>
           <p>Dear ${order.buyerName},</p>
           <p>This is a reminder that we are awaiting payment for your ticket reservation order <strong>#${order.orderNumber}</strong>.</p>
-          <p>Please transfer the total amount of <strong>LKR ${order.totalAmount.toLocaleString()}</strong> and submit your transfer receipt before the reservation expires.</p>
+          <p>Please transfer the total amount of <strong>${order.eventId?.settings?.currency || order.currency || 'LKR'} ${order.totalAmount.toLocaleString()}</strong> and submit your transfer receipt before the reservation expires.</p>
           <div style="margin: 30px 0; text-align: center;">
             <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/bank-transfer/instructions/${order._id}">View Payment Instructions</a>
           </div>

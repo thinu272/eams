@@ -65,7 +65,7 @@ const getAdminDashboardData = async (user) => {
   ] = await Promise.all([
     Event.countDocuments(),
     User.countDocuments(),
-    Order.countDocuments({ status: 'confirmed' }),
+    Order.countDocuments({ paymentStatus: 'success' }),
     Order.aggregate([
       { $match: { status: 'confirmed' } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
@@ -105,7 +105,16 @@ const getAdminDashboardData = async (user) => {
     .sort({ submittedAt: -1 })
     .limit(10);
 
-  return {
+  const ticketsByEvent = await Ticket.aggregate([
+        { $group: { _id: "$event", ticketsSold: { $sum: 1 } } },
+        { $lookup: { from: "events", localField: "_id", foreignField: "_id", as: "eventInfo" } },
+        { $unwind: "$eventInfo" },
+        { $project: { _id: 0, name: "$eventInfo.name", ticketsSold: 1 } },
+        { $sort: { ticketsSold: -1 } },
+        { $limit: 10 }
+      ]);
+
+      return {
     overview: {
       totalEvents,
       totalUsers,
@@ -115,12 +124,15 @@ const getAdminDashboardData = async (user) => {
       pendingVerifications,
       todayCheckIns,
       pendingPaymentSubmissions,
-      systemHealth
+      systemHealth,
+      distributions: { ticketsByEvent },
     },
     charts: {
-      eventsByStatus,
-      usersByRole
-    },
+        eventsByStatus,
+        usersByRole,
+        // Additional distributions are added under overview.distributions
+      },
+
     recentActivity,
     recentPaymentSubmissions: recentPaymentSubmissions.map(sub => ({
       _id: sub._id,

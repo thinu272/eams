@@ -104,7 +104,7 @@ const BankTransferInstructionsPage = () => {
   }
 
   const { order, bankAccounts } = instructions;
-  const currency = 'LKR'; // Should come from event settings
+  const currency = order?.currency || order?.eventId?.settings?.currency || order?.event?.settings?.currency || 'LKR';
   
   // Check if payment has already been submitted
   const isPaymentSubmitted = order.paymentStatus && 

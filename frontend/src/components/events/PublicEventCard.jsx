@@ -68,7 +68,7 @@ const PublicEventCard = ({ event }) => {
             </span>
             <span className="block text-2xl font-black text-white tracking-tighter">
               {minPrice > 0
-                ? `${event.settings?.currency || 'LKR'} ${minPrice.toLocaleString()}`
+                ? `${event.settings?.currency || event.currency || 'LKR'} ${minPrice.toLocaleString()}`
                 : hasFree
                   ? 'FREE'
                   : 'TBD'}

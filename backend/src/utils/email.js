@@ -258,12 +258,13 @@ const sendOrderConfirmation = async (order, event, options = {}) => {
   const isPaid = stage === 'paid';
   const title = isPaid ? 'Order Confirmed!' : 'Order Received!';
   const alert = isPaid
-    ? 'Your payment has been received. The next step is assigning attendees so each ticket can be activated.'
-    : 'Your order has been created successfully. Complete payment to continue the ticket activation flow.';
+    ? 'Your payment has been confirmed! Next step: Fill attendee names and upload photo verification to activate your tickets.'
+    : 'Your order has been created successfully. Complete payment to continue ticket activation.';
+  const currency = event?.settings?.currency || 'LKR';
   const intro = isPaid
-    ? `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your payment of <strong>LKR ${order.totalAmount.toLocaleString()}</strong> has been processed.`
-    : `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your order for <strong>LKR ${order.totalAmount.toLocaleString()}</strong> has been created and is waiting for payment confirmation.`;
-  const cta = isPaid ? 'Complete Ticket Confirmation' : 'View Order Details';
+    ? `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your payment of <strong>${currency} ${order.totalAmount.toLocaleString()}</strong> has been processed.`
+    : `Thank you for choosing ENTRYNEX for <strong>${event.name}</strong>. Your order for <strong>${currency} ${order.totalAmount.toLocaleString()}</strong> has been created and is waiting for payment confirmation.`;
+  const cta = isPaid ? 'Fill Attendee Details & Upload Photo' : 'View Order Details';
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
   const templateMode = config.email?.templateMode || 'code';
   const templateId = templateMode === 'sendgrid' ? config.email?.templateIds?.order : null;
@@ -1277,25 +1278,42 @@ const sendBankTransferPaymentApproved = async (order, event) => {
     <div class="info-row"><span class="info-label">Amount Paid</span><span class="info-value" style="color:#0284c7; font-weight: 800;">${formattedAmount}</span></div>
 
     <div style="margin: 24px 0; padding: 20px; background: #f0fdf4; border-left: 4px solid #166534; border-radius: 8px;">
-      <h3 style="margin-top: 0; color: #166534; font-size: 16px; font-weight: 700;">Your Tickets Are Now Active</h3>
+      <h3 style="margin-top: 0; color: #166534; font-size: 16px; font-weight: 700;">Action Required: Fill Attendee Details & Photos</h3>
       <p style="margin: 8px 0; color: #166534; line-height: 1.6;">
-        You can now complete your attendee details and manage your tickets.
+        Your tickets are ready for activation! Please click below to assign each ticket to its attendee and upload required verification photos.
       </p>
     </div>
 
     <div style="text-align: center; margin-top: 32px;">
-      <a class="btn" href="${orderUrl}">View Order</a>
+      <a class="btn" style="background: #166534;" href="${orderUrl}">Fill Attendee Details & Upload Photo</a>
     </div>
 
     <p style="margin-top: 24px; color: #64748b; font-size: 13px; line-height: 1.6;">
-      Thank you for choosing ENTRYNEX. We look forward to seeing you at the event!
+      Note: Each attendee must have their name and verified photo uploaded before entry badges or QR access passes are issued.
     </p>
   `, 'ENTRYNEX - Order Confirmed', orgName);
+
+  const { generateOrderSummaryPDF } = require('../services/pdfService');
+  let attachments = [];
+  try {
+    const pdfBuffer = await generateOrderSummaryPDF(order, event);
+    if (pdfBuffer) {
+      attachments.push({
+        content: pdfBuffer.toString('base64'),
+        filename: `Order-Confirmation-${order.orderNumber}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      });
+    }
+  } catch (pdfErr) {
+    console.error('[sendBankTransferPaymentApproved] Error generating PDF attachment:', pdfErr);
+  }
 
   await sendWithProvider({
     to: recipientEmail,
     subject: `Your Order Has Been Confirmed – Your Tickets Are Ready - ${order.orderNumber}`,
     html,
+    attachments,
   });
 };
 

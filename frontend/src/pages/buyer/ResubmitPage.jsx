@@ -456,7 +456,7 @@ const ResubmitPage = () => {
           </p>
           {invalidated.refundAmount > 0 && (
             <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-              Refund initiated: LKR {Number(invalidated.refundAmount).toLocaleString()}
+              Refund initiated: {invalidated.currency || invalidated.event?.settings?.currency || 'LKR'} {Number(invalidated.refundAmount).toLocaleString()}
             </p>
           )}
           {invalidated.ticketNumber && (

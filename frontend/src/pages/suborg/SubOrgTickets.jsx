@@ -137,7 +137,7 @@ const SubOrgTickets = () => {
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-black text-slate-900">{category.name}</h3>
-                  <p className="text-2xl font-black text-indigo-600">LKR {category.price}</p>
+                  <p className="text-2xl font-black text-indigo-600">{data?.event?.settings?.currency || 'LKR'} {category.price}</p>
                 </div>
                 {category.isPrivate ? (
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm border border-amber-100">
@@ -230,7 +230,7 @@ const SubOrgTickets = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Price (LKR)</label>
+                  <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Price ({data?.event?.settings?.currency || 'LKR'})</label>
                   <input
                     type="number"
                     required

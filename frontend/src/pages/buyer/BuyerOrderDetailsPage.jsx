@@ -415,7 +415,7 @@ const TicketSlotCard = ({ ticket, saving, onAssign, onResend, onViewQr, isAwaiti
           </p>
           {ticket.refundAmount > 0 && (
             <p className="text-[11px] font-semibold text-emerald-700">
-              Refund initiated: LKR {Number(ticket.refundAmount).toLocaleString()}
+              Refund initiated: {order.currency || order.event?.settings?.currency || 'LKR'} {Number(ticket.refundAmount).toLocaleString()}
             </p>
           )}
         </div>

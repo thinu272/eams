@@ -40,8 +40,14 @@ const storage = multer.diskStorage({
 });
 const localUpload = multer({ storage });
 
-const toObjectId = (value) => new mongoose.Types.ObjectId(value);
+const toObjectId = (value) => {
+  if (!value) throw new Error('Missing ObjectId value');
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  if (mongoose.Types.ObjectId.isValid(value)) return new mongoose.Types.ObjectId(value);
+  throw new Error(`Invalid ObjectId: ${value}`);
+};
 const normalizeSearch = (value) => String(value || '').trim();
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const clamp = (value, min, max, fallback) => {
   const parsed = parseInt(value, 10);
   if (Number.isNaN(parsed)) return fallback;
@@ -66,50 +72,25 @@ const buildActivityNotification = async ({ userId, eventId, title, message, type
 const slugify = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
 const resolveEventId = (req) => {
-  if (req.resolvedEventId) {
-    console.log(`[resolveEventId] Using middleware resolved event ID: ${req.resolvedEventId}`);
-    return req.resolvedEventId;
-  }
+  if (req.resolvedEventId) return req.resolvedEventId;
   const id = req.params.eventId || req.body.eventId || req.query.eventId;
-  console.log(`[resolveEventId] Resolved from params/body/query: ${id}`);
   if (id && id !== 'undefined') return id;
-  const fallback = req.user?.assignedEvents?.[0];
-  console.log(`[resolveEventId] Fallback to assignedEvents[0]: ${fallback}`);
-  return fallback;
+  return req.user?.assignedEvents?.[0] || null;
 };
 
 const getScopedEvent = async (req) => {
-  let eventId = resolveEventId(req);
-  let event = null;
-
-  // 1. Try to find the event by identified ID
-  if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
-    event = await Event.findById(eventId)
-      .populate('mainOrganisers', 'name email phone')
-      .populate({
-        path: 'subOrganisers',
-        select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
-      })
-      .lean();
+  const eventId = resolveEventId(req);
+  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+    return null;
   }
 
-  // 2. If not found or no ID provided, fallback for high-level roles
-  if (!event && req.user) {
-    const role = normalizeRole(req.user.role);
-    if (role === ROLES.MAIN_ADMIN || role === ROLES.MAIN_ORGANISER) {
-      // Pick the most recent event
-      event = await Event.findOne()
-        .sort({ createdAt: -1 })
-        .populate('mainOrganisers', 'name email phone')
-        .populate({
-          path: 'subOrganisers',
-          select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
-        })
-        .lean();
-    }
-  }
-
-  return event;
+  return Event.findById(eventId)
+    .populate('mainOrganisers', 'name email phone')
+    .populate({
+      path: 'subOrganisers',
+      select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
+    })
+    .lean();
 };
 
 const getWritableScopedEvent = async (req) => {
@@ -140,15 +121,13 @@ const getWritableScopedEvent = async (req) => {
     }).sort({ createdAt: -1 });
   }
 
-  if (!event && role === ROLES.MAIN_ADMIN) {
-    event = await Event.findOne().sort({ createdAt: -1 });
-  }
+  // MAIN_ADMIN now requires explicit eventId - removed the "most recent event" fallback
+  // to prevent accidental operations on unrelated events
 
   if (event) {
     req.resolvedEventId = event._id;
     req.body.eventId = String(event._id);
     req.query.eventId = String(event._id);
-    console.log(`[getWritableScopedEvent] Recovered stale event ID ${requestedId} -> ${event._id}`);
   }
 
   return { event, requestedId };
@@ -163,15 +142,19 @@ const buildAttendeeFilter = ({ eventId, query = {} }) => {
     photoStatus = '',
   } = query;
 
-  const filter = { event: eventId, isActive: true };
+  const normalizedEventId = eventId instanceof mongoose.Types.ObjectId
+    ? eventId
+    : (mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId);
+  const filter = { event: normalizedEventId, isActive: true };
   const trimmedSearch = normalizeSearch(search);
 
   if (trimmedSearch) {
+    const safeSearch = escapeRegex(trimmedSearch).slice(0, 100);
     filter.$or = [
-      { fullName: { $regex: trimmedSearch, $options: 'i' } },
-      { email: { $regex: trimmedSearch, $options: 'i' } },
-      { phone: { $regex: trimmedSearch, $options: 'i' } },
-      { nationalId: { $regex: trimmedSearch, $options: 'i' } },
+      { fullName: { $regex: safeSearch, $options: 'i' } },
+      { email: { $regex: safeSearch, $options: 'i' } },
+      { phone: { $regex: safeSearch, $options: 'i' } },
+      { nationalId: { $regex: safeSearch, $options: 'i' } },
     ];
   }
 
@@ -257,6 +240,45 @@ const getTicketCategorySummary = async (event) => {
   });
 };
 
+const getRevenueSummary = async (eventId) => {
+  const eventObjectId = toObjectId(eventId);
+  const revenueMatch = {
+    eventId: eventObjectId,
+    totalAmount: { $gt: 0 },
+    $or: [
+      { paymentStatus: { $in: ['paid', 'verified', 'success'] } },
+      { status: { $in: ['CONFIRMED', 'PAID'] } },
+    ],
+  };
+
+  const [revenueByCategory, totalRevenueRow] = await Promise.all([
+    Order.aggregate([
+      { $match: revenueMatch },
+      { $unwind: '$tickets' },
+      {
+        $group: {
+          _id: '$tickets.categoryName',
+          revenue: {
+            $sum: { $multiply: ['$tickets.price', '$tickets.quantity'] },
+          },
+          count: { $sum: '$tickets.quantity' },
+        },
+      },
+      { $project: { name: '$_id', value: '$revenue', count: 1, _id: 0 } },
+    ]),
+    Order.aggregate([
+      { $match: revenueMatch },
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+    ]),
+  ]);
+
+  return {
+    revenueByCategory,
+    totalRevenue: Number(totalRevenueRow[0]?.total || 0),
+    source: 'orders',
+  };
+};
+
 const requireScopedEvent = async (req, res, next) => {
   const event = await getScopedEvent(req);
 
@@ -274,6 +296,7 @@ router.use(protect, checkRole(ORGANISER_ROLES));
 router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard'), requireScopedEvent, async (req, res, next) => {
   try {
     const eventId = String(req.scopedEvent._id);
+    const eventObjectId = toObjectId(eventId);
     const page = clamp(req.query.page, 1, 9999, 1);
     const invitesPage = clamp(req.query.invitesPage, 1, 9999, 1);
     const entryLogsPage = clamp(req.query.entryLogsPage, 1, 9999, 1);
@@ -293,7 +316,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
     const teamSkip = (teamPage - 1) * limit;
     const verificationSkip = (verificationPage - 1) * limit;
 
-    const attendeeFilter = buildAttendeeFilter({ eventId, query: req.query });
+    const attendeeFilter = buildAttendeeFilter({ eventId: eventObjectId, query: req.query });
 
     const [
       totalTickets,
@@ -319,46 +342,49 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
       customRoles,
       teamMembers,
       teamTotal,
-      revenueByCategory,
+      revenueSummary,
       sponsors,
     ] = await Promise.all([
-      Ticket.countDocuments({ event: eventId }),
-      Ticket.countDocuments({ event: eventId, status: { $ne: 'CANCELLED' } }),
-      Attendee.countDocuments({ event: eventId, isActive: true, confirmationStatus: 'confirmed' }),
-      EntryLog.countDocuments({ event: eventId, action: 'check_in', accessGranted: true }),
-      EntryLog.countDocuments({ event: eventId }),
+      Ticket.countDocuments({ event: eventObjectId }),
+      Ticket.countDocuments({ event: eventObjectId, status: { $ne: 'CANCELLED' } }),
+      Attendee.countDocuments({ event: eventObjectId, isActive: true, confirmationStatus: 'confirmed' }),
+      EntryLog.countDocuments({ event: eventObjectId, action: 'check_in', accessGranted: true }),
+      EntryLog.countDocuments({ event: eventObjectId }),
       ZoneLog.aggregate([
-        { $match: { eventId: toObjectId(eventId), accessGranted: true } },
+        { $match: { eventId: eventObjectId, accessGranted: true } },
         { $group: { _id: { zoneName: '$zoneName', action: '$action' }, count: { $sum: 1 } } },
       ]),
       EntryLog.aggregate([
-        { $match: { event: toObjectId(eventId), action: 'check_in', accessGranted: true } },
-        { $group: { _id: { $hour: '$timestamp' }, count: { $sum: 1 } } },
-        { $sort: { _id: 1 } },
+        { $match: { event: eventObjectId, action: 'check_in', accessGranted: true } },
+        { $group: { _id: { month: { $month: '$timestamp' }, day: { $dayOfMonth: '$timestamp' }, hour: { $hour: '$timestamp' } }, count: { $sum: 1 } } },
+        { $sort: { '_id.month': 1, '_id.day': 1, '_id.hour': 1 } },
         {
           $project: {
             _id: 0,
-            hour: '$_id',
-            label: { $concat: [{ $toString: '$_id' }, ':00'] },
+            month: '$_id.month',
+            day: '$_id.day',
+            hour: '$_id.hour',
+            label: { $concat: [{ $toString: '$_id.day' }, '/', { $toString: '$_id.month' }, ' ', { $toString: '$_id.hour' }, ':00'] },
             count: 1,
           },
         },
       ]),
-      EntryLog.find({ event: eventId }).populate('attendee', 'fullName categoryName').sort({ timestamp: -1 }).skip(entryLogsSkip).limit(logsLimit).lean(),
+      EntryLog.find({ event: eventObjectId }).populate('attendee', 'fullName categoryName').sort({ timestamp: -1 }).skip(entryLogsSkip).limit(logsLimit).lean(),
       Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).limit(5).lean(),
       Attendee.find(attendeeFilter).sort({ createdAt: -1 }).skip(attendeeSkip).limit(limit).lean(),
       Attendee.countDocuments(attendeeFilter),
-      Attendee.find(withUploadedPhoto({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })).sort({ createdAt: -1 }).skip(verificationSkip).limit(limit).lean(),
-      Attendee.countDocuments(withUploadedPhoto({ event: eventId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })),
-      Ticket.find({ event: eventId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).skip(invitesSkip).limit(limit).lean(),
-      Ticket.countDocuments({ event: eventId }),
-      ZoneLog.find({ eventId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).skip(zoneLogsSkip).limit(limit).lean(),
-      ZoneLog.countDocuments({ eventId }),
+      Attendee.find(withUploadedPhoto({ event: eventObjectId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })).sort({ createdAt: -1 }).skip(verificationSkip).limit(limit).lean(),
+      Attendee.countDocuments(withUploadedPhoto({ event: eventObjectId, isActive: true, photoVerificationStatus: { $in: ['pending', 'Pending'] } })),
+      Ticket.find({ event: eventObjectId }).populate('attendee', 'fullName email phone confirmationStatus confirmationToken').sort({ inviteSentAt: -1, createdAt: -1 }).skip(invitesSkip).limit(limit).lean(),
+      Ticket.countDocuments({ event: eventObjectId }),
+      ZoneLog.find({ eventId: eventObjectId }).populate('attendeeId', 'fullName categoryName').populate('scannedBy', 'name').sort({ timestamp: -1 }).skip(zoneLogsSkip).limit(limit).lean(),
+      ZoneLog.countDocuments({ eventId: eventObjectId }),
       Notification.find({ 'metadata.eventId': eventId }).sort({ createdAt: -1 }).skip(notificationsSkip).limit(limit).lean(),
       Notification.countDocuments({ 'metadata.eventId': eventId }),
       getTicketCategorySummary(req.scopedEvent),
+      Promise.resolve([]),
       User.find({
-        assignedEvents: toObjectId(eventId),
+        assignedEvents: eventObjectId,
         role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
       })
         .select('name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy')
@@ -368,15 +394,11 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
         .limit(limit)
         .lean(),
       User.countDocuments({
-        assignedEvents: toObjectId(eventId),
+        assignedEvents: eventObjectId,
         role: { $in: [ROLES.SUB_ORGANISER, ROLES.STAFF, ROLES.VOLUNTEER, ROLES.AUDITOR] },
       }),
-      Ticket.aggregate([
-        { $match: { event: toObjectId(eventId), status: { $ne: 'CANCELLED' } } },
-        { $group: { _id: '$categoryName', revenue: { $sum: '$price' }, count: { $sum: 1 } } },
-        { $project: { name: '$_id', value: '$revenue', count: 1, _id: 0 } },
-      ]),
-      Sponsor.find({ eventId: toObjectId(eventId) }).lean(),
+      getRevenueSummary(eventId),
+      Sponsor.find({ eventId: eventObjectId }).lean(),
     ]);
 
     const zoneOccupancy = {};
@@ -405,7 +427,8 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 5);
 
-    const totalRevenue = (revenueByCategory || []).reduce((acc, curr) => acc + curr.value, 0);
+    const totalRevenue = Number(revenueSummary?.totalRevenue || 0);
+    const revenueByCategory = revenueSummary?.revenueByCategory || [];
 
     res.json({
       success: true,
@@ -475,6 +498,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
             { id: 'logs', label: 'Entry Logs', exportType: 'logs' },
           ],
         },
+        customRoles: customRoles || [],
         settings: req.scopedEvent.settings || {},
         customization: {
           basicInfo: {
@@ -544,7 +568,12 @@ router.get('/attendees', requireEventAccess, requirePermission('canViewAttendees
       }
 
       if (scopingConditions.length > 0) {
-        // If they have categories or zones assigned, they must match at least one (OR)
+        // Combine with existing search $or using $and to avoid overwriting it
+        if (filter.$or) {
+          filter.$and = filter.$and || [];
+          filter.$and.push({ $or: filter.$or });
+          delete filter.$or;
+        }
         filter.$or = scopingConditions;
       } else {
         // If not assigned to any categories or zones, they see nothing
@@ -674,12 +703,6 @@ router.post(
         metadata: { actionType: 'attendee_create', attendeeId: String(attendee._id) },
       });
 
-      // UPDATE SOLD COUNT AND BROADCAST
-      await Event.updateOne(
-        { _id: eventId, 'categories.id': categoryId },
-        { $inc: { 'categories.$.sold': 1 } }
-      );
-
       const { emitDashboardEvent } = require('../utils/socket');
       const io = req.app.get('io');
       emitDashboardEvent(io, 'event_update', eventId, {
@@ -708,6 +731,11 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     const docs = [];
     const errors = [];
+    
+    // Initialize counters outside the if block to avoid ReferenceError
+    let invitesSent = 0;
+    let invitesSkipped = 0;
+    let inviteFailures = 0;
 
     rows.forEach((row, index) => {
       const rowNum = index + 2;
@@ -796,9 +824,9 @@ router.post('/attendees/bulk', requirePermission('canBulkUpload'), upload.single
           });
       });
       const inviteResults = await Promise.all(inviteTasks);
-      const invitesSent = inviteResults.filter((result) => !result.skipped && !result.error).length;
-      const invitesSkipped = inviteResults.filter((result) => result.skipped).length;
-      const inviteFailures = inviteResults.filter((result) => result.error).length;
+      invitesSent = inviteResults.filter((result) => !result.skipped && !result.error).length;
+      invitesSkipped = inviteResults.filter((result) => result.skipped).length;
+      inviteFailures = inviteResults.filter((result) => result.error).length;
 
       // Update Event Sold Counts
       const categoryCounts = {};

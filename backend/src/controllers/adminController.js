@@ -41,7 +41,7 @@ const getStats = async (req, res, next) => {
 
 const getDashboardStats = async (req, res, next) => {
   try {
-    const [totalEvents, totalAttendees, revenueRows, usersByRole, revenuePerEvent] = await Promise.all([
+    const [totalEvents, totalAttendees, revenueRows, usersByRole, revenuePerEvent, ticketsByEvent, totalOrders] = await Promise.all([
       Event.countDocuments(),
       Attendee.countDocuments(),
       Order.aggregate([
@@ -52,7 +52,41 @@ const getDashboardStats = async (req, res, next) => {
         { $group: { _id: '$role', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
-      Event.find({ revenue: { $gt: 0 } }).select('name revenue').sort({ revenue: -1 }).limit(10)
+      // Revenue per event from Orders
+      Order.aggregate([
+        { $match: { paymentStatus: 'success' } },
+        { $group: { _id: '$eventId', totalRevenue: { $sum: '$totalAmount' } } },
+        { $sort: { totalRevenue: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: 'events',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'event'
+          }
+        },
+        { $unwind: '$event' },
+        { $project: { _id: 0, eventId: '$_id', name: '$event.name', revenue: '$totalRevenue' } }
+      ]),
+      // Tickets by event
+      Ticket.aggregate([
+        { $group: { _id: '$event', ticketsSold: { $sum: 1 } } },
+        { $sort: { ticketsSold: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: 'events',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'event'
+          }
+        },
+        { $unwind: '$event' },
+        { $project: { _id: 0, eventId: '$_id', name: '$event.name', ticketsSold: 1 } }
+      ]),
+      // Total orders count
+      Order.countDocuments({ paymentStatus: 'success' })
     ]);
 
     res.json({
@@ -62,7 +96,9 @@ const getDashboardStats = async (req, res, next) => {
         totalAttendees,
         totalRevenue: revenueRows[0]?.totalRevenue || 0,
         usersByRole,
-        revenuePerEvent
+        revenuePerEvent,
+        ticketsByEvent,
+        totalOrders
       },
     });
   } catch (err) { next(err); }

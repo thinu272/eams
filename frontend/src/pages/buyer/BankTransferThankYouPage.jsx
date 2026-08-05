@@ -34,6 +34,8 @@ const BankTransferThankYouPage = () => {
     }
   };
 
+  const currency = orderData?.currency || orderData?.eventId?.settings?.currency || orderData?.event?.settings?.currency || 'LKR';
+
   if (loading) {
     return (
       <PublicLayout>

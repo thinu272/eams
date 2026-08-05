@@ -22,6 +22,10 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
+import { useAuth } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
+
 const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
   const tones = {
     slate: 'bg-white border-slate-200 text-slate-900',
@@ -42,6 +46,7 @@ const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
 };
 
 const BuyerHomePage = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [passes, setPasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +71,8 @@ const BuyerHomePage = () => {
     }
   };
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
     Promise.all([
       getBuyerTickets().catch(() => ({ data: { data: { orders: [] } } })),
       api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } }))
@@ -76,7 +82,41 @@ const BuyerHomePage = () => {
         setPasses(userRes.data?.data?.tickets || []);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!user || !user._id) return;
+    const socketUrl = getSocketUrl();
+    const socket = io(socketUrl, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join_buyer', { userId: user._id });
+    });
+
+    const handleUpdate = (data) => {
+      if (data?.orderNumber) {
+        toast.success(`Order #${data.orderNumber} updated!`);
+      }
+      fetchData();
+    };
+
+    socket.on('order_status_changed', handleUpdate);
+    socket.on('ticket_update', handleUpdate);
+
+    return () => {
+      socket.emit('leave_buyer', { userId: user._id });
+      socket.disconnect();
+    };
+  }, [user]);
 
   const stats = useMemo(() => {
     const totalTickets = orders.reduce((acc, o) => acc + (o.stats?.total || 0), 0);

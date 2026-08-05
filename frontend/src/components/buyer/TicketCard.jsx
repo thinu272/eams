@@ -73,9 +73,10 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                 </span>
              )}
              {(() => {
-               const isCashUnpaid = (pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid';
-               const isBankUnpaid = pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' && pass.paymentStatus !== 'success';
-               if (isCashUnpaid || isBankUnpaid) {
+               const isPaid = ['paid', 'success', 'approved', 'verified'].includes(pass.paymentStatus?.toLowerCase()) || pass.orderStatus === 'CONFIRMED' || pass.order?.status === 'CONFIRMED';
+               const isCashUnpaid = (pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && !isPaid;
+               const isBankUnpaid = pass.paymentMethod === 'bank_transfer' && !isPaid;
+               if (!isPaid && (isCashUnpaid || isBankUnpaid)) {
                  return (
                    <span className="flex items-center gap-1.5 text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 px-2.5 py-0.5 rounded-full">
                      Waiting for Payment
@@ -168,7 +169,7 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
               </p>
               {pass.refundAmount > 0 && (
                 <p className="text-[11px] font-semibold text-emerald-700">
-                  Refund initiated: LKR {Number(pass.refundAmount).toLocaleString()}
+                  Refund initiated: {pass.currency || pass.eventId?.settings?.currency || 'LKR'} {Number(pass.refundAmount).toLocaleString()}
                 </p>
               )}
             </div>
@@ -227,50 +228,59 @@ const TicketCard = ({ pass, onDownload, downloading, onResend, resending }) => {
                     <span>{resending ? 'Resending...' : 'Resend Invite'}</span>
                   </button>
                 ) : (
-                  ((pass.paymentMethod === 'bank_transfer' && pass.paymentStatus !== 'paid' && pass.paymentStatus !== 'success') || ((pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && pass.paymentStatus !== 'paid')) ? (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-xs text-yellow-700">
-                          {pass.paymentMethod === 'bank_transfer' 
-                            ? 'Your payment is awaiting verification. Ticket features will become available after payment approval (typically within 48 hours).'
-                            : 'Payment must be completed at the event venue before your tickets can be issued.'}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            disabled
-                            className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
-                            title="Waiting for payment approval"
-                          >
-                            <ShieldCheckIcon className="h-3.5 w-3.5" />
-                            <span>Confirm Pass</span>
-                          </button>
-                          <button
-                            disabled
-                            className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
-                            title="Waiting for payment approval"
-                          >
-                            <UserPlusIcon className="h-3.5 w-3.5" />
-                            <span>Invite Guest</span>
-                         </button>
-                       </div>
-                     </div>
-                   ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to={`/buyer/confirm/${pass._id}`}
-                        className="inline-flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                      >
-                        <ShieldCheckIcon className="h-3.5 w-3.5" />
-                        <span>Confirm Pass</span>
-                      </Link>
-                      <Link
-                        to={`/buyer/assign/${pass.orderId || pass.order}`}
-                        className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                      >
-                        <UserPlusIcon className="h-3.5 w-3.5" />
-                        <span>Invite Guest</span>
-                      </Link>
-                    </div>
-                  )
+                  (() => {
+                    const isPaid = ['paid', 'success', 'approved', 'verified'].includes(pass.paymentStatus?.toLowerCase()) || pass.orderStatus === 'CONFIRMED' || pass.order?.status === 'CONFIRMED';
+                    const isPaymentPending = (pass.paymentMethod === 'bank_transfer' || pass.paymentMethod === 'cash_at_entrance' || pass.paymentMethod === 'cash_on_entrance') && !isPaid;
+
+                    if (isPaymentPending) {
+                      return (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-yellow-700">
+                            {pass.paymentMethod === 'bank_transfer' 
+                              ? 'Your payment is awaiting verification. Ticket features will become available after payment approval (typically within 48 hours).'
+                              : 'Payment must be completed at the event venue before your tickets can be issued.'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              disabled
+                              className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
+                              title="Waiting for payment approval"
+                            >
+                              <ShieldCheckIcon className="h-3.5 w-3.5" />
+                              <span>Confirm Pass</span>
+                            </button>
+                            <button
+                              disabled
+                              className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main/30 text-white text-xs font-bold rounded-xl cursor-not-allowed opacity-50"
+                              title="Waiting for payment approval"
+                            >
+                              <UserPlusIcon className="h-3.5 w-3.5" />
+                              <span>Invite Guest</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          to={`/buyer/confirm/${pass._id}`}
+                          className="inline-flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                        >
+                          <ShieldCheckIcon className="h-3.5 w-3.5" />
+                          <span>Confirm Pass</span>
+                        </Link>
+                        <Link
+                          to={`/buyer/assign/${pass.orderId || pass.order}`}
+                          className="inline-flex items-center space-x-1 px-4 py-2 bg-brand-main hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                        >
+                          <UserPlusIcon className="h-3.5 w-3.5" />
+                          <span>Invite Guest</span>
+                        </Link>
+                      </div>
+                    );
+                  })()
                 )
               )}
             </div>

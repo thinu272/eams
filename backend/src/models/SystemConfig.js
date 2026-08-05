@@ -115,10 +115,9 @@ const systemConfigSchema = new mongoose.Schema({
     multiCurrency: { type: Boolean, default: false },
   },
   integrations: {
-    storageProvider: { type: String, enum: ['local', 'aws', 'cloudinary'], default: 'local' },
-    awsAccessKey: { type: String, default: '' },
-    awsSecretKey: { type: String, default: '' },
-    awsBucket: { type: String, default: '' },
+    storageProvider: { type: String, enum: ['local', 'azure', 'cloudinary'], default: 'local' },
+    azureConnectionString: { type: String, default: '' },
+    azureContainer: { type: String, default: '' },
     mapsApiKey: { type: String, default: '' },
     aiServiceKey: { type: String, default: '' },
   },

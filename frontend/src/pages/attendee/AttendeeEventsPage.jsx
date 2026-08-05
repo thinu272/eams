@@ -239,7 +239,7 @@ const AttendeeEventsPage = () => {
                       <div>
                         <p className="text-gray-600">Ticket Price</p>
                         <p className="font-medium text-gray-900">
-                          {event.ticketPrice ? `LKR ${event.ticketPrice.toLocaleString()}` : 'Free'}
+                          {event.ticketPrice ? `${event.settings?.currency || event.currency || 'LKR'} ${event.ticketPrice.toLocaleString()}` : 'Free'}
                         </p>
                       </div>
                       
