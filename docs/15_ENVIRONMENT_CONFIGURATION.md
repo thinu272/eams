@@ -1,7 +1,7 @@
 # 15_ENVIRONMENT_CONFIGURATION
 
 ## Overview
-The application relies on a set of environment variables and a `SystemConfig` collection to control runtime behavior. Sensitive values are never committed to source control; placeholders are provided in `.env.example`.
+The application relies on a set of environment variables and a `SystemConfig` collection to control runtime behavior. Sensitive values are never committed to source control; example values are provided in `.env.example`.
 
 ### 1. .env Files
 - **Backend `.env`** (located at `backend/.env`):

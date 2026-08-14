@@ -26,7 +26,7 @@ The EAMS platform implements a multi‑layered security model covering **authent
 ### 3. Data Protection
 - **Password Storage** – bcrypt hashing (`User.schema.pre('save')`).
 - **Sensitive Fields** – `User.password`, `User.mfaSecret`, `User.refreshToken` are excluded from queries (`select('-password')`).
-- **Environment Secrets** – All secrets (`JWT_SECRET`, DB URI, API keys) are read from environment variables or from the `SystemConfig` collection (never committed to source). The repository contains an `.env.example` with placeholder values.
+ - **Environment Secrets** – All secrets (`JWT_SECRET`, DB URI, API keys) are read from environment variables or from the `SystemConfig` collection (never committed to source). The repository contains an `.env.example` with example values.
 
 ### 4. Auditing & Logging
 - **SystemLog** model captures high‑level actions (login, token refresh, device registration, zone scans).
