@@ -211,7 +211,11 @@ router.post('/notify', async (req, res) => {
 
     // 1. Verify the signature
     console.log('PAYHERE webhook payload:', req.body);
-    const merchantSecret = process.env.PAYHERE_SECRET || '4MjY0NDc2ODU3MzExMzk2NTMxMzUxMzU3MDU3MjAzMTM2MTUyNTY=';
+    const merchantSecret = process.env.PAYHERE_SECRET;
+    if (!merchantSecret) {
+      console.error('PAYHERE webhook received but PAYHERE_SECRET is not configured. Rejecting request.');
+      return res.status(500).send('Payment gateway not configured');
+    }
     const amountFormatted = parseFloat(payhere_amount).toFixed(2);
     const localMd5Sig = crypto
       .createHash('md5')

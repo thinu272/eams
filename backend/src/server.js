@@ -11,6 +11,7 @@ const jwt = require("jsonwebtoken");
 const requestLogger = require("./middleware/requestLogger");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
+const rateLimit = require('express-rate-limit');
 const maintenanceMode = require("./middleware/maintenanceMode");
 const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
 const { initializeBankTransferScheduler } = require("./utils/bankTransferScheduler");
@@ -61,6 +62,16 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(helmet());
 app.use(cookieParser());
 
+// Global rate limiter to protect non-auth endpoints from abuse/scraping
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // limit each IP to 300 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+});
+app.use(globalLimiter);
+
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
@@ -100,8 +111,14 @@ app.use('/socket.io-client', express.static(path.join(__dirname, '../node_module
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
+
+// Align Socket.IO CORS policy with Express CORS settings
+const socketCors = (process.env.NODE_ENV !== 'production')
+  ? { origin: true, methods: ['GET', 'POST'], credentials: true }
+  : { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true };
+
 const io = new Server(server, {
-  cors: { origin: "*" }, // allow frontend
+  cors: socketCors,
 });
 app.set('io', io);
 
@@ -205,12 +222,17 @@ app.use('/api/upload', require('./routes/upload'));;
 app.use('/api/devices', require('./routes/devices'));
 
 // --- DATABASE CONNECTION ---
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error('Fatal: MONGODB_URI (or MONGO_URI) is not set. Aborting startup to avoid using embedded credentials.');
+  process.exit(1);
+}
 
 mongoose
   .connect(MONGO_URI)
   .then(() => {
-    console.log("MongoDB connected");
+    console.log('MongoDB connected');
     // Initialize S3 cleanup scheduler after database connection
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       initializeCleanupScheduler();
@@ -227,4 +249,16 @@ const PORT = process.env.PORT || 5000;
 app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
 // Bind to localhost only for local-only development.
-server.listen(PORT, '127.0.0.1', () => console.log(`Server running on port ${PORT}`));
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+server.listen(PORT, HOST, () => console.log(`Server running on ${HOST}:${PORT}`));
+
+// Runtime environment presence check (prints which critical env vars are present without revealing values)
+(() => {
+  const critical = ['MONGODB_URI', 'JWT_SECRET', 'PAYHERE_SECRET', 'STRIPE_SECRET_KEY', 'AZURE_STORAGE_CONNECTION_STRING'];
+  const present = critical.filter(k => !!process.env[k]);
+  const missing = critical.filter(k => !process.env[k]);
+  console.log(`Env check - present: ${present.length ? present.join(',') : 'none'}; missing: ${missing.length ? missing.join(',') : 'none'}`);
+  if (missing.length) {
+    console.warn('Warning: Missing critical env vars - set them in your environment or secrets store for full feature availability.');
+  }
+})();
