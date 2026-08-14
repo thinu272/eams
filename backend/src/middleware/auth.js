@@ -80,7 +80,8 @@ const requireEventAccess = async (req, res, next) => {
   try {
     const { user } = req;
     const rawId = req.params.eventId || req.body.eventId || req.query.eventId;
-    let eventId = (rawId && rawId !== 'undefined') ? rawId : null;
+    const requestedEventProvided = rawId !== undefined && rawId !== null && rawId !== '' && rawId !== 'undefined';
+    let eventId = requestedEventProvided ? rawId : null;
 
     // Root Authority bypass (Admins and Main Organisers have global scope)
     const canonicalRole = normalizeRole(user.role);
@@ -103,34 +104,31 @@ const requireEventAccess = async (req, res, next) => {
     if (eventId && !mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
-    
-    // If no ID provided or "undefined" string, fallback to first assigned
+
+    // If no ID provided, fallback to first assigned event (if any)
     if (!eventId) {
       eventId = user.assignedEvents && user.assignedEvents[0];
       if (eventId) req.resolvedEventId = eventId;
     }
-    
+
     if (!eventId) {
       return res.status(400).json({ success: false, message: 'Event ID required for scoped operation.' });
     }
-    
-    // Validate format
+
+    // Validate format again
     const isValid = mongoose.Types.ObjectId.isValid(eventId);
     if (!isValid) {
-      // If the provided ID was invalid, try fallback before failing
-      const fallback = user.assignedEvents && user.assignedEvents[0];
-      if (fallback && mongoose.Types.ObjectId.isValid(fallback)) {
-        req.resolvedEventId = fallback;
-        req.query.eventId = fallback; // Update for downstream
-        return next();
-      }
       return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
 
-    // Check explicit assignments
-    if (user.assignedEvents.some(e => e.toString() === eventId.toString())) {
-      req.resolvedEventId = eventId;
-      return next();
+    // If the client explicitly requested an eventId but the user is not assigned
+    // to it and is not the creator/main organiser, reject with 403 instead
+    // of silently falling back to another event.
+    if (requestedEventProvided) {
+      if (user.assignedEvents && user.assignedEvents.some(e => e.toString() === eventId.toString())) {
+        req.resolvedEventId = eventId;
+        return next();
+      }
     }
 
     // Check creator status (for organisers who haven't been 'assigned' yet)
@@ -141,8 +139,13 @@ const requireEventAccess = async (req, res, next) => {
       return next();
     }
 
-    // If we reach here, the requested ID was unauthorized. 
-    // Let's try one last fallback to the first assigned event.
+    // If we reach here, the requested ID is outside the user's scope.
+    // If the client explicitly asked for this ID, reject with 403.
+    if (requestedEventProvided) {
+      return res.status(403).json({ success: false, message: 'Target event is outside your authorized scope.' });
+    }
+
+    // If no event was requested, and user has an assigned event, use that.
     const finalFallback = user.assignedEvents && user.assignedEvents[0];
     if (finalFallback && finalFallback.toString() !== eventId.toString()) {
       req.resolvedEventId = finalFallback;

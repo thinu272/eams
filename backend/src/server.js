@@ -11,6 +11,7 @@ const jwt = require("jsonwebtoken");
 const requestLogger = require("./middleware/requestLogger");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
+const rateLimit = require('express-rate-limit');
 const maintenanceMode = require("./middleware/maintenanceMode");
 const { initializeCleanupScheduler } = require("./utils/s3Cleanup");
 const { initializeBankTransferScheduler } = require("./utils/bankTransferScheduler");
@@ -61,6 +62,16 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(helmet());
 app.use(cookieParser());
 
+// Global rate limiter to protect non-auth endpoints from abuse/scraping
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // limit each IP to 300 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+});
+app.use(globalLimiter);
+
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
@@ -100,8 +111,14 @@ app.use('/socket.io-client', express.static(path.join(__dirname, '../node_module
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
+
+// Align Socket.IO CORS policy with Express CORS settings
+const socketCors = (process.env.NODE_ENV !== 'production')
+  ? { origin: true, methods: ['GET', 'POST'], credentials: true }
+  : { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true };
+
 const io = new Server(server, {
-  cors: { origin: "*" }, // allow frontend
+  cors: socketCors,
 });
 app.set('io', io);
 
@@ -232,7 +249,8 @@ const PORT = process.env.PORT || 5000;
 app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
 // Bind to localhost only for local-only development.
-server.listen(PORT, '127.0.0.1', () => console.log(`Server running on port ${PORT}`));
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+server.listen(PORT, HOST, () => console.log(`Server running on ${HOST}:${PORT}`));
 
 // Runtime environment presence check (prints which critical env vars are present without revealing values)
 (() => {
