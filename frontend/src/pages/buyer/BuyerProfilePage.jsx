@@ -14,11 +14,9 @@ import {
   ShieldCheckIcon,
   ShoppingBagIcon,
   TicketIcon,
-  CalendarDaysIcon,
   KeyIcon,
   CameraIcon,
   TrashIcon,
-  ArrowRightIcon,
   QrCodeIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -26,8 +24,7 @@ import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 
 const BuyerProfilePage = () => {
   const { user, loadUser } = useAuth();
-  
-  // State variables
+
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
   const [extraInfo, setExtraInfo] = useState({
     isVerified: false,
@@ -41,42 +38,48 @@ const BuyerProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  
-  // Dashboard metrics
+
   const [ordersCount, setOrdersCount] = useState(0);
   const [passesCount, setPassesCount] = useState(0);
-
-  // Photo uploading states
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Password update form states
-  const [pwdForm, setPwdForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwdForm, setPwdForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [updatingPwd, setUpdatingPwd] = useState(false);
 
-  // MFA modals state
   const [mfaModalOpen, setMfaModalOpen] = useState(false);
-  const [mfaSetupData, setMfaSetupData] = useState(null); // qrImage, secret
+  const [mfaSetupData, setMfaSetupData] = useState(null);
   const [mfaTokenInput, setMfaTokenInput] = useState('');
   const [submittingMfa, setSubmittingMfa] = useState(false);
 
   const [mfaDeactivateOpen, setMfaDeactivateOpen] = useState(false);
   const [deactivateTokenInput, setDeactivateTokenInput] = useState('');
 
-  const initialValues = useMemo(() => ({
-    name: user?.name || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
-  }), [user]);
+  const initialValues = useMemo(
+    () => ({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+    }),
+    [user]
+  );
 
   const load = async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const [profileRes, buyerRes, userRes] = await Promise.all([
-        api.get('/user/profile').catch(() => ({ data: { data: { user: initialValues } } })),
+        api
+          .get('/user/profile')
+          .catch(() => ({ data: { data: { user: initialValues } } })),
         getBuyerTickets().catch(() => ({ data: { data: { orders: [] } } })),
-        api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } }))
+        api
+          .get('/user/tickets')
+          .catch(() => ({ data: { data: { tickets: [] } } })),
       ]);
 
       const profile = profileRes.data?.data?.user || initialValues;
@@ -134,7 +137,11 @@ const BuyerProfilePage = () => {
       setSaving(true);
       setError(null);
       setSuccess(false);
-      await api.put('/user/profile', { name: form.name, email: form.email, phone: form.phone });
+      await api.put('/user/profile', {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+      });
       await loadUser?.();
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2500);
@@ -146,7 +153,6 @@ const BuyerProfilePage = () => {
     }
   };
 
-  // Profile Picture Upload Handler
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -161,19 +167,24 @@ const BuyerProfilePage = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (res.data?.success) {
-        setExtraInfo(prev => ({ ...prev, profilePhoto: res.data.data?.url }));
+        setExtraInfo((prev) => ({
+          ...prev,
+          profilePhoto: res.data.data?.url,
+        }));
         toast.success('Profile picture updated!', { id: 'photo-upload' });
         await loadUser?.();
       }
     } catch (err) {
       console.error(err);
-      toast.error(err?.response?.data?.message || 'Failed to upload photo', { id: 'photo-upload' });
+      toast.error(
+        err?.response?.data?.message || 'Failed to upload photo',
+        { id: 'photo-upload' }
+      );
     } finally {
       setUploadingPhoto(false);
     }
   };
 
-  // Change Password Handler
   const handlePasswordUpdate = async (e) => {
     e.preventDefault();
     if (!pwdForm.currentPassword) {
@@ -196,7 +207,11 @@ const BuyerProfilePage = () => {
         newPassword: pwdForm.newPassword,
       });
       toast.success('Password updated successfully!');
-      setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPwdForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to update password');
     } finally {
@@ -204,7 +219,6 @@ const BuyerProfilePage = () => {
     }
   };
 
-  // Setup MFA - fetch setup key
   const handleSetupMfa = async () => {
     try {
       setSubmittingMfa(true);
@@ -217,14 +231,13 @@ const BuyerProfilePage = () => {
         setMfaTokenInput('');
         setMfaModalOpen(true);
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to retrieve MFA configurations');
     } finally {
       setSubmittingMfa(false);
     }
   };
 
-  // Activate MFA - confirm code
   const handleActivateMfa = async (e) => {
     e.preventDefault();
     if (!mfaTokenInput.trim()) {
@@ -233,7 +246,9 @@ const BuyerProfilePage = () => {
     }
     try {
       setSubmittingMfa(true);
-      const res = await api.post('/auth/mfa/activate', { token: mfaTokenInput });
+      const res = await api.post('/auth/mfa/activate', {
+        token: mfaTokenInput,
+      });
       if (res.data?.success) {
         toast.success('MFA enabled on your account!');
         setMfaModalOpen(false);
@@ -241,13 +256,14 @@ const BuyerProfilePage = () => {
         await load();
       }
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Verification failed. Try again.');
+      toast.error(
+        err?.response?.data?.message || 'Verification failed. Try again.'
+      );
     } finally {
       setSubmittingMfa(false);
     }
   };
 
-  // Disable MFA
   const handleDeactivateMfa = async (e) => {
     e.preventDefault();
     if (!deactivateTokenInput.trim()) {
@@ -256,7 +272,9 @@ const BuyerProfilePage = () => {
     }
     try {
       setSubmittingMfa(true);
-      const res = await api.post('/auth/mfa/deactivate', { token: deactivateTokenInput });
+      const res = await api.post('/auth/mfa/deactivate', {
+        token: deactivateTokenInput,
+      });
       if (res.data?.success) {
         toast.success('MFA disabled successfully.');
         setMfaDeactivateOpen(false);
@@ -264,142 +282,176 @@ const BuyerProfilePage = () => {
         await load();
       }
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to deactivate MFA.');
+      toast.error(
+        err?.response?.data?.message || 'Failed to deactivate MFA.'
+      );
     } finally {
       setSubmittingMfa(false);
     }
   };
 
   const initials = form.name
-    ? form.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    ? form.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
     : 'B';
+
+  const inputClass =
+    'w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20';
 
   return (
     <BuyerLayout>
-      <div className="space-y-6 animate-fade-in">
-        
-        {/* Profile Heading Card with Avatar Upload */}
-        <div className="bg-white border border-slate-200 rounded-[32px] p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
-            <div className="relative group">
-              {extraInfo.profilePhoto ? (
-                <img
-                  src={extraInfo.profilePhoto}
-                  alt="Profile"
-                  className="w-20 h-20 rounded-full object-cover border border-slate-200 shadow"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-brand-main/10 border border-brand-main/20 flex items-center justify-center text-brand-main font-extrabold text-2xl shadow-inner">
-                  {initials}
+      <div className="space-y-5 sm:space-y-6 pb-16 sm:pb-20">
+        {/* ── Profile header ── */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center text-center sm:text-left">
+                <div className="relative group shrink-0">
+                  {extraInfo.profilePhoto ? (
+                    <img
+                      src={extraInfo.profilePhoto}
+                      alt="Profile"
+                      className="h-16 w-16 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                    />
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-lg font-bold text-white shadow-sm">
+                      {initials}
+                    </div>
+                  )}
+                  <label className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-slate-900 text-white shadow hover:bg-slate-800 transition">
+                    <CameraIcon className="h-3.5 w-3.5" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                      disabled={uploadingPhoto}
+                    />
+                  </label>
                 </div>
-              )}
-              <label className="absolute bottom-0 right-0 p-1.5 bg-slate-950/70 hover:bg-slate-900 text-white rounded-full cursor-pointer transition-colors shadow">
-                <CameraIcon className="w-4 h-4" />
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  disabled={uploadingPhoto}
-                />
-              </label>
-            </div>
-            
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                <h2 className="text-xl font-extrabold text-slate-900">{form.name}</h2>
-                {extraInfo.isVerified ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                    <CheckCircleSolid className="h-3 w-3" /> Verified Account
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200">
-                    Pending Verification
-                  </span>
-                )}
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                      {form.name || 'Buyer'}
+                    </h1>
+                    {extraInfo.isVerified ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                        <CheckCircleSolid className="h-3 w-3" />
+                        Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
+                        Pending Verification
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Registered Buyer · ID:{' '}
+                    {user?._id?.substring(0, 8) || '—'}…
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Registered Buyer • ID: {user?._id?.substring(0, 8)}...
-              </p>
+
+              <div className="text-center sm:text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Member since
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-700">
+                  {extraInfo.createdAt
+                    ? new Date(extraInfo.createdAt).toLocaleDateString(
+                        undefined,
+                        {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        }
+                      )
+                    : 'N/A'}
+                </p>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex flex-col text-center md:text-right gap-0.5 text-xs text-slate-400 font-bold uppercase tracking-wider">
-            <span>Member since</span>
-            <span className="text-slate-700 font-extrabold text-sm lowercase mt-0.5">
-              {extraInfo.createdAt ? new Date(extraInfo.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-            </span>
           </div>
         </div>
 
-        {/* Success/Error Alerts */}
+        {/* Alerts */}
         {success && (
-          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircleSolid className="h-5 w-5 text-emerald-700" />
-              <p className="text-sm font-semibold text-emerald-900">Profile settings saved successfully.</p>
-            </div>
+          <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/90 px-4 py-3.5">
+            <CheckCircleSolid className="h-5 w-5 shrink-0 text-emerald-600" />
+            <p className="text-sm font-semibold text-emerald-900">
+              Profile settings saved successfully.
+            </p>
           </div>
         )}
 
         {error && (
-          <div className="rounded-2xl bg-red-50 border border-red-200 p-4">
-            <div className="flex items-center gap-3">
-              <ExclamationTriangleIcon className="h-5 w-5 text-red-700" />
-              <p className="text-sm font-semibold text-red-900">{error}</p>
-            </div>
+          <div className="flex items-center gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/90 px-4 py-3.5">
+            <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-600" />
+            <p className="text-sm font-semibold text-rose-900">{error}</p>
           </div>
         )}
 
-        {/* 2-Column Desktop Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Left Column: Form Details (Takes 2/3 space) */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Edit details form */}
-            <form onSubmit={handleSubmit} className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 space-y-6">
-              <h3 className="text-base font-extrabold text-slate-900">Personal Details</h3>
-              
+        {/* ── Main grid ── */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          {/* Left: forms */}
+          <div className="lg:col-span-2 space-y-5">
+            {/* Personal details */}
+            <form
+              onSubmit={handleSubmit}
+              className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm space-y-5"
+            >
+              <h2 className="text-base font-bold text-slate-900">
+                Personal Details
+              </h2>
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Full Name</label>
-                  <div className="relative mt-2">
-                    <UserIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Full Name
+                  </label>
+                  <div className="relative mt-1.5">
+                    <UserIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       name="name"
                       value={form.name}
                       onChange={handleChange}
-                      className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                      className={inputClass}
                       placeholder="Your name"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Email Address</label>
-                    <div className="relative mt-2">
-                      <EnvelopeIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Email Address
+                    </label>
+                    <div className="relative mt-1.5">
+                      <EnvelopeIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
                         name="email"
                         value={form.email}
                         onChange={handleChange}
-                        className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                        className={inputClass}
                         placeholder="you@example.com"
                       />
                     </div>
                   </div>
-
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Phone Number</label>
-                    <div className="relative mt-2">
-                      <PhoneIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Phone Number
+                    </label>
+                    <div className="relative mt-1.5">
+                      <PhoneIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
                         name="phone"
                         value={form.phone}
                         onChange={handleChange}
-                        className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                        className={inputClass}
                         placeholder="+947XXXXXXXX"
                       />
                     </div>
@@ -407,61 +459,86 @@ const BuyerProfilePage = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-brand-main hover:bg-brand-dark px-6 py-3 text-sm font-bold text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 transition"
                 >
-                  <CheckCircleIcon className="h-5 w-5" />
-                  <span>{saving ? 'Saving Changes…' : 'Save Details'}</span>
+                  <CheckCircleIcon className="h-4 w-4" />
+                  {saving ? 'Saving…' : 'Save Details'}
                 </button>
               </div>
             </form>
 
-            {/* Change Password Form */}
-            <form onSubmit={handlePasswordUpdate} className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 space-y-6">
-              <h3 className="text-base font-extrabold text-slate-900">Change Account Password</h3>
-              
+            {/* Change password */}
+            <form
+              onSubmit={handlePasswordUpdate}
+              className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm space-y-5"
+            >
+              <h2 className="text-base font-bold text-slate-900">
+                Change Password
+              </h2>
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Current Password</label>
-                  <div className="relative mt-2">
-                    <KeyIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Current Password
+                  </label>
+                  <div className="relative mt-1.5">
+                    <KeyIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="password"
                       value={pwdForm.currentPassword}
-                      onChange={(e) => setPwdForm(p => ({ ...p, currentPassword: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                      onChange={(e) =>
+                        setPwdForm((p) => ({
+                          ...p,
+                          currentPassword: e.target.value,
+                        }))
+                      }
+                      className={inputClass}
                       placeholder="••••••••"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">New Password</label>
-                    <div className="relative mt-2">
-                      <KeyIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      New Password
+                    </label>
+                    <div className="relative mt-1.5">
+                      <KeyIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
                         type="password"
                         value={pwdForm.newPassword}
-                        onChange={(e) => setPwdForm(p => ({ ...p, newPassword: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                        onChange={(e) =>
+                          setPwdForm((p) => ({
+                            ...p,
+                            newPassword: e.target.value,
+                          }))
+                        }
+                        className={inputClass}
                         placeholder="Min. 8 characters"
                       />
                     </div>
                   </div>
-
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Confirm Password</label>
-                    <div className="relative mt-2">
-                      <KeyIcon className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Confirm Password
+                    </label>
+                    <div className="relative mt-1.5">
+                      <KeyIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input
                         type="password"
                         value={pwdForm.confirmPassword}
-                        onChange={(e) => setPwdForm(p => ({ ...p, confirmPassword: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm focus:border-brand-main focus:ring-2 focus:ring-brand-main/20 outline-none"
+                        onChange={(e) =>
+                          setPwdForm((p) => ({
+                            ...p,
+                            confirmPassword: e.target.value,
+                          }))
+                        }
+                        className={inputClass}
                         placeholder="Match password"
                       />
                     </div>
@@ -469,162 +546,193 @@ const BuyerProfilePage = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <button
                   type="submit"
                   disabled={updatingPwd}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-brand-main hover:bg-brand-dark px-6 py-3 text-sm font-bold text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 transition"
                 >
-                  <KeyIcon className="h-5 w-5" />
-                  <span>{updatingPwd ? 'Updating…' : 'Change Password'}</span>
+                  <KeyIcon className="h-4 w-4" />
+                  {updatingPwd ? 'Updating…' : 'Change Password'}
                 </button>
               </div>
             </form>
-
           </div>
 
-          {/* Right Column: Account Stats & Security Widgets (Takes 1/3 space) */}
-          <div className="space-y-6">
-            
-            {/* MFA Security configuration card */}
-            <div className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 space-y-4">
+          {/* Right: security + stats */}
+          <div className="space-y-5">
+            {/* MFA */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2">
-                <ShieldCheckIcon className="h-5 w-5 text-brand-main" />
-                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Two-Factor Auth (MFA)</h3>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <ShieldCheckIcon className="h-5 w-5" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Two-Factor Auth
+                </p>
               </div>
-              
-              <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                Add an extra layer of protection to your entry tickets. Once activated, logins will require a 6-digit dynamic code from Google/Microsoft Authenticator app.
+
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Protect your account with a 6-digit code from Google or
+                Microsoft Authenticator.
               </p>
-              
+
               {extraInfo.mfaEnabled ? (
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 text-xs font-bold">
-                    <CheckCircleSolid className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-                    <span>MFA is currently ENABLED.</span>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-800">
+                    <CheckCircleSolid className="h-4 w-4 shrink-0 text-emerald-600" />
+                    MFA is enabled
                   </div>
                   <button
+                    type="button"
                     onClick={() => setMfaDeactivateOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 hover:bg-rose-50 text-rose-700 px-4 py-2.5 text-xs font-bold transition-all"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 transition"
                   >
                     <TrashIcon className="h-4 w-4" />
-                    <span>Disable Authenticator</span>
+                    Disable Authenticator
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center gap-2 p-3 bg-amber-50 text-amber-800 rounded-2xl border border-amber-200 text-xs font-semibold">
-                    <InformationCircleIcon className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                    <span>MFA is currently disabled.</span>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-800">
+                    <InformationCircleIcon className="h-4 w-4 shrink-0 text-amber-600" />
+                    MFA is disabled
                   </div>
                   <button
+                    type="button"
                     onClick={handleSetupMfa}
                     disabled={submittingMfa}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 transition"
                   >
                     <QrCodeIcon className="h-4 w-4" />
-                    <span>Configure Authenticator</span>
+                    Configure Authenticator
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Account Activity Stats */}
-            <div className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Account Overview</h3>
-              
+            {/* Account overview */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Account Overview
+              </p>
+
               <div className="space-y-3">
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
                     <ShoppingBagIcon className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Orders Placed</p>
-                    <p className="text-base font-extrabold text-slate-900">{ordersCount} Orders</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Orders Placed
+                    </p>
+                    <p className="text-base font-bold text-slate-900">
+                      {ordersCount} Orders
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                     <TicketIcon className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Active passes</p>
-                    <p className="text-base font-extrabold text-slate-900">{passesCount} Passes</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Active Passes
+                    </p>
+                    <p className="text-base font-bold text-slate-900">
+                      {passesCount} Passes
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Session info */}
-            <div className="rounded-[32px] bg-slate-900 p-6 text-white shadow-sm border border-slate-800 space-y-3 text-xs">
-              <p className="font-extrabold text-blue-400 uppercase tracking-widest text-[10px]">Session Logs</p>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Role:</span>
-                <span className="font-bold">Ticket Buyer</span>
+            {/* Session */}
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-5 shadow-sm space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Session
+              </p>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Role</span>
+                <span className="font-semibold text-slate-900">
+                  Ticket Buyer
+                </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Last login:</span>
-                <span className="font-semibold text-slate-300">
-                  {extraInfo.lastLogin ? new Date(extraInfo.lastLogin).toLocaleString() : 'Just now'}
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Last login</span>
+                <span className="font-medium text-slate-700 text-right">
+                  {extraInfo.lastLogin
+                    ? new Date(extraInfo.lastLogin).toLocaleString()
+                    : 'Just now'}
                 </span>
               </div>
             </div>
-
           </div>
         </div>
-
       </div>
 
       {/* Setup MFA Modal */}
       <Modal
         open={mfaModalOpen}
-        onClose={() => { setMfaModalOpen(false); setMfaSetupData(null); }}
+        onClose={() => {
+          setMfaModalOpen(false);
+          setMfaSetupData(null);
+        }}
         title="Setup Authenticator (2FA)"
         size="md"
       >
         {mfaSetupData && (
-          <form onSubmit={handleActivateMfa} className="space-y-4 p-4 text-center">
-            <p className="text-xs text-slate-600 max-w-sm mx-auto">
-              Scan the QR code below using your favorite TOTP app (like Google Authenticator, Authy, or Duo).
+          <form onSubmit={handleActivateMfa} className="space-y-4 p-2 text-center">
+            <p className="text-sm text-slate-600 max-w-sm mx-auto">
+              Scan the QR code with Google Authenticator, Authy, or Duo.
             </p>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 inline-block shadow-inner">
+            <div className="inline-block rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
               <img
                 src={mfaSetupData.qrImage}
                 alt="Authenticator QR"
-                className="mx-auto w-44 h-44"
+                className="mx-auto h-44 w-44"
               />
             </div>
 
-            <div className="text-left bg-slate-50 p-3 rounded-xl border border-slate-200 max-w-sm mx-auto">
-              <p className="text-[10px] font-black uppercase text-slate-400">Manual Setup Key</p>
-              <p className="font-mono text-xs text-slate-800 font-semibold break-all select-all mt-1">{mfaSetupData.secret}</p>
+            <div className="mx-auto max-w-sm rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Manual Setup Key
+              </p>
+              <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-800 select-all">
+                {mfaSetupData.secret}
+              </p>
             </div>
 
-            <div className="max-w-xs mx-auto space-y-2 text-left pt-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase">Verification Code</label>
+            <div className="mx-auto max-w-xs space-y-2 text-left pt-1">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Verification Code
+              </label>
               <input
                 value={mfaTokenInput}
                 onChange={(e) => setMfaTokenInput(e.target.value)}
                 maxLength={6}
                 placeholder="6-digit code"
-                className="w-full text-center tracking-[0.25em] font-extrabold rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm focus:border-brand-main focus:ring-1 focus:ring-brand-main outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-center text-sm font-bold tracking-[0.25em] text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
 
-            <div className="pt-4 flex gap-3 max-w-xs mx-auto">
+            <div className="mx-auto flex max-w-xs gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => { setMfaModalOpen(false); setMfaSetupData(null); }}
-                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setMfaModalOpen(false);
+                  setMfaSetupData(null);
+                }}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submittingMfa}
-                className="flex-1 rounded-xl bg-brand-main hover:bg-brand-dark py-2.5 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+                className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 transition"
               >
                 {submittingMfa ? 'Confirming…' : 'Activate 2FA'}
               </button>
@@ -636,44 +744,49 @@ const BuyerProfilePage = () => {
       {/* Disable MFA Modal */}
       <Modal
         open={mfaDeactivateOpen}
-        onClose={() => { setMfaDeactivateOpen(false); setDeactivateTokenInput(''); }}
+        onClose={() => {
+          setMfaDeactivateOpen(false);
+          setDeactivateTokenInput('');
+        }}
         title="Disable Authenticator"
         size="sm"
       >
-        <form onSubmit={handleDeactivateMfa} className="space-y-4 p-4">
-          <p className="text-xs text-slate-600 text-center">
-            Please enter the 6-digit code from your authenticator app to disable Two-Factor Authentication.
+        <form onSubmit={handleDeactivateMfa} className="space-y-4 p-2">
+          <p className="text-center text-sm text-slate-600">
+            Enter the 6-digit code from your authenticator app to disable 2FA.
           </p>
 
-          <div className="space-y-2 max-w-xs mx-auto pt-2">
+          <div className="mx-auto max-w-xs">
             <input
               value={deactivateTokenInput}
               onChange={(e) => setDeactivateTokenInput(e.target.value)}
               maxLength={6}
               placeholder="6-digit code"
-              className="w-full text-center tracking-[0.25em] font-extrabold rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs focus:border-brand-main focus:ring-1 focus:ring-brand-main outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-center text-sm font-bold tracking-[0.25em] text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
-          <div className="pt-4 flex gap-3 max-w-xs mx-auto">
+          <div className="mx-auto flex max-w-xs gap-2 pt-1">
             <button
               type="button"
-              onClick={() => { setMfaDeactivateOpen(false); setDeactivateTokenInput(''); }}
-              className="flex-1 rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setMfaDeactivateOpen(false);
+                setDeactivateTokenInput('');
+              }}
+              className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submittingMfa}
-              className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+              className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-rose-500 disabled:opacity-50 transition"
             >
               {submittingMfa ? 'Disabling…' : 'Disable'}
             </button>
           </div>
         </form>
       </Modal>
-
     </BuyerLayout>
   );
 };

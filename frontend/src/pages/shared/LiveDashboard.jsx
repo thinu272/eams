@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { io } from 'socket.io-client';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie 
@@ -7,8 +8,7 @@ import {
 import { getMyEvents, getEvents } from '../../api/events';
 import EventSelector from '../../components/ui/EventSelector';
 import { 
-  UsersIcon, TicketIcon, ClockIcon, ShieldCheckIcon, ArrowUpIcon, ArrowDownIcon, 
-  SignalIcon, MapPinIcon, QrCodeIcon, ChartBarIcon 
+  UsersIcon, TicketIcon, ShieldCheckIcon, ArrowUpIcon, ArrowDownIcon, MapPinIcon, ChartBarIcon 
 } from '@heroicons/react/24/outline';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -16,6 +16,8 @@ import Badge from '../../components/ui/Badge';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { getOrganiserWorkspace } from '../../api/organiser';
 import { getSocketUrl } from '../../utils/backend';
+import { useAuth } from '../../context/AuthContext';
+import { getCanonicalRole } from '../../utils/rbac';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -24,7 +26,8 @@ const formatNumber = (num) => num?.toLocaleString() || '0';
 
 // Format currency
 const formatCurrency = (amount, currency = 'LKR') => {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
+  const safeAmount = Number(amount || 0);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(safeAmount);
 };
 
 // Format time
@@ -36,9 +39,12 @@ const formatTime = (dateString) => {
 const LiveEventDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const urlEventId = searchParams.get('eventId');
   const [selectedEventId, setSelectedEventId] = useState(urlEventId || '');
+  const currentRole = getCanonicalRole(user?.role);
+  const canSeeAllEvents = Boolean(isAdmin || currentRole === 'MainAdmin');
   
   const [loading, setLoading] = useState(true);
   // State for events list
@@ -63,49 +69,66 @@ const LiveEventDashboard = () => {
   const [zoneOccupancy, setZoneOccupancy] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [notifications, setNotifications] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const currency = event?.settings?.currency || event?.currency || 'LKR';
   
   const socketRef = useRef(null);
 
   // Fetch initial data
-  const fetchInitialData = useCallback(async () => {
-    try {
+  const fetchInitialData = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+    if (!silent) {
       setLoading(true);
-      // Clear stale data from previous event
-      setStats({ totalTickets: 0, ticketsSold: 0, confirmedAttendees: 0, checkedInCount: 0, totalRevenue: 0, zoneOccupancy: 0 });
-      setCharts({ checkinsOverTime: [], revenueByCategory: [], ticketStatusDistribution: [] });
-      setRecentEntries([]);
-      setZoneOccupancy([]);
-      setNotifications([]);
+    }
 
+    try {
       if (!selectedEventId) {
-        setLoading(false);
+        setStats({ totalTickets: 0, ticketsSold: 0, confirmedAttendees: 0, checkedInCount: 0, totalRevenue: 0, zoneOccupancy: 0 });
+        setCharts({ checkinsOverTime: [], revenueByCategory: [], ticketStatusDistribution: [] });
+        setRecentEntries([]);
+        setZoneOccupancy([]);
         return;
       }
+
       const response = await getOrganiserWorkspace({ eventId: selectedEventId });
-      const data = response.data?.data;
+      const payload = response?.data?.data || response?.data || {};
+      const data = payload;
       
       if (data) {
-        setEvent(data.event);
+        const overview = data.overview || {};
+        const revenueValue = Number(
+          overview.totalRevenue ??
+          overview.revenue ??
+          data.totalRevenue ??
+          data.revenue ??
+          0
+        );
+
+        setEvent(data.event || null);
         setStats({
-          totalTickets: data.overview?.totalTickets || 0,
-          ticketsSold: data.overview?.ticketsSold || 0,
-          confirmedAttendees: data.overview?.confirmedAttendees || 0,
-          checkedInCount: data.overview?.checkedInCount || 0,
-          totalRevenue: data.overview?.totalRevenue || 0,
-          zoneOccupancy: data.overview?.zoneOccupancy || 0
+          totalTickets: Number(overview.totalTickets ?? data.totalTickets ?? 0),
+          ticketsSold: Number(overview.ticketsSold ?? data.ticketsSold ?? 0),
+          confirmedAttendees: Number(overview.confirmedAttendees ?? data.confirmedAttendees ?? 0),
+          checkedInCount: Number(overview.checkedInCount ?? data.checkedInCount ?? 0),
+          totalRevenue: revenueValue,
+          zoneOccupancy: Number(overview.zoneOccupancy ?? data.zoneOccupancy ?? 0)
         });
         setCharts({
-          checkinsOverTime: data.charts?.checkinsOverTime || [],
-          revenueByCategory: data.charts?.revenueByCategory || [],
-          ticketStatusDistribution: data.charts?.ticketStatusDistribution || []
+          checkinsOverTime: data.charts?.checkinsOverTime || data.checkinsOverTime || [],
+          revenueByCategory: data.charts?.revenueByCategory || data.revenueByCategory || [],
+          ticketStatusDistribution: data.charts?.ticketStatusDistribution || data.ticketStatusDistribution || []
         });
-        setRecentEntries(data.entryLogs || []);
-        setZoneOccupancy(data.zoneOccupancy || []);
+        setRecentEntries(data.entryLogs || data.recentEntries || []);
+        setZoneOccupancy(data.zoneOccupancy || data.overview?.zoneOccupancy || []);
+        setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
+      addNotification({ type: 'error', title: 'Refresh Failed', message: 'Unable to load the latest live data.' });
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [selectedEventId]);
 
@@ -113,16 +136,10 @@ const LiveEventDashboard = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        // Start loading
         setIsFetchingEvents(true);
-        const res = await getMyEvents();
-        console.log('Full getMyEvents response body:', res?.data);
-        const events = res?.data?.data?.events || res?.data?.events || [];
-        console.log('Extracted events array length:', events.length);
-        if (events.length === 0) {
-          // Fallback to public events list if no assigned events
+
+        if (canSeeAllEvents) {
           const publicRes = await getEvents();
-          console.log('Fallback public events response body:', publicRes?.data);
           const publicEvents = (() => {
             if (Array.isArray(publicRes?.data?.events)) return publicRes?.data?.events;
             if (Array.isArray(publicRes?.data?.data?.events)) return publicRes?.data?.data?.events;
@@ -130,30 +147,46 @@ const LiveEventDashboard = () => {
             if (Array.isArray(publicRes?.data)) return publicRes?.data;
             return [];
           })();
-          console.log('Public events fetched count:', publicEvents.length);
           setAvailableEvents(publicEvents);
+
           if (!selectedEventId && publicEvents.length > 0) {
             const firstId = publicEvents[0]._id || publicEvents[0].id || '';
             setSelectedEventId(firstId);
-            navigate(`${location.pathname}?eventId=${firstId}`);
+            navigate(`${location.pathname}?eventId=${firstId}`, { replace: true });
           }
-        } else {
-          setAvailableEvents(events);
-          if (!selectedEventId && events.length > 0) {
-            const firstId = events[0]._id || events[0].id || '';
-            setSelectedEventId(firstId);
-            navigate(`${location.pathname}?eventId=${firstId}`);
+          return;
+        }
+
+        const res = await getMyEvents();
+        const events = res?.data?.data?.events || res?.data?.events || [];
+
+        if (events.length === 0) {
+          setAvailableEvents([]);
+          if (selectedEventId) {
+            setSelectedEventId('');
+            navigate(location.pathname, { replace: true });
           }
+          return;
+        }
+
+        const hasValidSelection = events.some((event) => String(event._id || event.id) === String(selectedEventId));
+        setAvailableEvents(events);
+
+        if (!selectedEventId || !hasValidSelection) {
+          const firstId = events[0]._id || events[0].id || '';
+          setSelectedEventId(firstId);
+          navigate(`${location.pathname}?eventId=${firstId}`, { replace: true });
         }
       } catch (e) {
         console.error('Failed to load events', e);
+        setAvailableEvents([]);
       } finally {
-        // End loading
         setIsFetchingEvents(false);
       }
     };
+
     fetchEvents();
-  }, []);
+  }, [canSeeAllEvents, location.pathname, navigate]);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -266,24 +299,7 @@ const LiveEventDashboard = () => {
 
     socket.on('ticket_sold', (data) => {
       console.log('Ticket sold:', data);
-      // Update overall stats
-      setStats(prev => ({
-        ...prev,
-        ticketsSold: (prev.ticketsSold || 0) + (data.quantity || 1),
-        totalRevenue: (prev.totalRevenue || 0) + (data.amount || 0)
-      }));
-      // Update revenue by category chart data
-      setCharts(prev => {
-        const existing = prev.revenueByCategory.find(cat => cat.name === data.categoryName);
-        if (existing) {
-          // Increment the value for the matching category
-          existing.value = (existing.value || 0) + (data.amount || 0);
-        } else {
-          // Add a new category entry if it doesn't exist
-          prev.revenueByCategory.push({ name: data.categoryName, value: data.amount || 0 });
-        }
-        return { ...prev, revenueByCategory: [...prev.revenueByCategory] };
-      });
+      fetchInitialData({ silent: true });
       addNotification({
         type: 'success',
         title: 'Ticket Sale',
@@ -293,21 +309,7 @@ const LiveEventDashboard = () => {
 
     socket.on('payment_approved', (data) => {
       console.log('Payment approved:', data);
-      // Ensure revenue is reflected (in case payment arrives after ticket_sold)
-      setStats(prev => ({
-        ...prev,
-        totalRevenue: (prev.totalRevenue || 0) + (data.amount || 0)
-      }));
-      // Update revenue by category similarly
-      setCharts(prev => {
-        const existing = prev.revenueByCategory.find(cat => cat.name === data.categoryName);
-        if (existing) {
-          existing.value = (existing.value || 0) + (data.amount || 0);
-        } else {
-          prev.revenueByCategory.push({ name: data.categoryName, value: data.amount || 0 });
-        }
-        return { ...prev, revenueByCategory: [...prev.revenueByCategory] };
-      });
+      fetchInitialData({ silent: true });
       addNotification({
         type: 'success',
         title: 'Payment',
@@ -341,19 +343,18 @@ const LiveEventDashboard = () => {
     fetchInitialData();
   }, [fetchInitialData, selectedEventId]);
 
-  // Refresh data periodically when socket is disconnected
-  useEffect(() => {
-    if (connectionStatus !== 'connected' && selectedEventId) {
-      const interval = setInterval(fetchInitialData, 30000);
-      return () => clearInterval(interval);
+  useAutoRefresh(
+    () => {
+      if (!selectedEventId) return;
+      fetchInitialData({ silent: true });
+    },
+    {
+      enabled: !!selectedEventId,
+      interval: 15000,
+      immediate: true,
+      deps: [selectedEventId],
     }
-  }, [connectionStatus, fetchInitialData, selectedEventId]);
-
-  // Recalculate total revenue when revenueByCategory chart data changes
-  useEffect(() => {
-    const total = (charts.revenueByCategory || []).reduce((sum, cat) => sum + (cat.value || 0), 0);
-    setStats(prev => ({ ...prev, totalRevenue: total }));
-  }, [charts.revenueByCategory]);
+  );
 
   // Metric Card Component
   const MetricCard = ({ title, value, subtitle, icon: Icon, trend, color = 'blue' }) => {
@@ -366,21 +367,21 @@ const LiveEventDashboard = () => {
     };
 
     return (
-      <Card className="rounded-2xl border-slate-200">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-slate-500">{title}</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{value}</p>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-500">{title}</p>
+            <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">{value}</p>
             {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
             {trend && (
               <div className={`mt-2 flex items-center text-sm ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {trend > 0 ? <ArrowUpIcon className="w-4 h-4 mr-1" /> : <ArrowDownIcon className="w-4 h-4 mr-1" />}
+                {trend > 0 ? <ArrowUpIcon className="mr-1 h-4 w-4" /> : <ArrowDownIcon className="mr-1 h-4 w-4" />}
                 {Math.abs(trend)}% from last hour
               </div>
             )}
           </div>
-          <div className={`rounded-xl p-3 ${colorClasses[color]}`}>
-            <Icon className="w-6 h-6" />
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${colorClasses[color]}`}>
+            <Icon className="h-5 w-5" />
           </div>
         </div>
       </Card>
@@ -414,59 +415,59 @@ const LiveEventDashboard = () => {
     );
   }
 
+  const attendanceRate = stats.confirmedAttendees ? Math.round((stats.checkedInCount / stats.confirmedAttendees) * 100) : 0;
+  const capacityUsed = stats.totalTickets ? Math.round((stats.ticketsSold / stats.totalTickets) * 100) : 0;
+  const remainingTickets = Math.max(stats.totalTickets - stats.ticketsSold, 0);
+
   return (
     <DashboardLayout>
-      <div className="space-y-4">
-        {/* Event Selector */}
-        {isFetchingEvents ? (
-          <div className="flex items-center gap-2">
-            <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-            <span className="text-sm text-slate-600">Loading events…</span>
-          </div>
-        ) : (
-          <EventSelector
-            events={availableEvents}
-            selectedEventId={selectedEventId}
-            onSelect={(id) => {
-              setSelectedEventId(id);
-              navigate(`${location.pathname}${id ? `?eventId=${id}` : ''}`);
-            }}
-          />
-        )}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-900">
-                {event?.name || 'Live Event Dashboard'}
-              </h1>
-              {getConnectionBadge()}
+      <div className="space-y-5">
+        <Card className="rounded-[28px] border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-white shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-200">Live Stream</span>
+                {getConnectionBadge()}
+              </div>
+              <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{event?.name || 'Live Event Dashboard'}</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-300 sm:text-base">Monitor ticket flow, attendee entry behavior, and venue occupancy in real time for the selected event.</p>
             </div>
-            <p className="mt-1 text-slate-500">
-              Real-time event monitoring and analytics
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-slate-100">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : 'Updating live data'}</span>
+              <span className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-slate-100">{recentEntries.length} recent events</span>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={fetchInitialData}
-              className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </button>
-            <button
-              onClick={() => navigate(`/organiser/dashboard${selectedEventId ? `?eventId=${selectedEventId}` : ''}`)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
-            >
-              <ChartBarIcon className="w-4 h-4" />
-              Full Dashboard
-            </button>
+        </Card>
+
+        <Card className="rounded-[24px] border-slate-200 bg-slate-50/80 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex-1">
+              {isFetchingEvents ? (
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 animate-spin text-blue-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  <span className="text-sm text-slate-600">Loading events…</span>
+                </div>
+              ) : (
+                <EventSelector
+                  events={availableEvents}
+                  selectedEventId={selectedEventId}
+                  onSelect={(id) => {
+                    setSelectedEventId(id);
+                    navigate(`${location.pathname}${id ? `?eventId=${id}` : ''}`);
+                  }}
+                />
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-slate-400">
+                Auto-refreshing every 15s
+              </span>
+            </div>
           </div>
-        </div>
+        </Card>
 
         {/* Notifications Toast */}
         {notifications.length > 0 && (
@@ -500,8 +501,7 @@ const LiveEventDashboard = () => {
           </div>
         )}
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Total Tickets"
             value={formatNumber(stats.totalTickets)}
@@ -519,17 +519,35 @@ const LiveEventDashboard = () => {
           <MetricCard
             title="Checked In"
             value={formatNumber(stats.checkedInCount)}
-            subtitle={`${stats.confirmedAttendees ? Math.round((stats.checkedInCount / stats.confirmedAttendees) * 100) : 0}% attendance`}
+            subtitle={`${attendanceRate}% attendance`}
             icon={ShieldCheckIcon}
             color="purple"
           />
           <MetricCard
             title="Revenue"
-            value={formatCurrency(stats.totalRevenue)}
+            value={formatCurrency(stats.totalRevenue, currency)}
             subtitle="total collected"
             icon={ChartBarIcon}
             color="amber"
           />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-sm font-medium text-emerald-700">Entry performance</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-900">{attendanceRate}%</p>
+            <p className="mt-1 text-sm text-emerald-700">Attendee check-in success rate</p>
+          </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-medium text-blue-700">Capacity used</p>
+            <p className="mt-2 text-2xl font-semibold text-blue-900">{capacityUsed}%</p>
+            <p className="mt-1 text-sm text-blue-700">Tickets sold versus inventory</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-700">Remaining inventory</p>
+            <p className="mt-2 text-2xl font-semibold text-amber-900">{formatNumber(remainingTickets)}</p>
+            <p className="mt-1 text-sm text-amber-700">Tickets still available</p>
+          </div>
         </div>
 
         {/* Charts Row */}
@@ -573,21 +591,27 @@ const LiveEventDashboard = () => {
               subtitle="Revenue distribution across ticket types"
             />
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={charts.revenueByCategory} layout="vertical">
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value) => formatCurrency(value)}
-                  />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
-                    {charts.revenueByCategory.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {charts.revenueByCategory?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={charts.revenueByCategory} layout="vertical">
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      formatter={(value) => formatCurrency(value, currency)}
+                    />
+                    <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
+                      {charts.revenueByCategory.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
+                  No revenue breakdown is available for this event yet.
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -601,37 +625,45 @@ const LiveEventDashboard = () => {
               subtitle="Current zone distribution"
             />
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={zoneOccupancy}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    dataKey="occupancy"
-                    nameKey="zoneName"
-                    paddingAngle={2}
-                  >
-                    {zoneOccupancy.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="px-4 pb-4">
-              <div className="flex flex-wrap gap-2 justify-center">
-                {zoneOccupancy.map((zone, index) => (
-                  <div key={zone.zoneName} className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                    <span className="text-xs text-slate-600">{zone.zoneName}</span>
+              {zoneOccupancy?.length ? (
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={zoneOccupancy}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        dataKey="occupancy"
+                        nameKey="zoneName"
+                        paddingAngle={2}
+                      >
+                        {zoneOccupancy.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="px-4 pb-4">
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {zoneOccupancy.map((zone, index) => (
+                        <div key={zone.zoneName} className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                          <span className="text-xs text-slate-600">{zone.zoneName}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
+                  No zone occupancy data is available yet.
+                </div>
+              )}
             </div>
           </Card>
 
@@ -695,45 +727,6 @@ const LiveEventDashboard = () => {
           </Card>
         </div>
 
-        {/* Quick Stats Footer */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <SignalIcon className="w-5 h-5" />
-              <span className="text-sm opacity-80">Check-in Rate</span>
-            </div>
-            <p className="text-2xl font-bold">
-              {stats.confirmedAttendees ? Math.round((stats.checkedInCount / stats.confirmedAttendees) * 100) : 0}%
-            </p>
-          </div>
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-4 text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <TicketIcon className="w-5 h-5" />
-              <span className="text-sm opacity-80">Capacity Used</span>
-            </div>
-            <p className="text-2xl font-bold">
-              {stats.totalTickets ? Math.round((stats.ticketsSold / stats.totalTickets) * 100) : 0}%
-            </p>
-          </div>
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <UsersIcon className="w-5 h-5" />
-              <span className="text-sm opacity-80">Remaining</span>
-            </div>
-            <p className="text-2xl font-bold">
-              {formatNumber(stats.totalTickets - stats.ticketsSold)}
-            </p>
-          </div>
-          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-4 text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <ClockIcon className="w-5 h-5" />
-              <span className="text-sm opacity-80">Avg/hr (last 3h)</span>
-            </div>
-            <p className="text-2xl font-bold">
-              {formatNumber(Math.round(stats.checkedInCount / 3))}
-            </p>
-          </div>
-        </div>
       </div>
     </DashboardLayout>
   );

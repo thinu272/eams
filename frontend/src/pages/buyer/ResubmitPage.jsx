@@ -3,10 +3,16 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getResubmitInfo, resubmitPhoto } from '../../api/attendees';
 import { getAssetUrl } from '../../utils/backend';
 import { photoQualityChecker, photoEnhancer } from '../../utils/photoQualityChecker';
-import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import CameraCapture from '../../components/shared/CameraCapture';
-import { CameraIcon, PhotoIcon, ArrowLeftIcon, ExclamationTriangleIcon, CalendarIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import {
+  CameraIcon,
+  PhotoIcon,
+  ArrowLeftIcon,
+  ExclamationTriangleIcon,
+  CalendarIcon,
+  MapPinIcon,
+} from '@heroicons/react/24/outline';
 
 const useIsMobileDevice = () => {
   const [isMobile, setIsMobile] = useState(() => {
@@ -110,10 +116,7 @@ const ResubmitPage = () => {
           }
         }
 
-        if (!loaded) {
-          throw lastError || new Error('Unable to load face-api models');
-        }
-
+        if (!loaded) throw lastError || new Error('Unable to load face-api models');
         setModelsLoaded(true);
       } catch (err) {
         console.error('Failed to load face-api models', err);
@@ -130,7 +133,6 @@ const ResubmitPage = () => {
     let total = 0;
     const len = data.length;
     for (let i = 0; i < len; i += 4) {
-      // luminosity method
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
@@ -143,10 +145,7 @@ const ResubmitPage = () => {
     const { data, width, height } = imageData;
     const toGray = (x, y) => {
       const i = (y * width + x) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      return (r + g + b) / 3;
+      return (data[i] + data[i + 1] + data[i + 2]) / 3;
     };
 
     let sum = 0;
@@ -161,7 +160,6 @@ const ResubmitPage = () => {
         const gy =
           -1 * toGray(x - 1, y - 1) - 2 * toGray(x, y - 1) - 1 * toGray(x + 1, y - 1) +
           1 * toGray(x - 1, y + 1) + 2 * toGray(x, y + 1) + 1 * toGray(x + 1, y + 1);
-
         const mag = Math.sqrt(gx * gx + gy * gy);
         sum += mag;
         sumSq += mag * mag;
@@ -170,8 +168,7 @@ const ResubmitPage = () => {
     }
 
     const mean = sum / pixels;
-    const variance = sumSq / pixels - mean * mean;
-    return variance; // higher = sharper
+    return sumSq / pixels - mean * mean;
   };
 
   const euclideanDistance = (a, b) => {
@@ -189,12 +186,6 @@ const ResubmitPage = () => {
     return Math.max(0, Math.min(1, 1 - distance));
   };
 
-  const clampThreshold = (value) => {
-    let threshold = Number(value);
-    if (Number.isNaN(threshold)) threshold = 0.5;
-    return Math.max(0.4, Math.min(0.6, threshold));
-  };
-
   const drawBoundingBox = (box) => {
     const canvas = overlayRef.current;
     const img = imageRef.current;
@@ -209,11 +200,7 @@ const ResubmitPage = () => {
     ctx.strokeStyle = '#22c55e';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
-    const x = box.x / ratio;
-    const y = box.y / ratio;
-    const w = box.width / ratio;
-    const h = box.height / ratio;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(box.x / ratio, box.y / ratio, box.width / ratio, box.height / ratio);
   };
 
   const analyzePhoto = async (file) => {
@@ -252,7 +239,14 @@ const ResubmitPage = () => {
 
     const faceapiLib = window.faceapi;
     if (!faceapiLib) {
-      return { faceCount: 0, confidence: 0, brightness: Math.round(brightness), sharpness: Math.round(sharpness), boundingBox: null, errors: ['Face API not loaded'] };
+      return {
+        faceCount: 0,
+        confidence: 0,
+        brightness: Math.round(brightness),
+        sharpness: Math.round(sharpness),
+        boundingBox: null,
+        errors: ['Face API not loaded'],
+      };
     }
 
     const detection = await faceapiLib
@@ -274,22 +268,18 @@ const ResubmitPage = () => {
       boundingBox = detection.detection.box;
       descriptor = Array.from(detection.descriptor);
 
-      if (!descriptor.length) {
-        errors.push('Face descriptor extraction failed');
-      }
+      if (!descriptor.length) errors.push('Face descriptor extraction failed');
 
-      if (attendee?.faceDescriptor && attendee.faceDescriptor.length > 0) {
+      if (attendee?.faceDescriptor?.length > 0) {
         const distance = euclideanDistance(attendee.faceDescriptor, descriptor);
         const similarity = similarityFromDistance(distance);
 
         if (distance === null) {
           errors.push('Descriptor size mismatch for comparison');
-        } else {
-          if (similarity < faceMatchThreshold) {
-            errors.push(
-              `Face similarity too low (${(similarity * 100).toFixed(1)}%) against saved profile at threshold ${(faceMatchThreshold * 100).toFixed(1)}%`,
-            );
-          }
+        } else if (similarity < faceMatchThreshold) {
+          errors.push(
+            `Face similarity too low (${(similarity * 100).toFixed(1)}%) against saved profile at threshold ${(faceMatchThreshold * 100).toFixed(1)}%`
+          );
         }
 
         return {
@@ -307,7 +297,7 @@ const ResubmitPage = () => {
       }
     }
 
-    const analysis = {
+    return {
       faceCount,
       confidence,
       boundingBox,
@@ -319,13 +309,10 @@ const ResubmitPage = () => {
       matchThreshold: faceMatchThreshold,
       errors,
     };
-
-    return analysis;
   };
 
   const applyEnhancementFilter = (filterType) => {
     if (!preview) return;
-
     const img = new Image();
     img.onload = () => {
       const canvas = enhancedCanvasRef.current || document.createElement('canvas');
@@ -333,9 +320,7 @@ const ResubmitPage = () => {
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
-
-      const enhancedDataURL = photoEnhancer.applyFilter(canvas, filterType);
-      setEnhancedPreview(enhancedDataURL);
+      setEnhancedPreview(photoEnhancer.applyFilter(canvas, filterType));
       setActiveFilter(filterType);
     };
     img.src = preview;
@@ -347,54 +332,49 @@ const ResubmitPage = () => {
   };
 
   const validatePhoto = async (file) => {
-    // Run quality check
     const analysis = await photoQualityChecker.analyzePhoto(file);
     setQualityAnalysis(analysis);
-
     const allErrors = [...analysis.errors, ...analysis.warnings];
-
-    // Perform face analysis
     const faceAnalysisResult = await analyzePhoto(file);
     setFaceAnalysis(faceAnalysisResult);
-
-    if (faceAnalysisResult.errors.length > 0) {
-      allErrors.push(...faceAnalysisResult.errors);
-    }
-
+    if (faceAnalysisResult.errors.length > 0) allErrors.push(...faceAnalysisResult.errors);
     if (faceAnalysisResult.boundingBox && imageRef.current) {
       drawBoundingBox(faceAnalysisResult.boundingBox);
     }
-
     return allErrors;
   };
 
   const handlePhotoChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const errors = await validatePhoto(file);
     setValidationErrors(errors);
     setAllowOverride(errors.length > 0);
     setEnhancedPreview(null);
     setActiveFilter('none');
-
     setPhoto(file);
     setPreview(URL.createObjectURL(file));
   };
 
+  const handleCapturedPhoto = async (file) => {
+    const errors = await validatePhoto(file);
+    setValidationErrors(errors);
+    setAllowOverride(errors.length > 0);
+    setEnhancedPreview(null);
+    setActiveFilter('none');
+    setPhoto(file);
+    setPreview(URL.createObjectURL(file));
+    setShowCamera(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!photo) {
-      toast.error('Please select a photo');
-      return;
-    }
+    if (!photo) return toast.error('Please select a photo');
     if (validationErrors.length > 0 && !allowOverride) {
-      toast.error('Please fix photo validation errors or enable override');
-      return;
+      return toast.error('Please fix photo validation errors or enable override');
     }
     if (modelsLoaded && attendee?.faceDescriptor?.length > 0 && !faceAnalysis?.descriptor?.length) {
-      toast.error('Unable to compute face descriptor; please try another photo');
-      return;
+      return toast.error('Unable to compute face descriptor; please try another photo');
     }
 
     setSubmitting(true);
@@ -422,49 +402,51 @@ const ResubmitPage = () => {
     }
   };
 
-  const handleCapturedPhoto = async (file) => {
-    const errors = await validatePhoto(file);
-    setValidationErrors(errors);
-    setAllowOverride(errors.length > 0);
-    setEnhancedPreview(null);
-    setActiveFilter('none');
-    setPhoto(file);
-    setPreview(URL.createObjectURL(file));
-    setShowCamera(false);
-  };
-
+  // ─── Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent sm:h-12 sm:w-12" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
       </div>
     );
   }
 
   if (!attendee && !invalidated) return null;
 
+  // ─── Invalidated ──────────────────────────────────────────────────
   if (invalidated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-        <div className="w-full max-w-lg rounded-[2rem] border border-red-200 bg-white p-8 text-center shadow-xl">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100">
-            <ExclamationTriangleIcon className="h-10 w-10 text-red-600" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+        <div className="w-full max-w-md overflow-hidden rounded-[32px] border border-slate-100 bg-white text-center shadow-sm">
+          <div className="bg-rose-50 px-8 py-10">
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-rose-100">
+              <ExclamationTriangleIcon className="h-10 w-10 text-rose-600" />
+            </div>
+            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+              Ticket Invalidated
+            </h2>
           </div>
-          <h2 className="mt-6 text-2xl font-bold text-slate-900">Ticket Invalidated</h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Maximum photo resubmissions were reached. This ticket is no longer valid.
-          </p>
-          {invalidated.refundAmount > 0 && (
-            <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-              Refund initiated: LKR {Number(invalidated.refundAmount).toLocaleString()}
+          <div className="space-y-4 px-8 py-8">
+            <p className="text-sm leading-relaxed text-slate-500">
+              Maximum photo resubmissions were reached. This ticket is no longer valid.
             </p>
-          )}
-          {invalidated.ticketNumber && (
-            <p className="mt-3 text-xs font-mono text-slate-500">Ticket #{invalidated.ticketNumber}</p>
-          )}
-          <p className="mt-4 text-xs text-slate-500">
-            The ticket has been returned to public availability where applicable. Refunds are processed to the original payment method.
-          </p>
+            {invalidated.refundAmount > 0 && (
+              <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+                Refund initiated:{' '}
+                {invalidated.currency || invalidated.event?.settings?.currency || 'LKR'}{' '}
+                {Number(invalidated.refundAmount).toLocaleString()}
+              </p>
+            )}
+            {invalidated.ticketNumber && (
+              <p className="text-xs font-mono text-slate-400">
+                Ticket #{invalidated.ticketNumber}
+              </p>
+            )}
+            <p className="text-xs text-slate-400">
+              The ticket has been returned to public availability where applicable. Refunds are
+              processed to the original payment method.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -473,109 +455,156 @@ const ResubmitPage = () => {
   const eventName = event?.name || 'Event';
   const eventDate = event?.startDate
     ? new Date(event.startDate).toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
     : 'Date to be announced';
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f8fafc_45%,_#e2e8f0)] px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back
-        </button>
+    <div className="min-h-screen bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      {/* ────────────── Hero ────────────── */}
+      <div className="relative overflow-hidden bg-slate-900">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-main/20 via-transparent to-transparent" />
+        <div className="relative mx-auto max-w-5xl px-4 py-12 sm:px-6">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-white/60 transition hover:text-white"
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            Back
+          </button>
+          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-white/50">
+            Photo Resubmission
+          </p>
+          <h1 className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl">
+            Resubmit Photo
+          </h1>
+          <p className="mt-3 max-w-xl text-sm font-medium text-white/70">
+            {isMobile
+              ? 'Use your camera for the clearest face photo, then submit for organizer review.'
+              : 'Upload a clear replacement photo from your device for organizer review.'}
+          </p>
+        </div>
+      </div>
 
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
-          <div className="bg-slate-950 px-5 py-8 text-white sm:px-8 sm:py-10">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300">Photo Resubmission</p>
-            <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">Resubmit Verification Photo</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              {isMobile
-                ? 'Use your camera for the clearest face photo, then submit for organizer review.'
-                : 'Upload a clear replacement photo from your device for organizer review.'}
-            </p>
-          </div>
-
-          <div className="grid gap-6 p-5 sm:gap-8 sm:p-8 lg:grid-cols-[0.95fr_1.05fr]">
-            {/* Left column — context */}
-            <div className="space-y-4 sm:space-y-5">
-              <div className="rounded-3xl border border-red-200 bg-red-50 p-4 sm:p-5">
-                <div className="flex items-start gap-3">
-                  <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-                  <div className="min-w-0 text-left">
-                    <h3 className="text-sm font-bold text-red-800">Rejection Reason</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-red-700">
-                      {attendee.rejectionReason || 'Your previous photo did not meet verification requirements.'}
-                    </p>
-                    <p className="mt-2 text-xs font-semibold text-red-600">
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <div className="grid gap-6 lg:grid-cols-5">
+          {/* ────────────── Left: Context ────────────── */}
+          <div className="space-y-4 lg:col-span-2">
+            {/* Rejection reason */}
+            <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-sm">
+              <div className="bg-rose-50 px-6 py-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-100">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-rose-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-rose-900">
+                      Rejection Reason
+                    </h3>
+                    <p className="mt-0.5 text-xs font-bold text-rose-600">
                       Resubmission {attendee.resubmitCount || 0}/3
                     </p>
                   </div>
                 </div>
               </div>
+              <p className="px-6 py-5 text-sm leading-relaxed text-slate-600">
+                {attendee.rejectionReason ||
+                  'Your previous photo did not meet verification requirements.'}
+              </p>
+            </div>
 
-              {event && (
-                <div className="space-y-3">
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Event</p>
-                    <p className="mt-2 text-sm font-bold text-slate-900">{eventName}</p>
-                    <div className="mt-3 space-y-2 text-sm text-slate-600">
-                      <div className="flex items-center gap-2">
-                        <CalendarIcon className="h-4 w-4 shrink-0 text-blue-600" />
-                        <span>{eventDate}</span>
-                      </div>
-                      {event?.venue?.name && (
-                        <div className="flex items-center gap-2">
-                          <MapPinIcon className="h-4 w-4 shrink-0 text-blue-600" />
-                          <span>{event.venue.name}</span>
-                        </div>
-                      )}
-                    </div>
+            {/* Event info */}
+            {event && (
+              <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+                <div className="space-y-0 divide-y divide-slate-50">
+                  <div className="px-6 py-5">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Event
+                    </p>
+                    <p className="mt-1.5 text-sm font-bold text-slate-900">{eventName}</p>
                   </div>
+                  <div className="flex items-center gap-3 px-6 py-4">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                      <CalendarIcon className="h-4 w-4" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-600">{eventDate}</span>
+                  </div>
+                  {event?.venue?.name && (
+                    <div className="flex items-center gap-3 px-6 py-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                        <MapPinIcon className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm font-medium text-slate-600">
+                        {event.venue.name}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
 
-              {attendee.photo && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
-                  <h3 className="text-sm font-bold text-slate-900">Previous Photo</h3>
+            {/* Previous photo */}
+            {attendee.photo && (
+              <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+                <div className="border-b border-slate-50 bg-slate-50/50 px-6 py-4">
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900">
+                    Previous Photo
+                  </h3>
+                </div>
+                <div className="p-4">
                   <img
                     src={getAssetUrl(attendee.photo)}
                     alt="Previous submission"
-                    className="mt-3 max-h-56 w-full rounded-2xl border border-slate-200 object-cover sm:max-h-64"
+                    className="w-full rounded-2xl object-cover"
                   />
                 </div>
-              )}
-
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-5 text-left">
-                <h3 className="text-sm font-bold text-slate-900">Photo Requirements</h3>
-                <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
-                  <li>• Clear face visible, facing the camera</li>
-                  <li>• Good lighting, no heavy shadows</li>
-                  <li>• No blur, sunglasses, or hats</li>
-                  <li>• Recent photo (JPG or PNG, 50KB–5MB)</li>
-                </ul>
-                {modelLoadFailed && (
-                  <p className="mt-3 text-xs leading-relaxed text-amber-700">
-                    Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.
-                  </p>
-                )}
               </div>
-            </div>
+            )}
 
-            {/* Right column — upload form */}
-            <div className="rounded-3xl border border-slate-200 p-4 sm:p-6">
-              <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Requirements */}
+            <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+              <div className="border-b border-slate-50 bg-slate-50/50 px-6 py-4">
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900">
+                  Photo Requirements
+                </h3>
+              </div>
+              <ul className="space-y-2 px-6 py-5 text-sm text-slate-600">
+                <li>• Clear face visible, facing the camera</li>
+                <li>• Good lighting, no heavy shadows</li>
+                <li>• No blur, sunglasses, or hats</li>
+                <li>• Recent photo (JPG or PNG, 50KB–5MB)</li>
+              </ul>
+              {modelLoadFailed && (
+                <p className="border-t border-slate-50 px-6 py-4 text-xs text-amber-700">
+                  Advanced face matching is temporarily unavailable. Your photo can still be
+                  submitted for manual review.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* ────────────── Right: Upload Form ────────────── */}
+          <div className="lg:col-span-3">
+            <form
+              onSubmit={handleSubmit}
+              className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm"
+            >
+              <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+                <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                  New Photo
+                </h2>
+              </div>
+
+              <div className="space-y-6 p-6 sm:p-8">
+                {/* Threshold */}
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-800">
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
                     Face-match Threshold ({(faceMatchThreshold * 100).toFixed(0)}%)
                   </label>
                   <input
@@ -585,13 +614,16 @@ const ResubmitPage = () => {
                     step="0.01"
                     value={faceMatchThreshold}
                     onChange={(e) => setFaceMatchThreshold(Number(e.target.value))}
-                    className="w-full accent-blue-600"
+                    className="w-full accent-brand-main"
                   />
-                  <p className="mt-1 text-xs text-slate-500">Adjust similarity threshold between 40% and 60%</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Adjust similarity threshold between 40% and 60%
+                  </p>
                 </div>
 
+                {/* Upload / Camera */}
                 <div>
-                  <label className="mb-3 block text-sm font-bold text-slate-800">
+                  <label className="mb-3 block text-xs font-bold uppercase tracking-wider text-slate-500">
                     {isMobile ? 'Take or Upload New Photo' : 'Upload New Photo'}
                   </label>
                   <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
@@ -599,17 +631,21 @@ const ResubmitPage = () => {
                       <button
                         type="button"
                         onClick={() => setShowCamera(true)}
-                        className="flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 px-4 py-5 transition hover:border-blue-400 hover:bg-blue-100"
+                        className="flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-main/30 bg-brand-main/5 px-4 py-5 transition hover:border-brand-main/50 hover:bg-brand-main/10"
                       >
-                        <CameraIcon className="h-7 w-7 text-blue-600" />
-                        <span className="mt-2 text-xs font-bold uppercase tracking-wide text-blue-800">Use Camera</span>
-                        <span className="mt-1 text-[11px] text-blue-600">Recommended on mobile</span>
+                        <CameraIcon className="h-7 w-7 text-brand-main" />
+                        <span className="mt-2 text-[10px] font-black uppercase tracking-widest text-brand-main">
+                          Use Camera
+                        </span>
+                        <span className="mt-1 text-[11px] text-brand-main/70">
+                          Recommended on mobile
+                        </span>
                       </button>
                     )}
 
-                    <label className={`group relative flex min-h-[112px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-blue-500 hover:bg-blue-50 ${isMobile ? '' : ''}`}>
-                      <PhotoIcon className="h-7 w-7 text-slate-400 transition-colors group-hover:text-blue-500" />
-                      <span className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-600 group-hover:text-blue-700">
+                    <label className="group relative flex min-h-[112px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-brand-main/40 hover:bg-brand-main/5">
+                      <PhotoIcon className="h-7 w-7 text-slate-300 transition group-hover:text-brand-main" />
+                      <span className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-brand-main">
                         {isMobile ? 'Choose from Gallery' : 'Upload File'}
                       </span>
                       <input
@@ -625,10 +661,12 @@ const ResubmitPage = () => {
                       <button
                         type="button"
                         onClick={() => setShowCamera(true)}
-                        className="flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-blue-500 hover:bg-blue-50"
+                        className="group flex min-h-[112px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-brand-main/40 hover:bg-brand-main/5"
                       >
-                        <CameraIcon className="h-7 w-7 text-slate-400" />
-                        <span className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-600">Use Webcam</span>
+                        <CameraIcon className="h-7 w-7 text-slate-300 transition group-hover:text-brand-main" />
+                        <span className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-brand-main">
+                          Use Webcam
+                        </span>
                       </button>
                     )}
                   </div>
@@ -643,9 +681,10 @@ const ResubmitPage = () => {
                   )}
                 </div>
 
+                {/* Validation errors */}
                 {validationErrors.length > 0 && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
-                    <ul className="space-y-1 text-sm text-amber-900">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+                    <ul className="space-y-1 text-sm font-medium text-amber-900">
                       {validationErrors.map((error, index) => (
                         <li key={index}>• {error}</li>
                       ))}
@@ -653,24 +692,29 @@ const ResubmitPage = () => {
                   </div>
                 )}
 
+                {/* Preview & Analysis */}
                 {preview && (
-                  <div className="space-y-4 text-left">
-                    <h3 className="text-sm font-bold text-slate-900">Preview & Quality Analysis</h3>
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-900">
+                      Preview & Quality Analysis
+                    </h3>
 
                     {qualityAnalysis && (
                       <div
                         className="rounded-2xl border-2 p-4"
                         style={{
-                          borderColor: {
-                            Good: '#10b981',
-                            Medium: '#f59e0b',
-                            Poor: '#ef4444',
-                          }[qualityAnalysis.qualityRating?.rating] || '#d1d5db',
-                          backgroundColor: {
-                            Good: '#ecfdf5',
-                            Medium: '#fffbeb',
-                            Poor: '#fef2f2',
-                          }[qualityAnalysis.qualityRating?.rating] || '#f9fafb',
+                          borderColor:
+                            {
+                              Good: '#10b981',
+                              Medium: '#f59e0b',
+                              Poor: '#ef4444',
+                            }[qualityAnalysis.qualityRating?.rating] || '#e2e8f0',
+                          backgroundColor:
+                            {
+                              Good: '#ecfdf5',
+                              Medium: '#fffbeb',
+                              Poor: '#fef2f2',
+                            }[qualityAnalysis.qualityRating?.rating] || '#f8fafc',
                         }}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -681,36 +725,65 @@ const ResubmitPage = () => {
                             Score {qualityAnalysis.qualityRating?.score}%
                           </span>
                         </div>
-                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                           {qualityAnalysis.resolution && (
                             <div>
-                              <span className="text-slate-600">Resolution:</span>
-                              <span className={qualityAnalysis.resolution.valid ? ' text-green-600' : ' text-red-600'}>
-                                {' '}{qualityAnalysis.resolution.dimensions?.width}x{qualityAnalysis.resolution.dimensions?.height}
+                              <span className="text-slate-500">Resolution:</span>
+                              <span
+                                className={
+                                  qualityAnalysis.resolution.valid
+                                    ? ' text-emerald-600'
+                                    : ' text-rose-600'
+                                }
+                              >
+                                {' '}
+                                {qualityAnalysis.resolution.dimensions?.width}x
+                                {qualityAnalysis.resolution.dimensions?.height}
                               </span>
                             </div>
                           )}
                           {qualityAnalysis.brightness && (
                             <div>
-                              <span className="text-slate-600">Brightness:</span>
-                              <span className={qualityAnalysis.brightness.valid ? ' text-green-600' : ' text-red-600'}>
-                                {' '}{qualityAnalysis.brightness.brightness}
+                              <span className="text-slate-500">Brightness:</span>
+                              <span
+                                className={
+                                  qualityAnalysis.brightness.valid
+                                    ? ' text-emerald-600'
+                                    : ' text-rose-600'
+                                }
+                              >
+                                {' '}
+                                {qualityAnalysis.brightness.brightness}
                               </span>
                             </div>
                           )}
                           {qualityAnalysis.blur && (
                             <div>
-                              <span className="text-slate-600">Sharpness:</span>
-                              <span className={qualityAnalysis.blur.valid ? ' text-green-600' : ' text-red-600'}>
-                                {' '}{qualityAnalysis.blur.sharpness}
+                              <span className="text-slate-500">Sharpness:</span>
+                              <span
+                                className={
+                                  qualityAnalysis.blur.valid
+                                    ? ' text-emerald-600'
+                                    : ' text-rose-600'
+                                }
+                              >
+                                {' '}
+                                {qualityAnalysis.blur.sharpness}
                               </span>
                             </div>
                           )}
                           {qualityAnalysis.contrast && (
                             <div>
-                              <span className="text-slate-600">Contrast:</span>
-                              <span className={qualityAnalysis.contrast.valid ? ' text-green-600' : ' text-red-600'}>
-                                {' '}{qualityAnalysis.contrast.contrast}
+                              <span className="text-slate-500">Contrast:</span>
+                              <span
+                                className={
+                                  qualityAnalysis.contrast.valid
+                                    ? ' text-emerald-600'
+                                    : ' text-rose-600'
+                                }
+                              >
+                                {' '}
+                                {qualityAnalysis.contrast.contrast}
                               </span>
                             </div>
                           )}
@@ -718,12 +791,12 @@ const ResubmitPage = () => {
                       </div>
                     )}
 
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-200">
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
                       <img
                         ref={imageRef}
                         src={enhancedPreview || preview}
                         alt="Preview"
-                        className="max-h-[min(70vh,28rem)] w-full object-contain bg-slate-100"
+                        className="max-h-[min(70vh,28rem)] w-full object-contain"
                       />
                       <canvas
                         ref={overlayRef}
@@ -731,20 +804,31 @@ const ResubmitPage = () => {
                       />
                     </div>
 
+                    {/* Enhance filters */}
                     <div>
-                      <label className="mb-2 block text-xs font-semibold text-slate-600">Auto-Enhance</label>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Auto-Enhance
+                      </label>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { id: 'none', label: 'Original', active: 'bg-blue-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
-                          { id: 'brighten', label: 'Brighten', active: 'bg-yellow-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
-                          { id: 'enhance', label: 'Enhance', active: 'bg-blue-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
-                          { id: 'vivid', label: 'Vivid', active: 'bg-purple-600 text-white', idle: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                          { id: 'none', label: 'Original' },
+                          { id: 'brighten', label: 'Brighten' },
+                          { id: 'enhance', label: 'Enhance' },
+                          { id: 'vivid', label: 'Vivid' },
                         ].map((filter) => (
                           <button
                             key={filter.id}
                             type="button"
-                            onClick={() => (filter.id === 'none' ? resetPreview() : applyEnhancementFilter(filter.id))}
-                            className={`rounded-xl px-3 py-2 text-xs font-bold transition ${activeFilter === filter.id ? filter.active : filter.idle}`}
+                            onClick={() =>
+                              filter.id === 'none'
+                                ? resetPreview()
+                                : applyEnhancementFilter(filter.id)
+                            }
+                            className={`rounded-xl px-3.5 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                              activeFilter === filter.id
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
                           >
                             {filter.label}
                           </button>
@@ -753,13 +837,30 @@ const ResubmitPage = () => {
                     </div>
 
                     {faceAnalysis && (
-                      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-                        <p>Face count: <strong>{faceAnalysis.faceCount}</strong></p>
-                        <p>Confidence: <strong>{(faceAnalysis.confidence * 100).toFixed(1)}%</strong></p>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                        <p>
+                          Face count: <strong className="text-slate-700">{faceAnalysis.faceCount}</strong>
+                        </p>
+                        <p>
+                          Confidence:{' '}
+                          <strong className="text-slate-700">
+                            {(faceAnalysis.confidence * 100).toFixed(1)}%
+                          </strong>
+                        </p>
                         {faceAnalysis.matchDistance != null && (
                           <>
-                            <p>Match similarity: <strong>{(faceAnalysis.matchSimilarity * 100).toFixed(1)}%</strong></p>
-                            <p>Threshold: <strong>{(faceAnalysis.matchThreshold * 100).toFixed(1)}%</strong></p>
+                            <p>
+                              Match similarity:{' '}
+                              <strong className="text-slate-700">
+                                {(faceAnalysis.matchSimilarity * 100).toFixed(1)}%
+                              </strong>
+                            </p>
+                            <p>
+                              Threshold:{' '}
+                              <strong className="text-slate-700">
+                                {(faceAnalysis.matchThreshold * 100).toFixed(1)}%
+                              </strong>
+                            </p>
                           </>
                         )}
                       </div>
@@ -767,32 +868,33 @@ const ResubmitPage = () => {
                   </div>
                 )}
 
+                {/* Override */}
                 {validationErrors.length > 0 && (
-                  <label htmlFor="override-validation" className="flex items-start gap-3 text-left text-sm text-slate-700">
+                  <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-600">
                     <input
                       type="checkbox"
-                      id="override-validation"
                       checked={allowOverride}
                       onChange={(e) => setAllowOverride(e.target.checked)}
-                      className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-main focus:ring-brand-main"
                     />
-                    <span className="cursor-pointer leading-relaxed">
+                    <span className="leading-relaxed">
                       Ignore warnings and proceed (not recommended)
                     </span>
                   </label>
                 )}
 
-                <div className="sticky bottom-0 -mx-4 border-t border-slate-100 bg-white/95 px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
-                  <Button
+                {/* Submit */}
+                <div className="sticky bottom-0 -mx-6 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+                  <button
                     type="submit"
                     disabled={submitting || (validationErrors.length > 0 && !allowOverride)}
-                    className="w-full justify-center py-3 text-sm font-bold sm:py-2.5"
+                    className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {submitting ? 'Submitting...' : 'Submit Photo for Review'}
-                  </Button>
+                    {submitting ? 'Submitting…' : 'Submit Photo for Review'}
+                  </button>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
         </div>
       </div>

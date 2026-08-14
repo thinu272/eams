@@ -20,7 +20,11 @@ export const deleteTicketCategory = (categoryId, eventId) => api.delete(`/organi
 export const listSubOrganisers = (params) => api.get('/organiser/sub-organisers', { params });
 export const createSubOrganiser = (payload) => api.post('/organiser/sub-organiser', payload);
 export const updateSubOrganiser = (id, payload) => api.put(`/organiser/sub-organiser/${id}`, payload);
-export const updateSubOrganiserStatus = (id, status) => updateSubOrganiser(id, { status });
+export const updateSubOrganiserStatus = (id, payload) => {
+  const data = typeof payload === 'string' ? { status: payload } : payload;
+  return updateSubOrganiser(id, data);
+};
+export const deleteSubOrganiser = (id) => api.delete(`/organiser/sub-organiser/${id}`);
 export const getCustomRoles = (params) => api.get('/organiser/custom-roles', { params });
 export const createCustomRole = (payload) => api.post('/organiser/custom-roles', payload);
 export const updateCustomRole = (id, payload) => api.put(`/organiser/custom-roles/${id}`, payload);

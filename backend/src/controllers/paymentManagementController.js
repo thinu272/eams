@@ -28,6 +28,48 @@ const normalizeReceiptFileUrl = (filePath) => {
   return normalized;
 };
 
+const getSubOrgAssignedZoneIds = (user, event) => {
+  if (!user || !event) return [];
+
+  const fromAssignedZones = (user.assignedZones || []).map(String);
+  const fromResponsibilities = (user.responsibilities?.zoneIds || []).map(String);
+  const fromEventZones = (event.zones || [])
+    .filter((zone) => zone.assignedSubOrganiser && zone.assignedSubOrganiser.toString() === user._id.toString())
+    .map((zone) => zone.id || zone.name)
+    .filter(Boolean)
+    .map(String);
+
+  return Array.from(new Set([...fromAssignedZones, ...fromResponsibilities, ...fromEventZones]));
+};
+
+const getSubOrgPermittedCategoryNames = (user, event) => {
+  if (!user || !event) return [];
+
+  const userId = user._id?.toString();
+  const myZones = getSubOrgAssignedZoneIds(user, event);
+
+  return (event.categories || [])
+    .filter((cat) => {
+      if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some((id) => id.toString() === userId)) {
+        return true;
+      }
+      if (cat.createdBy && cat.createdBy.toString() === userId) {
+        return true;
+      }
+      const allowedZones = (cat.allowedZones || []).map(String);
+      if (!allowedZones.length) {
+        return true;
+      }
+      return allowedZones.some((zoneId) => myZones.includes(zoneId));
+    })
+    .map((cat) => cat.name);
+};
+
+const orderHasPermittedCategories = (order, categoryNames) => {
+  if (!order || !Array.isArray(order.tickets) || !categoryNames.length) return false;
+  return order.tickets.some((ticket) => categoryNames.includes(ticket.categoryName));
+};
+
 /**
  * Get payment submissions with filtering and pagination
  * Updated to support all payment methods, using Order as the base entity.
@@ -113,14 +155,11 @@ const getPaymentSubmissions = async (req, res, next) => {
         const accessibleEvents = await Event.find({ _id: { $in: accessibleEventIds } });
         let assignedCategoryNames = [];
         
-        accessibleEvents.forEach(event => {
-          (event.categories || []).forEach(cat => {
-            if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-              assignedCategoryNames.push(cat.name);
-            }
-          });
+        accessibleEvents.forEach((event) => {
+          assignedCategoryNames.push(...getSubOrgPermittedCategoryNames(user, event));
         });
         
+        assignedCategoryNames = Array.from(new Set(assignedCategoryNames));
         if (assignedCategoryNames.length === 0) {
            return res.json({ success: true, data: { payments: [], total: 0, pages: 0 } });
         }
@@ -133,7 +172,7 @@ const getPaymentSubmissions = async (req, res, next) => {
     
     const [orders, total] = await Promise.all([
       Order.find(filter)
-        .populate('eventId', 'name startDate endDate venue')
+        .populate('eventId', 'name startDate endDate venue settings currency')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit, 10))
@@ -172,6 +211,10 @@ const getPaymentSubmissions = async (req, res, next) => {
           name: order.eventId.name,
           startDate: order.eventId.startDate,
           endDate: order.eventId.endDate,
+          currency: order.eventId.settings?.currency || order.eventId.currency || 'LKR',
+          settings: {
+            currency: order.eventId.settings?.currency || order.eventId.currency || 'LKR',
+          },
         } : null,
         buyer: {
           name: order.buyerName,
@@ -184,6 +227,7 @@ const getPaymentSubmissions = async (req, res, next) => {
           amount: data.total,
         })),
         totalAmount: order.totalAmount,
+        currency: order.eventId?.settings?.currency || order.eventId?.currency || 'LKR',
         paymentMethod: order.paymentMethod,
         gatewayUsed: order.gatewayUsed,
         
@@ -265,16 +309,8 @@ const getPaymentSubmissionDetails = async (req, res, next) => {
       if (role === 'sub_organiser' || role === 'suborganiser') {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
-        let assignedCategoryNames = [];
-        if (event && event.categories) {
-           event.categories.forEach(cat => {
-             if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-               assignedCategoryNames.push(cat.name);
-             }
-           });
-        }
-        
-        const hasAssignedCategory = order.tickets.some(t => assignedCategoryNames.includes(t.categoryName));
+        const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
+        const hasAssignedCategory = orderHasPermittedCategories(order, assignedCategoryNames);
         if (!hasAssignedCategory) {
           return res.status(403).json({ 
             success: false, 
@@ -421,16 +457,8 @@ const approvePayment = async (req, res, next) => {
       if (role === 'sub_organiser' || role === 'suborganiser') {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
-        let assignedCategoryNames = [];
-        if (event && event.categories) {
-           event.categories.forEach(cat => {
-             if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-               assignedCategoryNames.push(cat.name);
-             }
-           });
-        }
-        
-        const hasAssignedCategory = order.tickets.some(t => assignedCategoryNames.includes(t.categoryName));
+        const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
+        const hasAssignedCategory = orderHasPermittedCategories(order, assignedCategoryNames);
         if (!hasAssignedCategory) {
           return res.status(403).json({ 
             success: false, 
@@ -650,16 +678,8 @@ const rejectPayment = async (req, res, next) => {
       if (role === 'sub_organiser' || role === 'suborganiser') {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
-        let assignedCategoryNames = [];
-        if (event && event.categories) {
-           event.categories.forEach(cat => {
-             if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-               assignedCategoryNames.push(cat.name);
-             }
-           });
-        }
-        
-        const hasAssignedCategory = order.tickets.some(t => assignedCategoryNames.includes(t.categoryName));
+        const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
+        const hasAssignedCategory = orderHasPermittedCategories(order, assignedCategoryNames);
         if (!hasAssignedCategory) {
           return res.status(403).json({ 
             success: false, 
@@ -839,16 +859,8 @@ const requestMoreInfo = async (req, res, next) => {
       if (role === 'sub_organiser' || role === 'suborganiser') {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
-        let assignedCategoryNames = [];
-        if (event && event.categories) {
-           event.categories.forEach(cat => {
-             if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-               assignedCategoryNames.push(cat.name);
-             }
-           });
-        }
-        
-        const hasAssignedCategory = order.tickets.some(t => assignedCategoryNames.includes(t.categoryName));
+        const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
+        const hasAssignedCategory = orderHasPermittedCategories(order, assignedCategoryNames);
         if (!hasAssignedCategory) {
           return res.status(403).json({ 
             success: false, 
@@ -955,6 +967,7 @@ const getPaymentStatistics = async (req, res, next) => {
     
     let accessibleEventIds = [];
     let assignedCategoryNames = [];
+    let scopedCurrency = 'LKR';
     if (['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
       if (eventId) {
         filter.eventId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId;
@@ -993,6 +1006,12 @@ const getPaymentStatistics = async (req, res, next) => {
         
         // Don't apply filter at Order level - will handle in aggregation pipeline
       }
+    }
+
+    const scopedEventId = eventId || (accessibleEventIds[0] ? accessibleEventIds[0].toString() : null);
+    if (scopedEventId && mongoose.Types.ObjectId.isValid(scopedEventId)) {
+      const scopedEvent = await Event.findById(scopedEventId).select('settings currency').lean();
+      scopedCurrency = scopedEvent?.settings?.currency || scopedEvent?.currency || scopedCurrency;
     }
     
     let revenuePipeline = [
@@ -1082,6 +1101,7 @@ const getPaymentStatistics = async (req, res, next) => {
       success: true,
       data: {
         overview: {
+          currency: scopedCurrency,
           totalPayments,
           pendingPayments,
           approvedPayments,

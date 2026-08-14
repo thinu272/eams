@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import UserDashboard from '../../components/dashboard/UserDashboard';
@@ -72,6 +73,13 @@ const UserDashboardPage = () => {
   const handleRefresh = () => {
     loadDashboardData();
   };
+
+  useAutoRefresh(loadDashboardData, {
+    enabled: !!user,
+    interval: 15000,
+    immediate: false,
+    deps: [user],
+  });
 
   if (loading && !dashboardData) {
     return (

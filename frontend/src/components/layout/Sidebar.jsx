@@ -1,8 +1,14 @@
+// src/components/layout/Sidebar.jsx
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeftOnRectangleIcon, GlobeAltIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/solid';
-import { getRoleColor, getRoleLabel, ROLE_NAVIGATION } from '../../config/roleNavigation';
+import {
+  ArrowLeftOnRectangleIcon,
+  GlobeAltIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+} from '@heroicons/react/24/solid';
+import { getRoleLabel, ROLE_NAVIGATION } from '../../config/roleNavigation';
 import { getCanonicalRole } from '../../utils/rbac';
 
 const Sidebar = ({ isMobileOpen, onClose }) => {
@@ -10,10 +16,14 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const navigation = ROLE_NAVIGATION[getCanonicalRole(user?.role)] || { sections: [] };
+  const navigation =
+    ROLE_NAVIGATION[getCanonicalRole(user?.role)] || { sections: [] };
 
-  const handleLogout = () => { logout(); navigate('/login'); };
-  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   const currentSearchParams = new URLSearchParams(location.search);
   const currentSection = currentSearchParams.get('section') || '';
 
@@ -24,117 +34,191 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
 
     if (location.pathname !== targetPath) return false;
     if (targetSection) return currentSection === targetSection;
-    // Base path items (without section query) should only be active on pure base route.
     return currentSection === '';
   };
 
+  const filteredSections = navigation.sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (['Verification'].includes(item.label)) {
+          return (
+            user?.permissions?.canVerifyPhotos === true ||
+            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+              getCanonicalRole(user?.role)
+            )
+          );
+        }
+        if (
+          ['Entry Scanner', 'Scan Entry', 'Manual Search'].includes(item.label)
+        ) {
+          return (
+            user?.permissions?.canEntryAccess === true ||
+            (user?.assignedGates?.length > 0)
+          );
+        }
+        if (
+          [
+            'Zone Scanner',
+            'Zone Access',
+            'My Zones',
+            'Zone Manual Search',
+          ].includes(item.label)
+        ) {
+          return user?.assignedZones?.length > 0;
+        }
+        if (['Bulk Upload'].includes(item.label)) {
+          return (
+            user?.permissions?.canBulkUpload === true ||
+            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+              getCanonicalRole(user?.role)
+            )
+          );
+        }
+        if (['Cash Collection'].includes(item.label)) {
+          return (
+            user?.permissions?.canCollectCash === true ||
+            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+              getCanonicalRole(user?.role)
+            )
+          );
+        }
+        return true;
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Mobile backdrop */}
       {isMobileOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden animate-fade-in"
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-gradient-to-b from-[#020617] via-[#050b24] to-[#0a1128] border-r border-white/5 transition-all duration-500 ease-in-out lg:static lg:translate-x-0 ${
-          collapsed ? 'w-20' : 'w-72'
-        } ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={[
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-800/80 bg-slate-950 transition-all duration-300 ease-in-out lg:static lg:translate-x-0',
+          collapsed ? 'w-[4.5rem]' : 'w-64 sm:w-72',
+          isMobileOpen ? 'translate-x-0' : '-translate-x-full',
+        ].join(' ')}
       >
-        <div className="flex h-20 items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-lg shadow-black/10 overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain p-1" onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=EX'; }} />
+        {/* Brand */}
+        <div
+          className={`flex h-16 items-center border-b border-slate-800/80 ${
+            collapsed ? 'justify-center px-2' : 'justify-between px-4'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              <img
+                src="/logo.png"
+                alt="Entrynex"
+                className="h-full w-full object-contain p-1"
+                onError={(e) => {
+                  e.target.src = 'https://placehold.co/100x100?text=EX';
+                }}
+              />
             </div>
             {!collapsed && (
-              <span className="text-xl font-black tracking-tighter text-white uppercase italic">
-                Entry<span className="text-brand-main">Nex</span>
+              <span className="truncate text-base font-bold tracking-tight text-white">
+                ENTRY<span className="text-blue-400">NEX</span>
               </span>
             )}
           </div>
-          <button onClick={() => setCollapsed(!collapsed)} className="hidden lg:block text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors">
-            {collapsed ? <ChevronDoubleRightIcon className="h-5 w-5" /> : <ChevronDoubleLeftIcon className="h-5 w-5" />}
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="hidden rounded-lg p-1.5 text-slate-400 transition hover:bg-white/5 hover:text-white lg:block"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <ChevronDoubleRightIcon className="h-4 w-4" />
+            ) : (
+              <ChevronDoubleLeftIcon className="h-4 w-4" />
+            )}
           </button>
         </div>
 
-        <nav className="flex-1 space-y-8 px-4 py-6 overflow-y-auto custom-scrollbar">
-          {navigation.sections
-            .map((section) => ({
-              ...section,
-              items: section.items.filter((item) => {
-                if (['Verification'].includes(item.label)) {
-                  return user?.permissions?.canVerifyPhotos === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
-                }
-                if (['Entry Scanner', 'Scan Entry', 'Manual Search'].includes(item.label)) {
-                  return user?.permissions?.canEntryAccess === true || (user?.assignedGates?.length > 0);
-                }
-                if (['Zone Scanner', 'Zone Access', 'My Zones', 'Zone Manual Search'].includes(item.label)) {
-                  return (user?.assignedZones?.length > 0);
-                }
-                if (['Bulk Upload'].includes(item.label)) {
-                  return user?.permissions?.canBulkUpload === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
-                }
-                if (['Cash Collection'].includes(item.label)) {
-                  return user?.permissions?.canCollectCash === true || ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(getCanonicalRole(user?.role));
-                }
-                return true;
-              }),
-            }))
-            .filter((section) => section.items.length > 0)
-            .map((section) => (
-              <div key={section.title} className="space-y-2">
-                {!collapsed && (
-                  <p className="px-4 text-[10px] font-black uppercase tracking-[0.3em] text-blue-400/60 mb-3">
-                    {section.title}
-                  </p>
-                )}
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = isItemActive(item.to);
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      className={`flex items-center gap-4 rounded-2xl px-4 py-3 text-sm font-bold tracking-tight transition-all duration-300 group ${
-                        active
-                          ? 'bg-gradient-to-r from-brand-main to-blue-500 text-white shadow-lg shadow-brand-main/30 active-glow'
-                          : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                      }`}
-                    >
-                      <Icon className={`h-5 w-5 transition-transform duration-300 ${active ? '' : 'group-hover:scale-110'}`} />
-                      {!collapsed && <span>{item.label}</span>}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            ))}
+        {/* Nav */}
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5 custom-scrollbar">
+          {filteredSections.map((section) => (
+            <div key={section.title} className="space-y-1">
+              {!collapsed && (
+                <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {section.title}
+                </p>
+              )}
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = isItemActive(item.to);
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={onClose}
+                    title={collapsed ? item.label : undefined}
+                    className={[
+                      'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
+                      collapsed ? 'justify-center' : '',
+                      active
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                    ].join(' ')}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    {!collapsed && (
+                      <span className="truncate">{item.label}</span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
-        <div className="border-t border-white/5 p-4 space-y-2">
+        {/* Footer */}
+        <div className="space-y-1 border-t border-slate-800/80 p-3">
           {!collapsed && (
-            <div className="mb-4 px-4 py-3 rounded-2xl bg-white/5 border border-white/5 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-brand-main">
-                {user?.name?.charAt(0) || 'U'}
+            <div className="mb-2 flex items-center gap-3 rounded-xl border border-white/5 bg-white/5 px-3 py-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white truncate">{user?.name}</p>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{getRoleLabel(user?.role)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">
+                  {user?.name}
+                </p>
+                <p className="truncate text-[10px] font-medium uppercase tracking-wider text-slate-500">
+                  {getRoleLabel(user?.role)}
+                </p>
               </div>
             </div>
           )}
-          
-          <NavLink to="/" className="flex items-center gap-4 px-4 py-3 rounded-2xl text-sm font-bold text-slate-400 hover:bg-white/5 hover:text-white transition-all group">
-            <GlobeAltIcon className="h-5 w-5 transition-transform group-hover:rotate-12" />
+
+          <NavLink
+            to="/"
+            onClick={onClose}
+            title={collapsed ? 'Public Portal' : undefined}
+            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white ${
+              collapsed ? 'justify-center' : ''
+            }`}
+          >
+            <GlobeAltIcon className="h-5 w-5 shrink-0" />
             {!collapsed && <span>Public Portal</span>}
           </NavLink>
-          
+
           <button
+            type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-4 px-4 py-3 rounded-2xl text-sm font-bold text-rose-400 hover:bg-rose-500/10 transition-all group"
+            title={collapsed ? 'Sign Out' : undefined}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-400 transition hover:bg-rose-500/10 ${
+              collapsed ? 'justify-center' : ''
+            }`}
           >
-            <ArrowLeftOnRectangleIcon className="h-5 w-5 transition-transform group-hover:-translate-x-1" />
+            <ArrowLeftOnRectangleIcon className="h-5 w-5 shrink-0" />
             {!collapsed && <span>Sign Out</span>}
           </button>
         </div>

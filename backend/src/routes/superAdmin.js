@@ -187,9 +187,8 @@ const serializeSettings = (config) => ({
   },
   integrations: {
     storageProvider: config.integrations?.storageProvider || 'local',
-    awsAccessKey: config.integrations?.awsAccessKey || '',
-    awsSecretKey: config.integrations?.awsSecretKey || '',
-    awsBucket: config.integrations?.awsBucket || '',
+    azureConnectionString: config.integrations?.azureConnectionString || '',
+    azureContainer: config.integrations?.azureContainer || '',
     mapsApiKey: config.integrations?.mapsApiKey || '',
     aiServiceKey: config.integrations?.aiServiceKey || '',
   },
@@ -205,10 +204,11 @@ const getOverviewData = async (query = {}) => {
   const page = parsePositiveInt(query.page, 1);
   const skip = (page - 1) * limit;
 
-  const [totalEvents, totalUsers, totalTicketsSold, revenueRows, verifiedAttendees, totalAttendees, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs, totalEntryLogs, totalZoneLogs, totalRequestLogs, revenueDistribution, attendanceStats] = await Promise.all([
+  const [totalEvents, totalUsers, totalTicketsSold, totalOrders, revenueRows, verifiedAttendees, totalAttendees, activeEvents, ticketSalesOverTime, entryLogs, zoneLogs, requestLogs, totalEntryLogs, totalZoneLogs, totalRequestLogs, revenueDistribution, recentLogins, attendanceStats] = await Promise.all([
     Event.countDocuments(),
     User.countDocuments(),
     Ticket.countDocuments({ status: { $ne: 'CANCELLED' } }),
+    Order.countDocuments({ paymentStatus: 'success' }),
     Order.aggregate([{ $match: { paymentStatus: 'success' } }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }]),
     Attendee.countDocuments({ isActive: true, photoVerificationStatus: 'verified' }),
     Attendee.countDocuments({ isActive: true }),
@@ -232,6 +232,7 @@ const getOverviewData = async (query = {}) => {
       { $sort: { value: -1 } },
       { $limit: 5 }
     ]),
+    User.find({ lastLogin: { $exists: true, $ne: null } }).select('name email role lastLogin').sort({ lastLogin: -1 }).limit(5).lean(),
     Attendee.aggregate([
       { $match: { isActive: true } },
       { $group: { _id: '$photoVerificationStatus', count: { $sum: 1 } } }
@@ -258,12 +259,18 @@ const getOverviewData = async (query = {}) => {
   const paginatedActivity = allActivity.slice(skip, skip + limit);
 
   return {
-    metrics: { totalEvents, totalUsers, totalTicketsSold, totalRevenue, activeEvents, verificationRate, avgTicketPrice },
+    metrics: { totalEvents, totalUsers, totalTicketsSold, totalOrders, totalRevenue, activeEvents, verificationRate, avgTicketPrice },
     ticketSalesOverTime: ticketSalesOverTime.map((row) => ({ label: `${row._id.y}-${String(row._id.m).padStart(2, '0')}-${String(row._id.d).padStart(2, '0')}`, ticketsSold: row.ticketsSold, revenue: row.revenue })),
     distributions: {
       revenue: revenueDistribution.map(d => ({ name: d._id, value: d.value })),
       verification: attendanceStats.map(s => ({ name: s._id || 'unprocessed', value: s.count }))
     },
+    recentLogins: recentLogins.map(user => ({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      lastLogin: user.lastLogin
+    })),
     activity: {
       rows: paginatedActivity,
       pagination: { total: totalActivity, pages: Math.ceil(totalActivity / limit), page, limit }
@@ -1106,9 +1113,8 @@ router.patch('/settings', async (req, res, next) => {
     }
     if (req.body.integrations) {
       if (req.body.integrations.storageProvider !== undefined) setQuery['integrations.storageProvider'] = req.body.integrations.storageProvider;
-      if (req.body.integrations.awsAccessKey !== undefined) setQuery['integrations.awsAccessKey'] = req.body.integrations.awsAccessKey;
-      if (req.body.integrations.awsSecretKey !== undefined) setQuery['integrations.awsSecretKey'] = req.body.integrations.awsSecretKey;
-      if (req.body.integrations.awsBucket !== undefined) setQuery['integrations.awsBucket'] = req.body.integrations.awsBucket;
+      if (req.body.integrations.azureConnectionString !== undefined) setQuery['integrations.azureConnectionString'] = req.body.integrations.azureConnectionString;
+      if (req.body.integrations.azureContainer !== undefined) setQuery['integrations.azureContainer'] = req.body.integrations.azureContainer;
       if (req.body.integrations.mapsApiKey !== undefined) setQuery['integrations.mapsApiKey'] = req.body.integrations.mapsApiKey;
       if (req.body.integrations.aiServiceKey !== undefined) setQuery['integrations.aiServiceKey'] = req.body.integrations.aiServiceKey;
     }

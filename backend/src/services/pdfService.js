@@ -202,7 +202,7 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
     }
     doc.fillColor('#000000').fontSize(12).text(`${index + 1}. ${item.categoryName}`, 60, y);
     doc.text(`Qty: ${item.quantity}`, 330, y);
-    doc.text(`LKR ${Number(item.price || 0).toLocaleString()}`, 430, y);
+    doc.text(`${event?.settings?.currency || 'LKR'} ${Number(item.price || 0).toLocaleString()}`, 430, y);
     y += 24;
   });
 
@@ -214,7 +214,7 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
   doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, y + 8).lineTo(545, y + 8).stroke();
   doc.restore();
   
-  doc.fillColor(primaryColor).fontSize(14).font('Helvetica-Bold').text(`Total: LKR ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
+  doc.fillColor(primaryColor).fontSize(14).font('Helvetica-Bold').text(`Total: ${event?.settings?.currency || 'LKR'} ${Number(order.totalAmount || 0).toLocaleString()}`, 50, y + 24);
   doc.fillColor(secondaryColor).fontSize(9).font('Helvetica').text('Assign attendees to activate each ticket.', 50, y + 46);
 
   const orgName = event.organiser?.name || event.organiserName || 'Authorized Event Organizer';

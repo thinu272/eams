@@ -20,63 +20,117 @@ import {
   ShieldCheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
+import { getSocketUrl } from '../../utils/backend';
 
-const StatCard = ({ label, value, icon: Icon, tone = 'slate' }) => {
-  const tones = {
-    slate: 'bg-white border-slate-200 text-slate-900',
-    blue: 'bg-blue-50/70 border-blue-100 text-blue-900',
-    amber: 'bg-amber-50/70 border-amber-100 text-amber-900',
-    emerald: 'bg-emerald-50/70 border-emerald-100 text-emerald-900',
+/* ───────────────────── Metric Card (matches SubOrg / Attendee) ───────────────────── */
+const StatCard = ({ label, value, icon: Icon, tone = 'blue' }) => {
+  const iconTones = {
+    blue: 'bg-blue-50 text-blue-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    amber: 'bg-amber-50 text-amber-600',
+    slate: 'bg-slate-50 text-slate-500',
   };
 
   return (
-    <div className={`rounded-3xl p-5 shadow-sm border hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 ${tones[tone] || tones.slate}`}>
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">{label}</p>
-        <Icon className="h-5 w-5 text-slate-400" />
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
+            {value}
+          </p>
+        </div>
+        {Icon && (
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+              iconTones[tone] || iconTones.blue
+            }`}
+          >
+            <Icon className="h-5 w-5" />
+          </div>
+        )}
       </div>
-      <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
     </div>
   );
 };
 
 const BuyerHomePage = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [passes, setPasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingIds, setDownloadingIds] = useState({});
   const [resendingIds, setResendingIds] = useState({});
 
-  // Filtering / Search States for passes
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [passesCurrentPage, setPassesCurrentPage] = useState(1);
   const passesPerPage = 9;
 
   const handleResend = async (ticketId) => {
-    setResendingIds(prev => ({ ...prev, [ticketId]: true }));
+    setResendingIds((prev) => ({ ...prev, [ticketId]: true }));
     try {
       await api.post(`/tickets/${ticketId}/resend-invite`);
       toast.success('Invite code resent successfully!');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Resend failed');
     } finally {
-      setResendingIds(prev => ({ ...prev, [ticketId]: false }));
+      setResendingIds((prev) => ({ ...prev, [ticketId]: false }));
     }
   };
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
     Promise.all([
       getBuyerTickets().catch(() => ({ data: { data: { orders: [] } } })),
-      api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } }))
+      api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } })),
     ])
       .then(([buyerRes, userRes]) => {
         setOrders(buyerRes.data?.data?.orders || []);
         setPasses(userRes.data?.data?.tickets || []);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!user?._id) return;
+
+    const socket = io(getSocketUrl(), {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join_buyer', { userId: user._id });
+    });
+
+    const handleUpdate = (data) => {
+      if (data?.orderNumber) {
+        toast.success(`Order #${data.orderNumber} updated!`);
+      }
+      fetchData();
+    };
+
+    socket.on('order_status_changed', handleUpdate);
+    socket.on('ticket_update', handleUpdate);
+
+    return () => {
+      socket.emit('leave_buyer', { userId: user._id });
+      socket.disconnect();
+    };
+  }, [user]);
 
   const stats = useMemo(() => {
     const totalTickets = orders.reduce((acc, o) => acc + (o.stats?.total || 0), 0);
@@ -87,26 +141,33 @@ const BuyerHomePage = () => {
 
   const nextOrder = useMemo(() => {
     const now = Date.now();
-    return [...orders]
-      .filter((o) => o.event?.startDate)
-      .sort((a, b) => new Date(a.event.startDate) - new Date(b.event.startDate))
-      .find((o) => new Date(o.event.startDate).getTime() >= now) || orders[0] || null;
+    return (
+      [...orders]
+        .filter((o) => o.event?.startDate)
+        .sort(
+          (a, b) =>
+            new Date(a.event.startDate) - new Date(b.event.startDate)
+        )
+        .find((o) => new Date(o.event.startDate).getTime() >= now) ||
+      orders[0] ||
+      null
+    );
   }, [orders]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
   const handleDownload = async (token, ticketNumber, passId) => {
     if (!token) return;
     try {
-      setDownloadingIds(prev => ({ ...prev, [passId]: true }));
+      setDownloadingIds((prev) => ({ ...prev, [passId]: true }));
       const response = await api.get(`/tickets/download/${token}`, {
         responseType: 'blob',
       });
@@ -124,7 +185,7 @@ const BuyerHomePage = () => {
       console.error('Error downloading ticket:', error);
       toast.error('Failed to download ticket PDF');
     } finally {
-      setDownloadingIds(prev => ({ ...prev, [passId]: false }));
+      setDownloadingIds((prev) => ({ ...prev, [passId]: false }));
     }
   };
 
@@ -150,223 +211,307 @@ const BuyerHomePage = () => {
     }
   };
 
-  // Filtered Passes
   const filteredPasses = useMemo(() => {
     return passes.filter((pass) => {
-      const matchesSearch = 
-        (pass.event?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (pass.ticketNumber || '').toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const isPhotoVerified = String(pass.attendee?.photoVerificationStatus || '').toLowerCase() === 'verified';
-      const isPhotoRejected = String(pass.attendee?.photoVerificationStatus || '').toLowerCase() === 'rejected';
-      const isPendingVerification = !isPhotoVerified && !isPhotoRejected && (
-        pass.status === 'PENDING_VERIFICATION' ||
-        (pass.status === 'ASSIGNED' && pass.attendee?.photo && pass.event?.requirePhotoVerification)
-      );
-      const isInvalidated = pass.status === 'CANCELLED' || pass.refundStatus === 'refunded';
+      const matchesSearch =
+        (pass.event?.name || '')
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        (pass.ticketNumber || '')
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
+
+      const isPhotoVerified =
+        String(pass.attendee?.photoVerificationStatus || '').toLowerCase() ===
+        'verified';
+      const isPhotoRejected =
+        String(pass.attendee?.photoVerificationStatus || '').toLowerCase() ===
+        'rejected';
+      const isPendingVerification =
+        !isPhotoVerified &&
+        !isPhotoRejected &&
+        (pass.status === 'PENDING_VERIFICATION' ||
+          (pass.status === 'ASSIGNED' &&
+            pass.attendee?.photo &&
+            pass.event?.requirePhotoVerification));
+      const isInvalidated =
+        pass.status === 'CANCELLED' || pass.refundStatus === 'refunded';
       const isInvited = pass.status === 'INVITED';
-      
-      const matchesStatus = 
+
+      const matchesStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'active' && (pass.status === 'CONFIRMED' || isPhotoVerified)) ||
+        (statusFilter === 'active' &&
+          (pass.status === 'CONFIRMED' || isPhotoVerified)) ||
         (statusFilter === 'verification' && isPendingVerification) ||
         (statusFilter === 'rejected' && isPhotoRejected) ||
         (statusFilter === 'invited' && isInvited) ||
         (statusFilter === 'cancelled' && isInvalidated) ||
-        (statusFilter === 'pending' && pass.status !== 'CONFIRMED' && !isPhotoVerified && !isPendingVerification && !isPhotoRejected && !isInvalidated && !isInvited);
+        (statusFilter === 'pending' &&
+          pass.status !== 'CONFIRMED' &&
+          !isPhotoVerified &&
+          !isPendingVerification &&
+          !isPhotoRejected &&
+          !isInvalidated &&
+          !isInvited);
 
       return matchesSearch && matchesStatus;
     });
   }, [passes, searchQuery, statusFilter]);
 
-  // Pagination for passes
-  const passesTotalPages = Math.ceil(filteredPasses.length / passesPerPage);
+  // Reset page when filters change
+  useEffect(() => {
+    setPassesCurrentPage(1);
+  }, [searchQuery, statusFilter]);
+
+  const passesTotalPages = Math.max(
+    1,
+    Math.ceil(filteredPasses.length / passesPerPage)
+  );
   const passesStartIndex = (passesCurrentPage - 1) * passesPerPage;
-  const passesEndIndex = passesStartIndex + passesPerPage;
-  const paginatedPasses = filteredPasses.slice(passesStartIndex, passesEndIndex);
+  const paginatedPasses = filteredPasses.slice(
+    passesStartIndex,
+    passesStartIndex + passesPerPage
+  );
 
   const handlePassesPageChange = (page) => {
+    if (page < 1 || page > passesTotalPages) return;
     setPassesCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
     <BuyerLayout>
-      <div className="space-y-8 px-1 animate-fade-in">
-        
-        {/* Ticket Owner Banner */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-brand-dark to-slate-900 p-6 sm:p-8 text-white rounded-[32px] shadow-sm">
-          <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-brand-main/15 blur-3xl pointer-events-none" />
-          <div className="absolute -left-16 -bottom-16 w-48 h-48 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-          
-          <div className="relative z-10 space-y-1">
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-blue-300">Ticket Owner</p>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Manage your tickets in a few taps</h2>
-            <p className="text-slate-300 text-sm max-w-lg font-medium">Assign attendees, track invite status, and keep everything ready for entry.</p>
+      <div className="space-y-5 sm:space-y-6 pb-16 sm:pb-20">
+        {/* ── Header ── */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/15" />
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                    Ticket Owner
+                  </p>
+                </div>
+                <h1 className="mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
+                  Manage your tickets
+                </h1>
+                <p className="mt-1.5 text-sm text-slate-500 max-w-lg">
+                  Assign attendees, track invite status, and keep everything
+                  ready for entry.
+                </p>
+              </div>
+              <Link
+                to="/buyer/tickets"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+              >
+                Manage Orders
+                <ArrowRightIcon className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* 1. Stats Grid (Full Width) */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 px-1">Overview</h4>
+        {/* ── Stats ── */}
+        <section>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-0.5">
+            Overview
+          </p>
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="h-24 rounded-3xl bg-slate-200 animate-pulse" />
-              <div className="h-24 rounded-3xl bg-slate-200 animate-pulse" />
-              <div className="h-24 rounded-3xl bg-slate-200 animate-pulse" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
+                />
+              ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <StatCard label="Total tickets" value={stats.totalTickets} icon={TicketIcon} tone="blue" />
-              <StatCard label="Assigned" value={stats.assigned} icon={UserGroupIcon} tone="emerald" />
-              <StatCard label="Pending" value={stats.pending} icon={ClockIcon} tone="amber" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <StatCard
+                label="Total tickets"
+                value={stats.totalTickets}
+                icon={TicketIcon}
+                tone="blue"
+              />
+              <StatCard
+                label="Assigned"
+                value={stats.assigned}
+                icon={UserGroupIcon}
+                tone="emerald"
+              />
+              <StatCard
+                label="Pending"
+                value={stats.pending}
+                icon={ClockIcon}
+                tone="amber"
+              />
             </div>
           )}
-        </div>
+        </section>
 
-        {/* 2. Widgets Section (Full Width, Grid of widgets) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Widget A: Next Event Highlight */}
+        {/* ── Widgets ── */}
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Next Event */}
           {!loading && nextOrder?.event ? (
-            <div className="relative overflow-hidden bg-slate-900 p-6 text-white rounded-[32px] shadow-sm border border-slate-800 flex flex-col justify-between min-h-[220px]">
-              <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-brand-main/20 blur-xl pointer-events-none" />
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Next event highlight</p>
-                <h4 className="text-lg font-extrabold text-white mt-3 leading-tight truncate">{nextOrder.event.name}</h4>
-                
-                <div className="mt-4 space-y-2 text-xs text-slate-300 font-medium">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4 text-brand-main flex-shrink-0" />
-                    <span>{formatDate(nextOrder.event.startDate)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPinIcon className="h-4 w-4 text-brand-main flex-shrink-0" />
-                    <span className="truncate">{nextOrder.event.venue?.name || 'Venue TBD'}</span>
-                  </div>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col min-h-[220px]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Next event
+              </p>
+              <h3 className="mt-2 text-base font-bold text-slate-900 leading-snug line-clamp-2">
+                {nextOrder.event.name}
+              </h3>
+              <div className="mt-3 space-y-1.5 text-xs text-slate-500 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <CalendarIcon className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span>{formatDate(nextOrder.event.startDate)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <MapPinIcon className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span className="truncate">
+                    {nextOrder.event.venue?.name || 'Venue TBD'}
+                  </span>
                 </div>
               </div>
-
               <Link
                 to={`/buyer/assign/${nextOrder._id}`}
-                className="mt-6 flex items-center justify-center gap-2 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 px-4 py-2.5 text-xs font-bold transition-all shadow-sm active:scale-95 w-full"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 transition"
               >
-                <span>Assign attendees</span>
+                Assign attendees
                 <ArrowRightIcon className="h-3.5 w-3.5" />
               </Link>
             </div>
           ) : (
-            <div className="bg-slate-900 p-6 text-slate-400 rounded-[32px] border border-slate-800 flex items-center justify-center min-h-[220px]">
-              <p className="text-xs font-medium">No upcoming events scheduled.</p>
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 flex items-center justify-center min-h-[220px]">
+              <p className="text-sm text-slate-500">No upcoming events</p>
             </div>
           )}
 
-          {/* Widget B: Owner Portal Tools (Quick Actions) */}
-          <div className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 flex flex-col justify-between min-h-[220px]">
-            <div>
-              <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-3">Owner Portal Tools</h4>
-              <p className="text-xs text-slate-500 font-medium">Quickly jump into your orders manager or tracking tools.</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3 mt-4">
+          {/* Owner Tools */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col min-h-[220px]">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Owner tools
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Jump into orders and invite tracking
+            </p>
+            <div className="mt-auto pt-5 grid grid-cols-2 gap-3">
               <Link
                 to="/buyer/tickets"
-                className="group flex flex-col justify-between p-3.5 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl shadow-sm transition-all"
+                className="flex flex-col justify-between rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 transition hover:border-slate-200 hover:bg-slate-100/80"
               >
-                <span className="text-xs font-extrabold text-slate-900">Manage Orders</span>
-                <span className="mt-2 flex items-center text-[10px] font-bold text-brand-main group-hover:underline gap-1">
-                  <span>View</span>
-                  <ArrowRightIcon className="h-3 w-3" />
+                <span className="text-xs font-semibold text-slate-900">
+                  Manage Orders
+                </span>
+                <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+                  View <ArrowRightIcon className="h-3 w-3" />
                 </span>
               </Link>
-              
               <Link
                 to="/buyer/invites"
-                className="group flex flex-col justify-between p-3.5 bg-slate-50 hover:bg-slate-100 border border-slate-100 rounded-2xl shadow-sm transition-all"
+                className="flex flex-col justify-between rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 transition hover:border-slate-200 hover:bg-slate-100/80"
               >
-                <span className="text-xs font-extrabold text-slate-900">Track Invites</span>
-                <span className="mt-2 flex items-center text-[10px] font-bold text-brand-main group-hover:underline gap-1">
-                  <span>Track</span>
-                  <ArrowRightIcon className="h-3 w-3" />
+                <span className="text-xs font-semibold text-slate-900">
+                  Track Invites
+                </span>
+                <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+                  Track <ArrowRightIcon className="h-3 w-3" />
                 </span>
               </Link>
             </div>
           </div>
 
-          {/* Widget C: Quick Security Banner */}
-          <div className="rounded-[32px] bg-white p-6 shadow-sm border border-slate-200 flex flex-col justify-between min-h-[220px]">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheckIcon className="h-5 w-5 text-brand-main" />
-                <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Security & Invites</h4>
+          {/* Security note */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col min-h-[220px]">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <ShieldCheckIcon className="h-5 w-5" />
               </div>
-              <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                Tickets must be assigned to guest emails for them to generate QR codes. Make sure guest details are correct.
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Security & Invites
               </p>
             </div>
+            <p className="mt-3 text-sm text-slate-600 leading-relaxed flex-1">
+              Tickets must be assigned to guest emails before QR codes can be
+              generated. Double-check guest details.
+            </p>
             <Link
               to="/buyer/profile"
-              className="mt-4 flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all active:scale-95"
+              className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
             >
-              <span>Manage Profile Info</span>
-              <ArrowRightIcon className="h-3.5 w-3.5" />
+              <UserCircleIcon className="h-3.5 w-3.5" />
+              Manage Profile
             </Link>
           </div>
-        </div>
+        </section>
 
-        {/* 3. Purchased Orders list (Full Width) */}
+        {/* ── Purchased Orders ── */}
         {!loading && orders.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold text-slate-800">Your Purchased Orders</h3>
+          <section className="space-y-3">
+            <h2 className="text-base font-bold text-slate-900 px-0.5">
+              Your Purchased Orders
+            </h2>
             <OrderControls orders={orders} onDownloadOrder={handleDownloadOrder} />
-          </div>
+          </section>
         )}
 
-        {/* 4. My Passes / QR Codes list (Full Width) */}
+        {/* ── My Entry Passes ── */}
         {!loading && passes.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                <QrCodeIcon className="h-5 w-5 text-slate-800" />
-                <h3 className="text-lg font-bold text-slate-800">My Entry Passes</h3>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <QrCodeIcon className="h-5 w-5" />
+                </div>
+                <h2 className="text-base font-bold text-slate-900">
+                  My Entry Passes
+                </h2>
               </div>
-              {/* Search & Filter Bar */}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-60">
+
+              <div className="flex flex-col xs:flex-row gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-56">
+                  <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search by event or ticket..."
+                    placeholder="Search event or ticket…"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-main bg-white"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
-                  <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 </div>
                 <div className="relative">
+                  <FunnelIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="appearance-none pl-8 pr-8 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-main bg-white cursor-pointer font-medium text-slate-700"
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-sm font-medium text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
                     <option value="all">All Passes</option>
                     <option value="active">Active</option>
                     <option value="verification">Awaiting Verification</option>
                     <option value="rejected">Photo Rejected</option>
                     <option value="invited">Invited</option>
-                    <option value="cancelled">Cancelled/Invalidated</option>
+                    <option value="cancelled">Cancelled / Invalidated</option>
                     <option value="pending">Pending</option>
                   </select>
-                  <FunnelIcon className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
             </div>
-            
+
             {filteredPasses.length > 0 ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {paginatedPasses.map(pass => (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {paginatedPasses.map((pass) => (
                     <TicketCard
                       key={pass._id}
                       pass={pass}
-                      onDownload={() => handleDownload(pass.attendee?.qrToken, pass.ticketNumber, pass._id)}
+                      onDownload={() =>
+                        handleDownload(
+                          pass.attendee?.qrToken,
+                          pass.ticketNumber,
+                          pass._id
+                        )
+                      }
                       downloading={!!downloadingIds[pass._id]}
                       onResend={() => handleResend(pass._id)}
                       resending={!!resendingIds[pass._id]}
@@ -374,44 +519,78 @@ const BuyerHomePage = () => {
                   ))}
                 </div>
 
-                {/* Pagination Controls */}
                 {passesTotalPages > 1 && (
-                  <div className="flex items-center justify-between px-2 pt-4">
-                    <p className="text-xs text-slate-500 font-medium">
-                      Showing {passesStartIndex + 1} to {Math.min(passesEndIndex, filteredPasses.length)} of {filteredPasses.length} passes
+                  <div className="flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between pt-1">
+                    <p className="text-center sm:text-left text-xs text-slate-500">
+                      Showing {passesStartIndex + 1}–
+                      {Math.min(
+                        passesStartIndex + passesPerPage,
+                        filteredPasses.length
+                      )}{' '}
+                      of {filteredPasses.length} passes
                     </p>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center justify-center gap-1.5">
                       <button
-                        onClick={() => handlePassesPageChange(passesCurrentPage - 1)}
+                        type="button"
+                        onClick={() =>
+                          handlePassesPageChange(passesCurrentPage - 1)
+                        }
                         disabled={passesCurrentPage === 1}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                       >
                         <ChevronLeftIcon className="h-3.5 w-3.5" />
-                        <span>Previous</span>
+                        <span className="hidden xs:inline">Previous</span>
                       </button>
-                      
+
                       <div className="flex items-center gap-1">
-                        {Array.from({ length: passesTotalPages }, (_, i) => i + 1).map((page) => (
-                          <button
-                            key={page}
-                            onClick={() => handlePassesPageChange(page)}
-                            className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
-                              passesCurrentPage === page
-                                ? 'bg-brand-main text-white shadow-sm'
-                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        ))}
+                        {Array.from(
+                          { length: passesTotalPages },
+                          (_, i) => i + 1
+                        )
+                          .filter((page) => {
+                            if (passesTotalPages <= 5) return true;
+                            return (
+                              page === 1 ||
+                              page === passesTotalPages ||
+                              Math.abs(page - passesCurrentPage) <= 1
+                            );
+                          })
+                          .map((page, idx, arr) => {
+                            const prev = arr[idx - 1];
+                            const showEllipsis = prev && page - prev > 1;
+                            return (
+                              <React.Fragment key={page}>
+                                {showEllipsis && (
+                                  <span className="px-1 text-xs text-slate-400">
+                                    …
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handlePassesPageChange(page)}
+                                  className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition ${
+                                    passesCurrentPage === page
+                                      ? 'bg-blue-600 text-white shadow-sm'
+                                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {page}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
                       </div>
 
                       <button
-                        onClick={() => handlePassesPageChange(passesCurrentPage + 1)}
+                        type="button"
+                        onClick={() =>
+                          handlePassesPageChange(passesCurrentPage + 1)
+                        }
                         disabled={passesCurrentPage === passesTotalPages}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                       >
-                        <span>Next</span>
+                        <span className="hidden xs:inline">Next</span>
                         <ChevronRightIcon className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -419,18 +598,19 @@ const BuyerHomePage = () => {
                 )}
               </div>
             ) : (
-              <div className="text-center py-8 bg-white rounded-[32px] border border-dashed border-slate-200">
-                <p className="text-sm text-slate-500 font-medium">No entry passes match your filters.</p>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-12 text-center">
+                <p className="text-sm font-medium text-slate-500">
+                  No entry passes match your filters.
+                </p>
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Empty State if no passes and no orders */}
+        {/* Empty state */}
         {!loading && passes.length === 0 && orders.length === 0 && (
           <EmptyState />
         )}
-
       </div>
     </BuyerLayout>
   );

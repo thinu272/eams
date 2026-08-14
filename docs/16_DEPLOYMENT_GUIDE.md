@@ -21,12 +21,12 @@ This guide walks you through setting up the **ENTRYNEX / EAMS** platform locally
    cd eams
    ```
 2. **Create environment files**
-   - Copy the examples:
-   ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
-   ```
-   - Fill in the placeholders (see **15_ENVIRONMENT_CONFIGURATION.md** for details). Use a local MongoDB URI or a cloud Atlas connection string.
+  - Copy the examples:
+  ```bash
+  cp backend/.env.example backend/.env
+  cp frontend/.env.example frontend/.env
+  ```
+  - Fill in the example values (see **15_ENVIRONMENT_CONFIGURATION.md** for details). Use a local MongoDB URI or a cloud Atlas connection string.
 3. **Install dependencies**
    ```bash
    # Backend

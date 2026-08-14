@@ -93,7 +93,7 @@ app.use((req, res, next) => {
 });
 app.use(requestLogger);
 app.use(maintenanceMode);
-// Note: File uploads now go to S3 via s3Upload middleware
+// Note: File uploads go to storage provider via s3Upload middleware
 // Local uploads folder kept for backward compatibility
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/socket.io-client', express.static(path.join(__dirname, '../node_modules/socket.io/client-dist')));
@@ -156,7 +156,7 @@ io.on("connection", (socket) => {
 // --- SWAGGER DOCS ---
 try {
   const swaggerUi = require('swagger-ui-express');
-  const swaggerDocument = require('../../swagger.json');
+  const swaggerDocument = require('../swagger.json');
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',

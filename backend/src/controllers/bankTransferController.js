@@ -177,6 +177,7 @@ exports.getBankTransferInstructions = async (req, res) => {
           reservationExpiry: order.reservationExpiry,
           status: order.status,
           paymentStatus: order.paymentStatus,
+          currency: order.currency || order.eventId?.settings?.currency || 'LKR',
         },
         bankAccounts: finalBankAccounts,
       },

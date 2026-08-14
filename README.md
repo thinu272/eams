@@ -26,7 +26,7 @@ The ENTRYNEX/EAMS project is a full‑stack application for managing events, tic
 - Node.js 18+
 - npm
 - MongoDB instance (local or remote)
-- Environment variables (see `docs/15_ENVIRONMENT_CONFIGURATION.md`)
+- Environment variables (see `docs/15_ENVIRONMENT_CONFIGURATION.md` for Azure Storage and Face API settings)
 
 ## Installation
 ```bash
@@ -54,6 +54,10 @@ npm start   # runs on http://localhost:3000
 - [04_DATABASE_DOCUMENTATION.md](docs/04_DATABASE_DOCUMENTATION.md)
 - [05_DATABASE_RELATIONSHIPS.md](docs/05_DATABASE_RELATIONSHIPS.md)
 - [06_API_DOCUMENTATION.md](docs/06_API_DOCUMENTATION.md)
+ - [03_PROJECT_STRUCTURE.md](docs/03_PROJECT_STRUCTURE.md)
+ - [04_DATABASE_DOCUMENTATION.md](docs/04_DATABASE_DOCUMENTATION.md)
+ - [05_API_DOCUMENTATION.md](docs/05_API_DOCUMENTATION.md)
+ - [06_DATABASE_RELATIONSHIPS.md](docs/06_DATABASE_RELATIONSHIPS.md)
 - [07_AUTHENTICATION_AUTHORIZATION.md](docs/07_AUTHENTICATION_AUTHORIZATION.md)
 - [08_ROLES_PERMISSIONS.md](docs/08_ROLES_PERMISSIONS.md)
 - [09_BUSINESS_LOGIC.md](docs/09_BUSINESS_LOGIC.md)

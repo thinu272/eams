@@ -32,6 +32,7 @@ const mapTicket = (ticket) => {
     orderId: order._id,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+    orderStatus: order.status,
     event: event?._id ? {
       _id: event._id,
       name: event.name,

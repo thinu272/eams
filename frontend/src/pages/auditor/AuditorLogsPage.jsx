@@ -3,25 +3,24 @@ import { format } from 'date-fns';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getMyEvents } from '../../api/events';
 import { exportAuditReport, getAuditLogs } from '../../api/audit';
-import Badge from '../../components/ui/Badge';
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import { Table, Td, Th, Tr } from '../../components/ui/Table';
 import toast from 'react-hot-toast';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
-const actionColors = {
-  check_in: 'green',
-  check_out: 'blue',
-  zone_entry: 'purple',
-  zone_exit: 'gray',
-  denied: 'red',
-  ENTRY: 'green',
-  EXIT: 'gray',
+const actionStyles = {
+  check_in: 'bg-emerald-50 text-emerald-700',
+  check_out: 'bg-blue-50 text-blue-700',
+  zone_entry: 'bg-indigo-50 text-indigo-700',
+  zone_exit: 'bg-slate-100 text-slate-600',
+  denied: 'bg-rose-50 text-rose-700',
+  ENTRY: 'bg-emerald-50 text-emerald-700',
+  EXIT: 'bg-slate-100 text-slate-600',
 };
 
 const AuditorLogsPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedEventId, setSelectedEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [logType, setLogType] = useState('entry');
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
@@ -39,8 +38,9 @@ const AuditorLogsPage = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
-      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      const isValidEvent = nextEvents.some((e) => e._id === selectedEventId);
+      const fallbackEventId =
+        (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
@@ -50,12 +50,11 @@ const AuditorLogsPage = () => {
 
   useEffect(() => {
     const handleEventSelect = (event) => {
-      const nextId = event.detail || '';
-      setSelectedEventId(nextId);
+      setSelectedEventId(event.detail || '');
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
@@ -64,7 +63,7 @@ const AuditorLogsPage = () => {
 
   useEffect(() => {
     if (!selectedEventId) return;
-    
+
     const delayDebounceFn = setTimeout(() => {
       setLoading(true);
       getAuditLogs({
@@ -92,12 +91,14 @@ const AuditorLogsPage = () => {
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
+    window.dispatchEvent(
+      new CustomEvent('entrynex:event-select', { detail: nextId })
+    );
   };
 
   const selectedEvent = useMemo(
     () => events.find((event) => event._id === selectedEventId),
-    [events, selectedEventId],
+    [events, selectedEventId]
   );
 
   const handleExport = async () => {
@@ -113,7 +114,9 @@ const AuditorLogsPage = () => {
         categoryId: categoryId || undefined,
         search: search.trim() || undefined,
       });
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([response.data], {
+        type: 'text/csv;charset=utf-8;',
+      });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -133,110 +136,243 @@ const AuditorLogsPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-amber-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 sm:px-6">
+        {/* Header */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">Audit Workspace</p>
-              <h1 className="mt-3 text-4xl font-black tracking-tight">Audit Logs</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
-                Review read-only entry and zone logs with export-ready filters. Event selection stays synchronized with the rest of the dashboard.
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                  Audit Workspace
+                </p>
+              </div>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Audit Logs
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Review read-only entry and zone logs with export-ready filters.
               </p>
             </div>
-            <Button variant="outline" onClick={handleExport} loading={exporting} className="border-white/15 bg-white/5 text-white hover:bg-white/10">
-              Export CSV
-            </Button>
-          </div>
-        </section>
 
-        <Card className="rounded-[28px] border-slate-200 bg-white">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
-            <select value={selectedEventId} onChange={(event) => handleEventChange(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+            <select
+              value={selectedEventId}
+              onChange={(e) => handleEventChange(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
               {events.map((event) => (
-                <option key={event._id} value={event._id}>{event.name}</option>
+                <option key={event._id} value={event._id}>
+                  {event.name}
+                </option>
               ))}
             </select>
-            <select value={logType} onChange={(event) => setLogType(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+
+            <select
+              value={logType}
+              onChange={(e) => setLogType(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
               <option value="entry">Entry logs</option>
               <option value="zone">Zone logs</option>
             </select>
-            <input 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              placeholder="Search attendee..." 
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" 
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search attendee..."
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white"
             />
-            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-            <select value={zone} onChange={(event) => setZone(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+
+            <select
+              value={zone}
+              onChange={(e) => setZone(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
               <option value="">All zones</option>
               {zoneOptions.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
               ))}
             </select>
-            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
               <option value="">All categories</option>
               {categoryOptions.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </div>
-        </Card>
+        </div>
 
-        <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        {/* Logs table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
-              <h2 className="text-xl font-black text-slate-900">{logType === 'zone' ? 'Zone Log Records' : 'Entry Log Records'}</h2>
-              <p className="mt-1 text-sm text-slate-500">{total} results</p>
+              <h2 className="text-lg font-bold text-slate-900">
+                {logType === 'zone' ? 'Zone Log Records' : 'Entry Log Records'}
+              </h2>
+              <p className="mt-0.5 text-sm text-slate-500">{total} results</p>
             </div>
-            {loading && <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Refreshing</p>}
+            {loading && (
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                Refreshing...
+              </p>
+            )}
           </div>
 
-          <Table>
-            <thead>
-              <tr>
-                <Th>Timestamp</Th>
-                <Th>Attendee</Th>
-                <Th>Category</Th>
-                <Th>{logType === 'zone' ? 'Zone' : 'Gate / Zone'}</Th>
-                <Th>Action</Th>
-                <Th>Access</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => {
-                const attendeeName = logType === 'zone' ? log.attendeeSnapshot?.fullName || log.attendeeId?.fullName : log.snapshot?.fullName || log.attendee?.fullName;
-                const categoryName = logType === 'zone' ? log.attendeeSnapshot?.categoryName : log.snapshot?.categoryName;
-                const access = log.accessGranted ? 'Granted' : 'Denied';
-                const location = logType === 'zone' ? log.zoneName : [log.gateName || log.gateId, log.zoneName].filter(Boolean).join(' / ');
-
-                return (
-                  <Tr key={log._id}>
-                    <Td>{format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}</Td>
-                    <Td>{attendeeName || '-'}</Td>
-                    <Td>{categoryName || '-'}</Td>
-                    <Td>{location || '-'}</Td>
-                    <Td><Badge color={actionColors[log.action] || 'gray'}>{String(log.action).replace('_', ' ')}</Badge></Td>
-                    <Td><Badge color={log.accessGranted ? 'green' : 'red'}>{access}</Badge></Td>
-                  </Tr>
-                );
-              })}
-              {!loading && logs.length === 0 && (
-                <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-sm text-slate-500">No logs match the current filters.</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/80">
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Timestamp
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Attendee
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Category
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    {logType === 'zone' ? 'Zone' : 'Gate / Zone'}
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Action
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Access
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {logs.map((log) => {
+                  const attendeeName =
+                    logType === 'zone'
+                      ? log.attendeeSnapshot?.fullName ||
+                        log.attendeeId?.fullName
+                      : log.snapshot?.fullName || log.attendee?.fullName;
+                  const categoryName =
+                    logType === 'zone'
+                      ? log.attendeeSnapshot?.categoryName
+                      : log.snapshot?.categoryName;
+                  const access = log.accessGranted ? 'Granted' : 'Denied';
+                  const location =
+                    logType === 'zone'
+                      ? log.zoneName
+                      : [log.gateName || log.gateId, log.zoneName]
+                          .filter(Boolean)
+                          .join(' / ');
 
-          <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-            <p className="text-xs font-semibold text-slate-500">Page {page} of {pages}</p>
+                  return (
+                    <tr key={log._id} className="hover:bg-slate-50/50">
+                      <td className="whitespace-nowrap px-5 py-3.5 text-slate-600">
+                        {format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}
+                      </td>
+                      <td className="px-5 py-3.5 font-medium text-slate-900">
+                        {attendeeName || '—'}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600">
+                        {categoryName || '—'}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600">
+                        {location || '—'}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                            actionStyles[log.action] ||
+                            'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {String(log.action).replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                            log.accessGranted
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-rose-50 text-rose-700'
+                          }`}
+                        >
+                          {access}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!loading && logs.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-5 py-12 text-center text-sm text-slate-500"
+                    >
+                      No logs match the current filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex flex-col items-center justify-between gap-4 border-t border-slate-100 px-5 py-4 sm:flex-row">
+            <p className="text-xs font-medium text-slate-500">
+              Page {page} of {pages}
+            </p>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button>
-              <Button variant="outline" disabled={page >= pages} onClick={() => setPage((current) => Math.min(current + 1, pages))}>Next</Button>
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((c) => Math.max(c - 1, 1))}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                disabled={page >= pages}
+                onClick={() => setPage((c) => Math.min(c + 1, pages))}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
             </div>
           </div>
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
   );

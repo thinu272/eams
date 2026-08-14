@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRightStartOnRectangleIcon, CheckCircleIcon, MagnifyingGlassIcon, UserIcon, IdentificationIcon, PhoneIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
+import {
+  ArrowRightStartOnRectangleIcon,
+  CheckCircleIcon,
+  MagnifyingGlassIcon,
+  UserIcon,
+  IdentificationIcon,
+  ArrowLeftIcon,
+} from '@heroicons/react/24/outline';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import SearchBar from '../../components/staff/SearchBar';
 import ActivityList from '../../components/staff/ActivityList';
@@ -15,21 +22,27 @@ const StaffManualSearchPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedEventId, setSelectedEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
   const [logs, setLogs] = useState([]);
   const [logsPage, setLogsPage] = useState(1);
   const [searching, setSearching] = useState(false);
 
-  const gateName = useMemo(() => (user?.assignedGates || [])[0] || 'Main Gate', [user]);
+  const gateName = useMemo(
+    () => (user?.assignedGates || [])[0] || 'Main Gate',
+    [user]
+  );
 
   useEffect(() => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
-      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      const isValidEvent = nextEvents.some((e) => e._id === selectedEventId);
+      const fallbackEventId =
+        (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
@@ -39,33 +52,44 @@ const StaffManualSearchPage = () => {
 
   useEffect(() => {
     const handleEventSelect = (event) => {
-      const nextId = event.detail || '';
-      setSelectedEventId(nextId);
+      setSelectedEventId(event.detail || '');
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     setLogsPage(1);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
+    window.dispatchEvent(
+      new CustomEvent('entrynex:event-select', { detail: nextId })
+    );
   };
 
   const refreshLogs = useCallback(async () => {
     if (!selectedEventId) return;
     try {
-      const response = await getEntryLogs({ eventId: selectedEventId, gateId: gateName, limit: 50 });
-      setLogs((response.data?.data?.logs || []).map((item) => ({
-        id: item._id,
-        attendeeName: item.attendee?.fullName || item.snapshot?.fullName,
-        zoneName: item.gateName || item.zoneName,
-        action: item.accessGranted ? (item.action === 'check_out' ? 'Checked out' : 'Checked in') : item.denialReason || 'Denied',
-        status: item.accessGranted ? 'success' : 'error',
-        timestamp: item.timestamp,
-      })));
+      const response = await getEntryLogs({
+        eventId: selectedEventId,
+        gateId: gateName,
+        limit: 50,
+      });
+      setLogs(
+        (response.data?.data?.logs || []).map((item) => ({
+          id: item._id,
+          attendeeName: item.attendee?.fullName || item.snapshot?.fullName,
+          zoneName: item.gateName || item.zoneName,
+          action: item.accessGranted
+            ? item.action === 'check_out'
+              ? 'Checked out'
+              : 'Checked in'
+            : item.denialReason || 'Denied',
+          status: item.accessGranted ? 'success' : 'error',
+          timestamp: item.timestamp,
+        }))
+      );
     } catch {
       setLogs([]);
     }
@@ -84,7 +108,11 @@ const StaffManualSearchPage = () => {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const response = await searchStaffAttendees({ eventId: selectedEventId, q: search.trim(), limit: 12 });
+        const response = await searchStaffAttendees({
+          eventId: selectedEventId,
+          q: search.trim(),
+          limit: 12,
+        });
         setResults(response.data?.data?.attendees || []);
       } catch {
         setResults([]);
@@ -98,9 +126,18 @@ const StaffManualSearchPage = () => {
 
   const handleCheckIn = async (attendee) => {
     try {
-      await checkInAttendee({ attendeeId: attendee._id, gateId: gateName, gateName, method: 'manual' });
+      await checkInAttendee({
+        attendeeId: attendee._id,
+        gateId: gateName,
+        gateName,
+        method: 'manual',
+      });
       toast.success(`${attendee.fullName} checked in.`);
-      setResults((current) => current.map((item) => item._id === attendee._id ? { ...item, checkedIn: true } : item));
+      setResults((current) =>
+        current.map((item) =>
+          item._id === attendee._id ? { ...item, checkedIn: true } : item
+        )
+      );
       refreshLogs();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Manual check-in failed.');
@@ -109,9 +146,18 @@ const StaffManualSearchPage = () => {
 
   const handleCheckOut = async (attendee) => {
     try {
-      await checkOutAttendee({ attendeeId: attendee._id, gateId: gateName, gateName, method: 'manual' });
+      await checkOutAttendee({
+        attendeeId: attendee._id,
+        gateId: gateName,
+        gateName,
+        method: 'manual',
+      });
       toast.success(`${attendee.fullName} checked out.`);
-      setResults((current) => current.map((item) => item._id === attendee._id ? { ...item, checkedIn: false } : item));
+      setResults((current) =>
+        current.map((item) =>
+          item._id === attendee._id ? { ...item, checkedIn: false } : item
+        )
+      );
       refreshLogs();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Manual check-out failed.');
@@ -120,173 +166,244 @@ const StaffManualSearchPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-6xl mx-auto px-1">
-        
-        {/* Simple Minimal Back & Status Bar */}
-        <div className="flex items-center justify-between gap-4">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 sm:px-6">
+        {/* Top bar */}
+        <div className="flex items-center justify-between gap-3">
           <button
             onClick={() => navigate('/staff/dashboard')}
-            className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-slate-900 transition"
+            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-900"
           >
             <ArrowLeftIcon className="h-4 w-4" />
             Exit Console
           </button>
         </div>
-        
-        {/* Simple Premium Header with Status Bar */}
-        <section className="rounded-[28px] bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-5 lg:p-6 text-white shadow-xl border border-white/5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400">Search Operations</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{gateName}</span>
-              </div>
-              <h1 className="mt-1 text-2xl lg:text-3xl font-black tracking-tight text-white">Manual Lookup</h1>
-            </div>
-          </div>
-        </section>
 
-        <div className="flex flex-col lg:grid lg:grid-cols-[1.1fr,0.9fr] lg:gap-6 space-y-6 lg:space-y-0">
-          
-          {/* SEARCH SECTORS (Primary) */}
-          <div className="space-y-6">
-            <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="grid gap-4 md:grid-cols-[0.45fr,1fr]">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Select Event</label>
+        {/* Header — matches dashboard style */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Search Operations
+            </p>
+            <span className="text-[11px] font-medium text-slate-400">•</span>
+            <p className="text-[11px] font-semibold text-slate-500">
+              {gateName}
+            </p>
+          </div>
+
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Manual Lookup
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Search attendees by name, phone, or email and perform manual
+            check-in / check-out.
+          </p>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          {/* LEFT — Search + Results */}
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
+              {/* Filters */}
+              <div className="grid gap-4 sm:grid-cols-[0.4fr_1fr]">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Select Event
+                  </label>
                   <select
                     value={selectedEventId}
                     onChange={(e) => handleEventChange(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-semibold text-slate-900 outline-none focus:border-cyan-500 focus:bg-white"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
                   >
-                    {events.map((event) => <option key={event._id} value={event._id}>{event.name}</option>)}
+                    {events.map((event) => (
+                      <option key={event._id} value={event._id}>
+                        {event.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Search Query</label>
-                  <SearchBar value={search} onChange={setSearch} placeholder="Attendee name, phone number, email..." autoFocus />
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Search Query
+                  </label>
+                  <SearchBar
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Name, phone, email..."
+                    autoFocus
+                  />
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                <MagnifyingGlassIcon className="h-5 w-5 text-cyan-600 animate-pulse" />
-                Gate Access Point: <span className="text-slate-800">{getAssignedGateLabel(user)}</span>
+              <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-500">
+                <MagnifyingGlassIcon className="h-4 w-4 text-blue-600" />
+                Gate:{' '}
+                <span className="font-semibold text-slate-800">
+                  {getAssignedGateLabel(user)}
+                </span>
               </div>
 
-              {/* Lookup Card Result Lists */}
-              <div className="mt-6 space-y-4">
+              {/* Results */}
+              <div className="mt-6 space-y-3">
                 {searching && (
-                  <div className="rounded-2xl border border-slate-150 bg-slate-50 px-4 py-10 text-center text-sm font-semibold text-slate-500 flex items-center justify-center gap-3">
-                    <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-900" />
-                    Searching event registry...
+                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-10 text-sm font-medium text-slate-500">
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+                    Searching registry...
                   </div>
                 )}
 
                 {!searching && search.trim().length >= 2 && results.length === 0 && (
-                  <div className="rounded-3xl border-2 border-dashed border-slate-200 px-4 py-12 text-center text-sm font-bold text-slate-400 leading-relaxed">
-                    No registry matched your query.<br/>
-                    <span className="text-xs font-medium text-slate-400">Please double-check attendee name or confirmation details.</span>
+                  <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-12 text-center">
+                    <p className="text-sm font-medium text-slate-500">
+                      No matches found
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Double-check the name or confirmation details
+                    </p>
                   </div>
                 )}
 
                 {!searching && search.trim().length < 2 && (
-                  <div className="rounded-3xl border border-slate-150 bg-slate-50 px-4 py-12 text-center text-sm font-bold text-slate-400 flex flex-col items-center justify-center gap-2">
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-12 text-center">
                     <IdentificationIcon className="h-8 w-8 text-slate-300" />
-                    <span>Awaiting lookup query...</span>
-                    <span className="text-xs font-medium text-slate-400">Type at least 2 characters to initiate secure registry search.</span>
+                    <p className="text-sm font-medium text-slate-500">
+                      Awaiting search query
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Type at least 2 characters to search
+                    </p>
                   </div>
                 )}
 
                 {results.map((attendee) => (
-                  <div key={attendee._id} className="rounded-[28px] border border-slate-200 bg-slate-50/50 p-5 hover:bg-slate-50 transition duration-200">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
+                  <div
+                    key={attendee._id}
+                    className="rounded-2xl border border-slate-200/70 bg-white p-4 transition hover:border-blue-200 hover:shadow-sm sm:p-5"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 border border-slate-200 shadow-inner">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:h-18 sm:w-18">
                           {attendee.photo ? (
-                            <img src={buildAssetUrl(attendee.photo)} alt={attendee.fullName} className="h-full w-full object-cover" />
+                            <img
+                              src={buildAssetUrl(attendee.photo)}
+                              alt={attendee.fullName}
+                              className="h-full w-full object-cover"
+                            />
                           ) : (
-                            <UserIcon className="h-8 w-8 text-slate-400" />
+                            <UserIcon className="h-7 w-7 text-slate-400" />
                           )}
                         </div>
-                        <div>
-                          <p className="text-xl font-black text-slate-900 leading-tight">{attendee.fullName}</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-500 tracking-wide">{attendee.categoryName || 'General Category'}</p>
-                          
-                          <div className="mt-3.5 flex flex-wrap gap-2">
-                            <span className={`rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${
-                              attendee.confirmationStatus === 'confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                            }`}>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-semibold text-slate-900 sm:text-lg">
+                            {attendee.fullName}
+                          </p>
+                          <p className="mt-0.5 text-sm font-medium text-slate-500">
+                            {attendee.categoryName || 'General Category'}
+                          </p>
+
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                attendee.confirmationStatus === 'confirmed'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-amber-50 text-amber-700'
+                              }`}
+                            >
                               {attendee.confirmationStatus || 'Pending'}
                             </span>
-                            <span className={`rounded-full px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${
-                              attendee.checkedIn ? 'bg-indigo-100 text-indigo-800' : 'bg-cyan-100 text-cyan-800'
-                            }`}>
-                              {attendee.checkedIn ? 'Checked In' : 'Not Checked In'}
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                attendee.checkedIn
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {attendee.checkedIn
+                                ? 'Checked In'
+                                : 'Not Checked In'}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[180px]">
                         <button
                           type="button"
                           onClick={() => handleCheckIn(attendee)}
                           disabled={attendee.checkedIn}
-                          className="w-full md:w-auto rounded-2xl bg-slate-900 hover:bg-slate-800 px-6 py-4 text-xs font-black uppercase tracking-[0.18em] text-white transition flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <CheckCircleIcon className="h-5 w-5" />
-                          Force Entry Check-In
+                          <CheckCircleIcon className="h-4 w-4" />
+                          Check-In
                         </button>
                         <button
                           type="button"
                           onClick={() => handleCheckOut(attendee)}
                           disabled={!attendee.checkedIn}
-                          className="w-full md:w-auto rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 px-6 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-700 transition flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <ArrowRightStartOnRectangleIcon className="h-5 w-5" />
-                          Force Exit Check-Out
+                          <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+                          Check-Out
                         </button>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
           </div>
 
-          {/* STATION RECENT LOG ACTIVITY */}
+          {/* RIGHT — Activity Logs */}
           {(() => {
             const pageSize = 5;
             const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
-            const pagedLogs = logs.slice((logsPage - 1) * pageSize, logsPage * pageSize);
+            const pagedLogs = logs.slice(
+              (logsPage - 1) * pageSize,
+              logsPage * pageSize
+            );
+
             return (
               <div className="space-y-4">
-                <ActivityList title={`Recent Manual Registry Changes (Page ${logsPage})`} items={pagedLogs} emptyMessage="No manual registry entries logged today." />
-                
+                <ActivityList
+                  title={`Recent Manual Actions (Page ${logsPage})`}
+                  items={pagedLogs}
+                  emptyMessage="No manual actions logged today."
+                />
+
                 {logs.length > 0 && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-[24px] border border-slate-200 bg-white px-6 py-4 shadow-sm">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Showing {logs.length === 0 ? 0 : (logsPage - 1) * pageSize + 1}-{Math.min(logsPage * pageSize, logs.length)} of {logs.length} audits
+                  <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-sm sm:flex-row">
+                    <p className="text-xs font-medium text-slate-500">
+                      Showing{' '}
+                      {logs.length === 0
+                        ? 0
+                        : (logsPage - 1) * pageSize + 1}
+                      –{Math.min(logsPage * pageSize, logs.length)} of{' '}
+                      {logs.length}
                     </p>
+
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         disabled={logsPage <= 1}
-                        onClick={() => setLogsPage((current) => Math.max(1, current - 1))}
-                        className="rounded-xl border border-slate-200 hover:bg-slate-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                        onClick={() =>
+                          setLogsPage((c) => Math.max(1, c - 1))
+                        }
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Prev
                       </button>
-                      <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 uppercase tracking-wider">
-                        Page {logsPage} / {totalPages}
+                      <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
+                        {logsPage} / {totalPages}
                       </div>
                       <button
                         type="button"
                         disabled={logsPage >= totalPages}
-                        onClick={() => setLogsPage((current) => Math.min(totalPages, current + 1))}
-                        className="rounded-xl border border-slate-200 hover:bg-slate-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                        onClick={() =>
+                          setLogsPage((c) => Math.min(totalPages, c + 1))
+                        }
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Next
                       </button>
@@ -296,7 +413,6 @@ const StaffManualSearchPage = () => {
               </div>
             );
           })()}
-
         </div>
       </div>
     </DashboardLayout>

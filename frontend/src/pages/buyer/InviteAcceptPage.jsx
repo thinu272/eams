@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CalendarDaysIcon, CheckBadgeIcon, MapPinIcon, TicketIcon } from '@heroicons/react/24/solid';
+import {
+  CalendarDaysIcon,
+  CheckBadgeIcon,
+  MapPinIcon,
+  TicketIcon,
+  CameraIcon,
+  PhotoIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { confirmInvite, getInviteInfo, respondToInvite } from '../../api/attendees';
-import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import CameraCapture from '../../components/shared/CameraCapture';
 import PhotoValidationFeedback from '../../components/shared/PhotoValidationFeedback';
 import { usePhotoAiValidation } from '../../hooks/usePhotoAiValidation';
-import { CameraIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
 const phoneRegex = /^\+?[1-9]\d{1,14}$/;
 
@@ -19,7 +25,14 @@ const formatVenue = (venue) => {
 
 const formatDate = (value) => {
   if (!value) return 'Date to be announced';
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 const InviteAcceptPage = () => {
@@ -40,6 +53,7 @@ const InviteAcceptPage = () => {
   const [photo, setPhoto] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [preview, setPreview] = useState(null);
+
   const {
     validationErrors,
     allowOverride,
@@ -67,7 +81,9 @@ const InviteAcceptPage = () => {
             fullName: payload.attendee.fullName || '',
             email: payload.attendee.email || '',
             phone: payload.attendee.phone || '',
-            dateOfBirth: payload.attendee.dateOfBirth ? payload.attendee.dateOfBirth.split('T')[0] : '',
+            dateOfBirth: payload.attendee.dateOfBirth
+              ? payload.attendee.dateOfBirth.split('T')[0]
+              : '',
             nicPassport: payload.attendee.nationalId || '',
           });
         }
@@ -104,17 +120,24 @@ const InviteAcceptPage = () => {
     }
   };
 
+  const handlePhotoSelect = async (file) => {
+    if (!file) return;
+    await validateFile(file);
+    setPhoto(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const clearPhoto = () => {
+    setPhoto(null);
+    setPreview(null);
+    resetValidation?.();
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.fullName) {
-      return toast.error('Full Name is required');
-    }
-    if (!form.email) {
-      return toast.error('Email is required');
-    }
-    if (!photo) {
-      return toast.error('Identity Verification Photo is required');
-    }
+    if (!form.fullName) return toast.error('Full Name is required');
+    if (!form.email) return toast.error('Email is required');
+    if (!photo) return toast.error('Identity Verification Photo is required');
     if (!canSubmitPhoto(true)) {
       return toast.error('Please fix photo validation issues or allow override.');
     }
@@ -144,191 +167,324 @@ const InviteAcceptPage = () => {
     }
   };
 
+  // ─── Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="h-10 w-10 rounded-full border-4 border-slate-900 border-t-transparent animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
       </div>
     );
   }
 
+  // ─── Success ──────────────────────────────────────────────────────
   if (done) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-        <div className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-xl">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-            <CheckBadgeIcon className="h-10 w-10 text-green-600" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-md overflow-hidden rounded-[32px] border border-slate-100 bg-white text-center shadow-sm">
+          <div className="bg-emerald-50 px-8 py-10">
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-100">
+              <CheckBadgeIcon className="h-10 w-10 text-emerald-600" />
+            </div>
+            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+              Invitation Accepted
+            </h2>
           </div>
-          <h2 className="mt-6 text-3xl font-bold text-slate-900">Invitation Accepted</h2>
-          <p className="mt-3 text-sm text-slate-500">
-            Your details have been submitted successfully. You’ll receive the final ticket confirmation shortly.
-          </p>
+          <div className="px-8 py-8">
+            <p className="text-sm leading-relaxed text-slate-500">
+              Your details have been submitted successfully. You’ll receive the final ticket
+              confirmation shortly.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
+  const inputClass =
+    'w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:border-brand-main focus:outline-none focus:ring-2 focus:ring-brand-main/20';
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f8fafc_45%,_#e2e8f0)] px-4 py-12">
-      <div className="mx-auto max-w-3xl">
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
-          <div className="bg-slate-950 px-8 py-10 text-white">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-300">Event Invitation</p>
-            <h1 className="mt-3 text-3xl font-black tracking-tight">{invite?.eventName || 'Invitation'}</h1>
-            <p className="mt-2 max-w-xl text-sm text-slate-300">You have been invited to this event.</p>
+    <div className="min-h-screen bg-slate-50">
+      {/* ────────────── Hero ────────────── */}
+      <div className="relative overflow-hidden bg-slate-900">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-main/20 via-transparent to-transparent" />
+        <div className="relative mx-auto max-w-3xl px-4 py-14 sm:px-6">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-white/50">
+            Event Invitation
+          </p>
+          <h1 className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl">
+            {invite?.eventName || 'Invitation'}
+          </h1>
+          <p className="mt-3 text-sm font-medium text-white/70">
+            You have been invited to this event
+          </p>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <div className="grid gap-6 lg:grid-cols-5">
+          {/* ────────────── Event Info ────────────── */}
+          <div className="space-y-4 lg:col-span-2">
+            <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+              <div className="space-y-0 divide-y divide-slate-50">
+                <div className="flex items-start gap-3 px-6 py-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <CalendarDaysIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Event Date
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {formatDate(invite?.eventStartDate)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 px-6 py-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <MapPinIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Venue
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">{venueText}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 px-6 py-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <TicketIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Category
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {invite?.categoryName || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {invite?.inviteExpiresAt && (
+              <div className="rounded-[28px] border border-amber-200 bg-amber-50 px-6 py-4 text-sm font-medium text-amber-800">
+                Invitation expires on{' '}
+                <strong>{new Date(invite.inviteExpiresAt).toLocaleString()}</strong>
+              </div>
+            )}
           </div>
 
-          <div className="grid gap-8 px-8 py-8 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="space-y-4">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-start gap-3">
-                  <CalendarDaysIcon className="mt-0.5 h-5 w-5 text-slate-500" />
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Event Date</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{formatDate(invite?.eventStartDate)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-start gap-3">
-                  <MapPinIcon className="mt-0.5 h-5 w-5 text-slate-500" />
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Venue</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{venueText}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-start gap-3">
-                  <TicketIcon className="mt-0.5 h-5 w-5 text-slate-500" />
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Ticket Category</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{invite?.categoryName || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-              {invite?.inviteExpiresAt && (
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-                  Invitation expires on {new Date(invite.inviteExpiresAt).toLocaleString()}.
-                </div>
-              )}
-            </div>
-
-            <div>
-              {step === 'preview' && (
-                <div className="rounded-3xl border border-slate-200 p-6">
-                  <h2 className="text-2xl font-bold text-slate-900">Review Invitation</h2>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    Accept this invitation to continue to the attendee confirmation form and complete your entry details.
+          {/* ────────────── Action Panel ────────────── */}
+          <div className="lg:col-span-3">
+            {step === 'preview' && (
+              <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                <div className="p-8">
+                  <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">
+                    Review Invitation
+                  </h2>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-500">
+                    Accept this invitation to continue to the attendee confirmation form and
+                    complete your entry details.
                   </p>
-                  <div className="mt-8">
-                    <Button className="w-full justify-center" loading={responding} onClick={handleAccept}>
-                      Accept Invitation
-                    </Button>
-                  </div>
+
+                  <button
+                    onClick={handleAccept}
+                    disabled={responding}
+                    className="mt-8 flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)] disabled:opacity-60"
+                  >
+                    {responding ? 'Accepting…' : 'Accept Invitation'}
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {step === 'form' && (
-                <form onSubmit={handleSubmit} className="rounded-3xl border border-slate-200 p-6">
-                  <h2 className="text-2xl font-bold text-slate-900">Complete Attendee Details</h2>
-                  <p className="mt-2 text-sm text-slate-500">Fill in your information to confirm this invitation.</p>
+            {step === 'form' && (
+              <form
+                onSubmit={handleSubmit}
+                className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm"
+              >
+                <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+                  <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                    Complete Your Details
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Fill in your information to confirm this invitation
+                  </p>
+                </div>
 
-                  <div className="mt-6 space-y-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Full Name *</label>
-                      <input value={form.fullName} onChange={(e) => setForm((current) => ({ ...current, fullName: e.target.value }))} required className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Email *</label>
-                      <input type="email" value={form.email} readOnly className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-500 outline-none cursor-not-allowed" required />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
-                      <input value={form.phone} onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="+1234567890 (Optional)" />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">NIC / Passport</label>
-                      <input value={form.nicPassport} onChange={(e) => setForm((current) => ({ ...current, nicPassport: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" placeholder="(Optional)" />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Date of Birth</label>
-                      <input type="date" value={form.dateOfBirth} onChange={(e) => setForm((current) => ({ ...current, dateOfBirth: e.target.value }))} className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500" />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">Identity Verification Photo *</label>
-                      <div className="flex flex-col gap-3">
-                        <div className="flex gap-2">
-                          <label className="flex-1 group relative flex h-[100px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
-                            {photo ? (
-                              <div className="relative h-full w-full">
-                                <img ref={imageRef} src={preview} alt="Preview" className="h-full w-full rounded-xl object-cover shadow-md" />
-                                <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                                <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
-                                  <PhotoIcon className="h-6 w-6 text-white" />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center">
-                                <PhotoIcon className="mb-1 h-6 w-6 text-slate-300 transition-colors group-hover:text-blue-500" />
-                                <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload</p>
-                              </div>
-                            )}
-                            <input type="file" accept="image/*" onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              await validateFile(file);
-                              setPhoto(file);
-                              setPreview(URL.createObjectURL(file));
-                            }} className="hidden" />
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() => setShowCamera(true)}
-                            className="flex-1 group relative flex h-[100px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
-                          >
-                            <CameraIcon className="mb-1 h-6 w-6 text-slate-300 transition-colors group-hover:text-blue-500" />
-                            <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Live Photo</p>
-                          </button>
-                        </div>
-
-                        {showCamera && (
-                          <CameraCapture 
-                            onCapture={async (file) => {
-                              await validateFile(file);
-                              setPhoto(file);
-                              setPreview(URL.createObjectURL(file));
-                              setShowCamera(false);
-                            }} 
-                            onClose={() => setShowCamera(false)} 
-                          />
-                        )}
-                      </div>
-                      <PhotoValidationFeedback
-                        validationErrors={validationErrors}
-                        qualityAnalysis={qualityAnalysis}
-                        faceAnalysis={faceAnalysis}
-                        allowOverride={allowOverride}
-                        onAllowOverrideChange={setAllowOverride}
-                        modelLoadFailed={modelLoadFailed}
-                        validating={validating}
-                      />
-                      <p className="mt-2 text-xs text-slate-500">Recommended for entry verification.</p>
-                    </div>
+                <div className="space-y-5 p-8">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Full Name *
+                    </label>
+                    <input
+                      value={form.fullName}
+                      onChange={(e) =>
+                        setForm((c) => ({ ...c, fullName: e.target.value }))
+                      }
+                      required
+                      className={inputClass}
+                    />
                   </div>
 
-                  <Button type="submit" className="mt-6 w-full justify-center" loading={submitting}>
-                    Submit Confirmation
-                  </Button>
-                </form>
-              )}
-            </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Email *
+                    </label>
+                    <input
+                      type="email"
+                      value={form.email}
+                      readOnly
+                      className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500`}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Phone
+                    </label>
+                    <input
+                      value={form.phone}
+                      onChange={(e) => setForm((c) => ({ ...c, phone: e.target.value }))}
+                      className={inputClass}
+                      placeholder="+1234567890 (Optional)"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      NIC / Passport
+                    </label>
+                    <input
+                      value={form.nicPassport}
+                      onChange={(e) =>
+                        setForm((c) => ({ ...c, nicPassport: e.target.value }))
+                      }
+                      className={inputClass}
+                      placeholder="Optional"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Date of Birth
+                    </label>
+                    <input
+                      type="date"
+                      value={form.dateOfBirth}
+                      onChange={(e) =>
+                        setForm((c) => ({ ...c, dateOfBirth: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+
+                  {/* Photo */}
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Identity Verification Photo *
+                    </label>
+
+                    <div className="flex gap-3">
+                      {/* Upload */}
+                      <label className="group relative flex h-28 flex-1 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 transition hover:border-brand-main/40 hover:bg-brand-main/5">
+                        {photo && preview ? (
+                          <div className="relative h-full w-full p-2">
+                            <img
+                              ref={imageRef}
+                              src={preview}
+                              alt="Preview"
+                              className="h-full w-full rounded-xl object-cover"
+                            />
+                            <canvas
+                              ref={overlayRef}
+                              className="pointer-events-none absolute inset-2 h-[calc(100%-16px)] w-[calc(100%-16px)] rounded-xl"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                clearPhoto();
+                              }}
+                              className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-white shadow"
+                            >
+                              <XMarkIcon className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <PhotoIcon className="mb-1.5 h-6 w-6 text-slate-300 transition group-hover:text-brand-main" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-brand-main">
+                              Upload
+                            </p>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            await handlePhotoSelect(e.target.files?.[0]);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {/* Camera */}
+                      <button
+                        type="button"
+                        onClick={() => setShowCamera(true)}
+                        className="group flex h-28 flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 transition hover:border-brand-main/40 hover:bg-brand-main/5"
+                      >
+                        <CameraIcon className="mb-1.5 h-6 w-6 text-slate-300 transition group-hover:text-brand-main" />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-brand-main">
+                          Live Photo
+                        </p>
+                      </button>
+                    </div>
+
+                    {showCamera && (
+                      <CameraCapture
+                        onCapture={async (file) => {
+                          await handlePhotoSelect(file);
+                          setShowCamera(false);
+                        }}
+                        onClose={() => setShowCamera(false)}
+                      />
+                    )}
+
+                    {photo && (
+                      <div className="mt-3">
+                        <PhotoValidationFeedback
+                          validationErrors={validationErrors}
+                          qualityAnalysis={qualityAnalysis}
+                          faceAnalysis={faceAnalysis}
+                          allowOverride={allowOverride}
+                          onAllowOverrideChange={setAllowOverride}
+                          modelLoadFailed={modelLoadFailed}
+                          validating={validating}
+                        />
+                      </div>
+                    )}
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      Required for entry verification
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-2 flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)] disabled:opacity-60"
+                  >
+                    {submitting ? 'Submitting…' : 'Submit Confirmation'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>

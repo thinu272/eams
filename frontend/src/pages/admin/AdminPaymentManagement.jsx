@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { 
-  getAllPayments, 
-  getPaymentStatistics, 
-  getPaymentDetails, 
-  approvePayment, 
+import {
+  getAllPayments,
+  getPaymentStatistics,
+  getPaymentDetails,
+  approvePayment,
   rejectPayment,
   requestPaymentInfo,
-  exportPayments 
+  exportPayments,
 } from '../../api/adminPaymentManagement';
 import { getAllEventsAdmin } from '../../api/events';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -17,13 +17,14 @@ import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
-import { 
-  BanknotesIcon, 
-  CheckCircleIcon, 
-  XCircleIcon, 
+import {
+  BanknotesIcon,
+  CheckCircleIcon,
+  XCircleIcon,
   ArrowDownTrayIcon,
-  FunnelIcon,
-  EyeIcon
+  EyeIcon,
+  CreditCardIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 const statusConfig = {
@@ -33,11 +34,13 @@ const statusConfig = {
   rejected: { label: 'Rejected', variant: 'red' },
   approved: { label: 'Approved', variant: 'green' },
   needs_info: { label: 'Needs Info', variant: 'blue' },
+  success: { label: 'Approved', variant: 'green' },
+  paid: { label: 'Approved', variant: 'green' },
+  failed: { label: 'Rejected', variant: 'red' },
 };
 
-const formatCurrency = (amount, currency = 'LKR') => {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
-};
+const formatCurrency = (amount, currency = 'LKR') =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';
@@ -46,9 +49,33 @@ const formatDate = (dateString) => {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 };
+
+const formatMethod = (m) => {
+  if (m === 'card') return 'Credit/Debit Card';
+  if (m === 'bank_transfer') return 'Bank Transfer';
+  if (m === 'cash_at_entrance') return 'Cash at Venue';
+  if (m === 'cash_on_entrance') return 'Cash on Entrance';
+  return m || '-';
+};
+
+// Matches the MetricCard style used in AdminDashboard overview / reports
+const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
+  <Card className="rounded-2xl border-slate-200 bg-gradient-to-br from-white to-slate-50/80 shadow-sm">
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-500">{title}</p>
+        <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{value}</p>
+        <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
+      </div>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900/5 text-slate-700">
+        <Icon className="h-5 w-5" />
+      </div>
+    </div>
+  </Card>
+);
 
 const AdminPaymentManagement = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,8 +89,8 @@ const AdminPaymentManagement = () => {
       needsInfoPayments: 0,
       totalAmount: 0,
       approvedAmount: 0,
-      pendingAmount: 0
-    }
+      pendingAmount: 0,
+    },
   });
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,21 +104,33 @@ const AdminPaymentManagement = () => {
   const [showRequestInfoModal, setShowRequestInfoModal] = useState(false);
   const [infoMessage, setInfoMessage] = useState('');
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
-  const [eventFilter, setEventFilter] = useState(searchParams.get('eventId') || '');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState(searchParams.get('paymentMethod') || 'all');
+
+  // Always read filters from URL so they stay in sync
+  const eventFilter = searchParams.get('eventId') || '';
+  const statusFilter = searchParams.get('status') || '';
+  const paymentMethodFilter = searchParams.get('paymentMethod') || 'all';
+  const searchQuery = searchParams.get('search') || '';
+  const currentPage = searchParams.get('page') || '1';
+
+  const updateQuery = (key, value) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    if (key !== 'page') next.delete('page');
+    setSearchParams(next);
+  };
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = {
-        page: searchParams.get('page') || 1,
+        page: currentPage,
         limit: 10,
         status: statusFilter || undefined,
         eventId: eventFilter || undefined,
-        search: searchParams.get('search') || undefined,
-        paymentMethod: paymentMethodFilter || undefined
+        search: searchQuery || undefined,
+        paymentMethod: paymentMethodFilter !== 'all' ? paymentMethodFilter : undefined,
       };
       const response = await getAllPayments(params);
       const data = response.data?.data || {};
@@ -99,7 +138,7 @@ const AdminPaymentManagement = () => {
       setPagination({
         page: data.currentPage || 1,
         pages: data.pages || 1,
-        total: data.total || 0
+        total: data.total || 0,
       });
     } catch (err) {
       setError('Failed to load payments');
@@ -107,11 +146,13 @@ const AdminPaymentManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, eventFilter, statusFilter, paymentMethodFilter]);
+  }, [currentPage, eventFilter, statusFilter, paymentMethodFilter, searchQuery]);
 
-  const fetchStatistics = async () => {
+  const fetchStatistics = useCallback(async () => {
     try {
-      const response = await getPaymentStatistics({ eventId: eventFilter || undefined });
+      const response = await getPaymentStatistics({
+        eventId: eventFilter || undefined,
+      });
       const data = response.data?.data || {};
       setStatistics({
         overview: {
@@ -122,29 +163,46 @@ const AdminPaymentManagement = () => {
           needsInfoPayments: data.overview?.needsInfoPayments || 0,
           totalAmount: data.overview?.totalAmount || 0,
           approvedAmount: data.overview?.approvedAmount || 0,
-          pendingAmount: data.overview?.pendingAmount || 0
-        }
+          pendingAmount: data.overview?.pendingAmount || 0,
+        },
       });
     } catch (err) {
       console.error('Failed to load statistics:', err);
     }
-  };
+  }, [eventFilter]);
 
   const fetchEvents = async () => {
     try {
-      const response = await getAllEventsAdmin({ status: 'all', limit: 100 });
-      const data = response.data?.data || {};
-      setEvents(data.events || []);
+      const response = await getAllEventsAdmin({ limit: 200 });
+      // Try every common shape used in this codebase
+      const payload = response?.data?.data ?? response?.data ?? response ?? {};
+
+      let list = [];
+      if (Array.isArray(payload)) {
+        list = payload;
+      } else if (Array.isArray(payload.events)) {
+        list = payload.events;
+      } else if (Array.isArray(payload.rows)) {
+        list = payload.rows;
+      } else if (Array.isArray(payload.data)) {
+        list = payload.data;
+      }
+
+      setEvents(list);
     } catch (err) {
       console.error('Failed to load events:', err);
-    }3
+      toast.error('Failed to load events for filter');
+    }
   };
 
   useEffect(() => {
     fetchPayments();
     fetchStatistics();
+  }, [fetchPayments, fetchStatistics]);
+
+  useEffect(() => {
     fetchEvents();
-  }, [fetchPayments]);
+  }, []);
 
   const handleViewDetails = async (payment) => {
     setSelectedPayment(payment);
@@ -153,8 +211,7 @@ const AdminPaymentManagement = () => {
     setShowRequestInfoModal(false);
     try {
       const response = await getPaymentDetails(payment._id);
-      const data = response.data?.data || {};
-      setPaymentDetails(data); // Store the full object { order, event, paymentSubmission, tickets }
+      setPaymentDetails(response.data?.data || {});
     } catch (err) {
       toast.error('Failed to load payment details');
     } finally {
@@ -248,38 +305,6 @@ const AdminPaymentManagement = () => {
     }
   };
 
-  const updateQuery = (key, value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    if (key !== 'page') next.delete('page');
-    setSearchParams(next);
-  };
-
-  const MetricCard = ({ title, value, subtitle, color = 'blue' }) => {
-    const colorClasses = {
-      blue: 'bg-blue-50 text-blue-600',
-      green: 'bg-green-50 text-green-600',
-      amber: 'bg-amber-50 text-amber-600',
-      red: 'bg-red-50 text-red-600',
-    };
-    
-    return (
-      <Card className="rounded-[28px] border-slate-200">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">{title}</p>
-            <p className="mt-3 text-3xl font-semibold text-slate-900">{value}</p>
-            <p className="mt-2 text-xs text-slate-500">{subtitle}</p>
-          </div>
-          <div className={`rounded-2xl p-3 ${colorClasses[color]}`}>
-            <BanknotesIcon className="h-6 w-6" />
-          </div>
-        </div>
-      </Card>
-    );
-  };
-
   const getPageNumbers = () => {
     const nums = [];
     const maxVisible = 5;
@@ -291,282 +316,273 @@ const AdminPaymentManagement = () => {
     return nums;
   };
 
+  const normalizeStatus = (status) => {
+    if (status === 'success' || status === 'paid') return 'approved';
+    if (status === 'failed') return 'rejected';
+    return status;
+  };
+
   return (
     <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold text-slate-900"></h1>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={handleExport}>
-              <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          </div>
+      {/* Top actions only – subtitle is already shown by AdminDashboard */}
+      <div className="flex justify-end">
+        <Button onClick={handleExport} className="bg-blue-600 hover:bg-blue-700 text-white">
+          <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
+      </div>
+
+      {/* Statistics – same MetricCard style as Overview / Reports */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          title="Total Payments"
+          value={statistics.overview.totalPayments}
+          subtitle={`${formatCurrency(statistics.overview.totalAmount)} total`}
+          icon={BanknotesIcon}
+        />
+        <MetricCard
+          title="Pending"
+          value={statistics.overview.pendingPayments}
+          subtitle={formatCurrency(statistics.overview.pendingAmount)}
+          icon={CreditCardIcon}
+        />
+        <MetricCard
+          title="Approved"
+          value={statistics.overview.approvedPayments}
+          subtitle={formatCurrency(statistics.overview.approvedAmount)}
+          icon={CheckCircleIcon}
+        />
+        <MetricCard
+          title="Needs Info"
+          value={statistics.overview.needsInfoPayments}
+          subtitle="Awaiting buyer response"
+          icon={ShieldCheckIcon}
+        />
+      </div>
+
+      {/* Filters – same Card + grid style as SectionFilters */}
+      <Card className="rounded-[28px] border-slate-200">
+        {/* Method tabs */}
+        <div className="flex space-x-2 border-b border-slate-100 pb-4 mb-4 overflow-x-auto">
+          {[
+            { key: 'all', label: 'All Payments' },
+            { key: 'card', label: 'Credit/Debit Card' },
+            { key: 'bank_transfer', label: 'Bank Transfer' },
+            { key: 'cash_at_entrance', label: 'Cash at Venue' },
+          ].map(({ key, label }) => {
+            const active = paymentMethodFilter === key;
+            return (
+              <button
+                key={key}
+                onClick={() => updateQuery('paymentMethod', key === 'all' ? null : key)}
+                className={`whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <input
+            type="text"
+            placeholder="Search by order number, email..."
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            defaultValue={searchQuery}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') updateQuery('search', e.target.value || null);
+            }}
+          />
 
-        {/* Statistics */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard 
-            title="Total Payments" 
-            value={statistics.overview.totalPayments} 
-            subtitle={`${formatCurrency(statistics.overview.totalAmount)} total`}
-            color="blue"
-          />
-          <MetricCard 
-            title="Pending" 
-            value={statistics.overview.pendingPayments} 
-            subtitle={formatCurrency(statistics.overview.pendingAmount)}
-            color="amber"
-          />
-          <MetricCard 
-            title="Approved" 
-            value={statistics.overview.approvedPayments} 
-            subtitle={formatCurrency(statistics.overview.approvedAmount)}
-            color="green"
-          />
-          <MetricCard 
-            title="Needs Info" 
-            value={statistics.overview.needsInfoPayments} 
-            subtitle="Awaiting buyer response"
-            color="red"
-          />
+          {/* Event selector – value comes from URL, change updates URL */}
+          <select
+            value={eventFilter}
+            onChange={(e) => updateQuery('eventId', e.target.value || null)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+          >
+            <option value="">All Events</option>
+            {events.map((event) => (
+              <option key={event._id} value={event._id}>
+                {event.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => updateQuery('status', e.target.value || null)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+          >
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="pending_verification">Pending Verification</option>
+            <option value="needs_info">Needs Info</option>
+            <option value="verified">Verified</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
         </div>
+      </Card>
 
-        {/* Filters */}
-        <div className="space-y-4">
-          {/* Method Tabs */}
-          <div className="flex space-x-2 border-b border-slate-100 pb-4 mb-4 overflow-x-auto">
-            {['all', 'card', 'bank_transfer', 'cash_at_entrance'].map(method => {
-              const labels = {
-                all: 'All Payments',
-                card: 'Credit/Debit Card',
-                bank_transfer: 'Bank Transfer',
-                cash_at_entrance: 'Cash at Venue'
-              };
-              const active = paymentMethodFilter === method;
-              return (
-                <button 
-                  key={method}
-                  onClick={() => {
-                    setPaymentMethodFilter(method);
-                    updateQuery('paymentMethod', method === 'all' ? null : method);
-                  }}
-                  className={`whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                    active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {labels[method]}
-                </button>
-              );
-            })}
+      {/* Payments table */}
+      <Card className="rounded-[28px] border-slate-200" padding={false}>
+        <CardHeader
+          title="Payment Submissions"
+          subtitle={`${pagination.total} payment${pagination.total !== 1 ? 's' : ''} found`}
+          className="px-6 pt-6"
+        />
+
+        {loading ? (
+          <div className="p-6">
+            <LoadingSkeleton />
           </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by order number, email..."
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                defaultValue={searchParams.get('search') || ''}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') updateQuery('search', e.target.value);
-                }}
-              />
-            </div>
-            <select
-              value={eventFilter}
-              onChange={(e) => setEventFilter(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
-            >
-              <option value="">All Events</option>
-              {events.map((event) => (
-                <option key={event._id} value={event._id}>{event.name}</option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
-            >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="pending_verification">Pending Verification</option>
-              <option value="needs_info">Needs Info</option>
-              <option value="verified">Verified</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
+        ) : error ? (
+          <div className="p-6 text-center text-red-500">{error}</div>
+        ) : payments.length === 0 ? (
+          <div className="p-12 text-center">
+            <BanknotesIcon className="mx-auto h-12 w-12 text-slate-300" />
+            <h3 className="mt-4 text-lg font-medium text-slate-900">No payments found</h3>
+            <p className="mt-2 text-sm text-slate-500">Try adjusting your filters</p>
           </div>
-        </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table className="min-w-[900px]">
+              <thead>
+                <Tr>
+                  <Th>Order #</Th>
+                  <Th>Event</Th>
+                  <Th>Method / Gateway</Th>
+                  <Th>Payer Details</Th>
+                  <Th>Amount</Th>
+                  <Th>Date</Th>
+                  <Th>Status</Th>
+                  <Th className="text-right">Actions</Th>
+                </Tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => {
+                  const displayStatus = normalizeStatus(payment.verificationStatus);
+                  const statusInfo = statusConfig[displayStatus] || {
+                    label: displayStatus || 'Unknown',
+                    variant: 'gray',
+                  };
 
-        {/* Payments Table */}
-        <Card className="rounded-[28px] border-slate-200" padding={false}>
-          <CardHeader 
-            title="Payment Submissions" 
-            subtitle={`${pagination.total} payment${pagination.total !== 1 ? 's' : ''} found`}
-            className="px-6 pt-6"
-          />
-          
-          {loading ? (
-            <div className="p-6">
-              <LoadingSkeleton />
-            </div>
-          ) : error ? (
-            <div className="p-6 text-center text-red-500">{error}</div>
-          ) : payments.length === 0 ? (
-            <div className="p-12 text-center">
-              <BanknotesIcon className="mx-auto h-12 w-12 text-slate-300" />
-              <h3 className="mt-4 text-lg font-medium text-slate-900">No payments found</h3>
-              <p className="mt-2 text-sm text-slate-500">Try adjusting your filters</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[900px]">
-                <thead>
-                  <Tr>
-                    <Th>Order #</Th>
-                    <Th>Event</Th>
-                    <Th>Method / Gateway</Th>
-                    <Th>Payer Details</Th>
-                    <Th>Amount</Th>
-                    <Th>Date</Th>
-                    <Th>Status</Th>
-                    <Th className="text-right">Actions</Th>
-                  </Tr>
-                </thead>
-                <tbody>
-                  {payments.map((payment) => {
-                    // Normalize the status string since we mapped order.paymentStatus
-                    let displayStatus = payment.verificationStatus;
-                    if (displayStatus === 'success' || displayStatus === 'paid') displayStatus = 'approved';
-                    if (displayStatus === 'failed') displayStatus = 'rejected';
-                    
-                    const statusInfo = statusConfig[displayStatus] || { label: displayStatus, variant: 'gray' };
-                    
-                    const formatMethod = (m) => {
-                      if (m === 'card') return 'Credit/Debit Card';
-                      if (m === 'bank_transfer') return 'Bank Transfer';
-                      if (m === 'cash_at_entrance') return 'Cash at Venue';
-                      if (m === 'cash_on_entrance') return 'Cash on Entrance';
-                      return m;
-                    };
-                    return (
-                      <Tr key={payment._id}>
-                        <Td>
-                          <span className="font-mono text-sm font-medium text-slate-900">
-                            {payment.orderNumber || payment.orderId?.orderNumber || '-'}
-                          </span>
-                        </Td>
-                        <Td>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{payment.event?.name || '-'}</p>
-                            {payment.event?.startDate && (
-                              <p className="text-xs text-slate-500">
-                                {new Date(payment.event.startDate).toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
-                        </Td>
-                        <Td>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{formatMethod(payment.paymentMethod)}</p>
-                            {(payment.gatewayUsed || payment.bankUsed) && (
-                              <p className="text-xs text-slate-500 uppercase">{payment.gatewayUsed || payment.bankUsed}</p>
-                            )}
-                          </div>
-                        </Td>
-                        <Td>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{payment.buyer?.name || '-'}</p>
-                            <p className="text-xs text-slate-500">{payment.buyer?.email || '-'}</p>
-                          </div>
-                        </Td>
-                        <Td>
-                          <span className="text-sm font-semibold text-slate-900">
-                            {formatCurrency(payment.totalAmount || payment.amountPaid)}
-                          </span>
-                        </Td>
-                        <Td>
-                          <div>
-                            <p className="text-sm text-slate-900">{formatDate(payment.submittedAt)}</p>
-                          </div>
-                        </Td>
-                        <Td>
-                          <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-                        </Td>
-                        <Td className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleViewDetails(payment)}
-                              className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                              title="View Details"
-                            >
-                              <EyeIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
-          )}
+                  return (
+                    <Tr key={payment._id}>
+                      <Td>
+                        <span className="font-mono text-sm font-medium text-slate-900">
+                          {payment.orderNumber || payment.orderId?.orderNumber || '-'}
+                        </span>
+                      </Td>
+                      <Td>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{payment.event?.name || '-'}</p>
+                          {payment.event?.startDate && (
+                            <p className="text-xs text-slate-500">
+                              {new Date(payment.event.startDate).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      </Td>
+                      <Td>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {formatMethod(payment.paymentMethod)}
+                          </p>
+                          {(payment.gatewayUsed || payment.bankUsed) && (
+                            <p className="text-xs text-slate-500 uppercase">
+                              {payment.gatewayUsed || payment.bankUsed}
+                            </p>
+                          )}
+                        </div>
+                      </Td>
+                      <Td>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{payment.buyer?.name || '-'}</p>
+                          <p className="text-xs text-slate-500">{payment.buyer?.email || '-'}</p>
+                        </div>
+                      </Td>
+                      <Td>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {formatCurrency(payment.totalAmount || payment.amountPaid)}
+                        </span>
+                      </Td>
+                      <Td>
+                        <p className="text-sm text-slate-900">{formatDate(payment.submittedAt)}</p>
+                      </Td>
+                      <Td>
+                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                      </Td>
+                      <Td className="text-right">
+                        <button
+                          onClick={() => handleViewDetails(payment)}
+                          className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          title="View Details"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
+        )}
 
-          {/* Pagination */}
-          {payments.length > 0 && (
-            <div className="mt-auto flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={pagination.page <= 1} 
-                    onClick={() => updateQuery('page', pagination.page - 1)}
-                    className="h-8 rounded-lg px-3 text-xs"
+        {/* Pagination – same style as AdminDashboard */}
+        {payments.length > 0 && (
+          <div className="mt-auto flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagination.page <= 1}
+                onClick={() => updateQuery('page', pagination.page - 1)}
+                className="h-8 rounded-lg px-3 text-xs"
+              >
+                Prev
+              </Button>
+              <div className="flex items-center gap-1 mx-1">
+                {getPageNumbers().map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => updateQuery('page', n)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-all ${
+                      pagination.page === n
+                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+                        : 'text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm'
+                    }`}
                   >
-                    Prev
-                  </Button>
-                  <div className="flex items-center gap-1 mx-1">
-                    {getPageNumbers().map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => updateQuery('page', n)}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-all ${
-                          pagination.page === n 
-                            ? 'bg-blue-600 text-white shadow-sm shadow-blue-200' 
-                            : 'text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm'
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={pagination.page >= pagination.pages} 
-                    onClick={() => updateQuery('page', pagination.page + 1)}
-                    className="h-8 rounded-lg px-3 text-xs"
-                  >
-                    Next
-                  </Button>
-                </div>
+                    {n}
+                  </button>
+                ))}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Page</span>
-                <span className="text-sm font-bold text-slate-900">{pagination.page}</span>
-                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">of</span>
-                <span className="text-sm font-bold text-slate-900">{pagination.pages}</span>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagination.page >= pagination.pages}
+                onClick={() => updateQuery('page', pagination.page + 1)}
+                className="h-8 rounded-lg px-3 text-xs"
+              >
+                Next
+              </Button>
             </div>
-          )}
-        </Card>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Page</span>
+              <span className="text-sm font-bold text-slate-900">{pagination.page}</span>
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">of</span>
+              <span className="text-sm font-bold text-slate-900">{pagination.pages}</span>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Payment Details Modal */}
-      {selectedPayment && paymentDetails && (
+      {selectedPayment && (
         <Modal
           open
           onClose={() => {
@@ -580,9 +596,8 @@ const AdminPaymentManagement = () => {
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent" />
             </div>
-          ) : (
+          ) : paymentDetails ? (
             <div className="space-y-6">
-              {/* Payment Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 rounded-2xl">
                   <p className="text-xs text-slate-500 uppercase tracking-wider">Order Number</p>
@@ -598,89 +613,94 @@ const AdminPaymentManagement = () => {
                 </div>
                 <div className="p-4 bg-slate-50 rounded-2xl">
                   <p className="text-xs text-slate-500 uppercase tracking-wider">Payment Method</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 capitalize">
-                    {paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') || '-'}
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
+                    {formatMethod(paymentDetails.order?.paymentMethod)}
                   </p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-2xl">
                   <p className="text-xs text-slate-500 uppercase tracking-wider">Date Created</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">{formatDate(paymentDetails.order?.createdAt)}</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
+                    {formatDate(paymentDetails.order?.createdAt)}
+                  </p>
                 </div>
-                
-                {paymentDetails.order?.paymentMethod === 'bank_transfer' && paymentDetails.paymentSubmission && (
-                  <>
-                    <div className="p-4 bg-slate-50 rounded-2xl">
-                      <p className="text-xs text-slate-500 uppercase tracking-wider">Bank Used</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-900">{paymentDetails.paymentSubmission.bankUsed || '-'}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl">
-                      <p className="text-xs text-slate-500 uppercase tracking-wider">Reference Number</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-900">{paymentDetails.paymentSubmission.referenceNumber || '-'}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl">
-                      <p className="text-xs text-slate-500 uppercase tracking-wider">Transfer Date</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-900">{formatDate(paymentDetails.paymentSubmission.transferDate)}</p>
-                    </div>
-                  </>
-                )}
-                
+
+                {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
+                  paymentDetails.paymentSubmission && (
+                    <>
+                      <div className="p-4 bg-slate-50 rounded-2xl">
+                        <p className="text-xs text-slate-500 uppercase tracking-wider">Bank Used</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">
+                          {paymentDetails.paymentSubmission.bankUsed || '-'}
+                        </p>
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-2xl">
+                        <p className="text-xs text-slate-500 uppercase tracking-wider">Reference Number</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">
+                          {paymentDetails.paymentSubmission.referenceNumber || '-'}
+                        </p>
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-2xl">
+                        <p className="text-xs text-slate-500 uppercase tracking-wider">Transfer Date</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">
+                          {formatDate(paymentDetails.paymentSubmission.transferDate)}
+                        </p>
+                      </div>
+                    </>
+                  )}
+
                 <div className="p-4 bg-slate-50 rounded-2xl">
                   <p className="text-xs text-slate-500 uppercase tracking-wider">Status</p>
                   <div className="mt-2">
-                    <Badge variant={
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'approved' || 
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'success' ||
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'paid' ? 'success' :
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'rejected' ||
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'failed' ? 'error' :
-                      (paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus) === 'needs_info' ? 'warning' : 'gray'
-                    }>
-                      {(paymentDetails.paymentSubmission?.verificationStatus || paymentDetails.order?.paymentStatus || 'Pending').toUpperCase()}
-                    </Badge>
+                    {(() => {
+                      const raw =
+                        paymentDetails.paymentSubmission?.verificationStatus ||
+                        paymentDetails.order?.paymentStatus ||
+                        'pending';
+                      const status = normalizeStatus(raw);
+                      const info = statusConfig[status] || { label: status, variant: 'gray' };
+                      return <Badge variant={info.variant}>{info.label}</Badge>;
+                    })()}
                   </div>
                 </div>
               </div>
-              
-              {/* Actions */}
-              {paymentDetails.order?.paymentMethod === 'bank_transfer' && paymentDetails.paymentSubmission && (paymentDetails.paymentSubmission.verificationStatus === 'pending' || paymentDetails.paymentSubmission.verificationStatus === 'pending_verification' || paymentDetails.paymentSubmission.verificationStatus === 'needs_info') && (
-                <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200">
-                  <Button 
-                    onClick={() => handleApprove(paymentDetails.paymentSubmission._id)}
-                    loading={actionLoading === paymentDetails.paymentSubmission._id}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    <CheckCircleIcon className="h-4 w-4 mr-2" />
-                    Approve Payment
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setShowRequestInfoModal(true)}
-                  >
-                    Request More Info
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setShowRejectModal(true)}
-                    className="text-red-600 border-red-200 hover:bg-red-50"
-                  >
-                    <XCircleIcon className="h-4 w-4 mr-2" />
-                    Reject Payment
-                  </Button>
-                </div>
-              )}
+
+              {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
+                paymentDetails.paymentSubmission &&
+                ['pending', 'pending_verification', 'needs_info'].includes(
+                  paymentDetails.paymentSubmission.verificationStatus
+                ) && (
+                  <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200">
+                    <Button
+                      onClick={() => handleApprove(paymentDetails.paymentSubmission._id)}
+                      loading={actionLoading === paymentDetails.paymentSubmission._id}
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      <CheckCircleIcon className="h-4 w-4 mr-2" />
+                      Approve Payment
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowRequestInfoModal(true)}>
+                      Request More Info
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowRejectModal(true)}
+                      className="text-rose-600 border-rose-100 hover:bg-rose-50"
+                    >
+                      <XCircleIcon className="h-4 w-4 mr-2" />
+                      Reject Payment
+                    </Button>
+                  </div>
+                )}
             </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">Failed to load details</div>
           )}
         </Modal>
       )}
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <Modal
-          open
-          onClose={() => setShowRejectModal(false)}
-          title="Reject Payment"
-          size="md"
-        >
+        <Modal open onClose={() => setShowRejectModal(false)} title="Reject Payment" size="md">
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               Please provide a reason for rejecting this payment. This will be shown to the buyer.
@@ -693,11 +713,13 @@ const AdminPaymentManagement = () => {
               rows={4}
             />
             <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRejectModal(false)}>Cancel</Button>
-              <Button 
+              <Button variant="outline" onClick={() => setShowRejectModal(false)}>
+                Cancel
+              </Button>
+              <Button
                 onClick={handleReject}
                 loading={actionLoading === 'reject'}
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-rose-600 hover:bg-rose-500"
               >
                 Reject Payment
               </Button>
@@ -708,12 +730,7 @@ const AdminPaymentManagement = () => {
 
       {/* Request Info Modal */}
       {showRequestInfoModal && (
-        <Modal
-          open
-          onClose={() => setShowRequestInfoModal(false)}
-          title="Request More Information"
-          size="md"
-        >
+        <Modal open onClose={() => setShowRequestInfoModal(false)} title="Request More Information" size="md">
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               Send a request to the buyer for additional information or documentation.
@@ -726,11 +743,10 @@ const AdminPaymentManagement = () => {
               rows={4}
             />
             <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRequestInfoModal(false)}>Cancel</Button>
-              <Button 
-                onClick={handleRequestInfo}
-                loading={actionLoading === 'request_info'}
-              >
+              <Button variant="outline" onClick={() => setShowRequestInfoModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleRequestInfo} loading={actionLoading === 'request_info'}>
                 Send Request
               </Button>
             </div>

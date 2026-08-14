@@ -1,14 +1,11 @@
-const AWS = require('aws-sdk');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const Attendee = require('../models/Attendee');
+const createFaceClient = require('@azure-rest/ai-vision-face').default;
+const { AzureKeyCredential } = require('@azure/core-auth');
 
-// Configure Rekognition
-const rekognition = new AWS.Rekognition({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION || 'us-east-1',
-});
+// Helper to check Azure Face API configuration
+const hasAzureFaceConfig = () => !!(process.env.AZURE_FACE_ENDPOINT && process.env.AZURE_FACE_KEY);
 
 /**
  * Validates an uploaded photo for ENTRYNEX standards
@@ -32,19 +29,9 @@ const validatePhoto = async (buffer, eventId) => {
 
   try {
     // 1. CLARITY CHECK (Sharpness)
-    // We use sharp to detect edges. Higher variance of Laplacian means sharper image.
-    // Note: Sharp doesn't have a direct Laplacian, so we use a convolution kernel.
     const metadata = await sharp(buffer).metadata();
     const stats = await sharp(buffer).stats();
     
-    // Simple sharpness estimate based on edge detection convolution
-    const laplacianKernel = {
-      width: 3,
-      height: 3,
-      kernel: [0, 1, 0, 1, -4, 1, 0, 1, 0]
-    };
-    
-    // We'll use a simpler proxy for sharpness: average of color standard deviations
     const sharpness = stats.channels.reduce((acc, c) => acc + c.stdev, 0) / stats.channels.length;
     results.metrics.sharpness = sharpness;
     results.metrics.brightness = stats.channels.reduce((acc, c) => acc + c.mean, 0) / stats.channels.length;
@@ -66,15 +53,19 @@ const validatePhoto = async (buffer, eventId) => {
       return results;
     }
 
-    // 3. FACE DETECTION (AWS Rekognition)
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      const params = {
-        Image: { Bytes: buffer },
-        Attributes: ['DEFAULT'],
-      };
-
-      const data = await rekognition.detectFaces(params).promise();
-      const faceCount = data.FaceDetails.length;
+    // 3. FACE DETECTION (Azure Face API)
+    if (hasAzureFaceConfig()) {
+      const faceClient = createFaceClient(process.env.AZURE_FACE_ENDPOINT, new AzureKeyCredential(process.env.AZURE_FACE_KEY));
+      const response = await faceClient.path('/detect').post({
+        contentType: 'application/octet-stream',
+        body: buffer,
+        queryParameters: {
+          detectionModel: 'detection_03',
+          recognitionModel: 'recognition_04',
+        },
+      });
+      const faces = response.body || [];
+      const faceCount = Array.isArray(faces) ? faces.length : 0;
       results.metrics.faceCount = faceCount;
 
       if (faceCount === 0) {
@@ -83,15 +74,9 @@ const validatePhoto = async (buffer, eventId) => {
       } else if (faceCount > 1) {
         results.isValid = false;
         results.reason = 'MULTIPLE_FACES_DETECTED';
-      } else {
-        results.metrics.faceConfidence = data.FaceDetails[0].Confidence;
-        if (results.metrics.faceConfidence < 80) {
-          results.isValid = false;
-          results.reason = 'LOW_FACE_CONFIDENCE';
-        }
       }
     } else {
-      console.warn('AWS Rekognition not configured. Skipping AI face detection.');
+      console.warn('Azure Face API not configured. Skipping AI face detection.');
     }
 
     return results;

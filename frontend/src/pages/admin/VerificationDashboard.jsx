@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { getPendingPhotos, getVerificationStats, approvePhoto, rejectPhoto } from '../../api/verification';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
@@ -43,7 +44,7 @@ const VerificationDashboard = () => {
   const [rejectingAttendeeId, setRejectingAttendeeId] = useState(null);
 
   // Load attendees and stats
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!filters.eventId) return;
     
     setLoading(true);
@@ -71,11 +72,18 @@ const VerificationDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, page, limit]);
 
   useEffect(() => {
     loadData();
-  }, [filters, page, limit]);
+  }, [loadData]);
+
+  useAutoRefresh(loadData, {
+    enabled: !!filters.eventId,
+    interval: 15000,
+    immediate: false,
+    deps: [filters.eventId, filters.status, filters.search, filters.checkoutOption, page, limit],
+  });
 
   const handleEventChange = (eventId) => {
     setFilters((prev) => ({ ...prev, eventId }));

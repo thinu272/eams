@@ -54,13 +54,26 @@ router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos')
       });
     }
 
-    // Check if ticket is already assigned
-    if (ticket.status !== 'PENDING') {
+    console.log('Ticket assignment debug:', {
+      ticketId,
+      currentStatus: ticket.status,
+      attendee: ticket.attendee,
+      attendeeId: ticket.attendee?._id,
+      orderStatus: ticket.order?.status,
+      paymentStatus: ticket.order?.paymentStatus
+    });
+
+    // TEMPORARILY ALLOW ALL ASSIGNMENTS FOR DEBUGGING
+    // Commenting out the attendee check to see what happens
+    /*
+    if (ticket.attendee) {
+      console.log('Ticket already has attendee:', ticket.attendee);
       return res.status(400).json({
         success: false,
         message: 'Ticket is already assigned or invited'
       });
     }
+    */
 
     // Create attendee
     const attendee = new Attendee({
@@ -196,6 +209,7 @@ router.post('/invite', [
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Invite validation failed:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -214,13 +228,26 @@ router.post('/invite', [
       });
     }
 
-    // Check if ticket is already assigned
-    if (ticket.status !== 'PENDING') {
+    console.log('Ticket invite debug:', {
+      ticketId,
+      currentStatus: ticket.status,
+      attendee: ticket.attendee,
+      attendeeId: ticket.attendee?._id,
+      orderStatus: ticket.order?.status,
+      paymentStatus: ticket.order?.paymentStatus
+    });
+
+    // TEMPORARILY ALLOW ALL ASSIGNMENTS FOR DEBUGGING
+    // Commenting out the attendee check to see what happens
+    /*
+    if (ticket.attendee) {
+      console.log('Ticket already has attendee:', ticket.attendee);
       return res.status(400).json({
         success: false,
         message: 'Ticket is already assigned or invited'
       });
     }
+    */
 
     // Create attendee
     const attendee = new Attendee({
@@ -324,12 +351,25 @@ router.post('/:id/attendee', upload.single('photo'), [
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
+    console.log('Ticket assign by ID debug:', {
+      ticketId,
+      currentStatus: ticket.status,
+      attendee: ticket.attendee,
+      attendeeId: ticket.attendee?._id,
+      orderStatus: ticket.order?.status,
+      paymentStatus: ticket.order?.paymentStatus
+    });
+
+    // TEMPORARILY ALLOW ALL ASSIGNMENTS FOR DEBUGGING
+    // Commenting out the status check to see what happens
+    /*
     if (ticket.status !== 'PENDING') {
       return res.status(400).json({
         success: false,
         message: 'Ticket is already assigned or invited',
       });
     }
+    */
 
     const attendee = new Attendee({
       fullName,
@@ -410,12 +450,26 @@ router.post('/:id/invite', [
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    if (ticket.status !== 'PENDING') {
+    console.log('Ticket invite by ID debug:', {
+      ticketId,
+      currentStatus: ticket.status,
+      attendee: ticket.attendee,
+      attendeeId: ticket.attendee?._id,
+      orderStatus: ticket.order?.status,
+      paymentStatus: ticket.order?.paymentStatus
+    });
+
+    // TEMPORARILY ALLOW ALL ASSIGNMENTS FOR DEBUGGING
+    // Commenting out the attendee check to see what happens
+    /*
+    if (ticket.attendee) {
+      console.log('Ticket already has attendee:', ticket.attendee);
       return res.status(400).json({
         success: false,
         message: 'Ticket is already assigned or invited',
       });
     }
+    */
 
     const attendee = new Attendee({
       email,

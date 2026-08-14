@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import Card, { CardHeader } from '../../components/ui/Card';
+import Card from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
 import toast from 'react-hot-toast';
+import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import {
   getSubOrgPayments,
@@ -16,6 +19,7 @@ import {
   rejectSubOrgPayment,
   requestSubOrgPaymentInfo,
 } from '../../api/subPaymentManagement';
+import { getSubDashboard } from '../../api/sub';
 import {
   BanknotesIcon,
   CheckCircleIcon,
@@ -23,6 +27,7 @@ import {
   EyeIcon,
   ClockIcon,
   ExclamationTriangleIcon,
+  ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
 const statusConfig = {
@@ -38,11 +43,34 @@ const statusConfig = {
   needs_info: { label: 'Needs Info', color: 'blue' },
 };
 
+const resolveCurrency = (...sources) => {
+  for (const source of sources) {
+    const currency =
+      source?.event?.settings?.currency ||
+      source?.event?.currency ||
+      source?.order?.event?.settings?.currency ||
+      source?.order?.eventId?.settings?.currency ||
+      source?.order?.currency ||
+      source?.orderId?.event?.settings?.currency ||
+      source?.orderId?.eventId?.settings?.currency ||
+      source?.orderId?.currency ||
+      source?.settings?.currency ||
+      source?.currency;
+    if (currency) return currency;
+  }
+  return null;
+};
+
+const getCurrency = (...sources) =>
+  resolveCurrency(...sources) ||
+  localStorage.getItem('lastEventCurrency') ||
+  'LKR';
+
 const formatCurrency = (amount, currency = 'LKR') =>
   `${currency} ${Number(amount || 0).toLocaleString()}`;
 
 const formatDate = (dateString) => {
-  if (!dateString) return '-';
+  if (!dateString) return '—';
   return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -56,7 +84,7 @@ const formatMethod = (m) => {
   if (m === 'card') return 'Card';
   if (m === 'bank_transfer') return 'Bank Transfer';
   if (m === 'cash_at_entrance' || m === 'cash_on_entrance') return 'Cash at Venue';
-  return m || '-';
+  return m || '—';
 };
 
 const normalizeStatus = (status) => {
@@ -64,6 +92,29 @@ const normalizeStatus = (status) => {
   if (status === 'failed') return 'rejected';
   return status;
 };
+
+const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
+  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          {title}
+        </p>
+        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">
+          {value}
+        </p>
+        {subtitle && (
+          <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>
+        )}
+      </div>
+      {Icon && (
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
+    </div>
+  </Card>
+);
 
 const SubOrgPayments = () => {
   const { user } = useAuth();
@@ -73,13 +124,16 @@ const SubOrgPayments = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Filters
   const [statusFilter, setStatusFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [pagination, setPagination] = useState({page: 1,limit: 10,pages: 1,total: 0,});
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    pages: 1,
+    total: 0,
+  });
 
-  // Detail / Action state
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [paymentDetails, setPaymentDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -88,138 +142,159 @@ const SubOrgPayments = () => {
   const [showConfirmCashModal, setShowConfirmCashModal] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
+  const [viewingReceipt, setViewingReceipt] = useState(false);
 
-  // Current event (read from localStorage, same as SubOrgDashboard)
   const [currentEventId, setCurrentEventId] = useState(() => {
     const id = localStorage.getItem('lastSelectedEventId');
-    return (id && id !== 'undefined' && id !== 'null') ? id : '';
+    return id && id !== 'undefined' && id !== 'null' ? id : '';
   });
+  const [eventCurrency, setEventCurrency] = useState(
+    localStorage.getItem('lastEventCurrency') || 'LKR'
+  );
 
-  // ─── Fetch payments ───────────────────────────────────────
+  const currency = getCurrency(
+    statistics,
+    paymentDetails,
+    selectedPayment,
+    payments[0],
+    { currency: eventCurrency }
+  );
+
+  const rememberCurrency = useCallback((nextCurrency) => {
+    if (!nextCurrency) return;
+    setEventCurrency(nextCurrency);
+    localStorage.setItem('lastEventCurrency', nextCurrency);
+  }, []);
+
   const fetchPayments = useCallback(async () => {
-  setLoading(true);
-  setError(null);
+    setLoading(true);
+    setError(null);
+    try {
+      const cleanId =
+        currentEventId &&
+        currentEventId !== 'undefined' &&
+        currentEventId !== 'null'
+          ? currentEventId
+          : undefined;
 
-  try {
-    const cleanId =
-      currentEventId &&
-      currentEventId !== 'undefined' &&
-      currentEventId !== 'null'
-        ? currentEventId
-        : undefined;
+      const params = {
+        page: pagination.page,
+        limit: pagination.limit,
+        eventId: cleanId,
+      };
+      if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
+      if (methodFilter && methodFilter !== 'all')
+        params.paymentMethod = methodFilter;
+      if (searchQuery) params.search = searchQuery;
 
-    const params = {
-      page: pagination.page,
-      limit: pagination.limit,
-      eventId: cleanId,
-    };
+      const res = await getSubOrgPayments(params);
+      const data = res.data?.data || {};
+      setPayments(data.payments || []);
+      rememberCurrency(resolveCurrency(data, data.payments?.[0]));
 
-    if (statusFilter && statusFilter !== 'all') {
-      params.status = statusFilter;
+      const backendPagination = data.pagination || {};
+      const total =
+        Number(backendPagination.total) || Number(data.total) || 0;
+      const limit =
+        Number(backendPagination.limit) || pagination.limit || 10;
+      const pages =
+        Number(backendPagination.pages) || Math.ceil(total / limit) || 1;
+
+      setPagination((prev) => ({
+        ...prev,
+        page: Number(backendPagination.page) || prev.page,
+        limit,
+        total,
+        pages,
+      }));
+    } catch (err) {
+      setError('Failed to load payments');
+      toast.error('Failed to load payments');
+    } finally {
+      setLoading(false);
     }
+  }, [
+    statusFilter,
+    methodFilter,
+    searchQuery,
+    pagination.page,
+    pagination.limit,
+    currentEventId,
+    rememberCurrency,
+  ]);
 
-    if (methodFilter && methodFilter !== 'all') {
-      params.paymentMethod = methodFilter;
-    }
-
-    if (searchQuery) {
-      params.search = searchQuery;
-    }
-
-    const res = await getSubOrgPayments(params);
-
-    console.log('PAYMENT API RESPONSE:', res.data);
-
-    const data = res.data?.data || {};
-
-    setPayments(data.payments || []);
-
-    // Get pagination from backend
-    const backendPagination = data.pagination || {};
-
-    const total =
-      Number(backendPagination.total) ||
-      Number(data.total) ||
-      0;
-
-    const limit =
-      Number(backendPagination.limit) ||
-      pagination.limit ||
-      10;
-
-    const pages =
-      Number(backendPagination.pages) ||
-      Math.ceil(total / limit) ||
-      1;
-
-    setPagination((prev) => ({
-      ...prev,
-      page:
-        Number(backendPagination.page) ||
-        prev.page,
-      limit,
-      total,
-      pages,
-    }));
-
-  } catch (err) {
-    console.error('Failed to load payments:', err);
-    console.error('Payment API error:', err.response?.data);
-
-    setError('Failed to load payments');
-    toast.error('Failed to load payments');
-
-  } finally {
-    setLoading(false);
-  }
-}, [
-  statusFilter,
-  methodFilter,
-  searchQuery,
-  pagination.page,
-  pagination.limit,
-  currentEventId,
-]);
-
-  // ─── Fetch statistics ─────────────────────────────────────
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
-      const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null' ? currentEventId : undefined;
+      const cleanId =
+        currentEventId &&
+        currentEventId !== 'undefined' &&
+        currentEventId !== 'null'
+          ? currentEventId
+          : undefined;
       const res = await getSubOrgPaymentStatistics({ eventId: cleanId });
-      setStatistics(res.data?.data?.overview || null);
+      const nextStats = res.data?.data?.overview || null;
+      setStatistics(nextStats);
+      rememberCurrency(resolveCurrency(res.data?.data, nextStats));
     } catch {
-      console.error('Failed to load payment statistics');
+      /* silent */
     } finally {
       setStatsLoading(false);
     }
-  }, [currentEventId]);
+  }, [currentEventId, rememberCurrency]);
 
   useEffect(() => {
     fetchPayments();
     fetchStats();
   }, [fetchPayments, fetchStats]);
 
+  useAutoRefresh(
+    () => {
+      fetchPayments();
+      fetchStats();
+    },
+    {
+      enabled: !!currentEventId,
+      interval: 15000,
+      immediate: false,
+      deps: [currentEventId, statusFilter, methodFilter, searchQuery, pagination.page, pagination.limit],
+    }
+  );
+
+  useEffect(() => {
+    const cleanId =
+      currentEventId &&
+      currentEventId !== 'undefined' &&
+      currentEventId !== 'null'
+        ? currentEventId
+        : undefined;
+    getSubDashboard({ eventId: cleanId })
+      .then((response) => {
+        rememberCurrency(resolveCurrency(response.data?.data));
+      })
+      .catch(() => {});
+  }, [currentEventId, rememberCurrency]);
+
   useEffect(() => {
     const handleEventSelect = (e) => {
       const newId = e.detail ? String(e.detail) : '';
       if (!newId || newId === 'undefined' || newId === 'null') return;
       setCurrentEventId(newId);
+      localStorage.setItem('lastSelectedEventId', newId);
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => {
+    return () =>
       window.removeEventListener('entrynex:event-select', handleEventSelect);
-    };
   }, []);
 
-  // ─── View details ─────────────────────────────────────────
   const handleViewDetails = async (payment) => {
     setSelectedPayment(payment);
     setDetailsLoading(true);
     try {
       const res = await getSubOrgPaymentDetails(payment._id);
-      setPaymentDetails(res.data?.data || null);
+      const nextDetails = res.data?.data || null;
+      setPaymentDetails(nextDetails);
+      rememberCurrency(resolveCurrency(nextDetails, payment));
     } catch {
       toast.error('Failed to load payment details');
     } finally {
@@ -236,9 +311,46 @@ const SubOrgPayments = () => {
     setActionMessage('');
   };
 
-  // ─── Approve ──────────────────────────────────────────────
+  const handleViewReceipt = async (submissionId) => {
+    if (!submissionId) {
+      toast.error('Receipt is not available for this payment.');
+      return;
+    }
+
+    setViewingReceipt(true);
+    try {
+      const response = await api.get(`/bank-transfer/receipt/${submissionId}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], {
+        type: response.headers?.['content-type'] || 'application/octet-stream',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+
+      if (!opened) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.click();
+      }
+
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to open receipt');
+    } finally {
+      setViewingReceipt(false);
+    }
+  };
+
   const handleApprove = async (id, skipConfirm = false) => {
-    if (!skipConfirm && !window.confirm('Approve this payment? This will confirm the order and activate tickets.'))
+    if (
+      !skipConfirm &&
+      !window.confirm(
+        'Approve this payment? This will confirm the order and activate tickets.'
+      )
+    )
       return;
     setActionLoading(id);
     try {
@@ -254,12 +366,14 @@ const SubOrgPayments = () => {
     }
   };
 
-  // ─── Reject ───────────────────────────────────────────────
   const handleReject = async () => {
-    if (!actionMessage.trim()) return toast.error('Please provide a reason for rejection');
+    if (!actionMessage.trim())
+      return toast.error('Please provide a reason for rejection');
     setActionLoading('reject');
     try {
-      await rejectSubOrgPayment(selectedPayment._id, { rejectionReason: actionMessage });
+      await rejectSubOrgPayment(selectedPayment._id, {
+        rejectionReason: actionMessage,
+      });
       toast.success('Payment rejected');
       closeDetails();
       fetchPayments();
@@ -271,12 +385,13 @@ const SubOrgPayments = () => {
     }
   };
 
-  // ─── Request more info ────────────────────────────────────
   const handleRequestInfo = async () => {
     if (!actionMessage.trim()) return toast.error('Please provide a message');
     setActionLoading('request_info');
     try {
-      await requestSubOrgPaymentInfo(selectedPayment._id, { message: actionMessage });
+      await requestSubOrgPaymentInfo(selectedPayment._id, {
+        message: actionMessage,
+      });
       toast.success('Information request sent to buyer');
       closeDetails();
       fetchPayments();
@@ -288,95 +403,104 @@ const SubOrgPayments = () => {
     }
   };
 
-  // ─── Metric Card ──────────────────────────────────────────
-  const MetricCard = ({ title, value, subtitle, icon: Icon, colorClass = 'text-blue-600 bg-blue-50' }) => (
-    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">{title}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{statsLoading ? '-' : value}</p>
-          {subtitle && <p className="mt-2 text-xs text-slate-500">{subtitle}</p>}
-        </div>
-        <div className={`rounded-2xl p-3 ${colorClass}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </div>
-  );
-
-  // ─── Render ───────────────────────────────────────────────
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 pb-20">
         {/* Header */}
-        <div className="rounded-[28px] bg-gradient-to-br from-slate-950 via-slate-900 to-sky-900 p-6 text-white shadow-xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-sky-200">Sub Organiser</p>
-          <h1 className="mt-2 text-3xl font-bold">Payment Management</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-200">
-            Review, approve and manage payments for your assigned event scope.
-            Sub-organisers can only see payments related to their assigned events.
-          </p>
-        </div>
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-6 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Link
+                    to="/suborg/dashboard"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                  >
+                    <ArrowLeftIcon className="h-3.5 w-3.5" />
+                    Dashboard
+                  </Link>
+                  <span className="text-slate-300">·</span>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    Payment Management
+                  </p>
+                </div>
+                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                  Payments
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                  Review, approve and manage payments for your assigned event
+                  scope.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
 
-        {/* Statistics */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {/* Metrics — 4 then 4 */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Total Assigned"
-            value={statistics?.totalPayments || 0}
+            value={statsLoading ? '—' : statistics?.totalPayments || 0}
             subtitle="Transactions"
             icon={BanknotesIcon}
-            colorClass="text-blue-600 bg-blue-50"
           />
           <MetricCard
-            title="Total Paid Amount"
-            value={formatCurrency(statistics?.approvedAmount || 0)}
-            subtitle="Confirmed Revenue"
+            title="Total Paid"
+            value={
+              statsLoading
+                ? '—'
+                : formatCurrency(statistics?.approvedAmount || 0, currency)
+            }
+            subtitle="Confirmed revenue"
             icon={CheckCircleIcon}
-            colorClass="text-emerald-600 bg-emerald-50"
           />
           <MetricCard
-            title="Pending Bank Transfers"
-            value={statistics?.pendingBankTransfers || 0}
+            title="Pending Bank"
+            value={statsLoading ? '—' : statistics?.pendingBankTransfers || 0}
+            subtitle="Awaiting review"
             icon={ClockIcon}
-            colorClass="text-amber-600 bg-amber-50"
           />
           <MetricCard
-            title="Approved Bank Transfers"
-            value={statistics?.approvedBankTransfers || 0}
+            title="Approved Bank"
+            value={statsLoading ? '—' : statistics?.approvedBankTransfers || 0}
+            subtitle="Verified transfers"
             icon={CheckCircleIcon}
-            colorClass="text-emerald-600 bg-emerald-50"
           />
+        </section>
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            title="Cash at Entrance"
-            value={statistics?.cashReservations || 0}
-            subtitle="Reservations"
+            title="Cash Reservations"
+            value={statsLoading ? '—' : statistics?.cashReservations || 0}
+            subtitle="At entrance"
             icon={ClockIcon}
-            colorClass="text-amber-600 bg-amber-50"
           />
           <MetricCard
             title="Cash Collected"
-            value={formatCurrency(statistics?.cashCollected || 0)}
+            value={
+              statsLoading
+                ? '—'
+                : formatCurrency(statistics?.cashCollected || 0, currency)
+            }
+            subtitle="Confirmed cash"
             icon={BanknotesIcon}
-            colorClass="text-emerald-600 bg-emerald-50"
           />
           <MetricCard
             title="Awaiting Info"
-            value={statistics?.needsInfoPayments || 0}
+            value={statsLoading ? '—' : statistics?.needsInfoPayments || 0}
+            subtitle="Buyer response needed"
             icon={ExclamationTriangleIcon}
-            colorClass="text-blue-600 bg-blue-50"
           />
           <MetricCard
-            title="Rejected Payments"
-            value={statistics?.rejectedPayments || 0}
+            title="Rejected"
+            value={statsLoading ? '—' : statistics?.rejectedPayments || 0}
+            subtitle="Declined payments"
             icon={XCircleIcon}
-            colorClass="text-rose-600 bg-rose-50"
           />
-        </div>
+        </section>
 
         {/* Filters */}
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          {/* Method Tabs */}
-          <div className="flex space-x-2 border-b border-slate-100 pb-4 overflow-x-auto">
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-4">
             {[
               { key: 'all', label: 'All Methods' },
               { key: 'bank_transfer', label: 'Bank Transfer' },
@@ -385,27 +509,26 @@ const SubOrgPayments = () => {
             ].map(({ key, label }) => (
               <button
                 key={key}
+                type="button"
                 onClick={() => {
                   setMethodFilter(key);
                   setPagination((p) => ({ ...p, page: 1 }));
                 }}
-                className={`whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition-all ${
                   methodFilter === key
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-
-          {/* Status + Search */}
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
             <input
               type="text"
-              placeholder="Search by order number, email..."
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              placeholder="Search by order number, email…"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -420,7 +543,7 @@ const SubOrgPayments = () => {
                 setStatusFilter(e.target.value);
                 setPagination((p) => ({ ...p, page: 1 }));
               }}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -431,17 +554,21 @@ const SubOrgPayments = () => {
               <option value="needs_info">Needs Info</option>
             </select>
           </div>
-        </div>
+        </Card>
 
-        {/* Payments Table */}
-        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-6 pt-6 pb-2 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Payment Submissions</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {pagination.total} payment{pagination.total !== 1 ? 's' : ''} found
-              </p>
-            </div>
+        {/* Table */}
+        <Card
+          className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
+          padding={false}
+        >
+          <div className="border-b border-slate-100 bg-slate-50/40 px-5 py-4">
+            <h2 className="text-lg font-bold text-slate-900">
+              Payment Submissions
+            </h2>
+            <p className="text-sm text-slate-500">
+              {pagination.total} payment
+              {pagination.total !== 1 ? 's' : ''} found
+            </p>
           </div>
 
           {loading ? (
@@ -449,12 +576,18 @@ const SubOrgPayments = () => {
               <LoadingSkeleton />
             </div>
           ) : error ? (
-            <div className="p-6 text-center text-red-500">{error}</div>
+            <div className="p-8 text-center text-sm text-rose-600">{error}</div>
           ) : payments.length === 0 ? (
-            <div className="p-12 text-center">
-              <BanknotesIcon className="mx-auto h-12 w-12 text-slate-300" />
-              <h3 className="mt-4 text-lg font-medium text-slate-900">No payments found</h3>
-              <p className="mt-2 text-sm text-slate-500">Try adjusting your filters</p>
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <BanknotesIcon className="h-7 w-7" />
+              </div>
+              <p className="text-base font-semibold text-slate-800">
+                No payments found
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Try adjusting your filters
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -463,7 +596,7 @@ const SubOrgPayments = () => {
                   <Tr>
                     <Th>Order #</Th>
                     <Th>Method</Th>
-                    <Th>Payer Details</Th>
+                    <Th>Payer</Th>
                     <Th>Amount</Th>
                     <Th>Date</Th>
                     <Th>Status</Th>
@@ -484,96 +617,108 @@ const SubOrgPayments = () => {
                       <Tr key={payment._id}>
                         <Td>
                           <span className="font-mono text-sm font-medium text-slate-900">
-                            {payment.orderNumber || payment.orderId?.orderNumber || '-'}
+                            {payment.orderNumber ||
+                              payment.orderId?.orderNumber ||
+                              '—'}
                           </span>
                         </Td>
                         <Td>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">
-                              {formatMethod(payment.paymentMethod)}
+                          <p className="text-sm font-medium text-slate-900">
+                            {formatMethod(payment.paymentMethod)}
+                          </p>
+                          {(payment.gatewayUsed || payment.bankUsed) && (
+                            <p className="text-xs text-slate-500 uppercase">
+                              {payment.gatewayUsed || payment.bankUsed}
                             </p>
-                            {(payment.gatewayUsed || payment.bankUsed) && (
-                              <p className="text-xs text-slate-500 uppercase">
-                                {payment.gatewayUsed || payment.bankUsed}
-                              </p>
-                            )}
-                          </div>
+                          )}
                         </Td>
                         <Td>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">
-                              {payment.buyer?.name || payment.buyerName || '-'}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {payment.buyer?.email || payment.buyerEmail || '-'}
-                            </p>
-                          </div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {payment.buyer?.name || payment.buyerName || '—'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {payment.buyer?.email || payment.buyerEmail || '—'}
+                          </p>
                         </Td>
                         <Td>
                           <span className="text-sm font-semibold text-slate-900">
-                            {formatCurrency(payment.totalAmount || payment.amountPaid)}
+                            {formatCurrency(
+                              payment.totalAmount || payment.amountPaid,
+                              getCurrency(payment, statistics)
+                            )}
                           </span>
                         </Td>
                         <Td>
-                          <p className="text-sm text-slate-900">
-                            {formatDate(payment.submittedAt || payment.createdAt)}
+                          <p className="text-sm text-slate-600">
+                            {formatDate(
+                              payment.submittedAt || payment.createdAt
+                            )}
                           </p>
                         </Td>
                         <Td>
                           <Badge color={info.color}>{info.label}</Badge>
                         </Td>
                         <Td className="text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
+                              type="button"
                               onClick={() => handleViewDetails(payment)}
-                              className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                              title="View Details"
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                              title="View details"
                             >
                               <EyeIcon className="h-4 w-4" />
                             </button>
-                            {/* Inline approve/reject for bank_transfer pending */}
                             {payment.paymentMethod === 'bank_transfer' &&
                               (displayStatus === 'pending' ||
                                 displayStatus === 'pending_verification') && (
                                 <>
                                   <button
+                                    type="button"
                                     onClick={() =>
-                                      handleApprove(payment.submissionId || payment._id)
+                                      handleApprove(
+                                        payment.submissionId || payment._id
+                                      )
                                     }
-                                    disabled={actionLoading === (payment.submissionId || payment._id)}
-                                    className="rounded-xl p-1.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600"
+                                    disabled={
+                                      actionLoading ===
+                                      (payment.submissionId || payment._id)
+                                    }
+                                    className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50"
                                     title="Approve"
                                   >
                                     <CheckCircleIcon className="h-4 w-4" />
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       setSelectedPayment(payment);
                                       setShowRejectModal(true);
                                     }}
-                                    className="rounded-xl p-1.5 text-red-400 hover:bg-red-50 hover:text-red-500"
+                                    className="rounded-lg p-1.5 text-rose-400 hover:bg-rose-50"
                                     title="Reject"
                                   >
                                     <XCircleIcon className="h-4 w-4" />
                                   </button>
                                 </>
                               )}
-                            {/* Inline confirm for cash at entrance */}
                             {(payment.paymentMethod === 'cash_at_entrance' ||
                               payment.paymentMethod === 'cash_on_entrance') &&
                               (displayStatus === 'pending' ||
                                 displayStatus === 'awaiting_payment') && (
-                                <button
+                                <Button
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
                                   onClick={() => {
                                     setSelectedPayment(payment);
                                     setShowConfirmCashModal(true);
                                   }}
-                                  disabled={actionLoading === (payment.submissionId || payment._id)}
-                                  className="rounded-xl px-2.5 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition"
-                                  title="Confirm Payment"
+                                  disabled={
+                                    actionLoading ===
+                                    (payment.submissionId || payment._id)
+                                  }
                                 >
                                   Confirm
-                                </button>
+                                </Button>
                               )}
                           </div>
                         </Td>
@@ -585,66 +730,30 @@ const SubOrgPayments = () => {
             </div>
           )}
 
-          {/* Pagination */}
           {pagination.pages > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
-              <div className="text-sm text-slate-500">
-                Page {pagination.page} of {pagination.pages} · {pagination.total} total
-              </div>
-
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">
+                Page {pagination.page} of {pagination.pages} ·{' '}
+                {pagination.total} total
+              </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={pagination.page <= 1}
                   onClick={() =>
-                    setPagination((p) => ({
-                      ...p,
-                      page: p.page - 1,
-                    }))
+                    setPagination((p) => ({ ...p, page: p.page - 1 }))
                   }
                   className="h-8 rounded-lg px-3 text-xs"
                 >
-                  Previous
+                  Prev
                 </Button>
-
-                {Array.from(
-                  { length: Math.min(5, pagination.pages) },
-                  (_, i) => {
-                    const pageNum = Math.max(1, pagination.page - 2) + i;
-
-                    if (pageNum > pagination.pages) return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() =>
-                          setPagination((p) => ({
-                            ...p,
-                            page: pageNum,
-                          }))
-                        }
-                        className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
-                          pageNum === pagination.page
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  }
-                )}
-
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={pagination.page >= pagination.pages}
                   onClick={() =>
-                    setPagination((p) => ({
-                      ...p,
-                      page: p.page + 1,
-                    }))
+                    setPagination((p) => ({ ...p, page: p.page + 1 }))
                   }
                   className="h-8 rounded-lg px-3 text-xs"
                 >
@@ -653,174 +762,171 @@ const SubOrgPayments = () => {
               </div>
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
-      {/* ─── Payment Details Modal ──────────────────────────── */}
-      {selectedPayment && !showRejectModal && !showRequestInfoModal && (
-        <Modal
-          open
-          onClose={closeDetails}
-          title="Payment Details"
-          size="xl"
-        >
+      {/* Details modal */}
+      {selectedPayment && !showRejectModal && !showRequestInfoModal && !showConfirmCashModal && (
+        <Modal open onClose={closeDetails} title="Payment Details" size="xl">
           {detailsLoading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent" />
+            <div className="py-12 text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
             </div>
           ) : paymentDetails ? (
-            <div className="space-y-6">
-              {/* Order / Payment Info Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Order Number</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {paymentDetails.order?.orderNumber || '-'}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Amount</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {formatCurrency(paymentDetails.order?.totalAmount)}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Payment Method</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 capitalize">
-                    {paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') || '-'}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Date Created</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {formatDate(paymentDetails.order?.createdAt)}
-                  </p>
-                </div>
-
-                {/* Bank transfer specifics */}
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: 'Order Number',
+                    value: paymentDetails.order?.orderNumber || '—',
+                  },
+                  {
+                    label: 'Amount',
+                    value: formatCurrency(
+                      paymentDetails.order?.totalAmount,
+                      getCurrency(paymentDetails, selectedPayment, statistics)
+                    ),
+                  },
+                  {
+                    label: 'Payment Method',
+                    value:
+                      paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') ||
+                      '—',
+                  },
+                  {
+                    label: 'Date Created',
+                    value: formatDate(paymentDetails.order?.createdAt),
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      {item.label}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900 capitalize">
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
                 {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
                   paymentDetails.paymentSubmission && (
                     <>
-                      <div className="p-4 bg-slate-50 rounded-2xl">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider">Bank Used</p>
-                        <p className="mt-1 text-lg font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.bankUsed || '-'}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Bank Used
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {paymentDetails.paymentSubmission.bankUsed || '—'}
                         </p>
                       </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider">
-                          Reference Number
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Reference
                         </p>
-                        <p className="mt-1 text-lg font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.referenceNumber || '-'}
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {paymentDetails.paymentSubmission.referenceNumber ||
+                            '—'}
                         </p>
                       </div>
                     </>
                   )}
-
-                {/* Status */}
-                <div className="p-4 bg-slate-50 rounded-2xl col-span-2">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Status</p>
-                  <div className="mt-2">
-                    {(() => {
-                      const s = normalizeStatus(
-                        paymentDetails.paymentSubmission?.verificationStatus ||
-                          paymentDetails.order?.paymentStatus
-                      );
-                      const info = statusConfig[s] || { label: s, color: 'gray' };
-                      return <Badge color={info.color}>{info.label}</Badge>;
-                    })()}
-                  </div>
-                </div>
               </div>
 
-              {/* Buyer Info */}
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">
-                  Buyer Information
-                </h4>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
+              <div className="rounded-xl border border-slate-200 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Buyer
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <p>
                     <span className="text-slate-500">Name:</span>{' '}
                     <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerName || '-'}
+                      {paymentDetails.order?.buyerName || '—'}
                     </span>
-                  </div>
-                  <div>
+                  </p>
+                  <p>
                     <span className="text-slate-500">Email:</span>{' '}
                     <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerEmail || '-'}
+                      {paymentDetails.order?.buyerEmail || '—'}
                     </span>
-                  </div>
-                  <div>
+                  </p>
+                  <p>
                     <span className="text-slate-500">Phone:</span>{' '}
                     <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerPhone || '-'}
+                      {paymentDetails.order?.buyerPhone || '—'}
                     </span>
-                  </div>
+                  </p>
                 </div>
               </div>
 
-              {/* Receipt */}
               {paymentDetails.paymentSubmission?.receiptFile && (
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                     Receipt
-                  </h4>
-                  <a
-                    href={`/api/upload/file?path=${encodeURIComponent(
-                      paymentDetails.paymentSubmission.receiptFile
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-bold text-blue-600 hover:underline"
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleViewReceipt(
+                        selectedPayment?.submissionId || selectedPayment?._id || paymentDetails.paymentSubmission?._id
+                      )
+                    }
+                    disabled={viewingReceipt}
+                    className="text-sm font-semibold text-blue-600 hover:underline"
                   >
-                    View Receipt File →
-                  </a>
+                    View receipt →
+                  </button>
                 </div>
               )}
 
-              {/* Actions */}
               {(() => {
                 const s = normalizeStatus(
                   paymentDetails.paymentSubmission?.verificationStatus ||
                     paymentDetails.order?.paymentStatus
                 );
-                const isPending = s === 'pending' || s === 'pending_verification' || s === 'awaiting_payment';
+                const isPending =
+                  s === 'pending' ||
+                  s === 'pending_verification' ||
+                  s === 'awaiting_payment';
                 if (!isPending) return null;
-
                 return (
-                  <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200">
+                  <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
                     <Button
+                      className="bg-blue-600 hover:bg-blue-500"
                       onClick={() => {
-                        if (paymentDetails.order?.paymentMethod === 'cash_at_entrance' || paymentDetails.order?.paymentMethod === 'cash_on_entrance') {
+                        if (
+                          paymentDetails.order?.paymentMethod ===
+                            'cash_at_entrance' ||
+                          paymentDetails.order?.paymentMethod ===
+                            'cash_on_entrance'
+                        ) {
                           setSelectedPayment(paymentDetails.order);
                           setShowConfirmCashModal(true);
                         } else {
-                          handleApprove(paymentDetails.paymentSubmission?._id || paymentDetails.order?._id);
+                          handleApprove(
+                            paymentDetails.paymentSubmission?._id ||
+                              paymentDetails.order?._id
+                          );
                         }
                       }}
-                      loading={
-                        actionLoading ===
-                        (paymentDetails.paymentSubmission?._id || paymentDetails.order?._id)
-                      }
-                      className="bg-emerald-600 hover:bg-emerald-700"
                     >
-                      <CheckCircleIcon className="h-4 w-4 mr-2" />
-                      Approve Payment
+                      <CheckCircleIcon className="mr-1.5 h-4 w-4" />
+                      Approve
                     </Button>
                     <Button
                       variant="outline"
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
                       onClick={() => setShowRequestInfoModal(true)}
                     >
-                      Request More Info
+                      Request info
                     </Button>
                     <Button
                       variant="outline"
+                      className="text-rose-600 border-rose-200 hover:bg-rose-50"
                       onClick={() => setShowRejectModal(true)}
-                      className="text-red-600 border-red-200 hover:bg-red-50"
                     >
-                      <XCircleIcon className="h-4 w-4 mr-2" />
+                      <XCircleIcon className="mr-1.5 h-4 w-4" />
                       Reject
                     </Button>
                   </div>
@@ -828,94 +934,140 @@ const SubOrgPayments = () => {
               })()}
             </div>
           ) : (
-            <div className="text-center text-slate-500 py-6">No details available.</div>
+            <p className="py-6 text-center text-sm text-slate-500">
+              No details available.
+            </p>
           )}
         </Modal>
       )}
 
-      {/* ─── Reject Modal ───────────────────────────────────── */}
-      {showRejectModal && (
-        <Modal open onClose={() => setShowRejectModal(false)} title="Reject Payment" size="md">
+      {/* Reject */}
+      <Modal
+        open={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        title="Reject Payment"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Provide a reason for rejecting this payment. The buyer will see
+            this message.
+          </p>
+          <textarea
+            value={actionMessage}
+            onChange={(e) => setActionMessage(e.target.value)}
+            placeholder="Rejection reason…"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            rows={4}
+          />
+          <div className="flex gap-3">
+            <Button
+              className="flex-1 bg-rose-600 hover:bg-rose-500"
+              onClick={handleReject}
+              disabled={actionLoading === 'reject'}
+            >
+              Reject payment
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowRejectModal(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Request info */}
+      <Modal
+        open={showRequestInfoModal}
+        onClose={() => setShowRequestInfoModal(false)}
+        title="Request More Information"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Ask the buyer for additional information or documentation.
+          </p>
+          <textarea
+            value={actionMessage}
+            onChange={(e) => setActionMessage(e.target.value)}
+            placeholder="What information do you need?"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            rows={4}
+          />
+          <div className="flex gap-3">
+            <Button
+              className="flex-1 bg-blue-600 hover:bg-blue-500"
+              onClick={handleRequestInfo}
+              disabled={actionLoading === 'request_info'}
+            >
+              Send request
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowRequestInfoModal(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirm cash */}
+      <Modal
+        open={!!showConfirmCashModal && !!selectedPayment}
+        onClose={() => setShowConfirmCashModal(false)}
+        title="Confirm Cash Payment"
+        size="md"
+      >
+        {selectedPayment && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Please provide a reason for rejecting this payment. This will be shown to the buyer.
+              Confirm you received{' '}
+              <span className="font-semibold text-slate-900">
+                {formatCurrency(
+                  selectedPayment.totalAmount || selectedPayment.amountPaid,
+                  getCurrency(selectedPayment, statistics)
+                )}
+              </span>{' '}
+              for order{' '}
+              <span className="font-semibold text-slate-900">
+                {selectedPayment.orderNumber ||
+                  selectedPayment.orderId?.orderNumber ||
+                  '—'}
+              </span>
+              ?
             </p>
-            <textarea
-              value={actionMessage}
-              onChange={(e) => setActionMessage(e.target.value)}
-              placeholder="Enter rejection reason..."
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-              rows={4}
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRejectModal(false)}>
-                Cancel
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-500"
+                onClick={() =>
+                  handleApprove(
+                    selectedPayment.submissionId || selectedPayment._id,
+                    true
+                  )
+                }
+                disabled={
+                  actionLoading ===
+                  (selectedPayment.submissionId || selectedPayment._id)
+                }
+              >
+                Confirm received
               </Button>
               <Button
-                onClick={handleReject}
-                loading={actionLoading === 'reject'}
-                className="bg-red-600 hover:bg-red-700"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowConfirmCashModal(false)}
               >
-                Reject Payment
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* ─── Request Info Modal ─────────────────────────────── */}
-      {showRequestInfoModal && (
-        <Modal
-          open
-          onClose={() => setShowRequestInfoModal(false)}
-          title="Request More Information"
-          size="md"
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Send a request to the buyer for additional information or documentation.
-            </p>
-            <textarea
-              value={actionMessage}
-              onChange={(e) => setActionMessage(e.target.value)}
-              placeholder="What information do you need?"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-              rows={4}
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRequestInfoModal(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleRequestInfo} loading={actionLoading === 'request_info'}>
-                Send Request
-              </Button>
             </div>
           </div>
-        </Modal>
-      )}
-
-      {/* ─── Confirm Cash Modal ───────────────────────────── */}
-      {showConfirmCashModal && selectedPayment && (
-        <Modal open onClose={() => setShowConfirmCashModal(false)} title="Confirm Cash Payment" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Are you sure you have received the full payment of <span className="font-bold text-slate-900">{formatCurrency(selectedPayment.totalAmount || selectedPayment.amountPaid)}</span> for Order <span className="font-bold text-slate-900">{selectedPayment.orderNumber || selectedPayment.orderId?.orderNumber || '-'}</span>?
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowConfirmCashModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => handleApprove(selectedPayment.submissionId || selectedPayment._id, true)}
-                loading={actionLoading === (selectedPayment.submissionId || selectedPayment._id)}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                Confirm Payment Received
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
     </DashboardLayout>
   );
 };

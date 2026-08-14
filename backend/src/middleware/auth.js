@@ -82,15 +82,26 @@ const requireEventAccess = async (req, res, next) => {
     const rawId = req.params.eventId || req.body.eventId || req.query.eventId;
     let eventId = (rawId && rawId !== 'undefined') ? rawId : null;
 
-    if (eventId && !mongoose.Types.ObjectId.isValid(eventId)) {
-      return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
-    }
-
     // Root Authority bypass (Admins and Main Organisers have global scope)
     const canonicalRole = normalizeRole(user.role);
     if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {
-      if (eventId) req.resolvedEventId = eventId;
+      // Even without eventId, allow Main Admins/Organisers to proceed
+      if (!eventId) {
+        // Try to get any event for context
+        const Event = require('../models/Event');
+        const fallback = await Event.findOne().select('_id').lean();
+        if (fallback) {
+          req.resolvedEventId = String(fallback._id);
+          req.query.eventId = String(fallback._id);
+        }
+      } else {
+        req.resolvedEventId = eventId;
+      }
       return next();
+    }
+
+    if (eventId && !mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID format.' });
     }
     
     // If no ID provided or "undefined" string, fallback to first assigned

@@ -20,6 +20,7 @@ const AdminEvents = () => {
   const [pages, setPages] = useState(1);
   const [filters, setFilters] = useState({ status: '', search: '', from: '', to: '' });
   const [duplicateModal, setDuplicateModal] = useState({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, eventId: null, name: '' });
 
   const load = async (nextPage = page) => {
     setLoading(true);
@@ -73,14 +74,20 @@ const AdminEvents = () => {
     }
   };
 
-  const handleDelete = async (eventId) => {
-    if (!window.confirm('Delete this event? This cannot be undone.')) return;
+  const handleDelete = (event) => {
+    // Open delete confirmation modal
+    setDeleteModal({ isOpen: true, eventId: event._id, name: event.name });
+  };
+
+  const confirmDelete = async () => {
     try {
-      await deleteEvent(eventId);
-      toast.success('Event deleted');
+      await deleteEvent(deleteModal.eventId);
+      // Success feedback handled via UI update
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete failed');
+      // Error feedback handled via UI; no toast
+    } finally {
+      setDeleteModal({ isOpen: false, eventId: null, name: '' });
     }
   };
 
@@ -208,7 +215,7 @@ const AdminEvents = () => {
                       <button onClick={() => {
                         setDuplicateModal({ isOpen: true, eventId: event._id, name: event.name + ' (Copy)', startDate: '', endDate: '' });
                       }} className="text-emerald-600 hover:text-emerald-700">Duplicate</button>
-                      <button onClick={() => handleDelete(event._id)} className="text-rose-600 hover:text-rose-700">Delete</button>
+                      <button onClick={() => handleDelete(event)} className="text-rose-600 hover:text-rose-700">Delete</button>
                     </div>
                   </Td>
                 </Tr>
@@ -233,52 +240,60 @@ const AdminEvents = () => {
       </div>
 
       {duplicateModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Duplicate Event</h3>
-            <form onSubmit={handleDuplicateSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">New Event Name</label>
-                <input
-                  type="text"
-                  required
-                  value={duplicateModal.name}
-                  onChange={(e) => setDuplicateModal({ ...duplicateModal, name: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">New Start Date</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={duplicateModal.startDate}
-                  onChange={(e) => setDuplicateModal({ ...duplicateModal, startDate: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">New End Date</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={duplicateModal.endDate}
-                  onChange={(e) => setDuplicateModal({ ...duplicateModal, endDate: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setDuplicateModal({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' })}>
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-500">
-                  Duplicate
-                </Button>
-              </div>
-            </form>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Duplicate Event</h3>
+              <form onSubmit={handleDuplicateSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">New Event Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={duplicateModal.name}
+                    onChange={(e) => setDuplicateModal({ ...duplicateModal, name: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">New Start Date</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={duplicateModal.startDate}
+                    onChange={(e) => setDuplicateModal({ ...duplicateModal, startDate: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">New End Date</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={duplicateModal.endDate}
+                    onChange={(e) => setDuplicateModal({ ...duplicateModal, endDate: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setDuplicateModal({ isOpen: false, eventId: null, name: '', startDate: '', endDate: '' })}>Cancel</Button>
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-500">Duplicate</Button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+        {deleteModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Delete Event</h3>
+              <p className="text-sm text-slate-700 mb-4">Are you sure you want to delete <strong>{deleteModal.name}</strong>? This action cannot be undone.</p>
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={() => setDeleteModal({ isOpen: false, eventId: null, name: '' })}>Cancel</Button>
+                <Button type="button" className="bg-rose-600 hover:bg-rose-500" onClick={confirmDelete}>Delete</Button>
+              </div>
+            </div>
+          </div>
+        )}
     </DashboardLayout>
   );
 };

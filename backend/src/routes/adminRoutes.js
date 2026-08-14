@@ -102,7 +102,7 @@ router.get('/workspace', async (req, res, next) => {
       ...entryDateFilter,
     };
 
-    const [config, events, totals, ticketsByStatus, attendeesPage, attendeeTotal, verificationQueue, entryLogs, zoneLogs, notifications, apiHealth, ticketTrend, checkinsByHour, zoneOccupancy, activeUsersByRole, ticketCategoryMix] = await Promise.all([
+    const [config, events, totals, ticketsByStatus, attendeesPage, attendeeTotal, verificationQueue, entryLogs, zoneLogs, notifications, apiHealth, ticketTrend, checkinsByHour, zoneOccupancy, activeUsersByRole, ticketCategoryMix, ticketsByEventData, totalOrdersCount] = await Promise.all([
       getSystemConfig(),
       Event.find(eventFilter).select('name startDate endDate status venue categories zones mainOrganiser').populate('mainOrganiser', 'name email').sort({ startDate: 1 }).limit(50),
       Promise.all([
@@ -114,6 +114,11 @@ router.get('/workspace', async (req, res, next) => {
           EntryLog.countDocuments({ ...(objectEventId ? { event: objectEventId } : {}), accessGranted: false }),
           ZoneLog.countDocuments({ ...(objectEventId ? { eventId: objectEventId } : {}), accessGranted: false }),
         ]).then(([entryDenied, zoneDenied]) => entryDenied + zoneDenied),
+      ]),
+      Ticket.aggregate([
+        { $match: objectEventId ? { event: objectEventId } : {} },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
       ]),
       Ticket.aggregate([
         { $match: objectEventId ? { event: objectEventId } : {} },
@@ -189,16 +194,18 @@ router.get('/workspace', async (req, res, next) => {
         { $match: { ...(objectEventId ? { event: objectEventId } : {}), action: 'check_in', accessGranted: true } },
         {
           $group: {
-            _id: { $hour: '$timestamp' },
+            _id: { month: { $month: '$timestamp' }, day: { $dayOfMonth: '$timestamp' }, hour: { $hour: '$timestamp' } },
             count: { $sum: 1 },
           },
         },
-        { $sort: { _id: 1 } },
+        { $sort: { '_id.month': 1, '_id.day': 1, '_id.hour': 1 } },
         {
           $project: {
             _id: 0,
-            hour: '$_id',
-            label: { $concat: [{ $toString: '$_id' }, ':00'] },
+            month: '$_id.month',
+            day: '$_id.day',
+            hour: '$_id.hour',
+            label: { $concat: [{ $toString: '$_id.day' }, '/', { $toString: '$_id.month' }, ' ', { $toString: '$_id.hour' }, ':00'] },
             count: 1,
           },
         },
@@ -222,6 +229,24 @@ router.get('/workspace', async (req, res, next) => {
         { $sort: { count: -1 } },
         { $limit: 8 },
       ]),
+      // Tickets by event for "Tickets by Event" chart
+      Ticket.aggregate([
+        { $group: { _id: '$event', ticketsSold: { $sum: 1 } } },
+        { $sort: { ticketsSold: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: 'events',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'event'
+          }
+        },
+        { $unwind: '$event', $skipNulls: true },
+        { $project: { _id: 0, eventId: '$_id', name: '$event.name', ticketsSold: 1 } }
+      ]),
+      // Total orders count
+      Order.countDocuments({ paymentStatus: 'success' })
     ]);
 
     const zoneMap = new Map();
@@ -257,6 +282,7 @@ router.get('/workspace', async (req, res, next) => {
           confirmedAttendees,
           checkedInUsers,
           deniedEntries,
+          totalOrders: totalOrdersCount,
           requestHealth: {
             totalRequests: requestHealth.totalRequests,
             errorRequests: requestHealth.errorRequests,
