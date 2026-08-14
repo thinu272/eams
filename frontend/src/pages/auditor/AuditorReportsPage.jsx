@@ -2,15 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getMyEvents } from '../../api/events';
 import { exportAuditReport, getAuditReports } from '../../api/audit';
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import Stat from '../../components/ui/Stat';
-import { Table, Td, Th, Tr } from '../../components/ui/Table';
 import toast from 'react-hot-toast';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 const AuditorReportsPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedEventId, setSelectedEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [zone, setZone] = useState('');
@@ -30,8 +29,9 @@ const AuditorReportsPage = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
-      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      const isValidEvent = nextEvents.some((e) => e._id === selectedEventId);
+      const fallbackEventId =
+        (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
@@ -41,12 +41,11 @@ const AuditorReportsPage = () => {
 
   useEffect(() => {
     const handleEventSelect = (event) => {
-      const nextId = event.detail || '';
-      setSelectedEventId(nextId);
+      setSelectedEventId(event.detail || '');
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
@@ -70,12 +69,14 @@ const AuditorReportsPage = () => {
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
+    window.dispatchEvent(
+      new CustomEvent('entrynex:event-select', { detail: nextId })
+    );
   };
 
   const selectedEvent = useMemo(
     () => events.find((event) => event._id === selectedEventId),
-    [events, selectedEventId],
+    [events, selectedEventId]
   );
 
   const handleExport = async (report) => {
@@ -90,7 +91,9 @@ const AuditorReportsPage = () => {
         zone: zone || undefined,
         categoryId: categoryId || undefined,
       });
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([response.data], {
+        type: 'text/csv;charset=utf-8;',
+      });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -107,127 +110,271 @@ const AuditorReportsPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-amber-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 sm:px-6">
+        {/* Header */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">Audit Workspace</p>
-              <h1 className="mt-3 text-4xl font-black tracking-tight">Audit Reports</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
-                Read-only attendance and zone movement reporting for the currently selected event. Filters stay aligned with the shared dashboard selection.
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                  Audit Workspace
+                </p>
+              </div>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Audit Reports
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Read-only attendance and zone movement reporting for the
+                selected event.
               </p>
             </div>
-            {loading && <p className="text-sm font-semibold text-slate-300">Refreshing reports...</p>}
+            {loading && (
+              <p className="text-sm font-medium text-slate-400">
+                Refreshing reports...
+              </p>
+            )}
           </div>
-        </section>
-
-        <Card className="rounded-[28px] border-slate-200 bg-white">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <select value={selectedEventId} onChange={(event) => handleEventChange(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-              {events.map((event) => (
-                <option key={event._id} value={event._id}>{event.name}</option>
-              ))}
-            </select>
-            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-            <select value={zone} onChange={(event) => setZone(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-              <option value="">All zones</option>
-              {(selectedEvent?.zones || []).map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
-              <option value="">All categories</option>
-              {(selectedEvent?.categories || []).map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </div>
-        </Card>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Total Attendees" value={summary.totalAttendees || 0} color="blue" />
-          <Stat label="Confirmed Attendees" value={summary.confirmedAttendees || 0} color="green" />
-          <Stat label="Checked In" value={summary.checkedInCount || 0} color="purple" />
-          <Stat label="Denied Entries" value={summary.deniedEntries || 0} color="red" />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        {/* Filters */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <select
+              value={selectedEventId}
+              onChange={(e) => handleEventChange(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
+              {events.map((event) => (
+                <option key={event._id} value={event._id}>
+                  {event.name}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+
+            <select
+              value={zone}
+              onChange={(e) => setZone(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
+              <option value="">All zones</option>
+              {(selectedEvent?.zones || []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
+              <option value="">All categories</option>
+              {(selectedEvent?.categories || []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: 'Total Attendees',
+              value: summary.totalAttendees || 0,
+              color: 'text-slate-900',
+            },
+            {
+              label: 'Confirmed',
+              value: summary.confirmedAttendees || 0,
+              color: 'text-emerald-600',
+            },
+            {
+              label: 'Checked In',
+              value: summary.checkedInCount || 0,
+              color: 'text-blue-600',
+            },
+            {
+              label: 'Denied Entries',
+              value: summary.deniedEntries || 0,
+              color: 'text-rose-600',
+            },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                {stat.label}
+              </p>
+              <p className={`mt-2 text-3xl font-bold tracking-tight ${stat.color}`}>
+                {stat.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Reports */}
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {/* Attendance Report */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Attendance Report</h2>
-                <p className="mt-1 text-sm text-slate-500">Category-level attendance and check-in counts.</p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Attendance Report
+                </h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Category-level attendance and check-in counts
+                </p>
               </div>
-              <Button variant="outline" onClick={() => handleExport('attendance')} loading={exporting === 'attendance'}>
-                Export CSV
-              </Button>
+              <button
+                onClick={() => handleExport('attendance')}
+                disabled={exporting === 'attendance'}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                {exporting === 'attendance' ? 'Exporting...' : 'Export CSV'}
+              </button>
             </div>
 
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Category</Th>
-                  <Th>Total</Th>
-                  <Th>Confirmed</Th>
-                  <Th>Checked In</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceReport.map((row) => (
-                  <Tr key={row._id || 'uncategorised'}>
-                    <Td>{row._id || 'Uncategorised'}</Td>
-                    <Td>{row.totalAttendees}</Td>
-                    <Td>{row.confirmedAttendees}</Td>
-                    <Td>{row.checkedInCount}</Td>
-                  </Tr>
-                ))}
-                {!loading && attendanceReport.length === 0 && (
-                  <tr>
-                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">No attendance rows match the current filters.</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/80">
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Category
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Total
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Confirmed
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Checked In
+                    </th>
                   </tr>
-                )}
-              </tbody>
-            </Table>
-          </Card>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {attendanceReport.map((row) => (
+                    <tr key={row._id || 'uncategorised'} className="hover:bg-slate-50/50">
+                      <td className="px-5 py-3.5 font-medium text-slate-900">
+                        {row._id || 'Uncategorised'}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.totalAttendees}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.confirmedAttendees}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.checkedInCount}
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && attendanceReport.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-5 py-12 text-center text-sm text-slate-500"
+                      >
+                        No attendance rows match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+          {/* Zone Movement Report */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Zone Movement Report</h2>
-                <p className="mt-1 text-sm text-slate-500">Entries, exits, and net movement by zone.</p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Zone Movement Report
+                </h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Entries, exits, and net movement by zone
+                </p>
               </div>
-              <Button variant="outline" onClick={() => handleExport('zone_movement')} loading={exporting === 'zone_movement'}>
-                Export CSV
-              </Button>
+              <button
+                onClick={() => handleExport('zone_movement')}
+                disabled={exporting === 'zone_movement'}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                {exporting === 'zone_movement' ? 'Exporting...' : 'Export CSV'}
+              </button>
             </div>
 
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Zone</Th>
-                  <Th>Entries</Th>
-                  <Th>Exits</Th>
-                  <Th>Net</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {zoneMovementReport.map((row) => (
-                  <Tr key={row.zoneName}>
-                    <Td>{row.zoneName}</Td>
-                    <Td>{row.entries}</Td>
-                    <Td>{row.exits}</Td>
-                    <Td>{row.netMovement}</Td>
-                  </Tr>
-                ))}
-                {!loading && zoneMovementReport.length === 0 && (
-                  <tr>
-                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">No zone movement rows match the current filters.</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/80">
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Zone
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Entries
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Exits
+                    </th>
+                    <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Net
+                    </th>
                   </tr>
-                )}
-              </tbody>
-            </Table>
-          </Card>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {zoneMovementReport.map((row) => (
+                    <tr key={row.zoneName} className="hover:bg-slate-50/50">
+                      <td className="px-5 py-3.5 font-medium text-slate-900">
+                        {row.zoneName}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.entries}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.exits}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-700">
+                        {row.netMovement}
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && zoneMovementReport.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-5 py-12 text-center text-sm text-slate-500"
+                      >
+                        No zone movement rows match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </DashboardLayout>

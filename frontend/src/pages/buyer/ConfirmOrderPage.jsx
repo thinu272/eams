@@ -10,20 +10,34 @@ import Input from '../../components/ui/Input';
 import PhotoValidationFeedback from '../../components/shared/PhotoValidationFeedback';
 import { usePhotoAiValidation } from '../../hooks/usePhotoAiValidation';
 import toast from 'react-hot-toast';
-import { TicketIcon, CheckBadgeIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import {
+  TicketIcon,
+  CheckBadgeIcon,
+  EnvelopeIcon,
+  PhotoIcon,
+  XMarkIcon,
+  ArrowRightIcon,
+  UserIcon,
+  CalendarDaysIcon,
+  MapPinIcon,
+} from '@heroicons/react/24/outline';
 import { getAssetUrl } from '../../utils/backend';
 
 const ConfirmOrderPage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
   const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState({});
   const [assigning, setAssigning] = useState({});
+  const [finalizing, setFinalizing] = useState(false);
 
-  // Modal state
+  // Modals
   const [assignModal, setAssignModal] = useState({ open: false, ticketId: null });
+  const [inviteModal, setInviteModal] = useState({ open: false, ticketId: null });
+
   const [assignForm, setAssignForm] = useState({
     fullName: '',
     email: '',
@@ -31,9 +45,16 @@ const ConfirmOrderPage = () => {
     dateOfBirth: '',
     nationalId: '',
     passportNumber: '',
-    photo: null
+    photo: null,
   });
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [assignErrors, setAssignErrors] = useState({});
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    phone: '',
+    notificationChannel: 'email',
+  });
+
   const {
     validationErrors,
     allowOverride,
@@ -49,15 +70,18 @@ const ConfirmOrderPage = () => {
     imageRef,
     overlayRef,
   } = usePhotoAiValidation();
-  const [assignErrors, setAssignErrors] = useState({});
-  const [finalizing, setFinalizing] = useState(false);
-  const [inviteModal, setInviteModal] = useState({ open: false, ticketId: null });
-  const [inviteForm, setInviteForm] = useState({ email: '', phone: '', notificationChannel: 'email' });
 
-  const load = () => getOrderByToken(token).then(r => setData(r.data.data)).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [token]);
+  const load = () =>
+    getOrderByToken(token)
+      .then((r) => setData(r.data.data))
+      .finally(() => setLoading(false));
 
-  const handleInvite = async (ticketId) => {
+  useEffect(() => {
+    load();
+  }, [token]);
+
+  // ─── Invite ───────────────────────────────────────────────────────
+  const handleInvite = (ticketId) => {
     setInviteModal({ open: true, ticketId });
     setInviteForm({ email: '', phone: '', notificationChannel: 'email' });
   };
@@ -65,13 +89,17 @@ const ConfirmOrderPage = () => {
   const handleInviteSubmit = async (e) => {
     e.preventDefault();
     if (!inviteForm.email) return toast.error('Email is required');
-    if ((inviteForm.notificationChannel === 'sms' || inviteForm.notificationChannel === 'both') && !inviteForm.phone) {
+    if (
+      (inviteForm.notificationChannel === 'sms' || inviteForm.notificationChannel === 'both') &&
+      !inviteForm.phone
+    ) {
       return toast.error('Phone number is required for SMS notifications');
     }
     if (inviteForm.phone && !phoneRegex.test(inviteForm.phone.trim())) {
       return toast.error('Enter a valid international phone number (e.g. +1234567890)');
     }
-    setInviting(i => ({...i, [inviteModal.ticketId]: true}));
+
+    setInviting((i) => ({ ...i, [inviteModal.ticketId]: true }));
     try {
       await inviteTicket({
         ticketId: inviteModal.ticketId,
@@ -85,10 +113,11 @@ const ConfirmOrderPage = () => {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send invite');
     } finally {
-      setInviting(i => ({...i, [inviteModal.ticketId]: false}));
+      setInviting((i) => ({ ...i, [inviteModal.ticketId]: false }));
     }
   };
 
+  // ─── Assign ───────────────────────────────────────────────────────
   const handleAssignMyself = (ticketId) => {
     setAssignModal({ open: true, ticketId });
     setAssignForm({
@@ -98,7 +127,7 @@ const ConfirmOrderPage = () => {
       dateOfBirth: '',
       nationalId: '',
       passportNumber: '',
-      photo: null
+      photo: null,
     });
     setPhotoPreview(null);
     resetValidation();
@@ -107,59 +136,56 @@ const ConfirmOrderPage = () => {
 
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
-    setAssigning(a => ({...a, [assignModal.ticketId]: true}));
+    setAssigning((a) => ({ ...a, [assignModal.ticketId]: true }));
     setAssignErrors({});
 
     try {
-      let data;
-      
       if (assignForm.phone && !/^\+?[0-9]{9,15}$/.test(assignForm.phone.trim())) {
         setAssignErrors({ phone: 'Phone number is invalid' });
-        setAssigning(a => ({...a, [assignModal.ticketId]: false}));
+        setAssigning((a) => ({ ...a, [assignModal.ticketId]: false }));
         return;
       }
 
       if (assignForm.photo && !canSubmitPhoto(true)) {
         toast.error('Please fix photo validation issues or allow override.');
-        setAssigning(a => ({...a, [assignModal.ticketId]: false}));
+        setAssigning((a) => ({ ...a, [assignModal.ticketId]: false }));
         return;
       }
 
+      let payload;
       if (assignForm.photo) {
-        // Use FormData for file upload
-        data = new FormData();
-        data.append('ticketId', assignModal.ticketId);
-        data.append('fullName', assignForm.fullName);
-        data.append('email', assignForm.email);
-        data.append('phone', assignForm.phone);
-        data.append('dateOfBirth', assignForm.dateOfBirth);
-        data.append('nationalId', assignForm.nationalId);
-        data.append('passportNumber', assignForm.passportNumber);
-        data.append('photo', assignForm.photo);
-        appendValidationToFormData(data);
+        payload = new FormData();
+        payload.append('ticketId', assignModal.ticketId);
+        payload.append('fullName', assignForm.fullName);
+        payload.append('email', assignForm.email);
+        payload.append('phone', assignForm.phone);
+        payload.append('dateOfBirth', assignForm.dateOfBirth);
+        payload.append('nationalId', assignForm.nationalId);
+        payload.append('passportNumber', assignForm.passportNumber);
+        payload.append('photo', assignForm.photo);
+        appendValidationToFormData(payload);
       } else {
-        // Use regular JSON for non-file data
-        data = {
+        payload = {
           ticketId: assignModal.ticketId,
           fullName: assignForm.fullName,
           email: assignForm.email,
           phone: assignForm.phone,
           dateOfBirth: assignForm.dateOfBirth,
           nationalId: assignForm.nationalId,
-          passportNumber: assignForm.passportNumber
+          passportNumber: assignForm.passportNumber,
         };
       }
 
-      await assignTicket(data);
+      await assignTicket(payload);
       toast.success('Ticket assigned successfully!');
       setAssignModal({ open: false, ticketId: null });
       setPhotoPreview(null);
       resetValidation();
-      load(); // Refresh data
+      load();
     } catch (err) {
       if (err.response?.data?.errors) {
         const errors = {};
-        err.response.data.errors.forEach(error => {
+        err.response.data.errors.forEach((error) => {
           errors[error.path] = error.msg;
         });
         setAssignErrors(errors);
@@ -167,216 +193,324 @@ const ConfirmOrderPage = () => {
         toast.error('Failed to assign ticket');
       }
     } finally {
-      setAssigning(a => ({...a, [assignModal.ticketId]: false}));
+      setAssigning((a) => ({ ...a, [assignModal.ticketId]: false }));
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading your order...</p>
+  // ─── Loading ──────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
+          <p className="text-sm font-medium text-slate-500">Loading your order…</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (!data) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center max-w-md mx-auto px-4">
-        <TicketIcon className="mx-auto h-10 w-10 text-blue-600 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Not Found</h2>
-        <p className="text-gray-600 mb-6">This order confirmation link may have expired or is invalid.</p>
-        <Button onClick={() => navigate('/')}>Go to Home</Button>
+  // ─── Not Found ────────────────────────────────────────────────────
+  if (!data) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 text-center">
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-50">
+          <TicketIcon className="h-10 w-10 text-brand-main" />
+        </div>
+        <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+          Order Not Found
+        </h2>
+        <p className="mt-3 max-w-md text-sm font-medium text-slate-500">
+          This order confirmation link may have expired or is invalid.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-8 rounded-2xl bg-slate-900 px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-brand-main"
+        >
+          Back to Homepage
+        </button>
       </div>
-    </div>
-  );
+    );
+  }
 
   const { order, tickets } = data;
-  const assigned = tickets.filter(t => t.status === 'ASSIGNED' || t.status === 'CONFIRMED').length;
+  const assigned = tickets.filter(
+    (t) => t.status === 'ASSIGNED' || t.status === 'CONFIRMED'
+  ).length;
   const progressPercentage = tickets.length > 0 ? (assigned / tickets.length) * 100 : 0;
+  const allAssigned = assigned === tickets.length;
+  const currency = order?.currency || order?.event?.settings?.currency || 'LKR';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
-        <div className="max-w-4xl mx-auto px-4 py-12">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-full mb-4">
-              <TicketIcon className="h-8 w-8 text-white" />
-            </div>
-            <h1 className="text-3xl font-bold mb-2">Confirm Your Tickets</h1>
-            <p className="text-blue-100">Order #{order.orderNumber} • {order.event?.name}</p>
+    <div className="min-h-screen bg-slate-50">
+      {/* ────────────── Hero Header ────────────── */}
+      <div className="relative overflow-hidden bg-slate-900">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-main/20 via-transparent to-transparent" />
+        <div className="relative mx-auto max-w-4xl px-4 py-14 text-center sm:px-6">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm">
+            <TicketIcon className="h-8 w-8 text-white" />
           </div>
+          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-white/50">
+            Order Confirmation
+          </p>
+          <h1 className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl">
+            Confirm Your Tickets
+          </h1>
+          <p className="mt-3 text-sm font-medium text-white/70">
+            Order #{order.orderNumber} · {order.event?.name}
+          </p>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {/* Progress Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Confirmation Progress</h2>
-            <span className="text-sm text-gray-600">{assigned} of {tickets.length} assigned</span>
+      <div className="mx-auto max-w-4xl space-y-8 px-4 py-10 sm:px-6">
+        {/* ────────────── Progress Card ────────────── */}
+        <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+          <div className="px-8 py-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
+                Confirmation Progress
+              </h2>
+              <span className="text-xs font-bold text-slate-500">
+                {assigned} of {tickets.length} assigned
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="mb-6 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-brand-main to-emerald-500 transition-all duration-700 ease-out"
+                style={{ width: `${progressPercentage}%` }}
+              />
+            </div>
+
+            {allAssigned ? (
+              <div className="space-y-5">
+                <div className="flex items-start gap-4 rounded-2xl bg-emerald-50 px-5 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                    <CheckBadgeIcon className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-emerald-900">All tickets assigned!</p>
+                    <p className="mt-0.5 text-sm text-emerald-700">
+                      Complete confirmation to finalize and send final ticket notifications with QR codes.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (!order?._id) return;
+                    setFinalizing(true);
+                    try {
+                      await finalizeOrder(order._id);
+                      toast.success('Tickets confirmed. Check your email or SMS shortly.');
+                      load();
+                    } catch (err) {
+                      console.error('Finalize error:', err);
+                      toast.error(err.response?.data?.message || 'Failed to finalize order');
+                    } finally {
+                      setFinalizing(false);
+                    }
+                  }}
+                  disabled={finalizing}
+                  className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)] disabled:opacity-60"
+                >
+                  {finalizing ? 'Processing…' : 'Complete Confirmation'}
+                  <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Please assign all ticket holders to complete your order.
+              </p>
+            )}
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
-            <div
-              className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progressPercentage}%` }}
-            />
+        </div>
+
+        {/* ────────────── Order Summary ────────────── */}
+        <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+          <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+            <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+              Order Summary
+            </h2>
           </div>
-          {assigned === tickets.length ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 text-green-700 bg-green-50 rounded-lg px-4 py-3">
-                <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                  <CheckBadgeIcon className="h-4 w-4 text-white" />
+
+          <div className="space-y-8 p-8">
+            {/* Buyer Info */}
+            <div>
+              <p className="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Buyer Information
+              </p>
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs text-slate-400">Name</p>
+                  <p className="mt-1 font-bold text-slate-900">{order?.buyerName || '—'}</p>
                 </div>
                 <div>
-                  <p className="font-medium">All tickets assigned!</p>
-                  <p className="text-sm text-green-600">Complete confirmation to finalize and send final ticket notifications with QR codes.</p>
+                  <p className="text-xs text-slate-400">Email</p>
+                  <p className="mt-1 font-bold text-slate-900">{order?.buyerEmail || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Phone</p>
+                  <p className="mt-1 font-bold text-slate-900">{order?.buyerPhone || '—'}</p>
                 </div>
               </div>
-              <Button onClick={async () => {
-                if (!order?._id) return;
-                setFinalizing(true);
-                try {
-                  await finalizeOrder(order._id);
-                  toast.success('Tickets confirmed. Check your email or SMS shortly.');
-                  load();
-                } catch (err) {
-                  console.error('Finalize error:', err);
-                  toast.error(err.response?.data?.message || 'Failed to finalize order');
-                } finally {
-                  setFinalizing(false);
-                }
-              }} loading={finalizing} className="w-full">
-                Complete Confirmation
-              </Button>
             </div>
-          ) : (
-            <p className="text-sm text-gray-600">
-              Please confirm all ticket holders to complete your order.
-            </p>
-          )}
-        </div>
 
-        {/* Order Summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
-          
-          {/* Buyer Information */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Buyer Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <span className="text-xs text-gray-500 block uppercase tracking-wide">Name</span>
-                <p className="font-medium text-gray-900">{order?.buyerName || 'N/A'}</p>
+            {/* Event Info */}
+            <div className="grid grid-cols-1 gap-6 border-t border-slate-50 pt-8 sm:grid-cols-2">
+              <div className="space-y-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <TicketIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Event</p>
+                    <p className="mt-0.5 font-bold text-slate-900">{order?.event?.name || '—'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <CalendarDaysIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Date & Time</p>
+                    <p className="mt-0.5 font-bold text-slate-900">
+                      {order?.event?.startDate
+                        ? format(new Date(order.event.startDate), "EEEE, MMMM d, yyyy 'at' h:mm a")
+                        : 'TBD'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-gray-500 block uppercase tracking-wide">Email</span>
-                <p className="font-medium text-gray-900">{order?.buyerEmail || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-xs text-gray-500 block uppercase tracking-wide">Phone</span>
-                <p className="font-medium text-gray-900">{order?.buyerPhone || 'N/A'}</p>
-              </div>
-            </div>
-          </div>
 
-          {/* Event Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <div>
-                <span className="text-sm text-gray-500 block">Event Name</span>
-                <p className="font-medium text-gray-900">{order?.event?.name || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500 block">Date & Time</span>
-                <p className="font-medium text-gray-900">
-                  {order?.event?.startDate ? format(new Date(order.event.startDate), 'EEEE, MMMM d, yyyy \'at\' h:mm a') : 'TBD'}
-                </p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <span className="text-sm text-gray-500 block">Venue</span>
-                <p className="font-medium text-gray-900">{order?.event?.venue?.name || 'N/A'}</p>
-                {order?.event?.venue?.address && (
-                  <p className="text-sm text-gray-600">{order.event.venue.address}</p>
-                )}
-              </div>
-              <div>
-                <span className="text-sm text-gray-500 block">Total Amount</span>
-                <p className="font-medium text-gray-900 text-lg">{order?.currency || order?.event?.settings?.currency || 'LKR'} {order?.totalAmount?.toLocaleString() || '0'}</p>
+              <div className="space-y-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-brand-main">
+                    <MapPinIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Venue</p>
+                    <p className="mt-0.5 font-bold text-slate-900">{order?.event?.venue?.name || '—'}</p>
+                    {order?.event?.venue?.address && (
+                      <p className="mt-0.5 text-sm text-slate-500">{order.event.venue.address}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Total Amount</p>
+                  <p className="mt-1 text-xl font-black tracking-tighter text-brand-main">
+                    {currency} {order?.totalAmount?.toLocaleString() || '0'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tickets Section */}
+        {/* ────────────── Tickets ────────────── */}
         <div>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Your Tickets ({tickets.length})</h2>
-            <Badge color={assigned === tickets.length ? 'green' : 'blue'}>
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">
+              Your Tickets
+              <span className="ml-2 text-base font-bold text-slate-400">({tickets.length})</span>
+            </h2>
+            <span
+              className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
+                allAssigned ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+              }`}
+            >
               {assigned}/{tickets.length} Assigned
-            </Badge>
+            </span>
           </div>
 
           <div className="space-y-4">
             {tickets.map((ticket, index) => (
-              <div key={ticket._id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-start justify-between">
+              <div
+                key={ticket._id}
+                className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm transition hover:border-slate-200"
+              >
+                <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-start sm:justify-between">
+                  {/* Left */}
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-semibold text-sm">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-sm font-black text-white">
                         {index + 1}
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{ticket.categoryName}</h3>
-                        <p className="text-sm text-gray-600">Ticket #{ticket.ticketNumber}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-bold text-slate-900">{ticket.categoryName}</h3>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                              ticket.status === 'ASSIGNED' || ticket.status === 'CONFIRMED'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : ticket.status === 'INVITED'
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : ticket.status === 'PENDING'
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {ticket.status === 'PENDING'
+                              ? 'Needs Assignment'
+                              : ticket.status === 'ASSIGNED'
+                                ? 'Assigned'
+                                : ticket.status === 'INVITED'
+                                  ? 'Invited'
+                                  : ticket.status === 'CONFIRMED'
+                                    ? 'Confirmed'
+                                    : ticket.status}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-sm text-slate-500">
+                          Ticket #{ticket.ticketNumber}
+                        </p>
+
                         {ticket.status !== 'PENDING' && (
-                          <div className="mt-1 space-y-0.5 text-[10px] text-gray-400 font-medium font-mono">
+                          <div className="mt-2 space-y-0.5 text-[10px] font-medium text-slate-400">
                             {(ticket.inviteSentAt || ticket.createdAt) && (
-                              <p>Assigned: {new Date(ticket.inviteSentAt || ticket.createdAt).toLocaleString()}</p>
+                              <p>
+                                Assigned:{' '}
+                                {new Date(ticket.inviteSentAt || ticket.createdAt).toLocaleString()}
+                              </p>
                             )}
-                            {(ticket.status === 'CONFIRMED' || ticket.status === 'ASSIGNED') && (ticket.attendee?.confirmedAt || ticket.updatedAt) && (
-                              <p>Confirmed: {new Date(ticket.attendee?.confirmedAt || ticket.updatedAt).toLocaleString()}</p>
-                            )}
+                            {(ticket.status === 'CONFIRMED' || ticket.status === 'ASSIGNED') &&
+                              (ticket.attendee?.confirmedAt || ticket.updatedAt) && (
+                                <p>
+                                  Confirmed:{' '}
+                                  {new Date(
+                                    ticket.attendee?.confirmedAt || ticket.updatedAt
+                                  ).toLocaleString()}
+                                </p>
+                              )}
                           </div>
                         )}
                       </div>
-                      <Badge
-                        color={
-                          ticket.status === 'ASSIGNED' ? 'green' :
-                          ticket.status === 'INVITED' ? 'blue' :
-                          ticket.status === 'CONFIRMED' ? 'green' :
-                          ticket.status === 'PENDING' ? 'yellow' : 'gray'
-                        }
-                      >
-                        {ticket.status === 'PENDING' ? 'Needs Assignment' :
-                         ticket.status === 'ASSIGNED' ? 'Assigned' :
-                         ticket.status === 'INVITED' ? 'Invited' :
-                         ticket.status === 'CONFIRMED' ? 'Confirmed' : ticket.status}
-                      </Badge>
                     </div>
 
+                    {/* Attendee card */}
                     {ticket.attendee && (
-                      <div className="ml-11 mt-2 p-3 bg-gray-50 rounded-lg">
+                      <div className="mt-4 ml-14 rounded-2xl bg-slate-50 p-4">
                         <div className="flex items-start gap-3">
-                          {ticket.attendee.photo && (
-                            <div className="flex-shrink-0">
-                              <img
-                                src={getAssetUrl(ticket.attendee.photo)}
-                                alt={ticket.attendee.fullName}
-                                className="w-12 h-12 rounded-lg object-cover border border-gray-200"
-                              />
+                          {ticket.attendee.photo ? (
+                            <img
+                              src={getAssetUrl(ticket.attendee.photo)}
+                              alt={ticket.attendee.fullName}
+                              className="h-12 w-12 rounded-xl object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200">
+                              <UserIcon className="h-5 w-5 text-slate-400" />
                             </div>
                           )}
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{ticket.attendee.fullName}</p>
-                            <p className="text-sm text-gray-600">{ticket.attendee.email}</p>
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">
+                              {ticket.attendee.fullName}
+                            </p>
+                            <p className="text-sm text-slate-500">{ticket.attendee.email}</p>
                             {ticket.attendee.photoVerificationStatus && (
-                              <div className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                                <PhotoIcon className="h-3.5 w-3.5" />
-                                <span>Photo {ticket.attendee.photoVerificationStatus}</span>
+                              <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                <PhotoIcon className="h-3 w-3" />
+                                Photo {ticket.attendee.photoVerificationStatus}
                               </div>
                             )}
                           </div>
@@ -385,42 +519,47 @@ const ConfirmOrderPage = () => {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-2 ml-4">
+                  {/* Right actions */}
+                  <div className="flex shrink-0 flex-col items-end gap-2 sm:ml-4">
                     {ticket.status === 'PENDING' && (
                       <>
-                        <Button
-                          size="sm"
+                        <button
                           onClick={() => handleAssignMyself(ticket._id)}
-                          loading={assigning[ticket._id]}
-                          className="whitespace-nowrap"
+                          disabled={assigning[ticket._id]}
+                          className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white transition hover:bg-brand-main disabled:opacity-60"
                         >
-                          Assign Myself
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          loading={inviting[ticket._id]}
+                          {assigning[ticket._id] ? 'Assigning…' : 'Assign Myself'}
+                        </button>
+                        <button
                           onClick={() => handleInvite(ticket._id)}
+                          disabled={inviting[ticket._id]}
+                          className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
                         >
-                          Send Invite
-                        </Button>
+                          {inviting[ticket._id] ? 'Sending…' : 'Send Invite'}
+                        </button>
                       </>
                     )}
+
                     {ticket.status === 'INVITED' && (
                       <div className="text-center">
-                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-1">
-                          <EnvelopeIcon className="h-4 w-4" />
+                        <div className="mx-auto mb-1.5 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                          <EnvelopeIcon className="h-5 w-5" />
                         </div>
-                        <p className="text-xs text-blue-600 font-medium">Invite Sent</p>
-                        <p className="text-xs text-gray-500">{ticket.inviteEmail}</p>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">
+                          Invite Sent
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">{ticket.inviteEmail}</p>
                       </div>
                     )}
+
                     {(ticket.status === 'ASSIGNED' || ticket.status === 'CONFIRMED') && (
                       <div className="text-center">
-                        <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-1">
-                          <CheckBadgeIcon className="h-4 w-4" />
+                        <div className="mx-auto mb-1.5 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                          <CheckBadgeIcon className="h-5 w-5" />
                         </div>
-                        <p className="text-xs text-green-600 font-medium">Assigned</p>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
+                          Assigned
+                        </p>
                       </div>
                     )}
                   </div>
@@ -430,25 +569,33 @@ const ConfirmOrderPage = () => {
           </div>
         </div>
 
-        {/* Help Section */}
-        <div className="bg-blue-50 rounded-xl p-6">
-          <h3 className="font-semibold text-blue-900 mb-2">Need Help?</h3>
-          <p className="text-blue-700 text-sm mb-4">
-            If you have any questions about confirming your tickets or need assistance,
-            please contact our support team.
+        {/* ────────────── Help ────────────── */}
+        <div className="overflow-hidden rounded-[32px] border border-blue-100 bg-blue-50/50 p-8">
+          <h3 className="text-sm font-black uppercase tracking-widest text-blue-900">
+            Need Help?
+          </h3>
+          <p className="mt-2 max-w-lg text-sm text-blue-800/80">
+            If you have any questions about confirming your tickets or need assistance, please
+            contact our support team.
           </p>
-          <div className="flex gap-4">
-            <Button size="sm" variant="outline" onClick={() => window.location.href = 'mailto:support@entrynex.com'}>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <a
+              href="mailto:support@entrynex.com"
+              className="rounded-xl border border-blue-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-50"
+            >
               Email Support
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => window.open('tel:+94123456789', '_self')}>
+            </a>
+            <a
+              href="tel:+94123456789"
+              className="rounded-xl border border-blue-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-50"
+            >
               Call Support
-            </Button>
+            </a>
           </div>
         </div>
       </div>
 
-      {/* Assign Myself Modal */}
+      {/* ────────────── Assign Modal ────────────── */}
       <Modal
         open={assignModal.open}
         onClose={() => setAssignModal({ open: false, ticketId: null })}
@@ -459,62 +606,57 @@ const ConfirmOrderPage = () => {
           <Input
             label="Full Name *"
             value={assignForm.fullName}
-            onChange={(e) => setAssignForm(f => ({...f, fullName: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, fullName: e.target.value }))}
             error={assignErrors.fullName}
             placeholder="Enter your full name"
             required
           />
-
           <Input
             label="Email Address *"
             type="email"
             value={assignForm.email}
-            onChange={(e) => setAssignForm(f => ({...f, email: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, email: e.target.value }))}
             error={assignErrors.email}
             placeholder="Enter your email address"
             required
           />
-
           <Input
             label="Phone Number"
             type="tel"
             value={assignForm.phone}
-            onChange={(e) => setAssignForm(f => ({...f, phone: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, phone: e.target.value }))}
             error={assignErrors.phone}
             placeholder="+1234567890"
           />
-
           <Input
             label="Date of Birth"
             type="date"
             value={assignForm.dateOfBirth}
-            onChange={(e) => setAssignForm(f => ({...f, dateOfBirth: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
             error={assignErrors.dateOfBirth}
           />
-
           <Input
             label="National ID / NIC"
             value={assignForm.nationalId}
-            onChange={(e) => setAssignForm(f => ({...f, nationalId: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, nationalId: e.target.value }))}
             error={assignErrors.nationalId}
             placeholder="Enter your National ID or NIC number"
           />
-
           <Input
             label="Passport Number"
             value={assignForm.passportNumber}
-            onChange={(e) => setAssignForm(f => ({...f, passportNumber: e.target.value}))}
+            onChange={(e) => setAssignForm((f) => ({ ...f, passportNumber: e.target.value }))}
             error={assignErrors.passportNumber}
             placeholder="Enter your passport number (if applicable)"
           />
 
-          {/* Photo Upload Section */}
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Your Photo for Verification <span className="text-gray-400 text-xs">(Optional but recommended)</span>
+          {/* Photo Upload */}
+          <div className="border-t border-slate-100 pt-5">
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Your Photo for Verification{' '}
+              <span className="text-xs text-slate-400">(Optional but recommended)</span>
             </label>
             <div className="flex flex-col gap-3">
-              {/* File Input */}
               <input
                 type="file"
                 accept="image/jpeg,image/jpg,image/png"
@@ -522,35 +664,35 @@ const ConfirmOrderPage = () => {
                   if (e.target.files?.[0]) {
                     const file = e.target.files[0];
                     await validateFile(file);
-                    setAssignForm(f => ({...f, photo: file}));
+                    setAssignForm((f) => ({ ...f, photo: file }));
                     const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setPhotoPreview(reader.result);
-                    };
+                    reader.onloadend = () => setPhotoPreview(reader.result);
                     reader.readAsDataURL(file);
                   }
                 }}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                className="block w-full cursor-pointer text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
               />
-              
-              {/* Photo Preview */}
+
               {photoPreview && (
                 <div className="relative flex justify-center">
                   <img
                     ref={imageRef}
                     src={photoPreview}
                     alt="Preview"
-                    className="max-w-xs max-h-48 rounded-lg border-2 border-blue-200 shadow-md"
+                    className="max-h-48 max-w-xs rounded-2xl border-2 border-blue-100 shadow-md"
                   />
-                  <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 max-w-xs max-h-48 rounded-lg" />
+                  <canvas
+                    ref={overlayRef}
+                    className="pointer-events-none absolute inset-0 max-h-48 max-w-xs rounded-2xl"
+                  />
                   <button
                     type="button"
                     onClick={() => {
-                      setAssignForm(f => ({...f, photo: null}));
+                      setAssignForm((f) => ({ ...f, photo: null }));
                       setPhotoPreview(null);
                       resetValidation();
                     }}
-                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-red-600"
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
                   >
                     <XMarkIcon className="h-4 w-4" />
                   </button>
@@ -568,10 +710,10 @@ const ConfirmOrderPage = () => {
                   validating={validating}
                 />
               )}
-              
-              <p className="text-xs text-gray-500 flex items-center gap-1">
+
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
                 <PhotoIcon className="h-3.5 w-3.5" />
-                <span>Upload a clear photo of your face for identity verification at event entry.</span>
+                Upload a clear photo of your face for identity verification at event entry.
               </p>
             </div>
           </div>
@@ -596,6 +738,7 @@ const ConfirmOrderPage = () => {
         </form>
       </Modal>
 
+      {/* ────────────── Invite Modal ────────────── */}
       <Modal
         open={inviteModal.open}
         onClose={() => setInviteModal({ open: false, ticketId: null })}
@@ -607,7 +750,7 @@ const ConfirmOrderPage = () => {
             label="Email Address *"
             type="email"
             value={inviteForm.email}
-            onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))}
+            onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
             placeholder="Enter invite email"
             required
           />
@@ -615,24 +758,35 @@ const ConfirmOrderPage = () => {
             label="Phone Number"
             type="tel"
             value={inviteForm.phone}
-            onChange={(e) => setInviteForm(f => ({ ...f, phone: e.target.value }))}
+            onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
             placeholder="+1234567890"
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Send Via</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Send Via</label>
             <select
               value={inviteForm.notificationChannel}
-              onChange={(e) => setInviteForm(f => ({ ...f, notificationChannel: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              onChange={(e) =>
+                setInviteForm((f) => ({ ...f, notificationChannel: e.target.value }))
+              }
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-main focus:outline-none focus:ring-2 focus:ring-brand-main/20"
             >
               <option value="email">Email</option>
               <option value="sms">SMS</option>
               <option value="both">Email + SMS</option>
             </select>
           </div>
-          <div className="flex gap-3">
-            <Button type="submit">Send</Button>
-            <Button variant="outline" type="button" onClick={() => setInviteModal({ open: false, ticketId: null })}>Cancel</Button>
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" className="flex-1">
+              Send Invite
+            </Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setInviteModal({ open: false, ticketId: null })}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
           </div>
         </form>
       </Modal>

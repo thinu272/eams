@@ -21,10 +21,10 @@ const ShortLinkRedirectPage = () => {
   }, [code, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm max-w-sm w-full text-center">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-gray-600">{message}</p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm text-center">
+        <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-[3px] border-blue-600 border-t-transparent" />
+        <p className="text-sm font-medium text-slate-600">{message}</p>
       </div>
     </div>
   );

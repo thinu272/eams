@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { BoltIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
 
 const QRScannerComponent = ({
   onScanSuccess,
@@ -15,7 +16,7 @@ const QRScannerComponent = ({
   const onScanErrorRef = useRef(onScanError);
   const isRunningRef = useRef(false);
   const lastScanRef = useRef({ value: '', timestamp: 0 });
-  
+
   const [status, setStatus] = useState('Starting camera...');
   const [cameras, setCameras] = useState([]);
   const [currentCameraId, setCurrentCameraId] = useState('');
@@ -30,7 +31,6 @@ const QRScannerComponent = ({
     onScanErrorRef.current = onScanError;
   }, [onScanError]);
 
-  // Handle initialization and first start
   useEffect(() => {
     let mounted = true;
 
@@ -78,13 +78,13 @@ const QRScannerComponent = ({
           },
           () => {}
         );
-        
+
         isRunningRef.current = true;
 
         // Detect torch support
         try {
           const track = scanner.getRunningTrack();
-          if (track && track.getCapabilities) {
+          if (track?.getCapabilities) {
             const capabilities = track.getCapabilities();
             setHasTorch(!!capabilities?.torch);
           }
@@ -127,7 +127,7 @@ const QRScannerComponent = ({
             const clearResult = currentScanner.clear();
             safelyHandleAsyncResult(clearResult, () => {});
           } catch (error) {
-            // Ignore cleanup errors during React dev remounts.
+            // Ignore cleanup errors during React dev remounts
           }
         };
 
@@ -146,7 +146,6 @@ const QRScannerComponent = ({
     };
   }, [aspectRatio, fps, qrbox, scanCooldownMs]);
 
-  // Flashlight toggle
   const toggleTorch = async () => {
     const scanner = scannerRef.current;
     if (!scanner || !isRunningRef.current || !hasTorch) return;
@@ -154,7 +153,7 @@ const QRScannerComponent = ({
     try {
       const nextState = !isTorchOn;
       await scanner.applyVideoConstraints({
-        advanced: [{ torch: nextState }]
+        advanced: [{ torch: nextState }],
       });
       setIsTorchOn(nextState);
     } catch (err) {
@@ -162,17 +161,16 @@ const QRScannerComponent = ({
     }
   };
 
-  // Switch camera track
   const switchCamera = async () => {
     const scanner = scannerRef.current;
     if (!scanner || cameras.length <= 1) return;
 
     try {
-      const currentIndex = cameras.findIndex(c => c.id === currentCameraId);
+      const currentIndex = cameras.findIndex((c) => c.id === currentCameraId);
       const nextIndex = (currentIndex + 1) % cameras.length;
       const nextCamera = cameras[nextIndex];
-      
-      setStatus('Switching camera feed...');
+
+      setStatus('Switching camera...');
       setIsTorchOn(false);
       setHasTorch(false);
 
@@ -203,14 +201,13 @@ const QRScannerComponent = ({
         },
         () => {}
       );
-      
+
       isRunningRef.current = true;
       setStatus('Point the camera at the attendee QR code.');
 
-      // Query new track for torch
       try {
         const track = scanner.getRunningTrack();
-        if (track && track.getCapabilities) {
+        if (track?.getCapabilities) {
           const capabilities = track.getCapabilities();
           setHasTorch(!!capabilities?.torch);
         }
@@ -223,57 +220,70 @@ const QRScannerComponent = ({
   };
 
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-900 shadow-lg">
-      <style dangerouslySetInnerHTML={{__html: `
-        #${elementIdRef.current} video {
-          width: 100% !important;
-          height: 100% !important;
-          object-fit: cover !important;
-        }
-      `}} />
-      <div className="relative w-full aspect-square md:aspect-[4/3] bg-black">
-        <div
-          id={elementIdRef.current}
-          className="w-full h-full"
-        />
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            #${elementIdRef.current} video {
+              width: 100% !important;
+              height: 100% !important;
+              object-fit: cover !important;
+            }
+          `,
+        }}
+      />
 
-        {/* Scan overlay grid lines */}
-        <div className="absolute inset-0 border border-white/5 pointer-events-none flex items-center justify-center">
-          <div className="w-64 h-64 border-2 border-dashed border-cyan-400/50 rounded-2xl animate-pulse flex items-center justify-center">
-            <div className="w-48 h-48 border border-cyan-300/30 rounded-xl" />
+      <div className="relative aspect-square w-full bg-black sm:aspect-[4/3]">
+        <div id={elementIdRef.current} className="h-full w-full" />
+
+        {/* Scan guide overlay */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="relative h-56 w-56 rounded-2xl border-2 border-dashed border-blue-400/60 sm:h-64 sm:w-64">
+            {/* Corner accents */}
+            <div className="absolute -left-1 -top-1 h-6 w-6 rounded-tl-xl border-l-[3px] border-t-[3px] border-blue-500" />
+            <div className="absolute -right-1 -top-1 h-6 w-6 rounded-tr-xl border-r-[3px] border-t-[3px] border-blue-500" />
+            <div className="absolute -bottom-1 -left-1 h-6 w-6 rounded-bl-xl border-b-[3px] border-l-[3px] border-blue-500" />
+            <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-br-xl border-b-[3px] border-r-[3px] border-blue-500" />
           </div>
         </div>
-        
-        {/* Floating controller overlays */}
-        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center z-10 pointer-events-none">
-          {hasTorch && (
+
+        {/* Floating controls */}
+        <div className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between">
+          {hasTorch ? (
             <button
               type="button"
               onClick={toggleTorch}
-              className="pointer-events-auto rounded-full bg-white/20 hover:bg-white/30 text-white backdrop-blur-md p-3.5 transition border border-white/10 active:scale-95 shadow-md"
+              className={`rounded-xl border border-white/10 p-3 shadow-md backdrop-blur-md transition active:scale-95 ${
+                isTorchOn
+                  ? 'bg-amber-400/90 text-slate-900'
+                  : 'bg-white/15 text-white hover:bg-white/25'
+              }`}
               title="Toggle Flashlight"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill={isTorchOn ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-6 h-6 ${isTorchOn ? 'text-yellow-300' : 'text-white'}`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-              </svg>
+              <BoltIcon className="h-5 w-5" />
             </button>
+          ) : (
+            <div className="h-11 w-11" />
           )}
+
           {cameras.length > 1 && (
             <button
               type="button"
               onClick={switchCamera}
-              className="pointer-events-auto rounded-full bg-white/20 hover:bg-white/30 text-white backdrop-blur-md p-3.5 transition border border-white/10 active:scale-95 shadow-md ml-auto"
-              title="Switch Camera Feed"
+              className="rounded-xl border border-white/10 bg-white/15 p-3 text-white shadow-md backdrop-blur-md transition hover:bg-white/25 active:scale-95"
+              title="Switch Camera"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-white">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
+              <ArrowsRightLeftIcon className="h-5 w-5" />
             </button>
           )}
         </div>
       </div>
-      <div className="border-t border-slate-800 bg-slate-950 px-4 py-3.5 text-center text-xs font-semibold text-slate-400 tracking-wide">
-        {status}
+
+      {/* Status bar */}
+      <div className="border-t border-slate-800 bg-slate-950 px-4 py-3 text-center">
+        <p className="text-xs font-medium tracking-wide text-slate-400">
+          {status}
+        </p>
       </div>
     </div>
   );

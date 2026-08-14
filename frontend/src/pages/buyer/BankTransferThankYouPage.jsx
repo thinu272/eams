@@ -1,46 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import PublicLayout from '../../components/layout/PublicLayout';
-import { Link } from 'react-router-dom';
 import {
   CheckCircleIcon,
   ClockIcon,
   EnvelopeIcon,
   ArrowRightIcon,
+  TicketIcon,
+  ShieldCheckIcon,
+  UserIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 const BankTransferThankYouPage = () => {
-  const navigate = useNavigate();
   const { orderId } = useParams();
   const [orderData, setOrderData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const fetchOrderData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/bank-transfer/instructions/${orderId}`);
+        const data = await response.json();
+        if (data.data) {
+          setOrderData(data.data.order);
+        }
+      } catch (error) {
+        console.error('Error fetching order data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchOrderData();
   }, [orderId]);
 
-  const fetchOrderData = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/bank-transfer/instructions/${orderId}`);
-      const data = await response.json();
-      if (data.data) {
-        setOrderData(data.data.order);
-      }
-    } catch (error) {
-      console.error('Error fetching order data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const currency = orderData?.currency || orderData?.eventId?.settings?.currency || orderData?.event?.settings?.currency || 'LKR';
-
+  // ─── Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
       <PublicLayout>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
         </div>
       </PublicLayout>
     );
@@ -48,34 +49,51 @@ const BankTransferThankYouPage = () => {
 
   return (
     <PublicLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
-              <CheckCircleIcon className="h-12 w-12 text-green-600" />
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-2xl px-4 py-14 sm:px-6 lg:px-8">
+          {/* ────────────── Success Header ────────────── */}
+          <div className="mb-10 text-center">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50">
+              <CheckCircleIcon className="h-11 w-11 text-emerald-600" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Submitted Successfully</h1>
-            <p className="text-gray-600">Thank you for your payment submission</p>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
+              Payment Submitted
+            </p>
+            <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 md:text-4xl">
+              Thank You
+            </h1>
+            <p className="mt-3 text-sm font-medium text-slate-500">
+              Your payment submission has been received successfully
+            </p>
           </div>
 
-          {/* Success Message */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <ClockIcon className="h-6 w-6 text-blue-600 flex-shrink-0 mt-0.5" />
+          {/* ────────────── Info Cards ────────────── */}
+          <div className="mb-6 overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+            <div className="space-y-0 divide-y divide-slate-50">
+              <div className="flex items-start gap-4 px-7 py-6">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-brand-main">
+                  <ClockIcon className="h-5 w-5" />
+                </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Verification Timeline</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Your payment will be verified within 48 hours. You will receive an email and SMS once verification is completed.
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                    Verification Timeline
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                    Your payment will be verified within <strong className="text-slate-700">48 hours</strong>.
+                    You will receive an email and SMS once verification is completed.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <EnvelopeIcon className="h-6 w-6 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-4 px-7 py-6">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-brand-main">
+                  <EnvelopeIcon className="h-5 w-5" />
+                </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Confirmation Details</h3>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                    Confirmation Details
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
                     A confirmation email has been sent with your payment submission details.
                   </p>
                 </div>
@@ -83,69 +101,103 @@ const BankTransferThankYouPage = () => {
             </div>
           </div>
 
-          {/* Order Reference */}
+          {/* ────────────── Order Reference ────────────── */}
           {orderData && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-              <h3 className="font-semibold text-blue-900 mb-2">Your Reference Number</h3>
-              <p className="text-2xl font-bold text-blue-900">{orderData.orderNumber}</p>
-              <p className="text-sm text-blue-700 mt-2">
-                Please keep this reference number for your records.
-              </p>
+            <div className="mb-6 overflow-hidden rounded-[32px] border border-blue-100 bg-blue-50/60">
+              <div className="px-7 py-6 text-center">
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-500">
+                  Your Reference Number
+                </p>
+                <p className="mt-2 text-3xl font-black tracking-tight text-blue-900">
+                  {orderData.orderNumber}
+                </p>
+                <p className="mt-2 text-xs font-medium text-blue-600">
+                  Please keep this reference number for your records
+                </p>
+              </div>
             </div>
           )}
 
-          {/* Next Steps */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h3 className="font-semibold text-gray-900 mb-4">What Happens Next?</h3>
-            <ol className="space-y-3 text-sm text-gray-600">
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">1</span>
-                <span>Our team will verify your payment against bank records</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">2</span>
-                <span>Once verified, your tickets will be confirmed and activated</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">3</span>
-                <span>You'll receive QR codes and attendee assignment links via email</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">4</span>
-                <span>Complete attendee details and upload photos if required</span>
-              </li>
-            </ol>
-          </div>
+          {/* ────────────── Next Steps ────────────── */}
+          <div className="mb-6 overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+            <div className="border-b border-slate-50 bg-slate-50/50 px-7 py-5">
+              <h3 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                What Happens Next?
+              </h3>
+            </div>
 
-          {/* Support Contact */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
-            <h3 className="font-semibold text-gray-900 mb-2">Need Help?</h3>
-            <p className="text-sm text-gray-600 mb-3">
-              If you don't receive confirmation within 48 hours, please contact our support team.
-            </p>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-700">
-                <span className="font-medium">Email:</span> support@entrynex.com
-              </p>
-              <p className="text-gray-700">
-                <span className="font-medium">Phone:</span> +94 11 123 4567
-              </p>
+            <div className="space-y-0 divide-y divide-slate-50 px-7">
+              {[
+                {
+                  icon: ShieldCheckIcon,
+                  text: 'Our team will verify your payment against bank records',
+                },
+                {
+                  icon: CheckCircleIcon,
+                  text: 'Once verified, your tickets will be confirmed and activated',
+                },
+                {
+                  icon: TicketIcon,
+                  text: "You'll receive QR codes and attendee assignment links via email",
+                },
+                {
+                  icon: UserIcon,
+                  text: 'Complete attendee details and upload photos if required',
+                },
+              ].map((step, index) => (
+                <div key={index} className="flex items-start gap-4 py-5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-[11px] font-black text-white">
+                    {index + 1}
+                  </div>
+                  <div className="flex items-center gap-3 pt-1.5">
+                    <step.icon className="h-4 w-4 shrink-0 text-brand-main" />
+                    <span className="text-sm font-medium text-slate-600">{step.text}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* ────────────── Support ────────────── */}
+          <div className="mb-8 overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+            <div className="px-7 py-6">
+              <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                Need Help?
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                If you don't receive confirmation within 48 hours, please contact our support team.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                <a
+                  href="mailto:support@entrynex.com"
+                  className="font-bold text-brand-main transition hover:underline"
+                >
+                  support@entrynex.com
+                </a>
+                <span className="text-slate-300">·</span>
+                <a
+                  href="tel:+94111234567"
+                  className="font-bold text-brand-main transition hover:underline"
+                >
+                  +94 11 123 4567
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* ────────────── Actions ────────────── */}
           <div className="space-y-3">
             <Link
               to="/events"
-              className="block w-full text-center inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+              className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)]"
             >
               <span>Browse More Events</span>
-              <ArrowRightIcon className="h-5 w-5" />
+              <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
-            
+
             <Link
               to="/buyer/tickets"
-              className="block w-full text-center px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white py-4 text-xs font-black uppercase tracking-[0.15em] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
             >
               View My Orders
             </Link>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
-import Topbar from './Topbar';
+import Header from './Header';
+
 
 const DashboardLayout = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -21,7 +22,7 @@ const DashboardLayout = ({ children }) => {
       />
       
       <main className="flex-1 overflow-auto">
-        <Topbar onMenuClick={() => setIsMobileMenuOpen(true)} />
+        <Header onMenuClick={() => setIsMobileMenuOpen(true)} />
         <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
       </main>
     </div>

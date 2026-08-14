@@ -73,7 +73,107 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  canConfirmCashPayments: {
+    type: Boolean,
+    default: false,
+  },
   canApproveBankTransfer: {
+    type: Boolean,
+    default: false,
+  },
+  canViewPayments: {
+    type: Boolean,
+    default: false,
+  },
+  canProcessRefunds: {
+    type: Boolean,
+    default: false,
+  },
+  canManagePaymentMethods: {
+    type: Boolean,
+    default: false,
+  },
+  canViewPaymentHistory: {
+    type: Boolean,
+    default: false,
+  },
+  canHandlePaymentDisputes: {
+    type: Boolean,
+    default: false,
+  },
+  canGeneratePaymentReports: {
+    type: Boolean,
+    default: false,
+  },
+  canAddAttendees: {
+    type: Boolean,
+    default: false,
+  },
+  canPhotoVerification: {
+    type: Boolean,
+    default: false,
+  },
+  canSendInvitations: {
+    type: Boolean,
+    default: false,
+  },
+  canExcelBulkImports: {
+    type: Boolean,
+    default: false,
+  },
+  canGateScanAccess: {
+    type: Boolean,
+    default: false,
+  },
+  canViewEvents: {
+    type: Boolean,
+    default: false,
+  },
+  canEditEvents: {
+    type: Boolean,
+    default: false,
+  },
+  canViewAttendees: {
+    type: Boolean,
+    default: false,
+  },
+  canEditAttendees: {
+    type: Boolean,
+    default: false,
+  },
+  canViewTickets: {
+    type: Boolean,
+    default: false,
+  },
+  canEditTickets: {
+    type: Boolean,
+    default: false,
+  },
+  canScanTickets: {
+    type: Boolean,
+    default: false,
+  },
+  canViewZones: {
+    type: Boolean,
+    default: false,
+  },
+  canManageZones: {
+    type: Boolean,
+    default: false,
+  },
+  canViewReports: {
+    type: Boolean,
+    default: false,
+  },
+  canExportReports: {
+    type: Boolean,
+    default: false,
+  },
+  canViewRevenue: {
+    type: Boolean,
+    default: false,
+  },
+  canSendNotifications: {
     type: Boolean,
     default: false,
   },

@@ -27,5 +27,8 @@ All notable changes to the **ENTRYNEX / EAMS** project documentation are listed 
 ### 2026-07-27
 - Initial repository import and base project setup.
 
+### 2026-08-05
+- Updated error handling and logging documentation (see `14_ERROR_HANDLING_LOGGING.md`).
+
 ---
 *This changelog reflects documentation and minor code updates performed throughout the project lifecycle. For full code change history, refer to the Git commit log.*

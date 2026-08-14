@@ -1,14 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getMyEvents } from '../../api/events';
 import { bulkUpload, downloadTemplate } from '../../api/attendees';
 import DashboardLayout from '../../components/layout/DashboardLayout';
+import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import {
+  ArrowLeftIcon,
+  ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
+  DocumentIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+} from '@heroicons/react/24/outline';
 
 const BulkUploadPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEvent, setSelectedEvent] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedEvent, setSelectedEvent] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [categoryId, setCategoryId] = useState('');
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -19,11 +31,11 @@ const BulkUploadPage = () => {
     getMyEvents().then((response) => {
       const myEvents = response.data?.data?.events || [];
       setEvents(myEvents);
-      
+
       const lastId = localStorage.getItem('lastSelectedEventId');
-      if (lastId && myEvents.some(e => e._id === lastId)) {
+      if (lastId && myEvents.some((e) => e._id === lastId)) {
         setSelectedEvent(lastId);
-        const selected = myEvents.find(e => e._id === lastId);
+        const selected = myEvents.find((e) => e._id === lastId);
         setCategoryId(selected?.categories?.[0]?.id || '');
       } else if (myEvents.length > 0) {
         setSelectedEvent(myEvents[0]._id);
@@ -34,19 +46,25 @@ const BulkUploadPage = () => {
     });
 
     const handleEventSelect = (e) => {
-      const newId = e.detail;
+      const newId = e.detail ? String(e.detail) : '';
+      if (!newId || newId === 'undefined') return;
       setSelectedEvent(newId);
-      // Auto-set category for first available in new event
-      getMyEvents().then(res => {
-        const matching = (res.data?.data?.events || []).find(ev => ev._id === newId);
+      localStorage.setItem('lastSelectedEventId', newId);
+      getMyEvents().then((res) => {
+        const matching = (res.data?.data?.events || []).find(
+          (ev) => ev._id === newId
+        );
         if (matching?.categories?.length) {
           setCategoryId(matching.categories[0].id);
+        } else {
+          setCategoryId('');
         }
       });
     };
 
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   const selectedEventData = useMemo(
@@ -55,18 +73,22 @@ const BulkUploadPage = () => {
   );
 
   const availableCategories = useMemo(() => {
-    if (!selectedEventData || !selectedEventData.categories) return [];
-    
-    // Sub-organisers can only see categories where they management at least one of the required zones
+    if (!selectedEventData?.categories) return [];
+
     if (user?.role === 'SubOrganiser') {
-      const myZones = (user.assignedZones || user.responsibilities?.zoneIds || []).map(String);
-      return selectedEventData.categories.filter(cat => {
+      const myZones = (
+        user.assignedZones ||
+        user.responsibilities?.zoneIds ||
+        []
+      ).map(String);
+      return selectedEventData.categories.filter((cat) => {
         const catZones = (cat.allowedZones || []).map(String);
-        // Show if cat has no zones (general access) OR has any zone overlap with sub-organiser
-        return catZones.length === 0 || catZones.some(z => myZones.includes(z));
+        return (
+          catZones.length === 0 || catZones.some((z) => myZones.includes(z))
+        );
       });
     }
-    
+
     return selectedEventData.categories;
   }, [selectedEventData, user]);
 
@@ -109,62 +131,124 @@ const BulkUploadPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bulk Upload Attendees</h1>
-          <p className="text-sm text-gray-500">Upload an Excel sheet to create attendee records quickly for your assigned event and category.</p>
-        </div>
+      <div className="space-y-6 pb-20">
+        {/* Header */}
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-6 sm:px-8 sm:py-7">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Link
+                  to="/suborg/dashboard"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                >
+                  <ArrowLeftIcon className="h-3.5 w-3.5" />
+                  Dashboard
+                </Link>
+                <span className="text-slate-300">·</span>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                  Bulk Upload
+                </p>
+              </div>
+              <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                Bulk upload attendees
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                Upload an Excel sheet to create attendee records for your
+                assigned event and category.
+              </p>
+            </div>
+          </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Step 1</p>
-            <h2 className="mt-2 text-lg font-semibold text-gray-900">Prepare the Excel file</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Use the template so column names match what the importer expects. Rows with missing required values will be skipped and reported back.
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {/* Step 1 */}
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
+              Step 1
             </p>
-            <div className="mt-5 rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
-              Expected columns:
-              <div className="mt-2 flex flex-wrap gap-2">
-                {['Full Name', 'Email', 'Phone', 'National ID', 'Passport Number', 'Date of Birth', 'Nationality', 'Notes'].map((column) => (
-                  <span key={column} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+            <h2 className="mt-1.5 text-lg font-bold text-slate-900">
+              Prepare the Excel file
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Use the template so column names match the importer. Rows with
+              missing required values are skipped and reported.
+            </p>
+
+            <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                Expected columns
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  'Full Name',
+                  'Email',
+                  'Phone',
+                  'National ID',
+                  'Passport Number',
+                  'Date of Birth',
+                  'Nationality',
+                  'Notes',
+                ].map((column) => (
+                  <span
+                    key={column}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                  >
                     {column}
                   </span>
                 ))}
               </div>
             </div>
-            <div className="mt-5">
-              <Button variant="outline" onClick={handleDownload}>
-                Download Template
-              </Button>
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Step 2</p>
-            <h2 className="mt-2 text-lg font-semibold text-gray-900">Upload completed sheet</h2>
+            <Button
+              variant="outline"
+              className="mt-5 border-blue-200 text-blue-700 hover:bg-blue-50"
+              onClick={handleDownload}
+            >
+              <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" />
+              Download template
+            </Button>
+          </Card>
 
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Event</label>
+          {/* Step 2 */}
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
+              Step 2
+            </p>
+            <h2 className="mt-1.5 text-lg font-bold text-slate-900">
+              Upload completed sheet
+            </h2>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Event
+                </span>
                 <select
                   value={selectedEvent}
-                  onChange={(event) => {
-                    const value = event.target.value;
+                  onChange={(e) => {
+                    const value = e.target.value;
                     setSelectedEvent(value);
+                    localStorage.setItem('lastSelectedEventId', value);
                     const selected = events.find((item) => item._id === value);
-                    // Find first available category instead of first absolute category
                     if (selected?.categories) {
-                      const myZones = (user?.assignedZones || user?.responsibilities?.zoneIds || []).map(String);
-                      const available = selected.categories.filter(cat => {
+                      const myZones = (
+                        user?.assignedZones ||
+                        user?.responsibilities?.zoneIds ||
+                        []
+                      ).map(String);
+                      const available = selected.categories.filter((cat) => {
                         const catZones = (cat.allowedZones || []).map(String);
-                        return catZones.length === 0 || catZones.some(z => myZones.includes(z));
+                        return (
+                          catZones.length === 0 ||
+                          catZones.some((z) => myZones.includes(z))
+                        );
                       });
                       setCategoryId(available?.[0]?.id || '');
                     } else {
                       setCategoryId('');
                     }
                   }}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 >
                   {events.map((event) => (
                     <option key={event._id} value={event._id}>
@@ -172,14 +256,16 @@ const BulkUploadPage = () => {
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Category</label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Category
+                </span>
                 <select
                   value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 >
                   <option value="">Select a category</option>
                   {availableCategories.map((category) => (
@@ -188,75 +274,120 @@ const BulkUploadPage = () => {
                     </option>
                   ))}
                 </select>
-                {user?.role === 'SubOrganiser' && availableCategories.length === 0 && selectedEvent && (
-                  <p className="mt-1 text-[10px] text-red-500 italic">No categories available for your assigned zones.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Excel file</label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center transition-colors hover:border-blue-300 hover:bg-blue-50">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={(event) => setFile(event.target.files?.[0] || null)}
-                  className="hidden"
-                />
-                <p className="text-sm font-medium text-gray-900">{file?.name || 'Choose an Excel file'}</p>
-                <p className="mt-2 text-xs text-gray-500">Supported formats: .xlsx, .xls</p>
+                {user?.role === 'SubOrganiser' &&
+                  availableCategories.length === 0 &&
+                  selectedEvent && (
+                    <p className="text-xs text-rose-500">
+                      No categories available for your assigned zones.
+                    </p>
+                  )}
               </label>
             </div>
 
-            <div className="mt-5 flex gap-3">
-              <Button onClick={handleUpload} loading={uploading}>
-                Upload and Create Attendees
+            <div className="mt-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Excel file
+              </span>
+              <label className="mt-1.5 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-10 text-center transition hover:border-blue-300 hover:bg-blue-50/40">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <DocumentIcon className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-semibold text-slate-900">
+                  {file?.name || 'Choose an Excel file'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Supported: .xlsx, .xls
+                </p>
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button
+                className="bg-blue-600 hover:bg-blue-500 text-white"
+                onClick={handleUpload}
+                disabled={uploading}
+              >
+                <ArrowUpTrayIcon className="mr-1.5 h-4 w-4" />
+                {uploading ? 'Uploading…' : 'Upload and create'}
               </Button>
-              <Button variant="outline" onClick={() => setFile(null)}>
-                Clear File
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFile(null);
+                  setResult(null);
+                }}
+              >
+                Clear file
               </Button>
             </div>
-          </div>
+          </Card>
         </div>
 
+        {/* Results */}
         {result && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Upload Results</h2>
-                <p className="text-sm text-gray-500">Review what was created and which rows still need attention.</p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Upload results
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Review created rows and any errors.
+                </p>
               </div>
               <div className="flex gap-3">
-                <div className="rounded-xl bg-blue-50 px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-blue-600">{result.created || 0}</p>
-                  <p className="text-xs text-blue-700">Created</p>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-center min-w-[88px]">
+                  <p className="text-2xl font-bold text-blue-600">
+                    {result.created || 0}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">
+                    Created
+                  </p>
                 </div>
-                <div className="rounded-xl bg-red-50 px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-red-600">{result.errors?.length || 0}</p>
-                  <p className="text-xs text-red-700">Errors</p>
+                <div className="rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-center min-w-[88px]">
+                  <p className="text-2xl font-bold text-rose-600">
+                    {result.errors?.length || 0}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-700">
+                    Errors
+                  </p>
                 </div>
               </div>
             </div>
 
             {result.errors?.length > 0 ? (
-              <div className="mt-5 overflow-hidden rounded-2xl border border-red-100">
-                <div className="grid grid-cols-[120px_1fr] bg-red-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-red-700">
+              <div className="mt-5 overflow-hidden rounded-xl border border-rose-100">
+                <div className="grid grid-cols-[100px_1fr] bg-rose-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-rose-700">
                   <span>Row</span>
                   <span>Issue</span>
                 </div>
                 {result.errors.map((error, index) => (
-                  <div key={`${error.row}-${index}`} className="grid grid-cols-[120px_1fr] border-t border-red-100 px-4 py-3 text-sm text-gray-700">
-                    <span className="font-medium text-gray-900">{error.row}</span>
+                  <div
+                    key={`${error.row}-${index}`}
+                    className="grid grid-cols-[100px_1fr] border-t border-rose-50 px-4 py-2.5 text-sm text-slate-700"
+                  >
+                    <span className="font-semibold text-slate-900">
+                      {error.row}
+                    </span>
                     <span>{error.message}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">
-                No row-level errors were reported. Your attendee list was imported cleanly.
+              <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3.5">
+                <CheckCircleIcon className="h-5 w-5 shrink-0 text-blue-600" />
+                <p className="text-sm text-blue-800">
+                  No row-level errors. Your attendee list imported cleanly.
+                </p>
               </div>
             )}
-          </div>
+          </Card>
         )}
       </div>
     </DashboardLayout>

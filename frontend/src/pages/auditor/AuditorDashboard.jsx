@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChartBarIcon,
@@ -6,9 +6,9 @@ import {
   EyeIcon,
   ShieldCheckIcon,
   UserGroupIcon,
-} from '@heroicons/react/24/solid';
+} from '@heroicons/react/24/outline';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import Card from '../../components/ui/Card';
 import { getMyEvents } from '../../api/events';
 import { getAuditReports } from '../../api/audit';
 
@@ -16,29 +16,51 @@ const quickLinks = [
   {
     to: '/auditor/logs',
     title: 'Audit Logs',
-    description: 'Review entry and zone activity with read-only filters and pagination.',
+    description:
+      'Review entry and zone activity with read-only filters and pagination.',
     icon: ClipboardDocumentListIcon,
-    tone: 'border-amber-200 bg-amber-50 text-amber-800',
   },
   {
     to: '/auditor/reports',
     title: 'Audit Reports',
-    description: 'Inspect attendance and zone movement reports with export support.',
+    description:
+      'Inspect attendance and zone movement reports with export support.',
     icon: ChartBarIcon,
-    tone: 'border-cyan-200 bg-cyan-50 text-cyan-800',
   },
 ];
 
 const statCards = [
-  { key: 'totalAttendees', label: 'Total Attendees', icon: UserGroupIcon, tone: 'bg-white text-slate-900' },
-  { key: 'confirmedAttendees', label: 'Confirmed', icon: ShieldCheckIcon, tone: 'bg-emerald-50 text-emerald-900' },
-  { key: 'checkedInCount', label: 'Checked In', icon: EyeIcon, tone: 'bg-cyan-50 text-cyan-900' },
-  { key: 'deniedEntries', label: 'Denied Entries', icon: ClipboardDocumentListIcon, tone: 'bg-rose-50 text-rose-900' },
+  {
+    key: 'totalAttendees',
+    label: 'Total Attendees',
+    icon: UserGroupIcon,
+    valueColor: 'text-slate-900',
+  },
+  {
+    key: 'confirmedAttendees',
+    label: 'Confirmed',
+    icon: ShieldCheckIcon,
+    valueColor: 'text-emerald-600',
+  },
+  {
+    key: 'checkedInCount',
+    label: 'Checked In',
+    icon: EyeIcon,
+    valueColor: 'text-blue-600',
+  },
+  {
+    key: 'deniedEntries',
+    label: 'Denied Entries',
+    icon: ClipboardDocumentListIcon,
+    valueColor: 'text-rose-600',
+  },
 ];
 
 const AuditorDashboard = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [selectedEventId, setSelectedEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [summary, setSummary] = useState({
     totalAttendees: 0,
     confirmedAttendees: 0,
@@ -50,8 +72,9 @@ const AuditorDashboard = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
-      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      const isValidEvent = nextEvents.some((e) => e._id === selectedEventId);
+      const fallbackEventId =
+        (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
@@ -61,100 +84,151 @@ const AuditorDashboard = () => {
 
   useEffect(() => {
     const handleEventSelect = (event) => {
-      const nextId = event.detail || '';
-      setSelectedEventId(nextId);
+      setSelectedEventId(event.detail || '');
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
-  useEffect(() => {
+  const loadSummary = useCallback(async () => {
     if (!selectedEventId) return;
-    getAuditReports({ eventId: selectedEventId }).then((response) => {
+    try {
+      const response = await getAuditReports({ eventId: selectedEventId });
       setSummary(response.data?.data?.summary || {});
-    });
+    } catch (error) {
+      console.warn('Failed to refresh audit summary:', error);
+    }
   }, [selectedEventId]);
+
+  useAutoRefresh(loadSummary, {
+    enabled: !!selectedEventId,
+    interval: 15000,
+    immediate: true,
+    deps: [selectedEventId],
+  });
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
+    window.dispatchEvent(
+      new CustomEvent('entrynex:event-select', { detail: nextId })
+    );
   };
 
   const selectedEvent = useMemo(
     () => events.find((event) => event._id === selectedEventId),
-    [events, selectedEventId],
+    [events, selectedEventId]
   );
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-amber-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 sm:px-6">
+        {/* Header */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">Audit Workspace</p>
-              <h1 className="mt-3 text-4xl font-black tracking-tight">Auditor Dashboard</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
-                Read-only visibility into attendance, access activity, and event evidence trails. Auditor access follows the event assignments granted by Main Organisers and Sub Organisers.
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                  Audit Workspace
+                </p>
+              </div>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Auditor Dashboard
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                Read-only visibility into attendance, access activity, and event
+                evidence trails. Access follows event assignments granted by
+                organisers.
               </p>
             </div>
-            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Audited Event</p>
+
+            <div className="w-full max-w-xs">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Audited Event
+              </p>
               <select
                 value={selectedEventId}
-                onChange={(event) => handleEventChange(event.target.value)}
-                className="mt-3 w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-4 text-sm font-semibold text-white outline-none"
+                onChange={(e) => handleEventChange(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
               >
                 {events.map((event) => (
-                  <option key={event._id} value={event._id} className="text-slate-900">
+                  <option key={event._id} value={event._id}>
                     {event.name}
                   </option>
                 ))}
               </select>
             </div>
           </div>
-        </section>
+        </div>
 
-        <Card className="rounded-[28px] border-slate-200 bg-white">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        {/* Current scope notice */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-400">Current Scope</p>
-              <h2 className="mt-2 text-2xl font-black text-slate-900">{selectedEvent?.name || 'Select an event'}</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                This workspace is synchronized with the global event selector and remains strictly read-only.
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Current Scope
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">
+                {selectedEvent?.name || 'Select an event'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                This workspace stays synchronized with the global event selector
+                and remains strictly read-only.
               </p>
             </div>
-            <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-              Auditor access only. No editing permissions.
+            <div className="rounded-xl bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700">
+              Auditor access only · No editing
             </div>
           </div>
-        </Card>
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {statCards.map(({ key, label, icon: Icon, tone }) => (
-            <div key={key} className={`rounded-[28px] border border-slate-200 p-5 shadow-sm ${tone}`}>
-              <div className="flex items-start justify-between gap-4">
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {statCards.map(({ key, label, icon: Icon, valueColor }) => (
+            <div
+              key={key}
+              className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.2em] opacity-60">{label}</p>
-                  <p className="mt-3 text-4xl font-black">{summary[key] || 0}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    {label}
+                  </p>
+                  <p
+                    className={`mt-2 text-3xl font-bold tracking-tight ${valueColor}`}
+                  >
+                    {summary[key] || 0}
+                  </p>
                 </div>
-                <div className="rounded-2xl bg-slate-900/5 p-3">
-                  <Icon className="h-6 w-6" />
+                <div className="rounded-xl bg-slate-50 p-2.5 text-slate-500">
+                  <Icon className="h-5 w-5" />
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        {/* Quick links */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {quickLinks.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.to} to={item.to} className={`rounded-[28px] border p-6 shadow-sm transition ${item.tone}`}>
-                <Icon className="h-10 w-10" />
-                <h3 className="mt-4 text-xl font-black">{item.title}</h3>
-                <p className="mt-2 text-sm font-medium text-slate-600">{item.description}</p>
+              <Link
+                key={item.to}
+                to={item.to}
+                className="group rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md"
+              >
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">
+                  {item.title}
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                  {item.description}
+                </p>
               </Link>
             );
           })}

@@ -1,73 +1,100 @@
 import React from 'react';
+import Button from '../ui/Button';
+import Badge from '../ui/Badge';
+import {
+  MapPinIcon,
+  UsersIcon,
+  CheckBadgeIcon,
+  QrCodeIcon,
+} from '@heroicons/react/24/outline';
 
 const ZoneCard = ({ zone, onViewAttendees, onMonitor }) => {
-  const occupancy = zone.capacity > 0 ? Math.min(100, Math.round((zone.currentOccupancy / zone.capacity) * 100)) : 0;
+  const capacity = Number(zone?.capacity) || 0;
+  const checkedIn = Number(
+    zone?.checkedInCount ?? zone?.checkedIn ?? zone?.occupancy ?? 0
+  );
+  const fillPct =
+    capacity > 0 ? Math.min(100, Math.round((checkedIn / capacity) * 100)) : 0;
 
   return (
-    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Assigned zone</p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900">{zone.name}</h3>
+    <div className="group overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+            <MapPinIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900 truncate">
+                {zone?.name || 'Unnamed zone'}
+              </h3>
+              {zone?.isActive === false && <Badge color="gray">Inactive</Badge>}
+            </div>
+            <p className="mt-1 text-sm text-slate-500 line-clamp-2">
+              {zone?.description || 'Operational zone for entry and scans.'}
+            </p>
+          </div>
         </div>
-        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
-          {zone.currentOccupancy}/{zone.capacity || '-'} inside
-        </span>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-blue-100/70 bg-blue-50/80 px-3 py-3">
+            <div className="flex items-center gap-1.5">
+              <UsersIcon className="h-3.5 w-3.5 text-blue-600/80" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">
+                Capacity
+              </p>
+            </div>
+            <p className="mt-1 text-xl font-bold text-slate-900">
+              {capacity > 0 ? capacity : '∞'}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+            <div className="flex items-center gap-1.5">
+              <CheckBadgeIcon className="h-3.5 w-3.5 text-slate-500" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Checked in
+              </p>
+            </div>
+            <p className="mt-1 text-xl font-bold text-slate-900">{checkedIn}</p>
+          </div>
+        </div>
+
+        {capacity > 0 && (
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center justify-between text-[11px]">
+              <span className="font-medium text-slate-500">Occupancy</span>
+              <span className="font-semibold text-slate-700">{fillPct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                style={{ width: `${fillPct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+            onClick={onMonitor}
+          >
+            <QrCodeIcon className="mr-1.5 h-4 w-4" />
+            Monitor / Scan
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 border-blue-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"
+            onClick={onViewAttendees}
+          >
+            <UsersIcon className="mr-1.5 h-4 w-4" />
+            Attendees
+          </Button>
+        </div>
       </div>
-
-      <div className="mt-5 space-y-3">
-        <div>
-          <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>Occupancy</span>
-            <span>{occupancy}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100">
-            <div className="h-2 rounded-full bg-sky-500" style={{ width: `${occupancy}%` }} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
-          <div>
-            <p className="text-slate-500">Attendees</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{zone.attendeeCount}</p>
-          </div>
-          <div>
-            <p className="text-slate-500">Categories</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{zone.allowedCategories?.length || 0}</p>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Allowed tickets</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {(zone.allowedCategories || []).length > 0 ? zone.allowedCategories.map((category) => (
-              <span key={category.id || category.name} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                {category.name}
-              </span>
-            )) : (
-              <span className="text-sm text-slate-500">No category mapping yet.</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={() => onViewAttendees?.(zone)}
-          className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-        >
-          View attendees
-        </button>
-        <button
-          type="button"
-          onClick={() => onMonitor?.(zone)}
-          className="flex-1 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          Monitor entries
-        </button>
-      </div>
-    </article>
+    </div>
   );
 };
 

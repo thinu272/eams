@@ -1,11 +1,10 @@
-
-
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { getSocketUrl, getAssetUrl } from '../../utils/backend';
 import { formatDistanceToNow } from 'date-fns';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -14,7 +13,9 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
+import PermissionGuard from '../../components/auth/PermissionGuard';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { getMyEvents } from '../../api/events';
 import {
   getOrganiserWorkspace,
@@ -28,6 +29,7 @@ import {
   deleteTicketCategory,
   createSubOrganiser,
   updateSubOrganiser,
+  deleteSubOrganiser,
   updateVerificationStatus,
   resendInvite,
   cancelInvite,
@@ -46,71 +48,37 @@ import {
   deleteSponsor,
 } from '../../api/organiser';
 import PaymentsDashboard from './PaymentsDashboard';
-import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
+import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon, UsersIcon, MapPinIcon, TrashIcon, ChartBarIcon, ClockIcon, UserGroupIcon, CurrencyDollarIcon, ChartPieIcon, DocumentIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 
 const statusColor = {
-  pending: 'amber',
-  confirmed: 'green',
-  rejected: 'red',
-  invited: 'blue',
-  verified: 'green',
-  PENDING: 'amber',
-  ACCEPTED: 'green',
-  DECLINED: 'red',
+  pending: 'amber', confirmed: 'green', rejected: 'red', invited: 'blue',
+  verified: 'green', PENDING: 'amber', ACCEPTED: 'green', DECLINED: 'red',
 };
 
 const emptyAttendee = { fullName: '', email: '', phone: '', nationalId: '', categoryId: '', notes: '' };
-const emptyCategory = { 
-  name: '', 
-  description: '', 
-  price: 0, 
-  capacity: 0, 
-  allowedZones: [], 
-  benefits: [],
-  isPrivate: false,
-  maxUsage: null,
-  assignedSubOrganisers: [],
-  isVisible: true
+const emptyCategory = {
+  name: '', description: '', price: 0, capacity: 0, allowedZones: [], benefits: [],
+  isPrivate: false, maxUsage: null, assignedSubOrganisers: [], isVisible: true,
 };
-const emptySubOrg = { 
-  name: '', 
-  email: '', 
-  phone: '', 
-  password: '', 
-  role: 'SubOrganiser',
-  permissions: { 
-    canAddAttendees: true, 
-    canVerifyPhotos: true, 
-    canInviteAttendees: true, 
-    canBulkUpload: false, 
-    canEntryAccess: false 
+const emptySubOrg = {
+  name: '', email: '', phone: '', password: '', role: 'SubOrganiser',
+  permissions: {
+    canAddAttendees: true, canVerifyPhotos: true, canInviteAttendees: true,
+    canBulkUpload: false, canEntryAccess: false,
   },
   assignedZones: [],
+  assignedCategories: [],
 };
-const emptyZone = { name: '', description: '', capacity: 0, color: '#0F766E' };
-
+const emptyZone = { name: '', description: '', capacity: 0, color: '#2563eb' };
 const emptySponsorPackage = {
-  name: '',
-  level: 'Custom',
-  description: '',
-  capacity: 1,
-  price: 0,
-  benefits: [],
-  contactNumber: '',
-  isVisible: true,
-  expiryDate: '',
+  name: '', level: 'Custom', description: '', capacity: 1, price: 0,
+  benefits: [], contactNumber: '', isVisible: true, expiryDate: '',
 };
-
 const emptySponsor = {
-  companyName: '',
-  contactPerson: '',
-  email: '',
-  phone: '',
-  packageId: '',
-  notes: '',
+  companyName: '', contactPerson: '', email: '', phone: '', packageId: '', notes: '',
 };
 
-const COLORS = ['#0F766E', '#14B8A6', '#2DD4BF', '#99F6E4', '#CCFBF1'];
+const COLORS = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 const getEventObjectId = (event) => event?._id || event?.id || '';
 
 const downloadBlob = (blob, fileName) => {
@@ -130,9 +98,46 @@ const clampPage = (value, pages = 1) => {
   return Math.min(Math.max(parsed, 1), Math.max(pages, 1));
 };
 
+const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
+  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</p>
+        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">{value}</p>
+        {subtitle && <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>}
+      </div>
+      {Icon && (
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
+    </div>
+  </Card>
+);
+
+const Field = ({ label, children }) => (
+  <label className="space-y-2">
+    <span className="text-sm font-medium text-slate-700">{label}</span>
+    {children}
+  </label>
+);
+
+const Input = (props) => (
+  <input
+    {...props}
+    className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${props.className || ''}`}
+  />
+);
+
+const Select = (props) => (
+  <select
+    {...props}
+    className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed disabled:pointer-events-none ${props.className || ''}`}
+  />
+);
+
 const Pagination = ({ page = 1, pages = 1, total, pageKey = 'page', updateQuery }) => {
   if (!pages || pages <= 1) return null;
-
   const currentPage = clampPage(page, pages);
   const visiblePages = [];
   const maxVisible = 5;
@@ -142,36 +147,51 @@ const Pagination = ({ page = 1, pages = 1, total, pageKey = 'page', updateQuery 
   for (let i = start; i <= end; i += 1) visiblePages.push(i);
 
   return (
-    <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-        Page {currentPage} of {pages}{Number.isFinite(total) ? ` · ${total} rows` : ''}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => updateQuery(pageKey, currentPage - 1)}>
-          Prev
-        </Button>
-        {visiblePages.map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => updateQuery(pageKey, item)}
-            className={`h-8 min-w-8 rounded-lg px-2 text-xs font-bold transition ${
-              item === currentPage ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {item}
-          </button>
-        ))}
-        <Button variant="outline" size="sm" disabled={currentPage >= pages} onClick={() => updateQuery(pageKey, currentPage + 1)}>
-          Next
-        </Button>
+    <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="sm" disabled={currentPage <= 1}
+          onClick={() => updateQuery(pageKey, currentPage - 1)} className="h-8 rounded-lg px-3 text-xs">Prev</Button>
+        <div className="mx-1 flex items-center gap-1">
+          {visiblePages.map((item) => (
+            <button key={item} type="button" onClick={() => updateQuery(pageKey, item)}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-all ${
+                item === currentPage
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+                  : 'text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm'
+              }`}>{item}</button>
+          ))}
+        </div>
+        <Button variant="outline" size="sm" disabled={currentPage >= pages}
+          onClick={() => updateQuery(pageKey, currentPage + 1)} className="h-8 rounded-lg px-3 text-xs">Next</Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Page</span>
+        <span className="text-sm font-bold text-slate-900">{currentPage}</span>
+        <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">of</span>
+        <span className="text-sm font-bold text-slate-900">{pages}</span>
+        {Number.isFinite(total) && (
+          <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">· {total} rows</span>
+        )}
       </div>
     </div>
   );
 };
 
+const runAction = async (fn, { successMessage, errorMessage = 'Something went wrong', onSuccess } = {}) => {
+  try {
+    await fn();
+    if (successMessage) toast.success(successMessage);
+    if (onSuccess) onSuccess();
+    return true;
+  } catch (error) {
+    toast.error(error?.response?.data?.message || errorMessage);
+    return false;
+  }
+};
+
 const OrganiserDashboard = () => {
   const { user } = useAuth();
+  const { permissions } = usePermissions();
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
@@ -189,15 +209,55 @@ const OrganiserDashboard = () => {
   const [teamSearch, setTeamSearch] = useState('');
   const [teamRoleFilter, setTeamRoleFilter] = useState('');
   const [teamStatusFilter, setTeamStatusFilter] = useState('');
+  const [deleteTeamModalOpen, setDeleteTeamModalOpen] = useState(false);
+  const [teamMemberToDelete, setTeamMemberToDelete] = useState(null);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
+  const [lastUpdateTime, setLastUpdateTime] = useState(new Date());
+  const [autoUpdateInterval, setAutoUpdateInterval] = useState(15000);
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [settingsForm, setSettingsForm] = useState(null);
   const [customizationForm, setCustomizationForm] = useState(null);
+  const [customizationTab, setCustomizationTab] = useState('general');
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [logoImageFile, setLogoImageFile] = useState(null);
   const [bannerImageFile, setBannerImageFile] = useState(null);
   const [removeLogo, setRemoveLogo] = useState(false);
   const [removeBanner, setRemoveBanner] = useState(false);
   const [removeCover, setRemoveCover] = useState(false);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
+  const [bannerPreviewUrl, setBannerPreviewUrl] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  useEffect(() => {
+    if (!logoImageFile) {
+      setLogoPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(logoImageFile);
+    setLogoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [logoImageFile]);
+
+  useEffect(() => {
+    if (!coverImageFile) {
+      setCoverPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(coverImageFile);
+    setCoverPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverImageFile]);
+
+  useEffect(() => {
+    if (!bannerImageFile) {
+      setBannerPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(bannerImageFile);
+    setBannerPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [bannerImageFile]);
 
   const [sponsorPackageModal, setSponsorPackageModal] = useState(null);
   const [sponsorModal, setSponsorModal] = useState(null);
@@ -276,7 +336,7 @@ const OrganiserDashboard = () => {
             country: nextData?.event?.venue?.country || '',
             mapUrl: nextData?.event?.venue?.mapUrl || '',
           },
-          currency: nextData?.settings?.currency || 'LKR',
+          currency: nextData?.settings?.currency || nextData?.event?.settings?.currency || 'LKR',
         },
         matchDetails: nextData?.event?.matchDetails || { teamA: '', teamB: '', matchType: '', series: '' },
         concertDetails: nextData?.event?.concertDetails || { mainArtist: '', supportingBands: [], genre: '', tourName: '' },
@@ -286,15 +346,6 @@ const OrganiserDashboard = () => {
           logoImage: nextData?.event?.branding?.logoImage || nextData?.event?.logoImage || '',
           bannerImage: nextData?.event?.branding?.bannerImage || nextData?.event?.bannerImage || '',
           coverImage: nextData?.event?.coverImage || '',
-        },
-        confirmationFlow: {
-          inviteSystemEnabled: nextData?.settings?.inviteSystemEnabled ?? true,
-          manualApprovalEnabled: nextData?.settings?.manualApprovalEnabled ?? false,
-          autoConfirmEnabled: nextData?.settings?.autoConfirmEnabled ?? false,
-        },
-        communicationChannels: {
-          email: nextData?.settings?.communicationChannels?.email ?? true,
-          sms: nextData?.settings?.communicationChannels?.sms ?? false,
         },
         paymentMethods: {
           card: nextData?.settings?.paymentMethods?.card ?? true,
@@ -331,6 +382,26 @@ const OrganiserDashboard = () => {
     }
   };
 
+  const loadWorkspaceRef = useRef(loadWorkspace);
+  useEffect(() => {
+    loadWorkspaceRef.current = loadWorkspace;
+  });
+  
+  // General auto-update for the entire dashboard
+  useAutoRefresh(
+    () => {
+      if (!autoUpdateEnabled) return;
+      loadWorkspaceRef.current();
+      setLastUpdateTime(new Date());
+    },
+    {
+      enabled: autoUpdateEnabled,
+      interval: autoUpdateInterval,
+      immediate: false,
+      deps: [autoUpdateEnabled, autoUpdateInterval],
+    }
+  );
+
   useEffect(() => {
     getMyEvents().then((res) => {
       const list = res.data?.data?.events || [];
@@ -343,6 +414,8 @@ const OrganiserDashboard = () => {
       } else {
         rememberSelectedEvent('');
       }
+    }).catch(() => {
+      toast.error('Failed to load your assigned events');
     });
   }, []);
 
@@ -396,7 +469,7 @@ const OrganiserDashboard = () => {
 
     joinDashboardRoom();
 
-    const refresh = () => loadWorkspace(eventId);
+    const refresh = () => loadWorkspaceRef.current(eventId);
     socket.on('entry_update', refresh);
     socket.on('zone_update', refresh);
     socket.on('payment_approved', refresh);
@@ -420,6 +493,11 @@ const OrganiserDashboard = () => {
   };
 
   const selectedEvent = workspace?.event;
+  const eventCurrency =
+    selectedEvent?.settings?.currency ||
+    workspace?.event?.settings?.currency ||
+    customizationForm?.basicInfo?.currency ||
+    'LKR';
   const categories = workspace?.tickets || [];
   const attendees = workspace?.attendees?.rows || [];
   const verificationQueue = workspace?.verificationQueue || [];
@@ -448,6 +526,74 @@ const OrganiserDashboard = () => {
   const ticketsSoldCount = Number(stats.ticketsSold || 0);
   const confirmedAttendeesCount = Number(stats.confirmedAttendees || 0);
   const checkedInCount = Number(stats.checkedInCount || 0);
+  
+  const formatCurrency = (amount) => {
+    const currency = selectedEvent?.settings?.currency || workspace?.event?.settings?.currency || 'LKR';
+    return new Intl.NumberFormat('en-LK', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+  
+  // Calculate revenue from orders if not available in stats
+  const calculateRevenue = () => {
+    if (stats.revenue && stats.revenue > 0) return stats.revenue;
+    
+    // Calculate from orders if available
+    const orders = workspace?.orders || [];
+    if (orders.length > 0) {
+      const revenue = orders.reduce((total, order) => {
+        if (order.status !== 'CANCELLED' && order.totalAmount) {
+          return total + Number(order.totalAmount);
+        }
+        return total;
+      }, 0);
+      if (revenue > 0) return revenue;
+    }
+    
+    // Calculate from attendees if tickets have prices
+    const attendeesWithTickets = attendees.filter(a => a.ticketId && a.ticketPrice);
+    if (attendeesWithTickets.length > 0) {
+      const revenue = attendeesWithTickets.reduce((total, attendee) => {
+        return total + Number(attendee.ticketPrice || 0);
+      }, 0);
+      if (revenue > 0) return revenue;
+    }
+    
+    // Calculate from ticket categories
+    if (categories.length > 0) {
+      const revenue = categories.reduce((total, cat) => {
+        const sold = cat.soldCount || cat.quantitySold || 0;
+        return total + (sold * (cat.price || 0));
+      }, 0);
+      if (revenue > 0) return revenue;
+    }
+    
+    return 0;
+  };
+  
+  // Calculate average ticket price
+  const calculateAverageTicketPrice = () => {
+    const ticketCategoriesData = categories || [];
+    if (ticketCategoriesData.length > 0) {
+      const totalPrice = ticketCategoriesData.reduce((sum, cat) => sum + Number(cat.price || 0), 0);
+      return totalPrice / ticketCategoriesData.length;
+    }
+    return 1000; // Default fallback
+  };
+  
+  const eventStats = {
+    totalAttendees: confirmedAttendeesCount,
+    revenue: calculateRevenue(),
+    checkedIn: checkedInCount,
+    totalTickets: totalTicketsCount,
+    ticketsSold: ticketsSoldCount,
+    ticketsAvailable: totalTicketsCount - ticketsSoldCount,
+    confirmationRate: confirmedAttendeesCount > 0 ? ((confirmedAttendeesCount / ticketsSoldCount) * 100).toFixed(1) : 0,
+    checkInRate: checkedInCount > 0 ? ((checkedInCount / confirmedAttendeesCount) * 100).toFixed(1) : 0,
+  };
   const clampPercent = (value) => Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
   const soldProgress = totalTicketsCount > 0 ? clampPercent((ticketsSoldCount / totalTicketsCount) * 100) : 0;
   const checkInProgressBase = confirmedAttendeesCount > 0 ? confirmedAttendeesCount : ticketsSoldCount;
@@ -486,13 +632,33 @@ const OrganiserDashboard = () => {
 
   const teamCounts = useMemo(() => {
     const counts = { SubOrganiser: 0, Staff: 0, Volunteer: 0, Auditor: 0, total: teamMembers.length };
-    teamMembers.forEach(m => {
+    teamMembers.forEach((m) => {
       if (counts[m.role] !== undefined) {
         counts[m.role]++;
       }
     });
     return counts;
   }, [teamMembers]);
+
+  useAutoRefresh(
+    () => {
+      if (!autoUpdateEnabled) return;
+      loadWorkspaceRef.current();
+      setLastUpdateTime(new Date());
+    },
+    {
+      enabled: autoUpdateEnabled,
+      interval: autoUpdateInterval,
+      immediate: false,
+      deps: [autoUpdateEnabled, autoUpdateInterval],
+    }
+  );
+
+  const handleManualRefresh = () => {
+    loadWorkspaceRef.current();
+    setLastUpdateTime(new Date());
+    toast.success('Analytics updated successfully');
+  };
 
   const filteredTeamMembers = useMemo(() => {
     return teamMembers.filter((member) => {
@@ -536,44 +702,77 @@ const OrganiserDashboard = () => {
   }, [filteredTeamMembers]);
   const attendeeCategoryOptions = useMemo(() => categories.map((item) => ({ value: item.id, label: item.name })), [categories]);
 
-  const saveAttendee = async () => {
-    await updateOrganiserAttendee(attendeeModal._id, { ...attendeeModal, eventId });
-    toast.success('Attendee updated');
-    setAttendeeModal(null);
-    loadWorkspace();
-  };
-
-  const removeAttendee = async (id) => {
-    await deleteOrganiserAttendee(id, eventId);
-    toast.success('Attendee removed');
-    loadWorkspace();
-  };
-  const toggleAttendeeDisabled = async (attendee) => {
-    await updateOrganiserAttendee(attendee._id, {
-      eventId,
-      isDisabled: !attendee.isDisabled,
+  const saveAttendee = () =>
+    runAction(() => updateOrganiserAttendee(attendeeModal._id, { ...attendeeModal, eventId }), {
+      successMessage: 'Attendee updated',
+      errorMessage: 'Failed to update attendee',
+      onSuccess: () => {
+        setAttendeeModal(null);
+        loadWorkspace();
+      },
     });
-    toast.success(attendee.isDisabled ? 'Ticket enabled' : 'Ticket disabled');
-    loadWorkspace();
-  };
+
+  const removeAttendee = (id) =>
+    runAction(() => deleteOrganiserAttendee(id, eventId), {
+      successMessage: 'Attendee removed',
+      errorMessage: 'Failed to remove attendee',
+      onSuccess: loadWorkspace,
+    });
+
+  const toggleAttendeeDisabled = (attendee) =>
+    runAction(
+      () =>
+        updateOrganiserAttendee(attendee._id, {
+          eventId,
+          isDisabled: !attendee.isDisabled,
+        }),
+      {
+        successMessage: attendee.isDisabled ? 'Ticket enabled' : 'Ticket disabled',
+        errorMessage: 'Failed to update ticket status',
+        onSuccess: loadWorkspace,
+      }
+    );
+
+  const resendAttendeeInvite = (attendeeId) =>
+    runAction(() => inviteOrganiserAttendee(attendeeId, eventId), {
+      successMessage: 'Invite resent',
+      errorMessage: 'Failed to resend invite',
+      onSuccess: loadWorkspace,
+    });
 
   const handleBulkUpload = async (file) => {
     const formData = new FormData();
     formData.append('eventId', eventId);
     formData.append('file', file);
-    await uploadOrganiserBulk(formData);
-    toast.success('Bulk upload complete');
-    loadWorkspace();
+    await runAction(() => uploadOrganiserBulk(formData), {
+      successMessage: 'Bulk upload complete',
+      errorMessage: 'Bulk upload failed',
+      onSuccess: loadWorkspace,
+    });
   };
 
-  const saveCategory = async () => {
-    const payload = { ...categoryModal, eventId };
-    if (categoryModal.id) await updateTicketCategory(categoryModal.id, payload);
-    else await createTicketCategory(payload);
-    toast.success(categoryModal.id ? 'Category updated' : 'Category created');
-    setCategoryModal(null);
-    loadWorkspace();
-  };
+  const saveCategory = () =>
+    runAction(
+      () => {
+        const payload = { ...categoryModal, eventId };
+        return categoryModal.id ? updateTicketCategory(categoryModal.id, payload) : createTicketCategory(payload);
+      },
+      {
+        successMessage: categoryModal.id ? 'Category updated' : 'Category created',
+        errorMessage: 'Failed to save ticket category',
+        onSuccess: () => {
+          setCategoryModal(null);
+          loadWorkspace();
+        },
+      }
+    );
+
+  const removeCategory = (categoryId) =>
+    runAction(() => deleteTicketCategory(categoryId, eventId), {
+      successMessage: 'Category deleted',
+      errorMessage: 'Failed to delete category',
+      onSuccess: loadWorkspace,
+    });
 
   const saveSubOrganiser = async () => {
     if (!eventId) {
@@ -585,57 +784,152 @@ const OrganiserDashboard = () => {
       return;
     }
 
-    try {
-      await createSubOrganiser({ ...subOrgForm, eventId });
-      toast.success('Team member created');
-      setSubOrgModal(false);
-      setSubOrgForm(emptySubOrg);
-      loadWorkspace();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create team member');
-    }
+    await runAction(() => createSubOrganiser({ ...subOrgForm, eventId }), {
+      successMessage: 'Team member created',
+      errorMessage: 'Failed to create team member',
+      onSuccess: () => {
+        setSubOrgModal(false);
+        setSubOrgForm(emptySubOrg);
+        loadWorkspace();
+      },
+    });
   };
 
   const handleEditTeamMember = (member) => {
-    const zones = Array.from(new Set([
-      ...(member.assignedZones || []),
-      ...(member.responsibilities?.zoneIds || [])
-    ]));
-    setSubOrgForm({
-      ...emptySubOrg,
-      ...member,
-      role: member.role || 'SubOrganiser',
-      permissions: { ...emptySubOrg.permissions, ...(member.permissions || {}) },
-      assignedZones: zones,
-      _id: member._id
-    });
-    setSubOrgModal(true);
+  const toId = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'object') return String(value._id || value.id || '');
+    return String(value);
   };
 
+  // Zones: merge assignedZones + responsibilities.zoneIds, normalize to string ids
+  const zoneIdSet = new Set();
+  [...(member.assignedZones || []), ...(member.responsibilities?.zoneIds || [])].forEach((z) => {
+    const id = toId(z);
+    if (id) zoneIdSet.add(id);
+  });
+  // Also resolve zone names → ids when stored as names
+  (selectedEvent?.zones || []).forEach((zone) => {
+    const zid = toId(zone.id || zone._id);
+    const zname = String(zone.name || '');
+    if (
+      (member.assignedZones || []).some((z) => toId(z) === zid || String(z) === zname) ||
+      (member.responsibilities?.zoneIds || []).some((z) => toId(z) === zid || String(z) === zname)
+    ) {
+      if (zid) zoneIdSet.add(zid);
+    }
+  });
+
+  // Categories: from ticket.assignedSubOrganisers AND member.assignedCategories
+  const memberIdStr = toId(member._id || member.id);
+  const catIdSet = new Set();
+
+  categories.forEach((cat) => {
+    const cid = toId(cat.id || cat._id);
+    if (!cid) return;
+    const assignedTo = cat.assignedSubOrganisers || cat.assignedSubOrganiserIds || [];
+    const isOnCategory = assignedTo.some((id) => toId(id) === memberIdStr);
+    if (isOnCategory) catIdSet.add(cid);
+  });
+
+  (member.assignedCategories || member.categoryIds || []).forEach((c) => {
+    const cid = toId(c);
+    if (cid) catIdSet.add(cid);
+    // resolve by name if needed
+    const byName = categories.find((cat) => String(cat.name) === String(c));
+    if (byName) catIdSet.add(toId(byName.id || byName._id));
+  });
+
+  setSubOrgForm({
+    ...emptySubOrg,
+    ...member,
+    role: member.role || 'SubOrganiser',
+    permissions: { ...emptySubOrg.permissions, ...(member.permissions || {}) },
+    assignedZones: Array.from(zoneIdSet),
+    assignedCategories: Array.from(catIdSet),
+    _id: member._id || member.id,
+  });
+  setSubOrgModal(true);
+};
+
   const saveTeamMemberAccess = async () => {
-    try {
-      if (subOrgForm._id) {
-        await updateSubOrganiser(subOrgForm._id, { ...subOrgForm, eventId });
-        toast.success('Team member updated');
-      } else {
-        await saveSubOrganiser();
-        return;
+    if (!subOrgForm._id) {
+      await saveSubOrganiser();
+      return;
+    }
+    await runAction(() => updateSubOrganiser(subOrgForm._id, { ...subOrgForm, eventId }), {
+      successMessage: 'Team member updated',
+      errorMessage: 'Update failed',
+      onSuccess: () => {
+        setSubOrgModal(false);
+        setSubOrgForm(emptySubOrg);
+        loadWorkspace();
+      },
+    });
+  };
+
+  const toggleTeamMemberStatus = (member) =>
+    runAction(
+      () => updateSubOrganiser(member._id, { eventId, status: member.status === 'Active' ? 'Inactive' : 'Active' }),
+      {
+        successMessage: 'Status updated',
+        errorMessage: 'Failed to update status',
+        onSuccess: loadWorkspace,
       }
-      setSubOrgModal(false);
-      setSubOrgForm(emptySubOrg);
+    );
+
+  const handleDeleteTeamMember = (member) => {
+    setTeamMemberToDelete(member);
+    setDeleteTeamModalOpen(true);
+  };
+
+  const confirmDeleteTeamMember = async () => {
+    if (!teamMemberToDelete) return;
+    
+    try {
+      await deleteSubOrganiser(teamMemberToDelete._id);
+      toast.success('Team member deleted successfully');
+      setDeleteTeamModalOpen(false);
+      setTeamMemberToDelete(null);
       loadWorkspace();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Update failed');
+      toast.error(error.response?.data?.message || 'Failed to delete team member');
     }
   };
 
-  const saveZone = async () => {
-    const payload = { ...zoneModal, eventId };
-    if (zoneModal.id) await updateZone(zoneModal.id, payload);
-    else await createZone(payload);
-    toast.success(zoneModal.id ? 'Zone updated' : 'Zone created');
-    setZoneModal(null);
-    loadWorkspace();
+  const saveZone = () =>
+    runAction(
+      () => {
+        const payload = { ...zoneModal, eventId };
+        return zoneModal.id ? updateZone(zoneModal.id, payload) : createZone(payload);
+      },
+      {
+        successMessage: zoneModal.id ? 'Zone updated' : 'Zone created',
+        errorMessage: 'Failed to save zone',
+        onSuccess: () => {
+          setZoneModal(null);
+          loadWorkspace();
+        },
+      }
+    );
+
+  const removeZone = (zoneId) =>
+    runAction(() => deleteZone(zoneId, eventId), {
+      successMessage: 'Zone deleted',
+      errorMessage: 'Failed to delete zone',
+      onSuccess: loadWorkspace,
+    });
+
+  const updateZoneAssignment = (zoneId, ticketId, checked) => {
+    const next = checked
+      ? [...new Set([...(zoneAssignments[zoneId] || []), ticketId])]
+      : (zoneAssignments[zoneId] || []).filter((item) => item !== ticketId);
+    setZoneAssignments((current) => ({ ...current, [zoneId]: next }));
+    runAction(() => assignZoneCategories(zoneId, { eventId, categoryIds: next }), {
+      successMessage: 'Zone assignments updated',
+      errorMessage: 'Failed to update zone assignments',
+      onSuccess: loadWorkspace,
+    });
   };
 
   const saveCustomization = async () => {
@@ -649,10 +943,14 @@ const OrganiserDashboard = () => {
     try {
       const formData = new FormData();
       formData.append('eventId', activeEventId);
-      formData.append('basicInfo', JSON.stringify(customizationForm.basicInfo));
-      formData.append('branding', JSON.stringify(customizationForm.branding));
-      formData.append('confirmationFlow', JSON.stringify(customizationForm.confirmationFlow));
-      formData.append('communicationChannels', JSON.stringify(customizationForm.communicationChannels));
+      const { currency: _currency, ...basicInfoPayload } = customizationForm.basicInfo || {};
+      formData.append('basicInfo', JSON.stringify(basicInfoPayload));
+      const brandingPayload = { ...customizationForm.branding };
+      delete brandingPayload.logoImage;
+      delete brandingPayload.coverImage;
+      delete brandingPayload.bannerImage;
+      formData.append('branding', JSON.stringify(brandingPayload));
+      formData.append('paymentMethods', JSON.stringify(customizationForm.paymentMethods));
       formData.append('accessRules', JSON.stringify({
         whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
         entryWindowStart: customizationForm.accessRules.entryWindowStart,
@@ -746,27 +1044,94 @@ const OrganiserDashboard = () => {
     }
   };
 
-  const removeSponsorPackage = async (packageId) => {
-    if (!window.confirm('Delete this sponsor package?')) return;
-    try {
-      await deleteSponsorPackage(packageId, eventId);
-      toast.success('Sponsor package deleted');
-      loadWorkspace(eventId);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete sponsor package');
+    const removeSponsorPackage = async (packageId) => {
+      try {
+        await deleteSponsorPackage(packageId, eventId);
+        toast.success('Sponsor package deleted');
+        setDeleteConfirm(null);
+        loadWorkspace(eventId);
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Failed to delete sponsor package');
+      }
+    };
+
+    const removeSponsor = async (id) => {
+      try {
+        await deleteSponsor(id, eventId);
+        toast.success('Sponsor deleted');
+        setDeleteConfirm(null);
+        loadWorkspace(eventId);
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Failed to delete sponsor');
+      }
+    };
+
+    const confirmDelete = () => {
+      if (!deleteConfirm) return;
+      if (deleteConfirm.type === 'package') removeSponsorPackage(deleteConfirm.id);
+      else if (deleteConfirm.type === 'sponsor') removeSponsor(deleteConfirm.id);
+    };
+
+  const approveVerification = (attendeeId) =>
+    runAction(() => updateVerificationStatus(attendeeId, { eventId, status: 'verified' }), {
+      successMessage: 'Photo approved',
+      errorMessage: 'Failed to approve photo',
+      onSuccess: loadWorkspace,
+    });
+
+  const rejectVerification = () =>
+    runAction(
+      () => updateVerificationStatus(rejecting._id, { eventId, status: 'rejected', reason: rejecting.reason || '' }),
+      {
+        successMessage: 'Photo rejected',
+        errorMessage: 'Failed to reject photo',
+        onSuccess: () => {
+          setRejecting(null);
+          loadWorkspace();
+        },
+      }
+    );
+
+  const doResendInvite = (inviteId) =>
+    runAction(() => resendInvite(inviteId, eventId), {
+      successMessage: 'Invite resent',
+      errorMessage: 'Failed to resend invite',
+      onSuccess: loadWorkspace,
+    });
+
+  const doCancelInvite = (inviteId) =>
+    runAction(() => cancelInvite(inviteId, eventId), {
+      successMessage: 'Invite cancelled',
+      errorMessage: 'Failed to cancel invite',
+      onSuccess: loadWorkspace,
+    });
+
+  const doResendNotification = (notificationId) =>
+    runAction(() => resendOrganiserNotification(notificationId, eventId), {
+      successMessage: 'Notification re-queued',
+      errorMessage: 'Failed to resend notification',
+    });
+
+  const saveSettings = () => {
+    const activeEventId = getValidEventId(getEventObjectId(selectedEvent));
+    if (!activeEventId) {
+      toast.error('Select an event before saving settings');
+      return;
     }
+    runAction(
+      () => updateOrganiserSettings({ eventId: activeEventId, name: selectedEvent?.name, venue: selectedEvent?.venue, settings: settingsForm }),
+      { successMessage: 'Settings updated', errorMessage: 'Failed to update settings' }
+    );
   };
 
-  const removeSponsor = async (id) => {
-    if (!window.confirm('Delete this sponsor?')) return;
-    try {
-      await deleteSponsor(id, eventId);
-      toast.success('Sponsor deleted');
-      loadWorkspace(eventId);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete sponsor');
-    }
-  };
+  const doExport = (report) =>
+    runAction(
+      async () => {
+        const res = await exportOrganiserEventData(eventId, { type: report.exportType });
+        downloadBlob(res.data, `${report.id}-${eventId}.csv`);
+      },
+      { errorMessage: 'Failed to export report' }
+    );
 
   if (loading && !workspace) {
     return <DashboardLayout><LoadingSkeleton /></DashboardLayout>;
@@ -774,601 +1139,626 @@ const OrganiserDashboard = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 pb-20">
-        <section className="relative overflow-hidden rounded-[40px] bg-brand-dark p-8 lg:p-12 text-white shadow-2xl">
-          <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-brand-main/20 rounded-full blur-[120px]"></div>
-          <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-            <div className="animate-fade-in">
-              <p className="text-[10px] font-black uppercase tracking-[0.5em] text-brand-main">Organiser Workspace</p>
-              <h1 className="mt-4 text-4xl lg:text-6xl font-black tracking-tight leading-none">{selectedEvent?.name || 'Assigned Event'}</h1>
-              <div className="mt-6 flex flex-wrap gap-4 text-sm font-medium">
-                <span className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-4 py-1.5 backdrop-blur-sm">
-                  <div className={`h-2 w-2 rounded-full ${selectedEvent?.status === 'published' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-400'}`}></div>
-                  {selectedEvent?.status || 'draft'}
-                </span>
-                <span className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-4 py-1.5 backdrop-blur-sm">
-                   {selectedEvent?.venue?.name || 'Venue'}
-                </span>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 lg:gap-6 animate-fade-in [animation-delay:200ms]">
-               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Team Strength</p>
-                  <p className="mt-2 text-3xl font-black text-brand-main">{teamMembers.length || 0}</p>
-                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">Active Members</p>
-               </div>
-               <div className="glass-dark border-white/5 px-6 py-5 rounded-3xl min-w-[160px]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Structure</p>
-                  <p className="mt-2 text-3xl font-black text-brand-main">{categories.length || 0}</p>
-                  <p className="mt-1 text-[10px] font-bold text-white/30 uppercase tracking-widest">Ticket Classes</p>
-               </div>
-            </div>
-          </div>
-        </section>
-
+      <div className="space-y-6 pb-20">
+        {/* ── Header — OVERVIEW ONLY ── */}
         {(activeSection === 'overview' || activeSection === '') && (
-          <>
-            <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                ['Total Tickets', stats.totalTickets, TicketIcon],
-                ['Tickets Sold', stats.ticketsSold, FireIcon],
-                ['Total Revenue', `${selectedEvent?.settings?.currency || 'LKR'} ${Number(stats.totalRevenue || 0).toLocaleString()}`, BanknotesIcon],
-                ['Checked-In', stats.checkedInCount, CheckBadgeIcon],
-              ].map(([label, value, Icon], idx) => (
-                <div key={label} className="card-premium animate-fade-in" style={{ animationDelay: `${(idx + 1) * 100}ms` }}>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{label}</p>
-                    <Icon className="h-5 w-5 text-brand-main/50" />
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            <div className="px-5 py-6 sm:px-8 sm:py-7">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15 animate-pulse" />
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Organiser Workspace</p>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-medium text-slate-500">Live</span>
                   </div>
-                  <p className="text-3xl font-black text-slate-900 tracking-tight">{value || 0}</p>
-                  <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-main rounded-full animate-shimmer" style={{ width: `${label === 'Total Tickets' ? (totalTicketsCount > 0 ? 100 : 0) : label === 'Tickets Sold' ? soldProgress : label === 'Checked-In' ? checkInProgress : soldProgress}%` }}></div>
-                  </div>
-                </div>
-              ))}
-            </section>
-            <section className="grid gap-6 xl:grid-cols-3">
-              <Card>
-                <CardHeader title="Ticket Control" subtitle="See ticket setup and sales at a glance" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Categories</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{categories.length || 0}</p>
-                  </div>
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Sold</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{stats.ticketsSold || 0}</p>
+                  <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                    {selectedEvent?.name || 'Assigned Event'}
+                  </h1>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                      <span className={`h-1.5 w-1.5 rounded-full ${
+                        selectedEvent?.status === 'published' || selectedEvent?.status === 'ongoing'
+                          ? 'bg-emerald-500'
+                          : selectedEvent?.status === 'draft'
+                          ? 'bg-amber-400'
+                          : 'bg-slate-400'
+                      }`} />
+                      {selectedEvent?.status || 'draft'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                      <MapPinIcon className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="truncate max-w-[180px]">{selectedEvent?.venue?.name || 'Venue TBD'}</span>
+                    </span>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Open ticket management</p>
-                    <p className="text-xs text-slate-500">Update categories, capacity, and zone access.</p>
+                <div className="flex gap-3 shrink-0">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Team</p>
+                    <p className="mt-0.5 text-xl font-bold text-slate-900">{teamMembers.length || 0}</p>
                   </div>
-                  <Button variant="outline" onClick={() => setQuery('section', 'tickets')}>Open</Button>
-                </div>
-              </Card>
-              <Card>
-                <CardHeader title="Zone Control" subtitle="Monitor event areas and movement" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Zones</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{selectedEvent?.zones?.length || 0}</p>
-                  </div>
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Zone Logs</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{zoneLogs.length || 0}</p>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Categories</p>
+                    <p className="mt-0.5 text-xl font-bold text-slate-900">{categories.length || 0}</p>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Open zone control</p>
-                    <p className="text-xs text-slate-500">Manage areas, ticket access, and movement history.</p>
-                  </div>
-                  <Button variant="outline" onClick={() => setQuery('section', 'zones')}>Open</Button>
-                </div>
-              </Card>
-              <Card>
-                <CardHeader title="Team Control" subtitle="Supervise sub-organisers and event staff" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Team Members</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{teamMembers.length || 0}</p>
-                  </div>
-                  <div className="rounded-2xl bg-slate-100 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Verification Queue</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">{verificationQueue.length || 0}</p>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {teamMembers.map((member) => (
-                    <div key={member._id} className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{member.name}</p>
-                        <p className="text-xs text-slate-500">{member.role} · {member.status}</p>
-                      </div>
-                      <button className="text-sm font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(member)}>Control</button>
-                    </div>
-                  ))}
-                  {teamMembers.length === 0 && (
-                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
-                      No team members added yet.
-                    </div>
-                  )}
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <Button variant="outline" onClick={() => setQuery('section', 'suborganisers')}>Open Team</Button>
-                </div>
-              </Card>
-            </section>
-            <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-              <Card>
-                <CardHeader title="Check-ins Over Time" subtitle="Live event flow for your selected event" />
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={workspace?.charts?.checkinsOverTime || []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="label" stroke="#64748B" />
-                      <YAxis stroke="#64748B" allowDecimals={false} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="count" stroke="#0F766E" strokeWidth={3} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-              <Card>
-                <CardHeader title="Revenue by Category" subtitle="Distribution across ticket tiers" />
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={workspace?.charts?.revenueByCategory || []}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {(workspace?.charts?.revenueByCategory || []).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `${selectedEvent?.settings?.currency || 'LKR'} ${value.toLocaleString()}`} />
-                      <Legend verticalAlign="bottom" height={36}/>
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-              <Card>
-                <CardHeader title="Activity Feed" subtitle="Last five operations" />
-                <div className="space-y-3">
-                  {(workspace?.activityFeed || []).map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                      <p className="font-semibold text-slate-900">{item.title}</p>
-                      <p className="mt-1 text-sm text-slate-600">{item.message}</p>
-                      <p className="mt-2 text-xs text-slate-400">{formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </section>
-          </>
-        )}
-
-        {activeSection === 'customization' && customizationForm && (
-          <Card>
-            <CardHeader
-              title="Event Customization"
-              subtitle="Update the public-facing event details, branding, and confirmation flow."
-              action={<Button onClick={saveCustomization}>Save Customization</Button>}
-            />
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-4">
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Event name</span>
-                  <input
-                    value={customizationForm.basicInfo.name}
-                    readOnly
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
-                  />
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Description</span>
-                  <textarea
-                    rows="5"
-                    value={customizationForm.basicInfo.description}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, description: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                  />
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Event type</span>
-                  <input
-                    value={customizationForm.basicInfo.eventType || customizationForm.basicInfo.customEventType || 'Not set'}
-                    readOnly
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
-                  />
-                </label>
-
-                {customizationForm.basicInfo.eventType === 'cricket' && (
-                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Cricket Match Details</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="space-y-1 text-sm">
-                        <span>Team A</span>
-                        <input value={customizationForm.matchDetails.teamA} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, teamA: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Team B</span>
-                        <input value={customizationForm.matchDetails.teamB} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, teamB: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Match Type</span>
-                        <input value={customizationForm.matchDetails.matchType} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, matchType: e.target.value } }))} placeholder="T20, ODI" className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Series</span>
-                        <input value={customizationForm.matchDetails.series} onChange={(e) => setCustomizationForm(prev => ({ ...prev, matchDetails: { ...prev.matchDetails, series: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                {customizationForm.basicInfo.eventType === 'concert' && (
-                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Concert Details</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="space-y-1 text-sm">
-                        <span>Main Artist</span>
-                        <input value={customizationForm.concertDetails.mainArtist} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, mainArtist: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Supporting Bands (Comma separated)</span>
-                        <input value={customizationForm.concertDetails.supportingBands?.join(', ')} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, supportingBands: e.target.value.split(',').map(s => s.trim()) } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Genre</span>
-                        <input value={customizationForm.concertDetails.genre} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, genre: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Tour Name</span>
-                        <input value={customizationForm.concertDetails.tourName} onChange={(e) => setCustomizationForm(prev => ({ ...prev, concertDetails: { ...prev.concertDetails, tourName: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                {customizationForm.basicInfo.eventType === 'conference' && (
-                  <div className="space-y-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Conference Details</p>
-                    <div className="grid gap-4 sm:grid-cols-1">
-                      <label className="space-y-1 text-sm">
-                        <span>Theme</span>
-                        <input value={customizationForm.conferenceDetails.theme} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, theme: e.target.value } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Speakers (Comma separated)</span>
-                        <input value={customizationForm.conferenceDetails.speakers?.join(', ')} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, speakers: e.target.value.split(',').map(s => s.trim()) } }))} className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        <span>Schedule URL</span>
-                        <input value={customizationForm.conferenceDetails.scheduleUrl} onChange={(e) => setCustomizationForm(prev => ({ ...prev, conferenceDetails: { ...prev.conferenceDetails, scheduleUrl: e.target.value } }))} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-4 py-2" />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Currency</span>
-                  <select
-                    value={customizationForm.basicInfo.currency}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, currency: e.target.value } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 bg-white"
-                  >
-                    <option value="LKR">LKR (Sri Lankan Rupee)</option>
-                    <option value="USD">USD (US Dollar)</option>
-                    <option value="EUR">EUR (Euro)</option>
-                    <option value="GBP">GBP (British Pound)</option>
-                    <option value="INR">INR (Indian Rupee)</option>
-                    <option value="AUD">AUD (Australian Dollar)</option>
-                    <option value="AED">AED (UAE Dirham)</option>
-                    <option value="SGD">SGD (Singapore Dollar)</option>
-                  </select>
-                </label>
-                {/* ── Logo Image ── */}
-                {(() => {
-                  const logoSrc = logoImageFile
-                    ? URL.createObjectURL(logoImageFile)
-                    : (customizationForm.branding.logoImage && !removeLogo)
-                      ? (customizationForm.branding.logoImage.startsWith('http') ? customizationForm.branding.logoImage : getAssetUrl(customizationForm.branding.logoImage))
-                      : null;
-                  return (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Event Logo</p>
-                      <div className="flex items-center gap-4">
-                        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
-                          {logoSrc ? (
-                            <img src={logoSrc} alt="logo preview" className="h-full w-full object-contain" />
-                          ) : (
-                            <svg className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-2 flex-1">
-                          <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors w-fit">
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                            {logoSrc ? 'Change Image' : 'Upload Image'}
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setLogoImageFile(f); if (f) setRemoveLogo(false); }} />
-                          </label>
-                          {logoSrc && (
-                            <button
-                              type="button"
-                              onClick={() => { setRemoveLogo(true); setLogoImageFile(null); }}
-                              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors w-fit"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                              Remove Logo
-                            </button>
-                          )}
-                          {logoImageFile && <p className="text-[10px] text-slate-500 truncate max-w-[180px]">Selected: {logoImageFile.name}</p>}
-                          {removeLogo && !logoImageFile && <p className="text-[10px] text-red-500 font-semibold">Logo will be removed on save</p>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── Cover Image ── */}
-                {(() => {
-                  const coverSrc = coverImageFile
-                    ? URL.createObjectURL(coverImageFile)
-                    : (customizationForm.branding.coverImage && !removeCover)
-                      ? (customizationForm.branding.coverImage.startsWith('http') ? customizationForm.branding.coverImage : getAssetUrl(customizationForm.branding.coverImage))
-                      : null;
-                  return (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Cover Image <span className="normal-case font-normal text-slate-400">(Card View)</span></p>
-                      <div className="relative h-32 w-full overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
-                        {coverSrc ? (
-                          <img src={coverSrc} alt="cover preview" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex flex-col items-center gap-2 text-slate-300">
-                            <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            <span className="text-xs">No cover image</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors">
-                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                          {coverSrc ? 'Change Image' : 'Upload Image'}
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setCoverImageFile(f); if (f) setRemoveCover(false); }} />
-                        </label>
-                        {coverSrc && (
-                          <button
-                            type="button"
-                            onClick={() => { setRemoveCover(true); setCoverImageFile(null); }}
-                            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            Remove Image
-                          </button>
-                        )}
-                      </div>
-                      {coverImageFile && <p className="text-[10px] text-slate-500 truncate">Selected: {coverImageFile.name}</p>}
-                      {removeCover && !coverImageFile && <p className="text-[10px] text-red-500 font-semibold">Cover image will be removed on save</p>}
-                    </div>
-                  );
-                })()}
-
-                {/* ── Banner Image ── */}
-                {(() => {
-                  const bannerSrc = bannerImageFile
-                    ? URL.createObjectURL(bannerImageFile)
-                    : (customizationForm.branding.bannerImage && !removeBanner)
-                      ? (customizationForm.branding.bannerImage.startsWith('http') ? customizationForm.branding.bannerImage : getAssetUrl(customizationForm.branding.bannerImage))
-                      : null;
-                  return (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Hero Banner Image</p>
-                      <div className="relative h-40 w-full overflow-hidden rounded-xl border border-slate-200 bg-white flex items-center justify-center">
-                        {bannerSrc ? (
-                          <img src={bannerSrc} alt="banner preview" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex flex-col items-center gap-2 text-slate-300">
-                            <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            <span className="text-xs">No banner image</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-brand-main/10 px-4 py-2 text-xs font-bold text-brand-main hover:bg-brand-main/20 transition-colors">
-                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                          {bannerSrc ? 'Change Image' : 'Upload Image'}
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; setBannerImageFile(f); if (f) setRemoveBanner(false); }} />
-                        </label>
-                        {bannerSrc && (
-                          <button
-                            type="button"
-                            onClick={() => { setRemoveBanner(true); setBannerImageFile(null); }}
-                            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            Remove Banner
-                          </button>
-                        )}
-                      </div>
-                      {bannerImageFile && <p className="text-[10px] text-slate-500 truncate">Selected: {bannerImageFile.name}</p>}
-                      {removeBanner && !bannerImageFile && <p className="text-[10px] text-red-500 font-semibold">Banner image will be removed on save</p>}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <div className="space-y-4">
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Venue name</span>
-                  <input
-                    value={customizationForm.basicInfo.venue.name}
-                    readOnly
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-500"
-                  />
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Venue address</span>
-                  <input
-                    value={customizationForm.basicInfo.venue.address}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, venue: { ...current.basicInfo.venue, address: e.target.value } } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                  />
-                </label>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-2 text-sm">
-                    <span className="text-slate-500">City</span>
-                    <input
-                      value={customizationForm.basicInfo.venue.city}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, venue: { ...current.basicInfo.venue, city: e.target.value } } }))}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    />
-                  </label>
-                  <label className="space-y-2 text-sm">
-                    <span className="text-slate-500">Country</span>
-                    <input
-                      value={customizationForm.basicInfo.venue.country}
-                      onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, venue: { ...current.basicInfo.venue, country: e.target.value } } }))}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                    />
-                  </label>
-                </div>
-                <label className="space-y-2 text-sm">
-                  <span className="text-slate-500">Map URL</span>
-                  <input
-                    value={customizationForm.basicInfo.venue.mapUrl}
-                    onChange={(e) => setCustomizationForm((current) => ({ ...current, basicInfo: { ...current.basicInfo, venue: { ...current.basicInfo.venue, mapUrl: e.target.value } } }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-                  />
-                </label>
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <p className="text-sm font-semibold text-slate-900">Confirmation Flow</p>
-                  <div className="mt-3 space-y-3 text-sm text-slate-600">
-                    {[
-                      ['inviteSystemEnabled', 'Invite system enabled'],
-                      ['manualApprovalEnabled', 'Manual approval required'],
-                      ['autoConfirmEnabled', 'Auto confirm attendees'],
-                    ].map(([key, label]) => (
-                      <label key={key} className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={!!customizationForm.confirmationFlow[key]}
-                          onChange={(e) => setCustomizationForm((current) => ({ ...current, confirmationFlow: { ...current.confirmationFlow, [key]: e.target.checked } }))}
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <p className="text-sm font-semibold text-slate-900">Communication Channels</p>
-                  <div className="mt-3 space-y-3 text-sm text-slate-600">
-                    <label className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!!customizationForm.communicationChannels?.email}
-                        onChange={(e) => setCustomizationForm((current) => ({ ...current, communicationChannels: { ...current.communicationChannels, email: e.target.checked } }))}
-                      />
-                      Email notifications
-                    </label>
-                    <div className="flex items-center gap-3 opacity-60">
-                      <input
-                        type="checkbox"
-                        checked={!!customizationForm.communicationChannels?.sms}
-                        disabled={true}
-                        className="cursor-not-allowed"
-                      />
-                      <div className="flex flex-col">
-                        <span>SMS notifications (Twilio)</span>
-                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-tight">Admin-only setting</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-                  <p className="text-sm font-bold text-blue-900">Visibility Status</p>
-                  <div className="mt-3 space-y-3 text-sm text-blue-700">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-                        checked={customizationForm.status === 'published'}
-                        onChange={(e) => setCustomizationForm((current) => ({ 
-                          ...current, 
-                          status: e.target.checked ? 'published' : 'draft' 
-                        }))}
-                      />
-                      <span className="font-semibold">Publish Match (Make visible to public)</span>
-                    </label>
-                    <p className="text-xs text-blue-600/70 ml-7">
-                      When published, this event will appear on the public homepage and users can browse tickets.
-                    </p>
-                  </div>
-                </div>
-
               </div>
             </div>
           </Card>
         )}
 
-        {activeSection === 'attendees' && (
-          <Card>
+        {(activeSection === 'overview' || activeSection === '') && (
+          <>
+            {/* KPI cards */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard title="Total Tickets" value={stats.totalTickets || 0} subtitle={soldProgress ? 'On sale' : 'Not yet on sale'} icon={TicketIcon} />
+              <MetricCard title="Tickets Sold" value={stats.ticketsSold || 0} subtitle={`${soldProgress}% of capacity`} icon={FireIcon} />
+              <MetricCard
+                title="Total Revenue"
+                value={`${eventCurrency} ${Number(stats.totalRevenue || 0).toLocaleString()}`}                subtitle="Confirmed order value"
+                icon={BanknotesIcon}
+              />
+              <MetricCard title="Checked-In" value={stats.checkedInCount || 0} subtitle={`${checkInProgress}% check-in rate`} icon={CheckBadgeIcon} />
+            </section>
+
+            {/* Quick control cards */}
+            <section className="grid gap-4 xl:grid-cols-3">
+              {[
+                { title: 'Ticket Control', sub: 'Categories & sales', count1: categories.length || 0, label1: 'Categories', count2: stats.ticketsSold || 0, label2: 'Sold', section: 'tickets' },
+                { title: 'Zone Control', sub: 'Areas & movement', count1: selectedEvent?.zones?.length || 0, label1: 'Zones', count2: zoneLogs.length || 0, label2: 'Logs', section: 'zones' },
+                { title: 'Team Control', sub: 'Staff & sub-organisers', count1: teamMembers.length || 0, label1: 'Members', count2: verificationQueue.length || 0, label2: 'Pending', section: 'suborganisers' },
+              ].map((item) => (
+                <Card key={item.title} className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{item.sub}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-blue-50/80 border border-blue-100/70 px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">{item.label1}</p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">{item.count1}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{item.label2}</p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">{item.count2}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setQuery('section', item.section)}
+                      className="border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50">
+                      Open
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </section>
+
+            {/* Charts */}
+            <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <CardHeader title="Check-ins Over Time" subtitle="Live event flow" />
+                <div className="h-64 sm:h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={workspace?.charts?.checkinsOverTime || []}>
+                      <defs>
+                        <linearGradient id="checkinsFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} allowDecimals={false} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                      <Area type="monotone" dataKey="count" stroke="#2563eb" strokeWidth={2.5} fill="url(#checkinsFill)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <CardHeader title="Revenue by Category" subtitle="Distribution across tiers" />
+                <div className="h-64 sm:h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={workspace?.charts?.revenueByCategory || []} cx="50%" cy="50%"
+                        innerRadius={52} outerRadius={78} paddingAngle={4} dataKey="value">
+                        {(workspace?.charts?.revenueByCategory || []).map((_, index) => (
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                            formatter={(value) => `${eventCurrency} ${Number(value).toLocaleString()}`} />
+                      <Legend verticalAlign="bottom" height={32} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </section>
+
+            {/* Activity feed */}
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <CardHeader title="Activity Feed" subtitle="Recent operations" />
+              <div className="space-y-2">
+                {(workspace?.activityFeed || []).length > 0
+                  ? (workspace.activityFeed || []).slice(0, 8).map((item) => (
+                      <div key={item.id} className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                        <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          <p className="mt-0.5 text-sm text-slate-600 line-clamp-1">{item.message}</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  : (
+                    <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                      No recent activity.
+                    </div>
+                  )}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {activeSection === 'customization' && customizationForm && (
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader
-              title="Attendee Management"
-              subtitle="Search, filter, edit, delete, resend, and bulk import attendees"
-              action={<div className="flex gap-2"><Button variant="outline" onClick={async () => {
-                const res = await downloadOrganiserTemplate({ eventId });
-                downloadBlob(res.data, `attendees-template-${eventId}.xlsx`);
-              }}>Download Template</Button><label className="inline-flex cursor-pointer items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"><input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && handleBulkUpload(e.target.files[0])} />Upload Excel</label></div>}
+              title="Event Customization"
+              subtitle="Public details, branding & payment options"
+              action={
+                <Button
+                  onClick={saveCustomization}
+                  className="bg-blue-600 hover:bg-blue-500"
+                >
+                  Save Customization
+                </Button>
+              }
             />
-            <div className="mb-4 grid gap-3 md:grid-cols-4">
-              <input value={search} onChange={(e) => { setSearch(e.target.value); setQuery('search', e.target.value); }} placeholder="Search by name, email, phone" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" />
-              <select value={status} onChange={(e) => { setStatus(e.target.value); setQuery('status', e.target.value); }} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All statuses</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option></select>
-              <select value={category} onChange={(e) => { setCategory(e.target.value); setQuery('category', e.target.value); }} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm"><option value="">All categories</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select>
-              <select value={params.get('limit') || '10'} onChange={(e) => setQuery('limit', e.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm">
+
+            {/* Tabs */}
+            <div className="mb-6 flex gap-6 border-b border-slate-200">
+              {['general', 'branding', 'payment'].map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setCustomizationTab(tab)}
+                  className={`pb-3 text-sm font-semibold capitalize ${
+                    customizationTab === tab
+                      ? 'border-b-2 border-blue-600 text-blue-600'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* ==================== GENERAL TAB ==================== */}
+            {customizationTab === 'general' && (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-4">
+                  <Field label="Event name">
+                    <Input
+                      value={customizationForm.basicInfo.name}
+                      readOnly
+                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
+                    />
+                  </Field>
+
+                  <Field label="Description">
+                    <textarea
+                      rows={5}
+                      value={customizationForm.basicInfo.description}
+                      onChange={(e) =>
+                        setCustomizationForm((c) => ({
+                          ...c,
+                          basicInfo: { ...c.basicInfo, description: e.target.value },
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </Field>
+
+                  <Field label="Event type">
+                    <Input
+                      value={
+                        customizationForm.basicInfo.eventType ||
+                        customizationForm.basicInfo.customEventType ||
+                        'Not set'
+                      }
+                      readOnly
+                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
+                    />
+                  </Field>
+
+                  <Field label="Currency">
+                    <Input
+                      value={customizationForm.basicInfo.currency || eventCurrency}
+                      readOnly
+                      aria-readonly="true"
+                      title="Currency can only be changed by admin"
+                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
+                    />
+                  </Field>
+
+                </div>
+
+                <div className="space-y-4">
+                  <Field label="Venue name">
+                    <Input
+                      value={customizationForm.basicInfo.venue?.name || ''}
+                      readOnly
+                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
+                    />
+                  </Field>
+
+                  <Field label="Venue address">
+                    <Input
+                      value={customizationForm.basicInfo.venue?.address || ''}
+                      onChange={(e) =>
+                        setCustomizationForm((c) => ({
+                          ...c,
+                          basicInfo: {
+                            ...c.basicInfo,
+                            venue: { ...c.basicInfo.venue, address: e.target.value },
+                          },
+                        }))
+                      }
+                    />
+                  </Field>
+
+                  <Field label="Map URL">
+                    <Input
+                      value={customizationForm.basicInfo.venue?.mapUrl || ''}
+                      placeholder="https://maps.google.com/..."
+                      onChange={(e) =>
+                        setCustomizationForm((c) => ({
+                          ...c,
+                          basicInfo: {
+                            ...c.basicInfo,
+                            venue: { ...c.basicInfo.venue, mapUrl: e.target.value },
+                          },
+                        }))
+                      }
+                    />
+                  </Field>
+
+                  {customizationForm.basicInfo.venue?.mapUrl && (
+                    <a
+                      href={customizationForm.basicInfo.venue.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 underline"
+                    >
+                      View Map
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ==================== BRANDING TAB ==================== */}
+            {customizationTab === 'branding' && (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Logo */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    Logo
+                  </h3>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
+                      {logoPreviewUrl ? (
+                        <img
+                          src={logoPreviewUrl}
+                          alt="Logo Preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : customizationForm.branding.logoImage && !removeLogo ? (
+                        <img
+                          src={getAssetUrl(customizationForm.branding.logoImage)}
+                          alt="Logo"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">No logo</span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <label className="inline-block cursor-pointer rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setLogoImageFile(e.target.files[0]);
+                              setRemoveLogo(false);
+                            }
+                          }}
+                        />
+                        Upload Logo
+                      </label>
+                      {(logoImageFile ||
+                        (customizationForm.branding.logoImage && !removeLogo)) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLogoImageFile(null);
+                            setRemoveLogo(true);
+                          }}
+                          className="ml-2 text-sm text-rose-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <p className="text-xs text-slate-500">
+                        Recommended: Square image, max 2MB (PNG/JPG)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Banner */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+                  <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    Banner Image
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="relative flex h-32 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
+                      {bannerPreviewUrl ? (
+                        <img
+                          src={bannerPreviewUrl}
+                          alt="Banner Preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : customizationForm.branding.bannerImage && !removeBanner ? (
+                        <img
+                          src={getAssetUrl(customizationForm.branding.bannerImage)}
+                          alt="Banner"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">No banner</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="inline-block cursor-pointer rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setBannerImageFile(e.target.files[0]);
+                              setRemoveBanner(false);
+                            }
+                          }}
+                        />
+                        Upload Banner
+                      </label>
+                      {(bannerImageFile ||
+                        (customizationForm.branding.bannerImage && !removeBanner)) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBannerImageFile(null);
+                            setRemoveBanner(true);
+                          }}
+                          className="text-sm text-rose-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cover Image */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+                  <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    Cover Image
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="relative flex h-40 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
+                      {coverPreviewUrl ? (
+                        <img
+                          src={coverPreviewUrl}
+                          alt="Cover Preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : customizationForm.branding.coverImage && !removeCover ? (
+                        <img
+                          src={getAssetUrl(customizationForm.branding.coverImage)}
+                          alt="Cover"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">No cover image</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="inline-block cursor-pointer rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setCoverImageFile(e.target.files[0]);
+                              setRemoveCover(false);
+                            }
+                          }}
+                        />
+                        Upload Cover
+                      </label>
+                      {(coverImageFile ||
+                        (customizationForm.branding.coverImage && !removeCover)) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoverImageFile(null);
+                            setRemoveCover(true);
+                          }}
+                          className="text-sm text-rose-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* ==================== PAYMENT TAB ==================== */}
+            {customizationTab === 'payment' && (
+              <div className="space-y-8">
+                {/* Payment Methods */}
+                <div className="rounded-2xl border border-slate-200 p-5">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500">
+                    Payment Methods
+                  </h3>
+                  <div className="space-y-4">
+                    {[
+                      {
+                        key: 'card',
+                        label: 'Card',
+                        desc: 'Accept credit/debit card payments',
+                      },
+                      {
+                        key: 'bank_transfer',
+                        label: 'Bank Transfer',
+                        desc: 'Allow offline bank transfer payments',
+                      },
+                      {
+                        key: 'cash',
+                        label: 'Cash',
+                        desc: 'Allow cash on delivery or at venue',
+                      },
+                    ].map(({ key, label, desc }) => (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center justify-between group"
+                      >
+                        <div>
+                          <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {label}
+                          </div>
+                          <div className="text-sm text-slate-500">{desc}</div>
+                        </div>
+                        <div
+                          className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200 transition-colors data-[checked=true]:bg-blue-600"
+                          data-checked={!!customizationForm.paymentMethods?.[key]}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={!!customizationForm.paymentMethods?.[key]}
+                            onChange={(e) =>
+                              setCustomizationForm((c) => ({
+                                ...c,
+                                paymentMethods: {
+                                  ...c.paymentMethods,
+                                  [key]: e.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              customizationForm.paymentMethods?.[key]
+                                ? 'translate-x-6'
+                                : 'translate-x-1'
+                            }`}
+                          />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+        {activeSection === 'attendees' && (
+          <PermissionGuard permission="canViewAttendees" fallback={null}>
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+              <div className="flex flex-col gap-3 px-5 pt-5 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Attendee Management</h2>
+                  <p className="text-sm text-slate-500">Search, filter, edit & resend</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <PermissionGuard permission="canAddAttendees">
+                    <Button size="sm" onClick={() => setAttendeeModal({})}>Add Attendee</Button>
+                  </PermissionGuard>
+                  <PermissionGuard permission="canExcelBulkImports">
+                    <Button size="sm" variant="outline" onClick={() => { setBulkUploadModal(true); }}>
+                      <ArrowUpTrayIcon className="w-4 h-4 mr-2" />
+                      Bulk Upload
+                    </Button>
+                  </PermissionGuard>
+                </div>
+              </div>
+
+            <div className="px-5 mb-4 grid gap-3 md:grid-cols-4">
+              <Input value={search} onChange={(e) => { setSearch(e.target.value); setQuery('search', e.target.value); }} placeholder="Search by name, email, phone" />
+              <Select value={status} onChange={(e) => { setStatus(e.target.value); setQuery('status', e.target.value); }}>
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="rejected">Rejected</option>
+              </Select>
+              <Select value={category} onChange={(e) => { setCategory(e.target.value); setQuery('category', e.target.value); }}>
+                <option value="">All categories</option>
+                {categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+              </Select>
+              <Select value={params.get('limit') || '10'} onChange={(e) => setQuery('limit', e.target.value)}>
                 <option value="10">10 rows</option>
                 <option value="20">20 rows</option>
                 <option value="50">50 rows</option>
-              </select>
+              </Select>
             </div>
-            <Table>
-              <thead><tr><Th>Name</Th><Th>Category</Th><Th>Status</Th><Th>Photo</Th><Th>Actions</Th></tr></thead>
-              <tbody>
-                {attendees.map((attendee) => {
-                  const isBulkUploadAttendee = attendee?.addedVia === 'bulk_upload';
-                  return (
-                  <Tr key={attendee._id}>
-                    <Td><div><p className="font-semibold">{attendee.fullName}</p><p className="text-xs text-slate-500">{attendee.email || attendee.phone || '-'}</p></div></Td>
-                    <Td>{attendee.categoryName || '-'}</Td>
-                    <Td>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge color={statusColor[attendee.confirmationStatus] || 'gray'}>{attendee.confirmationStatus}</Badge>
-                        {attendee.isDisabled && <Badge color="red">disabled</Badge>}
-                      </div>
-                    </Td>
-                    <Td><Badge color={statusColor[attendee.photoVerificationStatus] || 'gray'}>{attendee.photoVerificationStatus}</Badge></Td>
-                    <Td className="space-x-2">
-                      <button className="text-blue-600" onClick={() => setAttendeeModal({ ...emptyAttendee, ...attendee })}>Edit</button>
-                      <button className="text-amber-700" onClick={() => toggleAttendeeDisabled(attendee)}>
-                        {attendee.isDisabled ? 'Enable' : 'Disable'}
-                      </button>
-                      {isBulkUploadAttendee && (
-                        <button className="text-rose-600" onClick={() => removeAttendee(attendee._id)}>Delete</button>
-                      )}
-                      <button className="text-teal-700" onClick={() => inviteOrganiserAttendee(attendee._id, eventId).then(() => { toast.success('Invite resent'); loadWorkspace(); })}>Resend Invite</button>
-                    </Td>
-                  </Tr>
-                )})}
-              </tbody>
-            </Table>
+
+            <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <thead>
+                  <Tr><Th>Name</Th><Th>Category</Th><Th>Status</Th><Th>Photo</Th><Th>Actions</Th></Tr>
+                </thead>
+                <tbody>
+                  {attendees.map((attendee) => {
+                    const isBulkUploadAttendee = attendee?.addedVia === 'bulk_upload';
+                    return (
+                      <Tr key={attendee._id}>
+                        <Td>
+                          <p className="font-semibold text-slate-900">{attendee.fullName}</p>
+                          <p className="text-xs text-slate-500">{attendee.email || attendee.phone || '-'}</p>
+                        </Td>
+                        <Td>{attendee.categoryName || '-'}</Td>
+                        <Td>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge color={statusColor[attendee.confirmationStatus] || 'gray'}>{attendee.confirmationStatus}</Badge>
+                            {attendee.isDisabled && <Badge color="red">disabled</Badge>}
+                          </div>
+                        </Td>
+                        <Td><Badge color={statusColor[attendee.photoVerificationStatus] || 'gray'}>{attendee.photoVerificationStatus}</Badge></Td>
+                        <Td className="whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <Button variant="outline" size="sm" onClick={() => setAttendeeModal({ ...emptyAttendee, ...attendee })}>Edit</Button>
+                            <Button variant="outline" size="sm" onClick={() => toggleAttendeeDisabled(attendee)}>{attendee.isDisabled ? 'Enable' : 'Disable'}</Button>
+                            {isBulkUploadAttendee && (
+                              <Button variant="outline" size="sm" className="text-rose-500 border-rose-100 hover:bg-rose-50" onClick={() => removeAttendee(attendee._id)}>Delete</Button>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => resendAttendeeInvite(attendee._id)}>Resend Invite</Button>
+                          </div>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
             <Pagination
               page={workspace?.attendees?.page}
               pages={workspace?.attendees?.pages}
@@ -1377,220 +1767,549 @@ const OrganiserDashboard = () => {
               updateQuery={setQuery}
             />
           </Card>
+          </PermissionGuard>
         )}
 
         {activeSection === 'tickets' && (
-          <Card>
-            <CardHeader title="Ticket Management" subtitle="Manage categories, capacity, pricing, and assignments" action={<Button onClick={() => setCategoryModal({ ...emptyCategory })}>Add Category</Button>} />
-            <Table>
-              <thead><tr><Th>Name</Th><Th>Price</Th><Th>Capacity</Th><Th>Sold</Th><Th>Assigned / Unassigned</Th><Th>Created By</Th><Th>Private Code</Th><Th>Actions</Th></tr></thead>
-              <tbody>
-                {ticketPage.rows.map((ticket) => (
-                  <Tr key={ticket.id}>
-                    <Td>{ticket.name}</Td><Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(ticket.price || 0).toLocaleString()}</Td><Td>{ticket.capacity}</Td><Td>{ticket.soldCount}</Td><Td>{ticket.assignedCount} / {ticket.unassignedCount}</Td>
-                    <Td>{getTicketCreatorLabel(ticket)}</Td>
-                    <Td>
-                      {ticket.isPrivate
-                        ? (canViewPrivateTicketCode(ticket) ? (ticket.accessCode || 'AUTO-GENERATED') : 'Hidden')
-                        : '-'}
-                    </Td>
-                    <Td className="space-x-2"><button className="text-blue-600" onClick={() => setCategoryModal(ticket)}>Edit</button><button className="text-rose-600" onClick={() => deleteTicketCategory(ticket.id, eventId).then(() => { toast.success('Category deleted'); loadWorkspace(); })}>Delete</button></Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-            <Pagination {...ticketPage} updateQuery={setQuery} />
-          </Card>
-        )}
-
-        {activeSection === 'sponsor-packages' && (
-          <div className="space-y-6 animate-fade-in">
-            <Card>
-              <CardHeader
-                title="Sponsor Packages"
-                subtitle="Create and manage sponsor packages for this event"
-                action={<Button onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}>Add Sponsor Package</Button>}
-              />
-              <Table>
+          <PermissionGuard permission="canViewTickets" fallback={null}>
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+              <div className="flex flex-col gap-3 px-5 pt-5 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Ticket Management</h2>
+                  <p className="text-sm text-slate-500">Categories, capacity, pricing & assignments</p>
+                </div>
+                <PermissionGuard permission="canEditTickets">
+                  <Button onClick={() => setCategoryModal({ ...emptyCategory })} className="bg-blue-600 hover:bg-blue-500 shrink-0">
+                    + Add Category
+                  </Button>
+                </PermissionGuard>
+              </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
                 <thead>
-                  <tr>
-                    <Th>Name</Th>
-                    <Th>Level</Th>
-                    <Th>Price</Th>
-                    <Th>Capacity</Th>
-                    <Th>Visible</Th>
-                    <Th>Actions</Th>
-                  </tr>
+                  <Tr>
+                    <Th>Name</Th><Th>Price</Th><Th>Capacity</Th><Th>Sold</Th>
+                    <Th>Assigned / Unassigned</Th><Th>Created By</Th><Th>Private Code</Th><Th>Actions</Th>
+                  </Tr>
                 </thead>
                 <tbody>
-                  {sponsorPackages.length === 0 ? (
-                    <Tr><Td colSpan={6} className="text-center text-slate-500">No sponsor packages configured yet.</Td></Tr>
-                  ) : sponsorPackagePage.rows.map((pkg) => (
-                    <Tr key={pkg.id}>
-                      <Td>{pkg.name}</Td>
-                      <Td>{pkg.level || 'Custom'}</Td>
-                      <Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(pkg.price || 0).toLocaleString()}</Td>
-                      <Td>{pkg.capacity}</Td>
-                      <Td>{pkg.isVisible ? 'Yes' : 'No'}</Td>
-                      <Td className="space-x-2">
-                        <button className="text-blue-600" onClick={() => setSponsorPackageModal(pkg)}>Edit</button>
-                        <button className="text-rose-600" onClick={() => removeSponsorPackage(pkg.id)}>Delete</button>
+                  {ticketPage.rows.map((ticket) => (
+                    <Tr key={ticket.id}>
+                      <Td className="font-medium text-slate-900">{ticket.name}</Td>
+                      <Td>{selectedEvent?.settings?.currency || 'LKR'} {Number(ticket.price || 0).toLocaleString()}</Td>
+                      <Td>{ticket.capacity}</Td>
+                      <Td>{ticket.soldCount}</Td>
+                      <Td>{ticket.assignedCount} / {ticket.unassignedCount}</Td>
+                      <Td>{getTicketCreatorLabel(ticket)}</Td>
+                      <Td>
+                        {ticket.isPrivate
+                          ? (canViewPrivateTicketCode(ticket) ? (ticket.accessCode || 'AUTO-GENERATED') : 'Hidden')
+                          : '-'}
+                      </Td>
+                      <Td>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setCategoryModal(ticket)}>Edit</Button>
+                          <Button variant="outline" size="sm" className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                            onClick={() => removeCategory(ticket.id)}>Delete</Button>
+                        </div>
                       </Td>
                     </Tr>
                   ))}
                 </tbody>
               </Table>
+            </div>
+            {ticketPage.rows.length === 0 && (
+              <div className="px-5 py-12 text-center text-sm text-slate-500">No ticket categories yet.</div>
+            )}
+            <Pagination {...ticketPage} updateQuery={setQuery} />
+          </Card>
+          </PermissionGuard>
+        )}
+
+        {activeSection === 'sponsor-packages' && (
+          <div className="space-y-5">
+            {/* Summary metrics */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                {
+                  label: 'Packages',
+                  value: sponsorPackages.length || 0,
+                  accent: 'text-slate-900',
+                  bg: 'bg-slate-50',
+                  border: 'border-slate-200/80',
+                },
+                {
+                  label: 'Visible',
+                  value: sponsorPackages.filter((p) => p.isVisible).length || 0,
+                  accent: 'text-emerald-600',
+                  bg: 'bg-emerald-50/70',
+                  border: 'border-emerald-100',
+                },
+                {
+                  label: 'Sponsors',
+                  value: sponsors.length || 0,
+                  accent: 'text-indigo-600',
+                  bg: 'bg-indigo-50/70',
+                  border: 'border-indigo-100',
+                },
+                {
+                  label: 'Total Value',
+                  value: `${selectedEvent?.settings?.currency || 'LKR'} ${sponsorPackages
+                    .reduce((sum, p) => sum + Number(p.price || 0) * Number(p.capacity || 1), 0)
+                    .toLocaleString()}`,
+                  accent: 'text-blue-600',
+                  bg: 'bg-blue-50/70',
+                  border: 'border-blue-100',
+                },
+              ].map(({ label, value, accent, bg, border }) => (
+                <div key={label} className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className={`mt-1 text-xl font-bold truncate ${accent}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+              <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <BanknotesIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Sponsor Packages</h2>
+                    <p className="text-sm text-slate-500">Create tiers and pricing for sponsors</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}
+                  className="bg-blue-600 hover:bg-blue-500 shrink-0"
+                >
+                  + Add Package
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <Table className="min-w-[700px]">
+                  <thead>
+                    <Tr>
+                      <Th>Name</Th>
+                      <Th>Level</Th>
+                      <Th>Price</Th>
+                      <Th>Capacity</Th>
+                      <Th>Visible</Th>
+                      <Th>Actions</Th>
+                    </Tr>
+                  </thead>
+                  <tbody>
+                    {sponsorPackages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                        <BanknotesIcon className="h-7 w-7" />
+                      </div>
+                      <p className="text-base font-semibold text-slate-800">No packages yet</p>
+                      <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+                        Create a package to define pricing, capacity, and benefits for sponsors.
+                      </p>
+                      <Button
+                        onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}
+                        className="mt-6 bg-blue-600 hover:bg-blue-500"
+                        size="sm"
+                      >
+                        + Create first package
+                      </Button>
+                    </div>
+                    ) : (
+                      sponsorPackagePage.rows.map((pkg) => {
+                        const levelColor =
+                          pkg.level === 'Platinum'
+                            ? 'bg-slate-800 text-white'
+                            : pkg.level === 'Gold'
+                            ? 'bg-amber-100 text-amber-800'
+                            : pkg.level === 'Silver'
+                            ? 'bg-slate-200 text-slate-700'
+                            : 'bg-indigo-50 text-indigo-700';
+                        return (
+                          <Tr key={pkg.id}>
+                            <Td>
+                              <p className="font-semibold text-slate-900">{pkg.name}</p>
+                              {pkg.description && (
+                                <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{pkg.description}</p>
+                              )}
+                            </Td>
+                            <Td>
+                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${levelColor}`}>
+                                {pkg.level || 'Custom'}
+                              </span>
+                            </Td>
+                            <Td className="font-medium text-slate-800">
+                              {selectedEvent?.settings?.currency || 'LKR'}{' '}
+                              {Number(pkg.price || 0).toLocaleString()}
+                            </Td>
+                            <Td>
+                              <span className="rounded-full bg-slate-50 border border-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                {pkg.capacity}
+                              </span>
+                            </Td>
+                            <Td>
+                              <Badge color={pkg.isVisible ? 'green' : 'gray'}>
+                                {pkg.isVisible ? 'Yes' : 'No'}
+                              </Badge>
+                            </Td>
+                            <Td>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setSponsorPackageModal(pkg)}>
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                  onClick={() => setDeleteConfirm({ type: 'package', id: pkg.id, label: pkg.name,})}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </Td>
+                          </Tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </Table>
+              </div>
               <Pagination {...sponsorPackagePage} updateQuery={setQuery} />
             </Card>
           </div>
         )}
 
         {activeSection === 'sponsors' && (
-          <div className="space-y-6 animate-fade-in">
-            <Card>
-              <CardHeader
-                title="Manage Sponsors"
-                subtitle="Onboard sponsors and assign sponsor packages"
-                action={<Button onClick={() => setSponsorModal({ ...emptySponsor, packageId: sponsorPackages?.[0]?.id || '' })}>Add Sponsor</Button>}
-              />
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Company</Th>
-                    <Th>Contact</Th>
-                    <Th>Email</Th>
-                    <Th>Phone</Th>
-                    <Th>Package</Th>
-                    <Th>Actions</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sponsors.length === 0 ? (
-                    <Tr><Td colSpan={6} className="text-center text-slate-500">No sponsors assigned yet.</Td></Tr>
-                  ) : sponsorPage.rows.map((sponsor) => (
-                    <Tr key={sponsor._id}>
-                      <Td>{sponsor.companyName}</Td>
-                      <Td>{sponsor.contactPerson}</Td>
-                      <Td>{sponsor.email}</Td>
-                      <Td>{sponsor.phone}</Td>
-                      <Td>{sponsorPackages.find((pkg) => pkg.id === sponsor.packageId)?.name || sponsor.packageId}</Td>
-                      <Td className="space-x-2"><button className="text-rose-600" onClick={() => removeSponsor(sponsor._id)}>Delete</button></Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-              <Pagination {...sponsorPage} updateQuery={setQuery} />
+          <div className="space-y-5">
+            {/* Metrics */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Total Sponsors', value: sponsors.length || 0, accent: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200/80' },
+                { label: 'Packages Used', value: new Set(sponsors.map((s) => s.packageId).filter(Boolean)).size, accent: 'text-indigo-600', bg: 'bg-indigo-50/70', border: 'border-indigo-100' },
+                { label: 'Available Packages', value: sponsorPackages.length || 0, accent: 'text-blue-600', bg: 'bg-blue-50/70', border: 'border-blue-100' },
+              ].map(({ label, value, accent, bg, border }) => (
+                <div key={label} className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className={`mt-1 text-2xl font-bold ${accent}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+              {/* Header — always shown */}
+              <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <UsersIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Manage Sponsors</h2>
+                    <p className="text-sm text-slate-500">Onboard sponsors &amp; assign packages</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() =>
+                    setSponsorModal({
+                      ...emptySponsor,
+                      packageId: sponsorPackages?.[0]?.id || '',
+                    })
+                  }
+                  className="bg-blue-600 hover:bg-blue-500 shrink-0"
+                  disabled={sponsorPackages.length === 0}
+                >
+                  + Add Sponsor
+                </Button>
+              </div>
+
+              {/* Empty state — outside table so it centers properly */}
+              {sponsors.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <UsersIcon className="h-7 w-7" />
+                  </div>
+                  <p className="text-base font-semibold text-slate-800">No sponsors yet</p>
+                  <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+                    {sponsorPackages.length === 0
+                      ? 'Create a sponsor package first, then add sponsors.'
+                      : 'Add your first sponsor and assign a package.'}
+                  </p>
+                  {sponsorPackages.length > 0 ? (
+                    <Button
+                      onClick={() =>
+                        setSponsorModal({
+                          ...emptySponsor,
+                          packageId: sponsorPackages[0]?.id || '',
+                        })
+                      }
+                      className="mt-6 bg-blue-600 hover:bg-blue-500"
+                      size="sm"
+                    >
+                      + Add first sponsor
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => setQuery('section', 'sponsor-packages')}
+                      variant="outline"
+                      className="mt-6"
+                      size="sm"
+                    >
+                      Go to packages
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[800px]">
+                      <thead>
+                        <Tr>
+                          <Th>Company</Th>
+                          <Th>Contact</Th>
+                          <Th>Email</Th>
+                          <Th>Phone</Th>
+                          <Th>Package</Th>
+                          <Th>Actions</Th>
+                        </Tr>
+                      </thead>
+                      <tbody>
+                        {sponsorPage.rows.map((sponsor) => {
+                          const pkg = sponsorPackages.find((p) => p.id === sponsor.packageId);
+                          const initials = (sponsor.companyName || '?')
+                            .split(' ')
+                            .map((w) => w[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase();
+                          return (
+                            <Tr key={sponsor._id}>
+                              <Td>
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">
+                                    {initials}
+                                  </div>
+                                  <p className="font-semibold text-slate-900">{sponsor.companyName}</p>
+                                </div>
+                              </Td>
+                              <Td className="text-sm text-slate-700">{sponsor.contactPerson}</Td>
+                              <Td className="text-sm text-slate-600">{sponsor.email}</Td>
+                              <Td className="text-sm text-slate-600">{sponsor.phone || '—'}</Td>
+                              <Td>
+                                {pkg ? (
+                                  <span className="inline-flex rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">
+                                    {pkg.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">{sponsor.packageId || '—'}</span>
+                                )}
+                              </Td>
+                              <Td>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                  onClick={() =>
+                                    setDeleteConfirm({
+                                      type: 'sponsor',
+                                      id: sponsor._id,
+                                      label: sponsor.companyName,
+                                    })
+                                  }
+                                >
+                                  Delete
+                                </Button>
+                              </Td>
+                            </Tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
+                  <Pagination {...sponsorPage} updateQuery={setQuery} />
+                </>
+              )}
             </Card>
           </div>
         )}
 
         {activeSection === 'suborganisers' && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Team Overview Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <PermissionGuard permission="canViewUsers" fallback={null}>
+            <div className="space-y-5">
+            {/* Role summary metrics */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {[
-                { label: 'Total Strength', value: teamCounts.total, color: 'text-slate-900', bg: 'bg-slate-100/70 border-slate-200/60' },
-                { label: 'Sub-Organisers', value: teamCounts.SubOrganiser, color: 'text-indigo-600', bg: 'bg-indigo-50/30 border-indigo-100' },
-                { label: 'Staff', value: teamCounts.Staff, color: 'text-blue-600', bg: 'bg-blue-50/30 border-blue-100' },
-                { label: 'Volunteers', value: teamCounts.Volunteer, color: 'text-cyan-600', bg: 'bg-cyan-50/30 border-cyan-100' },
-                { label: 'Auditors', value: teamCounts.Auditor, color: 'text-teal-600', bg: 'bg-teal-50/30 border-teal-100' },
-              ].map(({ label, value, color, bg }) => (
-                <div key={label} className={`rounded-2xl border p-4 ${bg}`}>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-                  <p className={`mt-2 text-3xl font-black ${color}`}>{value || 0}</p>
+                { label: 'Total', value: teamCounts.total, accent: 'text-slate-900', bg: 'bg-slate-50', border: 'border-slate-200/80' },
+                { label: 'Sub-Organisers', value: teamCounts.SubOrganiser, accent: 'text-blue-600', bg: 'bg-blue-50/70', border: 'border-blue-100' },
+                { label: 'Staff', value: teamCounts.Staff, accent: 'text-sky-600', bg: 'bg-sky-50/70', border: 'border-sky-100' },
+                { label: 'Volunteers', value: teamCounts.Volunteer, accent: 'text-cyan-600', bg: 'bg-cyan-50/70', border: 'border-cyan-100' },
+                { label: 'Auditors', value: teamCounts.Auditor, accent: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200/80' },
+              ].map(({ label, value, accent, bg, border }) => (
+                <div key={label} className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className={`mt-1 text-2xl font-bold ${accent}`}>{value || 0}</p>
                 </div>
               ))}
             </div>
 
-            {/* Smart Role Guidance Card */}
-            <div className="rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white p-5 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">ℹ</div>
-                <div>
-                  <h4 className="font-bold text-slate-900">Understanding Team Roles & Scopes</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Scopes determine if a user can approve tickets, scan entries, or edit event zones.</p>
+            {/* Toolbar */}
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <UsersIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Team Control Centre</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Roles, scopes &amp; delegation</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-2 text-[11px] font-medium text-slate-600">
-                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-indigo-600">Sub-Organiser:</strong> Full Admin Access</span>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-blue-600">Staff:</strong> Operations & Verification</span>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-cyan-600">Volunteer:</strong> Scanner Only</span>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-slate-100"><strong className="text-teal-600">Auditor:</strong> Read-Only Audit logs</span>
-              </div>
-            </div>
-
-            {/* Filters and Search Bar */}
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">Team Control Centre</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Audit roles, assign entry scopes, and delegate ticket categories</p>
-                </div>
-                <Button onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}>Create Team Member</Button>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <input 
-                  value={teamSearch} 
-                  onChange={(e) => setTeamSearch(e.target.value)} 
-                  placeholder="Search by name, email, phone..." 
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
-                />
-                <select 
-                  value={teamRoleFilter} 
-                  onChange={(e) => setTeamRoleFilter(e.target.value)} 
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
+                <Button
+                  onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}
+                  className="bg-blue-600 hover:bg-blue-500 shrink-0"
                 >
+                  + Create Team Member
+                </Button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <Input
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Search name, email, phone..."
+                />
+                <Select value={teamRoleFilter} onChange={(e) => setTeamRoleFilter(e.target.value)}>
                   <option value="">All Roles</option>
                   <option value="SubOrganiser">Sub-Organisers</option>
                   <option value="Staff">Staff</option>
                   <option value="Volunteer">Volunteers</option>
                   <option value="Auditor">Auditors</option>
-                </select>
-                <select 
-                  value={teamStatusFilter} 
-                  onChange={(e) => setTeamStatusFilter(e.target.value)} 
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all bg-white"
-                >
+                </Select>
+                <Select value={teamStatusFilter} onChange={(e) => setTeamStatusFilter(e.target.value)}>
                   <option value="">All Statuses</option>
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
-                </select>
+                </Select>
               </div>
-            </div>
+            </Card>
 
-            {/* Main Render List */}
             {filteredTeamMembers.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
-                <p className="text-slate-500 font-medium">No team members match your active filters.</p>
-                {(teamSearch || teamRoleFilter || teamStatusFilter) && (
-                  <button onClick={() => { setTeamSearch(''); setTeamRoleFilter(''); setTeamStatusFilter(''); }} className="mt-3 text-sm font-bold text-blue-600 hover:underline">Reset Filters</button>
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <UsersIcon className="h-7 w-7" />
+                </div>
+                <p className="text-base font-semibold text-slate-800">No team members match your filters</p>
+                <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+                  Try adjusting search or filters, or create a new team member.
+                </p>
+                {(teamSearch || teamRoleFilter || teamStatusFilter) ? (
+                  <button
+                    type="button"
+                    onClick={() => { setTeamSearch(''); setTeamRoleFilter(''); setTeamStatusFilter(''); }}
+                    className="mt-5 text-sm font-bold text-blue-600 hover:underline"
+                  >
+                    Reset Filters
+                  </button>
+                ) : (
+                  <Button
+                    onClick={() => { setSubOrgForm(emptySubOrg); setSubOrgModal(true); }}
+                    className="mt-5 bg-blue-600 hover:bg-blue-500"
+                    size="sm"
+                  >
+                    + Create Team Member
+                  </Button>
                 )}
               </div>
             ) : (teamSearch || teamRoleFilter || teamStatusFilter) ? (
-              // Search Results Unified List
-              <Card>
-                <CardHeader title="Search Results" subtitle={`Found ${filteredTeamMembers.length} matching team members`} />
-                <div className="overflow-hidden rounded-2xl border border-slate-100">
-                  <Table>
-                    <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/40 px-5 py-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Search Results</h2>
+                    <p className="text-sm text-slate-500">{filteredTeamMembers.length} matching members</p>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[800px]">
+                    <thead>
+                      <Tr>
+                        <Th>Member</Th>
+                        <Th>Role</Th>
+                        <Th>Status</Th>
+                        <Th>Scope</Th>
+                        <Th>Actions</Th>
+                      </Tr>
+                    </thead>
                     <tbody>
-                      {filteredTeamMembers.map((user) => {
-                        const ownerName = user.role !== 'SubOrganiser' && teamMembers.find(m => m._id === (user.createdBy?._id || user.createdBy))?.name;
+                      {filteredTeamMembers.map((member) => {
+                        const ownerName =
+                          member.role !== 'SubOrganiser' &&
+                          teamMembers.find((m) => m._id === (member.createdBy?._id || member.createdBy))?.name;
+                        const initials = (member.name || '?')
+                          .split(' ')
+                          .map((p) => p[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase();
                         return (
-                          <Tr key={user._id}>
+                          <Tr key={member._id}>
                             <Td>
-                              <div className="font-semibold text-slate-900">{user.name}</div>
-                              <div className="text-xs text-slate-500">{user.email} · {user.phone}</div>
-                              {ownerName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">Lead: {ownerName}</div>}
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                                  {initials}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900 truncate">{member.name}</p>
+                                  <p className="text-xs text-slate-500 truncate">
+                                    {member.email} · {member.phone}
+                                  </p>
+                                  {ownerName && (
+                                    <p className="text-[10px] font-semibold text-blue-500 mt-0.5">
+                                      Lead: {ownerName}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
                             </Td>
-                            <Td><span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${user.role === 'SubOrganiser' ? 'bg-indigo-100 text-indigo-700' : user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span></Td>
-                            <Td><Badge color={user.status === 'Active' ? 'green' : 'gray'}>{user.status}</Badge></Td>
-                            <Td className="text-xs text-slate-600">{[...(user.assignedGates || []), ...(user.assignedZones || [])].join(', ') || 'General Scope'}</Td>
                             <Td>
-                              <div className="flex gap-2">
-                                <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit</button>
-                                <button className="text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle</button>
+                              <span
+                                className={`inline-flex text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                                  member.role === 'SubOrganiser'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : member.role === 'Staff'
+                                    ? 'bg-sky-100 text-sky-700'
+                                    : member.role === 'Volunteer'
+                                    ? 'bg-cyan-100 text-cyan-700'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {member.role}
+                              </span>
+                            </Td>
+                            <Td>
+                              <Badge color={member.status === 'Active' ? 'green' : 'gray'}>
+                                {member.status}
+                              </Badge>
+                            </Td>
+                            <Td className="text-xs text-slate-600">
+                              {[...(member.assignedGates || []), ...(member.assignedZones || [])].join(', ') ||
+                                'General'}
+                            </Td>
+                            <Td>
+                              <div className="flex flex-wrap gap-2">
+                                <Button variant="outline" size="sm" onClick={() => handleEditTeamMember(member)}>
+                                  Edit
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => toggleTeamMemberStatus(member)}>
+                                  Toggle
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                  onClick={() => handleDeleteTeamMember(member)}
+                                >
+                                  <TrashIcon className="h-4 w-4" />
+                                </Button>
                               </div>
                             </Td>
                           </Tr>
@@ -1601,291 +2320,1182 @@ const OrganiserDashboard = () => {
                 </div>
               </Card>
             ) : (
-              // Grouped Hierarchical View
-              <div className="space-y-6">
-                {groupedTeamMembers.groups.map(({ lead, members }) => (
-                  <div key={lead._id} className="rounded-3xl border border-slate-200 bg-slate-50/50 p-6 space-y-4 hover:shadow-md transition-all">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">Sub-Organiser Node</span>
-                        <h3 className="mt-3 text-2xl font-black text-slate-900">{lead.name}</h3>
-                        <p className="mt-1 text-sm text-slate-500">{lead.email} · {lead.phone}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
-                          <Badge color="indigo">{members.length} Assigned Members</Badge>
+              <div className="space-y-5">
+                {groupedTeamMembers.groups.map(({ lead, members }) => {
+                  const leadInitials = (lead.name || '?')
+                    .split(' ')
+                    .map((p) => p[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase();
+                  return (
+                    <Card
+                      key={lead._id}
+                      className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
+                    >
+                      <div className="absolute inset-y-0 left-0 w-1 rounded-l-2xl bg-blue-500" />
+                      <div className="pl-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-700 ring-2 ring-blue-100">
+                              {leadInitials}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="inline-flex text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full">
+                                Sub-Organiser
+                              </span>
+                              <h3 className="mt-1.5 text-xl font-bold text-slate-900 truncate">{lead.name}</h3>
+                              <p className="text-sm text-slate-500 truncate">
+                                {lead.email} · {lead.phone}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Badge color={lead.status === 'Active' ? 'green' : 'gray'}>{lead.status}</Badge>
+                                <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  {members.length} {members.length === 1 ? 'member' : 'members'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <Button variant="outline" size="sm" onClick={() => handleEditTeamMember(lead)}>
+                              Edit
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => toggleTeamMemberStatus(lead)}>
+                              Toggle
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                              onClick={() => handleDeleteTeamMember(lead)}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => handleEditTeamMember(lead)}>Edit Node</Button>
-                        <Button variant="outline" onClick={() => updateSubOrganiser(lead._id, { eventId, status: lead.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</Button>
-                      </div>
-                    </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                      <Table>
-                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Scope</Th><Th>Zones / Gates</Th><Th>Actions</Th></tr></thead>
-                        <tbody>
-                          {members.map((user) => (
-                            <Tr key={user._id}>
-                              <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
-                              <Td>
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
-                                  <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="flex flex-wrap gap-1">
-                                  {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
-                                  {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
-                                  {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
-                                </div>
-                              </Td>
-                              <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
-                              <Td>
-                                <div className="flex flex-col gap-1.5">
-                                  <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
-                                  <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
-                                </div>
-                              </Td>
-                            </Tr>
-                          ))}
-                          {members.length === 0 && (
-                            <tr><td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-500">No team members assigned under this sub organiser yet.</td></tr>
-                          )}
-                        </tbody>
-                      </Table>
-                    </div>
-                  </div>
-                ))}
+                        {members.length > 0 && (
+                          <div className="overflow-x-auto rounded-xl border border-slate-100">
+                            <Table className="min-w-[700px]">
+                              <thead>
+                                <Tr>
+                                  <Th>Member</Th>
+                                  <Th>Role</Th>
+                                  <Th>Scope</Th>
+                                  <Th>Zones / Gates</Th>
+                                  <Th>Actions</Th>
+                                </Tr>
+                              </thead>
+                              <tbody>
+                                {members.map((member) => {
+                                  const mInitials = (member.name || '?')
+                                    .split(' ')
+                                    .map((p) => p[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase();
+                                  return (
+                                    <Tr key={member._id}>
+                                      <Td>
+                                        <div className="flex items-center gap-2.5">
+                                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+                                            {mInitials}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="font-semibold text-slate-900 truncate">{member.name}</p>
+                                            <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                          </div>
+                                        </div>
+                                      </Td>
+                                      <Td>
+                                        <span
+                                          className={`inline-flex text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                                            member.role === 'Staff'
+                                              ? 'bg-sky-100 text-sky-700'
+                                              : member.role === 'Volunteer'
+                                              ? 'bg-cyan-100 text-cyan-700'
+                                              : 'bg-slate-100 text-slate-700'
+                                          }`}
+                                        >
+                                          {member.role}
+                                        </span>
+                                      </Td>
+                                      <Td>
+                                        <div className="flex flex-wrap gap-1">
+                                          {(member.assignedGates || []).length > 0 && (
+                                            <span className="rounded-full bg-sky-50 border border-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                                              Entry
+                                            </span>
+                                          )}
+                                          {(member.assignedZones || []).length > 0 && (
+                                            <span className="rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                              Zone
+                                            </span>
+                                          )}
+                                          {!(member.assignedGates || []).length &&
+                                            !(member.assignedZones || []).length && (
+                                              <span className="text-xs text-slate-400">General</span>
+                                            )}
+                                        </div>
+                                      </Td>
+                                      <Td className="text-xs text-slate-600">
+                                        {[
+                                          (member.assignedGates || []).length
+                                            ? `Gates: ${(member.assignedGates || []).join(', ')}`
+                                            : '',
+                                          (member.assignedZones || []).length
+                                            ? `Zones: ${(member.assignedZones || []).join(', ')}`
+                                            : 'No zone access',
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' | ')}
+                                      </Td>
+                                      <Td>
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleEditTeamMember(member)}
+                                          >
+                                            Edit
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => toggleTeamMemberStatus(member)}
+                                          >
+                                            Toggle
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                            onClick={() => handleDeleteTeamMember(member)}
+                                          >
+                                            <TrashIcon className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </Td>
+                                    </Tr>
+                                  );
+                                })}
+                              </tbody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
 
                 {groupedTeamMembers.directMembers.length > 0 && (
-                  <div className="rounded-3xl border border-slate-200 bg-white p-6 space-y-4 hover:shadow-md transition-all">
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900">Direct Event Team</h3>
-                      <p className="mt-1 text-sm text-slate-500">Members assigned directly by the Main Organiser.</p>
+                  <Card
+                    className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
+                    padding={false}
+                  >
+                    <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/40 px-5 py-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                        <UsersIcon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-900">Direct Event Team</h2>
+                        <p className="text-sm text-slate-500">Assigned by Main Organiser</p>
+                      </div>
                     </div>
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                      <Table>
-                        <thead><tr><Th>Team Member</Th><Th>Role</Th><Th>Status</Th><Th>Scope</Th><Th>Actions</Th></tr></thead>
+                    <div className="overflow-x-auto">
+                      <Table className="min-w-[700px]">
+                        <thead>
+                          <Tr>
+                            <Th>Member</Th>
+                            <Th>Role</Th>
+                            <Th>Status</Th>
+                            <Th>Scope</Th>
+                            <Th>Actions</Th>
+                          </Tr>
+                        </thead>
                         <tbody>
-                          {groupedTeamMembers.directMembers.map((user) => (
-                            <Tr key={user._id}>
-                              <Td><div className="font-semibold text-slate-900">{user.name}</div><div className="text-xs text-slate-500">{user.email} · {user.phone}</div></Td>
-                              <Td>
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${user.role === 'Staff' ? 'bg-blue-100 text-blue-700' : user.role === 'Volunteer' ? 'bg-cyan-100 text-cyan-700' : 'bg-teal-100 text-teal-700'}`}>{user.role}</span>
-                                  <Badge color={user.status === 'Active' ? 'green' : 'gray'} size="xs">{user.status}</Badge>
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="flex flex-wrap gap-1">
-                                  {(user.assignedGates || []).length > 0 && <span className="rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-medium text-cyan-700">Entry</span>}
-                                  {(user.assignedZones || []).length > 0 && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Zone</span>}
-                                  {!(user.assignedGates || []).length && !(user.assignedZones || []).length && <span className="text-xs text-slate-400">General</span>}
-                                </div>
-                              </Td>
-                              <Td className="text-xs text-slate-600">{(() => { const gates = (user.assignedGates || []).length > 0 ? `Gates: ${(user.assignedGates || []).join(', ')}` : ''; const zones = (user.assignedZones || []).length > 0 ? `Zones: ${(user.assignedZones || []).join(', ')}` : 'No Zone Access Assigned'; return [gates, zones].filter(Boolean).join(' | '); })()}</Td>
-                              <Td>
-                                <div className="flex flex-col gap-1.5">
-                                  <button className="text-left text-xs font-semibold text-blue-600 hover:underline" onClick={() => handleEditTeamMember(user)}>Edit Access</button>
-                                  <button className="text-left text-xs font-semibold text-slate-600 hover:underline" onClick={() => updateSubOrganiser(user._id, { eventId, status: user.status === 'Active' ? 'Inactive' : 'Active' }).then(() => { toast.success('Status updated'); loadWorkspace(); })}>Toggle Status</button>
-                                </div>
-                              </Td>
-                            </Tr>
-                          ))}
+                          {groupedTeamMembers.directMembers.map((member) => {
+                            const dInitials = (member.name || '?')
+                              .split(' ')
+                              .map((p) => p[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase();
+                            return (
+                              <Tr key={member._id}>
+                                <Td>
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+                                      {dInitials}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-semibold text-slate-900 truncate">{member.name}</p>
+                                      <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                    </div>
+                                  </div>
+                                </Td>
+                                <Td>
+                                  <span
+                                    className={`inline-flex text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                                      member.role === 'Staff'
+                                        ? 'bg-sky-100 text-sky-700'
+                                        : member.role === 'Volunteer'
+                                        ? 'bg-cyan-100 text-cyan-700'
+                                        : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {member.role}
+                                  </span>
+                                </Td>
+                                <Td>
+                                  <Badge color={member.status === 'Active' ? 'green' : 'gray'}>
+                                    {member.status}
+                                  </Badge>
+                                </Td>
+                                <Td className="text-xs text-slate-600">
+                                  {[
+                                    (member.assignedGates || []).length
+                                      ? `Gates: ${(member.assignedGates || []).join(', ')}`
+                                      : '',
+                                    (member.assignedZones || []).length
+                                      ? `Zones: ${(member.assignedZones || []).join(', ')}`
+                                      : 'No zone access',
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' | ')}
+                                </Td>
+                                <Td>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditTeamMember(member)}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => toggleTeamMemberStatus(member)}
+                                    >
+                                      Toggle
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                      onClick={() => handleDeleteTeamMember(member)}
+                                    >
+                                      <TrashIcon className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
                         </tbody>
                       </Table>
                     </div>
-                  </div>
+                  </Card>
                 )}
               </div>
             )}
-                <Pagination
-                  page={workspace?.teamPage}
-                  pages={workspace?.teamPages}
-                  total={workspace?.teamTotal}
-                  pageKey="teamPage"
-                  updateQuery={setQuery}
-                />
+
+            <Pagination
+              page={workspace?.teamPage}
+              pages={workspace?.teamPages}
+              total={workspace?.teamTotal}
+              pageKey="teamPage"
+              updateQuery={setQuery}
+            />
           </div>
+          </PermissionGuard>
         )}
 
         {activeSection === 'verification' && (
-          <div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <PermissionGuard permission="canPhotoVerification" fallback={null}>
+            <div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {verificationQueue.map((attendee) => (
-                <Card key={attendee._id}>
-                  <div className="h-48 overflow-hidden rounded-2xl bg-slate-100">{attendee.photo ? <img src={attendee.photo} alt={attendee.fullName} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No photo</div>}</div>
-                  <h3 className="mt-4 font-semibold text-slate-900">{attendee.fullName}</h3>
-                  <p className="text-sm text-slate-500">{attendee.email || attendee.phone || '-'}</p>
-                  <div className="mt-4 flex gap-2"><Button className="flex-1" onClick={() => updateVerificationStatus(attendee._id, { eventId, status: 'verified' }).then(() => { toast.success('Photo approved'); loadWorkspace(); })}>Approve</Button><Button variant="danger" className="flex-1" onClick={() => setRejecting(attendee)}>Reject</Button></div>
+                <Card key={attendee._id} className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                  <div className="h-44 overflow-hidden rounded-xl bg-slate-100">
+                    {attendee.photo
+                      ? <img src={attendee.photo} alt={attendee.fullName} className="h-full w-full object-cover" />
+                      : <div className="flex h-full items-center justify-center text-sm text-slate-400">No photo</div>}
+                  </div>
+                  <h3 className="mt-3 font-semibold text-slate-900">{attendee.fullName}</h3>
+                  <p className="text-sm text-slate-500 truncate">{attendee.email || attendee.phone || '-'}</p>
+                  <div className="mt-3 flex gap-2">
+                    <Button className="flex-1 bg-blue-600 hover:bg-blue-500" onClick={() => approveVerification(attendee._id)}>Approve</Button>
+                    <Button variant="outline" className="flex-1 text-rose-500 border-rose-100 hover:bg-rose-50" onClick={() => setRejecting(attendee)}>Reject</Button>
+                  </div>
                 </Card>
               ))}
+              {verificationQueue.length === 0 && (
+                <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
+                  No pending photo verifications.
+                </div>
+              )}
             </div>
-            <Pagination
-              page={workspace?.verificationPage}
-              pages={workspace?.verificationPages}
-              total={workspace?.verificationTotal}
-              pageKey="verificationPage"
-              updateQuery={setQuery}
-            />
+            <Pagination page={workspace?.verificationPage} pages={workspace?.verificationPages} total={workspace?.verificationTotal} pageKey="verificationPage" updateQuery={setQuery} />
           </div>
+          </PermissionGuard>
         )}
 
         {activeSection === 'invites' && (
-          <Card>
-            <CardHeader title="Invite Management" subtitle="Track pending, accepted, and declined invitations" />
-            <Table>
-              <thead><tr><Th>Attendee</Th><Th>Category</Th><Th>Status</Th><Th>History</Th><Th>Actions</Th></tr></thead>
-              <tbody>
-                {invites.map((invite) => (
-                  <Tr key={invite._id}>
-                    <Td>{invite.attendee?.fullName || 'Unassigned'}<div className="text-xs text-slate-500">{invite.attendee?.email || '-'}</div></Td>
-                    <Td>{invite.categoryName}</Td>
-                    <Td><Badge color={statusColor[invite.inviteStatus] || 'gray'}>{invite.inviteStatus}</Badge></Td>
-                    <Td className="text-xs text-slate-500">{invite.inviteHistory.map((item) => `${item.type} ${formatDistanceToNow(new Date(item.at), { addSuffix: true })}`).join(' · ') || 'No history'}</Td>
-                    <Td className="space-x-2"><button className="text-blue-600" onClick={() => resendInvite(invite._id, eventId).then(() => { toast.success('Invite resent'); loadWorkspace(); })}>Resend</button><button className="text-rose-600" onClick={() => cancelInvite(invite._id, eventId).then(() => { toast.success('Invite cancelled'); loadWorkspace(); })}>Cancel</button></Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-            <Pagination
-              page={workspace?.invitesPage}
-              pages={workspace?.invitesPages}
-              pageKey="invitesPage"
-              updateQuery={setQuery}
-            />
+          <PermissionGuard permission="canSendInvitations" fallback={null}>
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">Invite Management</h2>
+              <p className="text-sm text-slate-500">Pending, accepted & declined</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[800px]">
+                <thead><Tr><Th>Attendee</Th><Th>Category</Th><Th>Status</Th><Th>History</Th><Th>Actions</Th></Tr></thead>
+                <tbody>
+                  {invites.map((invite) => (
+                    <Tr key={invite._id}>
+                      <Td>
+                        <p className="font-medium text-slate-900">{invite.attendee?.fullName || 'Unassigned'}</p>
+                        <p className="text-xs text-slate-500">{invite.attendee?.email || '-'}</p>
+                      </Td>
+                      <Td>{invite.categoryName}</Td>
+                      <Td><Badge color={statusColor[invite.inviteStatus] || 'gray'}>{invite.inviteStatus}</Badge></Td>
+                      <Td className="text-xs text-slate-500">
+                        {invite.inviteHistory?.map((item) => `${item.type} ${formatDistanceToNow(new Date(item.at), { addSuffix: true })}`).join(' · ') || 'No history'}
+                      </Td>
+                      <Td>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => doResendInvite(invite._id)}>Resend</Button>
+                          <Button variant="outline" size="sm" className="text-rose-500 border-rose-100 hover:bg-rose-50" onClick={() => doCancelInvite(invite._id)}>Cancel</Button>
+                        </div>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            {invites.length === 0 && <div className="px-5 py-12 text-center text-sm text-slate-500">No invites yet.</div>}
+            <Pagination page={workspace?.invitesPage} pages={workspace?.invitesPages} pageKey="invitesPage" updateQuery={setQuery} />
           </Card>
+          </PermissionGuard>
         )}
 
         {activeSection === 'logs' && (
-          <Card>
-            <CardHeader title="Entry Logs" subtitle="Real-time event access activity" />
-            <Table>
-              <thead><tr><Th>Name</Th><Th>Time</Th><Th>Gate</Th><Th>Status</Th></tr></thead>
-              <tbody>
-                {(workspace?.entryLogs || []).map((log) => (
-                  <Tr key={log._id}><Td>{log.attendee?.fullName || log.snapshot?.fullName || '-'}</Td><Td>{new Date(log.timestamp).toLocaleString()}</Td><Td>{log.gateName || log.zoneName || '-'}</Td><Td><Badge color={log.accessGranted ? 'green' : 'red'}>{log.accessGranted ? 'Allowed' : 'Denied'}</Badge></Td></Tr>
-                ))}
-              </tbody>
-            </Table>
-            <Pagination
-              page={workspace?.entryLogsPage}
-              pages={workspace?.entryLogsPages}
-              pageKey="entryLogsPage"
-              updateQuery={setQuery}
-            />
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">Entry Logs</h2>
+              <p className="text-sm text-slate-500">Real-time access activity</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[700px]">
+                <thead><Tr><Th>Name</Th><Th>Time</Th><Th>Gate</Th><Th>Status</Th></Tr></thead>
+                <tbody>
+                  {(workspace?.entryLogs || []).map((log) => (
+                    <Tr key={log._id}>
+                      <Td>{log.attendee?.fullName || log.snapshot?.fullName || '-'}</Td>
+                      <Td className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()}</Td>
+                      <Td>{log.gateName || log.zoneName || '-'}</Td>
+                      <Td><Badge color={log.accessGranted ? 'green' : 'red'}>{log.accessGranted ? 'Allowed' : 'Denied'}</Badge></Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            <Pagination page={workspace?.entryLogsPage} pages={workspace?.entryLogsPages} pageKey="entryLogsPage" updateQuery={setQuery} />
           </Card>
         )}
 
         {activeSection === 'system-logs' && (
-          <Card>
-            <CardHeader title="Activity Logs" subtitle="All recent operations and system events" />
-            <Table>
-              <thead><tr><Th>Event</Th><Th>Details</Th><Th>Time</Th></tr></thead>
-              <tbody>
-                {activityFeedPage.rows.map((item) => (
-                  <Tr key={item.id}>
-                    <Td>{item.title}</Td>
-                    <Td>{item.message}</Td>
-                    <Td>{new Date(item.timestamp).toLocaleString()}</Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">Activity Logs</h2>
+              <p className="text-sm text-slate-500">All recent operations</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[700px]">
+                <thead><Tr><Th>Event</Th><Th>Details</Th><Th>Time</Th></Tr></thead>
+                <tbody>
+                  {activityFeedPage.rows.map((item) => (
+                    <Tr key={item.id}>
+                      <Td className="font-medium text-slate-900">{item.title}</Td>
+                      <Td className="text-sm text-slate-600">{item.message}</Td>
+                      <Td className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleString()}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
             <Pagination {...activityFeedPage} updateQuery={setQuery} />
           </Card>
         )}
 
         {activeSection === 'zones' && (
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <Card>
-              <CardHeader title="Zone Access Control" subtitle="Create zones and assign them to ticket categories" action={<Button onClick={() => setZoneModal({ ...emptyZone })}>Add Zone</Button>} />
-              <div className="space-y-4">
-                {(selectedEvent?.zones || []).map((zone) => (
-                  <div key={zone.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between"><div><p className="font-semibold">{zone.name}</p><p className="text-sm text-slate-500">{zone.description || 'No description'}</p></div><div className="space-x-2"><button className="text-blue-600" onClick={() => setZoneModal(zone)}>Edit</button><button className="text-rose-600" onClick={() => deleteZone(zone.id, eventId).then(() => { toast.success('Zone deleted'); loadWorkspace(); })}>Delete</button></div></div>
-                    <div className="mt-3 flex flex-wrap gap-2">{categories.map((ticket) => <label key={ticket.id} className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs"><input type="checkbox" checked={(zoneAssignments[zone.id] || []).includes(ticket.id)} onChange={(e) => {
-                      const next = e.target.checked ? [...new Set([...(zoneAssignments[zone.id] || []), ticket.id])] : (zoneAssignments[zone.id] || []).filter((item) => item !== ticket.id);
-                      setZoneAssignments((current) => ({ ...current, [zone.id]: next }));
-                      assignZoneCategories(zone.id, { eventId, categoryIds: next }).then(() => toast.success('Zone assignments updated'));
-                    }} />{ticket.name}</label>)}</div>
+          <PermissionGuard permission="canViewZones" fallback={null}>
+            <div className="space-y-5">
+            {/* Summary strip */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                {
+                  label: 'Total Zones',
+                  value: selectedEvent?.zones?.length || 0,
+                  accent: 'text-slate-900',
+                  bg: 'bg-slate-50',
+                  border: 'border-slate-200/80',
+                },
+                {
+                  label: 'Ticket Categories',
+                  value: categories.length || 0,
+                  accent: 'text-blue-600',
+                  bg: 'bg-blue-50/70',
+                  border: 'border-blue-100',
+                },
+                {
+                  label: 'Assignments',
+                  value: Object.values(zoneAssignments).reduce((sum, ids) => sum + (ids?.length || 0), 0),
+                  accent: 'text-indigo-600',
+                  bg: 'bg-indigo-50/70',
+                  border: 'border-indigo-100',
+                },
+                {
+                  label: 'Zone Logs',
+                  value: zoneLogs.length || 0,
+                  accent: 'text-sky-600',
+                  bg: 'bg-sky-50/70',
+                  border: 'border-sky-100',
+                },
+              ].map(({ label, value, accent, bg, border }) => (
+                <div
+                  key={label}
+                  className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className={`mt-1 text-2xl font-bold ${accent}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1fr_1.05fr]">
+              {/* Zone Access Control */}
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <CardHeader
+                  title="Zone Access Control"
+                  subtitle="Define areas and map ticket categories to them"
+                  action={
+                    <Button
+                      onClick={() => setZoneModal({ ...emptyZone })}
+                      className="bg-blue-600 hover:bg-blue-500"
+                      size="sm"
+                    >
+                      + Add Zone
+                    </Button>
+                  }
+                />
+
+                <div className="space-y-3">
+                  {(selectedEvent?.zones || []).map((zone) => {
+                    const assignedIds = zoneAssignments[zone.id] || [];
+                    const assignedCount = assignedIds.length;
+                    const zoneColor = zone.color || '#2563eb';
+
+                    return (
+                      <div
+                        key={zone.id}
+                        className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-md"
+                      >
+                        {/* Left color accent bar */}
+                        <div
+                          className="absolute inset-y-0 left-0 w-1 rounded-l-2xl"
+                          style={{ backgroundColor: zoneColor }}
+                        />
+
+                        <div className="pl-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className="inline-flex h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow-sm"
+                                  style={{ backgroundColor: zoneColor }}
+                                  title={zoneColor}
+                                />
+                                <p className="truncate text-base font-bold text-slate-900">{zone.name}</p>
+                                {zone.capacity > 0 && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                    Cap {zone.capacity}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-sm text-slate-500 line-clamp-1">
+                                {zone.description || 'No description'}
+                              </p>
+                            </div>
+
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <span className="mr-1 hidden rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 sm:inline-flex">
+                                {assignedCount} {assignedCount === 1 ? 'category' : 'categories'}
+                              </span>
+                              <Button variant="outline" size="sm" onClick={() => setZoneModal(zone)}>
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-rose-500 border-rose-100 hover:bg-rose-50"
+                                onClick={() => removeZone(zone.id)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Category assignment chips */}
+                          <div className="mt-3.5">
+                            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Allowed ticket categories
+                            </p>
+                            {categories.length === 0 ? (
+                              <p className="text-xs italic text-slate-400">No ticket categories yet</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {categories.map((ticket) => {
+                                  const isAssigned = assignedIds.includes(ticket.id);
+                                  return (
+                                    <label
+                                      key={ticket.id}
+                                      className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                        isAssigned
+                                          ? 'border-blue-200 bg-blue-50 text-blue-800 shadow-sm'
+                                          : 'border-slate-200 bg-slate-50/80 text-slate-600 hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isAssigned}
+                                        onChange={(e) =>
+                                          updateZoneAssignment(zone.id, ticket.id, e.target.checked)
+                                        }
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      {ticket.name}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {(selectedEvent?.zones || []).length === 0 && (
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-14 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                        <MapPinIcon className="h-6 w-6" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-700">No zones configured yet</p>
+                      <p className="mt-1 max-w-xs text-xs text-slate-500">
+                        Create zones to control which ticket categories can access specific areas of the venue.
+                      </p>
+                      <Button
+                        onClick={() => setZoneModal({ ...emptyZone })}
+                        className="mt-5 bg-blue-600 hover:bg-blue-500"
+                        size="sm"
+                      >
+                        + Create first zone
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* Zone Logs */}
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+                <div className="flex flex-col gap-1 border-b border-slate-100 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Zone Logs</h2>
+                    <p className="text-sm text-slate-500">Entry and exit activity by zone</p>
                   </div>
-                ))}
-              </div>
-            </Card>
-            <Card>
-              <CardHeader title="Zone Logs" subtitle="Entry and exit history across event zones" />
-              <Table>
-                <thead><tr><Th>Attendee</Th><Th>Zone</Th><Th>Action</Th><Th>Time</Th></tr></thead>
-                <tbody>
-                  {zoneLogs.map((log) => <Tr key={log._id}><Td>{log.attendeeId?.fullName || '-'}</Td><Td>{log.zoneName}</Td><Td><Badge color={log.action === 'ENTRY' ? 'blue' : 'gray'}>{log.action}</Badge></Td><Td>{new Date(log.timestamp).toLocaleString()}</Td></Tr>)}
-                </tbody>
-              </Table>
-              <Pagination
-                page={workspace?.zoneLogsPage}
-                pages={workspace?.zoneLogsPages}
-                pageKey="zoneLogsPage"
-                updateQuery={setQuery}
-              />
-            </Card>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Live
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[600px]">
+                    <thead>
+                      <Tr>
+                        <Th>Attendee</Th>
+                        <Th>Zone</Th>
+                        <Th>Action</Th>
+                        <Th>Time</Th>
+                      </Tr>
+                    </thead>
+                    <tbody>
+                      {zoneLogs.length === 0 ? (
+                        <Tr>
+                          <Td colSpan={4} className="py-12 text-center text-sm text-slate-500">
+                            No zone activity recorded yet.
+                          </Td>
+                        </Tr>
+                      ) : (
+                        zoneLogs.map((log) => (
+                          <Tr key={log._id}>
+                            <Td className="font-medium text-slate-900">
+                              {log.attendeeId?.fullName || '-'}
+                            </Td>
+                            <Td>
+                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                                <MapPinIcon className="h-3 w-3 text-slate-400" />
+                                {log.zoneName || '-'}
+                              </span>
+                            </Td>
+                            <Td>
+                              <Badge color={log.action === 'ENTRY' ? 'blue' : 'gray'}>
+                                {log.action}
+                              </Badge>
+                            </Td>
+                            <Td className="text-xs text-slate-500">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </Td>
+                          </Tr>
+                        ))
+                      )}
+                    </tbody>
+                  </Table>
+                </div>
+                <Pagination
+                  page={workspace?.zoneLogsPage}
+                  pages={workspace?.zoneLogsPages}
+                  pageKey="zoneLogsPage"
+                  updateQuery={setQuery}
+                />
+              </Card>
+            </div>
           </div>
+          </PermissionGuard>
         )}
 
         {activeSection === 'reports' && (
-          <div className="grid gap-6 md:grid-cols-2">
-            {(workspace?.reports?.available || []).map((report) => (
-              <Card key={report.id}>
-                <CardHeader title={report.label} subtitle="Export CSV for quick operational analysis" />
-                <Button onClick={() => exportOrganiserEventData(eventId, { type: report.exportType }).then((res) => downloadBlob(res.data, `${report.id}-${eventId}.csv`))}>Export CSV</Button>
+          <PermissionGuard permission="canViewReports" fallback={null}>
+            <div className="space-y-6">
+            {/* Header Section */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
+                <p className="text-sm text-slate-500 mt-1">Export comprehensive data for analysis and reporting</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg">
+                  <div className={`w-2 h-2 rounded-full ${autoUpdateEnabled ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+                  <span className="font-medium">Auto-update: {autoUpdateEnabled ? 'Active' : 'Paused'}</span>
+                  <span className="text-slate-400">•</span>
+                  <span>Every {autoUpdateInterval / 1000}s</span>
+                  <span className="text-slate-400">•</span>
+                  <span>Last: {lastUpdateTime.toLocaleTimeString()}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setAutoUpdateEnabled(!autoUpdateEnabled)}
+                    className="flex items-center gap-2"
+                  >
+                    {autoUpdateEnabled ? (
+                      <>
+                        <ClockIcon className="w-4 h-4" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <ClockIcon className="w-4 h-4" />
+                        Resume
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleManualRefresh}
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowPathIcon className="w-4 h-4" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Enhanced Analytics Overview */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+              {[
+                { label: 'Total Reports', value: (workspace?.reports?.available || []).length, icon: DocumentIcon, color: 'text-blue-600 bg-blue-50' },
+                { label: 'Total Attendees', value: eventStats?.totalAttendees || 0, icon: UserGroupIcon, color: 'text-green-600 bg-green-50' },
+                { label: 'Revenue', value: formatCurrency(eventStats?.revenue || 0), icon: CurrencyDollarIcon, color: 'text-amber-600 bg-amber-50' },
+                { label: 'Checked In', value: eventStats?.checkedIn || 0, icon: CheckBadgeIcon, color: 'text-purple-600 bg-purple-50' },
+                { label: 'Tickets Sold', value: eventStats?.ticketsSold || 0, icon: TicketIcon, color: 'text-cyan-600 bg-cyan-50' },
+                { label: 'Available', value: eventStats?.ticketsAvailable || 0, icon: FireIcon, color: 'text-rose-600 bg-rose-50' },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <div key={label} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${color} mb-2`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Performance Metrics */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { 
+                  label: 'Confirmation Rate', 
+                  value: `${eventStats?.confirmationRate || 0}%`, 
+                  icon: CheckBadgeIcon, 
+                  color: eventStats?.confirmationRate >= 80 ? 'text-green-600 bg-green-50' : eventStats?.confirmationRate >= 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50',
+                  description: 'Confirmed attendees vs sold tickets'
+                },
+                { 
+                  label: 'Check-in Rate', 
+                  value: `${eventStats?.checkInRate || 0}%`, 
+                  icon: UsersIcon, 
+                  color: eventStats?.checkInRate >= 80 ? 'text-green-600 bg-green-50' : eventStats?.checkInRate >= 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50',
+                  description: 'Checked-in vs confirmed attendees'
+                },
+                { 
+                  label: 'Ticket Sales', 
+                  value: totalTicketsCount > 0 ? `${((ticketsSoldCount / totalTicketsCount) * 100).toFixed(1)}%` : '0%', 
+                  icon: TicketIcon, 
+                  color: 'text-blue-600 bg-blue-50',
+                  description: 'Sold vs total available tickets'
+                },
+                { 
+                  label: 'Revenue per Ticket', 
+                  value: ticketsSoldCount > 0 ? formatCurrency(eventStats?.revenue / ticketsSoldCount) : formatCurrency(0), 
+                  icon: CurrencyDollarIcon, 
+                  color: 'text-purple-600 bg-purple-50',
+                  description: 'Average revenue per sold ticket'
+                },
+              ].map(({ label, value, icon: Icon, color, description }) => (
+                <div key={label} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${color}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs text-slate-400">{description}</span>
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Revenue Analytics */}
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Revenue Analytics</h3>
+                  <p className="text-sm text-slate-500">Financial performance breakdown</p>
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${eventStats?.revenue > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                  <CurrencyDollarIcon className="w-4 h-4" />
+                  <span className="text-sm font-semibold">{formatCurrency(eventStats?.revenue || 0)}</span>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 mb-1">Potential Revenue</p>
+                  <p className="text-lg font-bold text-slate-900">{formatCurrency((totalTicketsCount || 0) * calculateAverageTicketPrice())}</p>
+                  <p className="text-xs text-slate-400 mt-1">Based on avg ticket price</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 mb-1">Revenue Achievement</p>
+                  <p className="text-lg font-bold text-slate-900">
+                    {(totalTicketsCount || 0) > 0 ? ((eventStats?.revenue / ((totalTicketsCount || 0) * calculateAverageTicketPrice())) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">vs potential revenue</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 mb-1">Tickets Remaining</p>
+                  <p className="text-lg font-bold text-slate-900">{eventStats?.ticketsAvailable || 0}</p>
+                  <p className="text-xs text-slate-400 mt-1">Available for sale</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Attendee Analytics */}
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Attendee Analytics</h3>
+                  <p className="text-sm text-slate-500">Registration and engagement metrics</p>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
+                  <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded-lg">
+                    <UserGroupIcon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Total Registered</p>
+                    <p className="text-lg font-bold text-slate-900">{confirmedAttendeesCount}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+                  <div className="flex items-center justify-center w-10 h-10 bg-green-100 rounded-lg">
+                    <CheckBadgeIcon className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Confirmed</p>
+                    <p className="text-lg font-bold text-slate-900">{confirmedAttendeesCount}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl">
+                  <div className="flex items-center justify-center w-10 h-10 bg-purple-100 rounded-lg">
+                    <UsersIcon className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Checked In</p>
+                    <p className="text-lg font-bold text-slate-900">{checkedInCount}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl">
+                  <div className="flex items-center justify-center w-10 h-10 bg-amber-100 rounded-lg">
+                    <ClockIcon className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Pending</p>
+                    <p className="text-lg font-bold text-slate-900">{ticketsSoldCount - confirmedAttendeesCount}</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Ticket Category Analytics */}
+            {categories.length > 0 && (
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Ticket Category Performance</h3>
+                    <p className="text-sm text-slate-500">Sales breakdown by ticket type</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {categories.slice(0, 5).map((category) => {
+                    const soldCount = category.soldCount || category.quantitySold || 0;
+                    const totalCount = category.totalTickets || category.quantity || category.capacity || 0;
+                    const percentage = totalCount > 0 ? ((soldCount / totalCount) * 100).toFixed(1) : 0;
+                    const revenue = soldCount * (category.price || 0);
+                    
+                    return (
+                      <div key={category._id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="font-semibold text-slate-900">{category.name}</p>
+                              <p className="text-xs text-slate-500">{category.description || 'Standard ticket'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-slate-900">{formatCurrency(revenue)}</p>
+                              <p className="text-xs text-slate-500">{soldCount}/{totalCount} sold</p>
+                            </div>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all" 
+                              style={{ width: `${Math.min(percentage, 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">{percentage}% sold</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
-            ))}
+            )}
+
+            {/* Reports Grid */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {(workspace?.reports?.available || []).map((report) => {
+                const reportIcons = {
+                  'attendees': UserGroupIcon,
+                  'revenue': CurrencyDollarIcon,
+                  'tickets': TicketIcon,
+                  'entry_logs': CheckBadgeIcon,
+                  'zones': MapPinIcon,
+                  'activity': ClockIcon,
+                  'financial': ChartBarIcon,
+                  'overview': ChartPieIcon,
+                };
+                const ReportIcon = reportIcons[report.id] || DocumentIcon;
+                
+                const reportDescriptions = {
+                  'attendees': 'Complete attendee list with contact details, confirmation status, and ticket information',
+                  'revenue': 'Financial breakdown including ticket sales, revenue by category, and payment methods',
+                  'tickets': 'Ticket inventory report showing available, sold, and reserved tickets by category',
+                  'entry_logs': 'Detailed check-in logs with timestamps, gate access, and verification status',
+                  'zones': 'Zone utilization report showing attendance by area and checkpoint activity',
+                  'activity': 'User activity logs showing system actions, modifications, and access patterns',
+                  'financial': 'Comprehensive financial report with revenue trends, payment analysis, and refund tracking',
+                  'overview': 'Executive summary with key metrics, attendance trends, and performance indicators',
+                };
+                
+                const reportSizes = {
+                  'attendees': '~500KB',
+                  'revenue': '~200KB',
+                  'tickets': '~300KB',
+                  'entry_logs': '~400KB',
+                  'zones': '~150KB',
+                  'activity': '~250KB',
+                  'financial': '~350KB',
+                  'overview': '~100KB',
+                };
+                
+                const reportCategories = {
+                  'attendees': 'Attendance',
+                  'revenue': 'Financial',
+                  'tickets': 'Inventory',
+                  'entry_logs': 'Operations',
+                  'zones': 'Operations',
+                  'activity': 'System',
+                  'financial': 'Financial',
+                  'overview': 'Executive',
+                };
+                
+                const reportColors = {
+                  'attendees': 'text-blue-600 bg-blue-50 border-blue-100',
+                  'revenue': 'text-green-600 bg-green-50 border-green-100',
+                  'tickets': 'text-purple-600 bg-purple-50 border-purple-100',
+                  'entry_logs': 'text-amber-600 bg-amber-50 border-amber-100',
+                  'zones': 'text-cyan-600 bg-cyan-50 border-cyan-100',
+                  'activity': 'text-rose-600 bg-rose-50 border-rose-100',
+                  'financial': 'text-indigo-600 bg-indigo-50 border-indigo-100',
+                  'overview': 'text-emerald-600 bg-emerald-50 border-emerald-100',
+                };
+                
+                const colorClass = reportColors[report.id] || 'text-slate-600 bg-slate-50 border-slate-100';
+                
+                return (
+                  <Card key={report.id} className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${colorClass}`}>
+                        <ReportIcon className="w-6 h-6" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge color="blue" size="sm">CSV</Badge>
+                        <Badge color="slate" size="sm">{reportCategories[report.id] || 'General'}</Badge>
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 mb-2">{report.label}</h3>
+                    <p className="text-sm text-slate-600 mb-4 line-clamp-2">
+                      {reportDescriptions[report.id] || 'Export detailed data for analysis and reporting'}
+                    </p>
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
+                      <div className="flex items-center gap-2">
+                        <ClockIcon className="w-4 h-4" />
+                        <span>Updated: {new Date().toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <DocumentIcon className="w-3 h-3" />
+                        <span>{reportSizes[report.id] || '~100KB'}</span>
+                      </div>
+                    </div>
+                    <PermissionGuard permission="canExportReports">
+                      <Button 
+                        onClick={() => doExport(report)} 
+                        className="w-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2"
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Report
+                      </Button>
+                    </PermissionGuard>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {(workspace?.reports?.available || []).length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center">
+                <div className="flex justify-center mb-4">
+                  <DocumentIcon className="w-12 h-12 text-slate-300" />
+                </div>
+                <p className="text-slate-500 font-medium mb-2">No reports available yet</p>
+                <p className="text-sm text-slate-400">Reports will be generated once event data is available</p>
+              </div>
+            )}
           </div>
+          </PermissionGuard>
         )}
 
-        {activeSection === 'payments' && <PaymentsDashboard eventId={eventId} />}
+        {activeSection === 'payments' && (
+          <PermissionGuard permission="canViewPayments" fallback={null}>
+            <PaymentsDashboard
+              eventId={eventId}
+              currency={
+                selectedEvent?.settings?.currency ||
+                workspace?.event?.settings?.currency ||
+                'LKR'
+              }
+            />
+          </PermissionGuard>
+        )}
 
         {activeSection === 'notifications' && (
-          <Card>
-            <CardHeader title="Notifications" subtitle="Email and SMS activity for organiser workflows" />
-            <Table>
-              <thead><tr><Th>Title</Th><Th>Message</Th><Th>Channel</Th><Th>Actions</Th></tr></thead>
-              <tbody>
-                {notifications.map((item) => <Tr key={item._id}><Td>{item.title}</Td><Td>{item.message}</Td><Td>{item.metadata?.channel || 'email_sms'}</Td><Td><button className="text-blue-600" onClick={() => resendOrganiserNotification(item._id, eventId).then(() => toast.success('Notification re-queued'))}>Resend</button></Td></Tr>)}
-              </tbody>
-            </Table>
-            <Pagination
-              page={workspace?.notificationsPage}
-              pages={workspace?.notificationsPages}
-              pageKey="notificationsPage"
-              updateQuery={setQuery}
-            />
+          <PermissionGuard permission="canSendNotifications" fallback={null}>
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">Notifications</h2>
+              <p className="text-sm text-slate-500">Email & SMS activity</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[700px]">
+                <thead><Tr><Th>Title</Th><Th>Message</Th><Th>Channel</Th><Th>Actions</Th></Tr></thead>
+                <tbody>
+                  {notifications.map((item) => (
+                    <Tr key={item._id}>
+                      <Td className="font-medium text-slate-900">{item.title}</Td>
+                      <Td className="text-sm text-slate-600 max-w-[220px] truncate">{item.message}</Td>
+                      <Td>{item.metadata?.channel || 'email_sms'}</Td>
+                      <Td>
+                        <Button variant="outline" size="sm" onClick={() => doResendNotification(item._id)}>Resend</Button>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            {notifications.length === 0 && <div className="px-5 py-12 text-center text-sm text-slate-500">No notifications yet.</div>}
+            <Pagination page={workspace?.notificationsPage} pages={workspace?.notificationsPages} pageKey="notificationsPage" updateQuery={setQuery} />
           </Card>
+          </PermissionGuard>
         )}
 
         {activeSection === 'settings' && settingsForm && (
-          <Card>
-            <CardHeader title="Event Settings" subtitle="Manage event details, templates, and organiser limits" action={<Button onClick={() => {
-              const activeEventId = getValidEventId(getEventObjectId(selectedEvent));
-              if (!activeEventId) {
-                toast.error('Select an event before saving settings');
-                return;
-              }
-              updateOrganiserSettings({ eventId: activeEventId, name: selectedEvent?.name, venue: selectedEvent?.venue, settings: settingsForm }).then(() => toast.success('Settings updated'));
-            }}>Save</Button>} />
+          <PermissionGuard permission="canEditEvents" fallback={null}>
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <CardHeader
+              title="Event Settings"
+              subtitle="Templates and organiser limits"
+              action={<Button onClick={saveSettings} className="bg-blue-600 hover:bg-blue-500">Save Settings</Button>}
+            />
             <div className="grid gap-4 lg:grid-cols-2">
-              <label className="space-y-2 text-sm"><span className="text-slate-500">Invite email template</span><textarea rows="5" value={settingsForm.emailTemplates?.invite || ''} onChange={(e) => setSettingsForm((current) => ({ ...current, emailTemplates: { ...(current.emailTemplates || {}), invite: e.target.value } }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>
-              <label className="space-y-2 text-sm"><span className="text-slate-500">Invite SMS template</span><textarea rows="5" value={settingsForm.smsTemplates?.invite || ''} onChange={(e) => setSettingsForm((current) => ({ ...current, smsTemplates: { ...(current.smsTemplates || {}), invite: e.target.value } }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>
-              <label className="space-y-2 text-sm"><span className="text-slate-500">Invite limit per attendee</span><input type="number" value={settingsForm.inviteLimitPerAttendee || 3} onChange={(e) => setSettingsForm((current) => ({ ...current, inviteLimitPerAttendee: Number(e.target.value) }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>
-              <label className="space-y-2 text-sm"><span className="text-slate-500">Max tickets per order</span><input type="number" value={settingsForm.maxTicketsPerOrder || 10} onChange={(e) => setSettingsForm((current) => ({ ...current, maxTicketsPerOrder: Number(e.target.value) }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3" /></label>
+              <Field label="Invite email template">
+                <textarea rows={5} value={settingsForm.emailTemplates?.invite || ''}
+                  onChange={(e) => setSettingsForm((c) => ({ ...c, emailTemplates: { ...(c.emailTemplates || {}), invite: e.target.value } }))}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+              </Field>
+              <Field label="Invite SMS template">
+                <textarea rows={5} value={settingsForm.smsTemplates?.invite || ''}
+                  onChange={(e) => setSettingsForm((c) => ({ ...c, smsTemplates: { ...(c.smsTemplates || {}), invite: e.target.value } }))}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+              </Field>
+              <Field label="Invite limit per attendee">
+                <Input type="number" value={settingsForm.inviteLimitPerAttendee || 3}
+                  onChange={(e) => setSettingsForm((c) => ({ ...c, inviteLimitPerAttendee: Number(e.target.value) }))} />
+              </Field>
+              <Field label="Max tickets per order">
+                <Input type="number" value={settingsForm.maxTicketsPerOrder || 10}
+                  onChange={(e) => setSettingsForm((c) => ({ ...c, maxTicketsPerOrder: Number(e.target.value) }))} />
+              </Field>
             </div>
           </Card>
+          </PermissionGuard>
         )}
       </div>
 
-      <Modal open={!!attendeeModal} onClose={() => setAttendeeModal(null)} title="Edit Attendee">
-        {attendeeModal && <div className="space-y-3"><input value={attendeeModal.fullName} onChange={(e) => setAttendeeModal((current) => ({ ...current, fullName: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Full name" /><input value={attendeeModal.email || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Email" /><input value={attendeeModal.phone || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Phone" /><select value={attendeeModal.categoryId || ''} onChange={(e) => setAttendeeModal((current) => ({ ...current, categoryId: e.target.value }))} className="w-full rounded-xl border px-4 py-2">{attendeeCategoryOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><Button onClick={saveAttendee}>Save Changes</Button></div>}
+      <Modal open={!!zoneModal} onClose={() => setZoneModal(null)} title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'} size="md">
+        {zoneModal && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50/60 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                <MapPinIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Zone setup</p>
+                <p className="text-xs text-blue-700">Name the area, set capacity, and pick a colour for maps & badges</p>
+              </div>
+            </div>
+
+            <Field label="Zone name">
+              <Input
+                value={zoneModal.name || ''}
+                onChange={(e) => setZoneModal((current) => ({ ...current, name: e.target.value }))}
+                placeholder="e.g. VIP Lounge, Gate A, Backstage"
+              />
+            </Field>
+
+            <Field label="Description">
+              <Input
+                value={zoneModal.description || ''}
+                onChange={(e) => setZoneModal((current) => ({ ...current, description: e.target.value }))}
+                placeholder="Optional short description"
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Capacity">
+                <Input
+                  type="number"
+                  min="0"
+                  value={zoneModal.capacity || 0}
+                  onChange={(e) => setZoneModal((current) => ({ ...current, capacity: Number(e.target.value) }))}
+                  placeholder="0 = unlimited"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">Leave 0 for no hard limit</p>
+              </Field>
+
+              <Field label="Colour">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={zoneModal.color || '#2563eb'}
+                    onChange={(e) => setZoneModal((current) => ({ ...current, color: e.target.value }))}
+                    className="h-11 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+                    title="Zone colour"
+                  />
+                  <Input
+                    value={zoneModal.color || '#2563eb'}
+                    onChange={(e) => setZoneModal((current) => ({ ...current, color: e.target.value }))}
+                    placeholder="#2563eb"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">Used on maps, badges and the zone list</p>
+              </Field>
+            </div>
+
+            {/* Live preview chip */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Preview</p>
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+                <span
+                  className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
+                  style={{ backgroundColor: zoneModal.color || '#2563eb' }}
+                />
+                <span className="text-sm font-semibold text-slate-800">
+                  {zoneModal.name?.trim() || 'Zone name'}
+                </span>
+                {Number(zoneModal.capacity) > 0 && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                    Cap {zoneModal.capacity}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-slate-100 pt-4">
+              <Button className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5" onClick={saveZone}>
+                {zoneModal.id ? 'Save changes' : 'Create zone'}
+              </Button>
+              <Button variant="outline" className="flex-1 py-2.5" onClick={() => setZoneModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!categoryModal} onClose={() => setCategoryModal(null)} title={categoryModal?.id ? 'Edit Ticket Category' : 'Create New Ticket Category'} size="lg">
@@ -1910,10 +3520,9 @@ const OrganiserDashboard = () => {
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Category Name <span className="text-red-500">*</span>
                 </label>
-                <input 
-                  value={categoryModal.name || ''} 
-                  onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))} 
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                <Input
+                  value={categoryModal.name || ''}
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, name: e.target.value }))}
                   placeholder="e.g. VIP Gold, General Admission"
                 />
                 <p className="text-xs text-slate-500 mt-1">Choose a clear, descriptive name for this ticket type</p>
@@ -1923,11 +3532,10 @@ const OrganiserDashboard = () => {
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Price ({selectedEvent?.settings?.currency || 'LKR'})
                 </label>
-                <input 
-                  type="number" 
-                  value={categoryModal.price || 0} 
-                  onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))} 
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                <Input
+                  type="number"
+                  value={categoryModal.price || 0}
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, price: Number(e.target.value) }))}
                   placeholder="0"
                   min="0"
                   step="0.01"
@@ -1939,11 +3547,10 @@ const OrganiserDashboard = () => {
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Capacity
                 </label>
-                <input 
-                  type="number" 
-                  value={categoryModal.capacity || 0} 
-                  onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))} 
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                <Input
+                  type="number"
+                  value={categoryModal.capacity || 0}
+                  onChange={(e) => setCategoryModal((current) => ({ ...current, capacity: Number(e.target.value) }))}
                   placeholder="Unlimited"
                   min="0"
                 />
@@ -1998,41 +3605,7 @@ const OrganiserDashboard = () => {
               </div>
             </div>
 
-            {/* Management Delegation */}
-            <div className="rounded-xl border border-slate-200 p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <span className="text-sm font-semibold text-slate-700">Management Delegation</span>
-              </div>
-              <p className="text-xs text-slate-600 mb-4">Assign specific sub-organisers to manage attendees for this category</p>
-              
-              <div className="space-y-3">
-                {teamMembers.filter(m => m.role === 'SubOrganiser').map((member) => (
-                  <label key={member._id} className="flex items-center gap-3 rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={(categoryModal.assignedSubOrganisers || []).includes(member._id)}
-                      onChange={(e) => {
-                        const next = e.target.checked
-                          ? [...new Set([...(categoryModal.assignedSubOrganisers || []), member._id])]
-                          : (categoryModal.assignedSubOrganisers || []).filter(id => id !== member._id);
-                        setCategoryModal(current => ({ ...current, assignedSubOrganisers: next }));
-                      }}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex flex-col">
-                      <span className="font-medium text-slate-700">{member.name}</span>
-                      <span className="text-xs text-slate-500">{member.email}</span>
-                    </div>
-                  </label>
-                ))}
-                {teamMembers.filter(m => m.role === 'SubOrganiser').length === 0 && (
-                  <p className="text-xs italic text-slate-400 py-3 text-center">No sub-organisers available. Add team members first.</p>
-                )}
-              </div>
-            </div>
+
 
             <div className="border-t pt-6 flex gap-3">
               <Button 
@@ -2056,14 +3629,12 @@ const OrganiserDashboard = () => {
       <Modal open={subOrgModal} onClose={() => setSubOrgModal(false)} title={subOrgForm._id ? 'Manage Team Member Access' : 'Create Team Member'} size="lg">
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 block">
-              <span className="text-xs font-bold uppercase text-slate-500">Name</span>
-              <input value={subOrgForm.name} onChange={(e) => setSubOrgForm((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Full name" />
-            </label>
-            <label className="space-y-1 block">
-              <span className="text-xs font-bold uppercase text-slate-500">Role</span>
-                  <select 
-                value={subOrgForm.role} 
+            <Field label="Name">
+              <Input value={subOrgForm.name} onChange={(e) => setSubOrgForm((current) => ({ ...current, name: e.target.value }))} placeholder="Full name" />
+            </Field>
+            <Field label="Role">
+              <Select
+                value={subOrgForm.role}
                 onChange={(e) => {
                   const role = e.target.value;
                   let permissions = { 
@@ -2115,28 +3686,26 @@ const OrganiserDashboard = () => {
                   }
 
                   setSubOrgForm(curr => ({ ...curr, role, permissions, assignedZones }));
-                }} 
-                className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white"
+                }}
               >
                 <option value="SubOrganiser">Sub-Organiser</option>
                 <option value="Staff">Staff</option>
                 <option value="Volunteer">Volunteer</option>
                 <option value="Auditor">Auditor</option>
-              </select>
-            </label>
-            <label className="space-y-1 block">
-              <span className="text-xs font-bold uppercase text-slate-500">Email</span>
-              <input value={subOrgForm.email} onChange={(e) => setSubOrgForm((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Email address" />
-            </label>
-            <label className="space-y-1 block">
-              <span className="text-xs font-bold uppercase text-slate-500">Phone</span>
-              <input value={subOrgForm.phone} onChange={(e) => setSubOrgForm((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
-            </label>
+              </Select>
+            </Field>
+            <Field label="Email">
+              <Input value={subOrgForm.email} onChange={(e) => setSubOrgForm((current) => ({ ...current, email: e.target.value }))} placeholder="Email address" />
+            </Field>
+            <Field label="Phone">
+              <Input value={subOrgForm.phone} onChange={(e) => setSubOrgForm((current) => ({ ...current, phone: e.target.value }))} placeholder="Phone number" />
+            </Field>
             {!subOrgForm._id && (
-              <label className="space-y-1 block sm:col-span-2">
-                <span className="text-xs font-bold uppercase text-slate-500">Temporary Password</span>
-                <input value={subOrgForm.password} onChange={(e) => setSubOrgForm((current) => ({ ...current, password: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Set initial password" />
-              </label>
+              <div className="sm:col-span-2">
+                <Field label="Temporary Password">
+                  <Input value={subOrgForm.password} onChange={(e) => setSubOrgForm((current) => ({ ...current, password: e.target.value }))} placeholder="Set initial password" />
+                </Field>
+              </div>
             )}
           </div>
 
@@ -2193,35 +3762,6 @@ const OrganiserDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
-            <span className="text-xs font-bold uppercase text-slate-500 block">Permissions Scope</span>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[
-                { key: 'canAddAttendees', label: 'Add Attendees', desc: 'Register guests directly' },
-                { key: 'canVerifyPhotos', label: 'Photo Verification', desc: 'Approve attendee photo uploads' },
-                { key: 'canInviteAttendees', label: 'Send Invitations', desc: 'Resend confirmation emails' },
-                { key: 'canBulkUpload', label: 'Excel Bulk Imports', desc: 'Upload large spreadsheets' },
-                { key: 'canEntryAccess', label: 'Gate Scan Access', desc: 'Scan check-ins at entry' }
-              ].map(({ key, label, desc }) => {
-                const isChecked = !!subOrgForm.permissions?.[key];
-                return (
-                  <label key={key} className={`flex items-start gap-3 rounded-2xl border p-3.5 transition-all cursor-pointer ${isChecked ? 'border-emerald-200 bg-emerald-50/20 shadow-sm' : 'border-slate-100 bg-slate-50/30 hover:border-slate-200'}`}>
-                    <input 
-                      type="checkbox" 
-                      checked={isChecked} 
-                      onChange={(e) => setSubOrgForm((current) => ({ ...current, permissions: { ...current.permissions, [key]: e.target.checked } }))} 
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-800">{label}</span>
-                      <span className="text-[11px] text-slate-500 mt-0.5 leading-snug">{desc}</span>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="pt-2">
             <Button className="w-full py-3" onClick={saveTeamMemberAccess}>
               {subOrgForm._id ? 'Update Access' : 'Create Team Member'}
@@ -2234,52 +3774,44 @@ const OrganiserDashboard = () => {
         {sponsorPackageModal && (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Package Name</span>
-                <input value={sponsorPackageModal.name || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Package name" />
-              </label>
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Level</span>
-                <select value={sponsorPackageModal.level || 'Custom'} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, level: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white">
+              <Field label="Package Name">
+                <Input value={sponsorPackageModal.name || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, name: e.target.value }))} placeholder="Package name" />
+              </Field>
+              <Field label="Level">
+                <Select value={sponsorPackageModal.level || 'Custom'} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, level: e.target.value }))}>
                   <option value="Platinum">Platinum</option>
                   <option value="Gold">Gold</option>
                   <option value="Silver">Silver</option>
                   <option value="Custom">Custom</option>
-                </select>
-              </label>
+                </Select>
+              </Field>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-2 text-sm block">
-                <span className="text-slate-500">Price</span>
-                <input type="number" min="0" value={sponsorPackageModal.price || 0} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, price: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="0" />
-              </label>
-              <label className="space-y-2 text-sm block">
-                <span className="text-slate-500">Capacity</span>
-                <input type="number" min="1" value={sponsorPackageModal.capacity || 1} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="1" />
-              </label>
+              <Field label="Price">
+                <Input type="number" min="0" value={sponsorPackageModal.price || 0} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, price: Number(e.target.value) }))} placeholder="0" />
+              </Field>
+              <Field label="Capacity">
+                <Input type="number" min="1" value={sponsorPackageModal.capacity || 1} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, capacity: Number(e.target.value) }))} placeholder="1" />
+              </Field>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-600">Visible</span>
                 <input type="checkbox" checked={!!sponsorPackageModal.isVisible} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, isVisible: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
               </div>
-              <label className="space-y-2 text-sm block">
-                <span className="text-slate-500">Expiry Date</span>
-                <input type="date" value={sponsorPackageModal.expiryDate || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, expiryDate: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" />
-              </label>
+              <Field label="Expiry Date">
+                <Input type="date" value={sponsorPackageModal.expiryDate || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, expiryDate: e.target.value }))} />
+              </Field>
             </div>
-            <label className="space-y-2 text-sm block">
-              <span className="text-slate-500">Contact Number</span>
-              <input value={sponsorPackageModal.contactNumber || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, contactNumber: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Contact phone" />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="text-slate-500">Benefits</span>
-              <input value={(sponsorPackageModal.benefits || []).join(', ')} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, benefits: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Benefit1, Benefit2" />
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="text-slate-500">Description</span>
-              <textarea value={sponsorPackageModal.description || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, description: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Description" rows={4} />
-            </label>
+            <Field label="Contact Number">
+              <Input value={sponsorPackageModal.contactNumber || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, contactNumber: e.target.value }))} placeholder="Contact phone" />
+            </Field>
+            <Field label="Benefits">
+              <Input value={(sponsorPackageModal.benefits || []).join(', ')} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, benefits: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} placeholder="Benefit1, Benefit2" />
+            </Field>
+            <Field label="Description">
+              <textarea value={sponsorPackageModal.description || ''} onChange={(e) => setSponsorPackageModal((current) => ({ ...current, description: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none" placeholder="Description" rows={4} />
+            </Field>
             <Button onClick={saveSponsorPackage}>{sponsorPackageModal.id ? 'Save Changes' : 'Create Package'}</Button>
           </div>
         )}
@@ -2289,52 +3821,287 @@ const OrganiserDashboard = () => {
         {sponsorModal && (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Company Name</span>
-                <input value={sponsorModal.companyName || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, companyName: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Company name" />
-              </label>
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Contact Person</span>
-                <input value={sponsorModal.contactPerson || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, contactPerson: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Full name" />
-              </label>
+              <Field label="Company Name">
+                <Input value={sponsorModal.companyName || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, companyName: e.target.value }))} placeholder="Company name" />
+              </Field>
+              <Field label="Contact Person">
+                <Input value={sponsorModal.contactPerson || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, contactPerson: e.target.value }))} placeholder="Full name" />
+              </Field>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Email</span>
-                <input type="email" value={sponsorModal.email || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, email: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Email address" />
-              </label>
-              <label className="space-y-2 text-sm">
-                <span className="text-slate-500">Phone</span>
-                <input value={sponsorModal.phone || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, phone: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Phone number" />
-              </label>
+              <Field label="Email">
+                <Input type="email" value={sponsorModal.email || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, email: e.target.value }))} placeholder="Email address" />
+              </Field>
+              <Field label="Phone">
+                <Input value={sponsorModal.phone || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, phone: e.target.value }))} placeholder="Phone number" />
+              </Field>
             </div>
-            <label className="space-y-2 text-sm">
-              <span className="text-slate-500">Sponsor Package</span>
-              <select value={sponsorModal.packageId || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, packageId: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm bg-white">
+            <Field label="Sponsor Package">
+              <Select value={sponsorModal.packageId || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, packageId: e.target.value }))}>
                 <option value="">Select package</option>
                 {sponsorPackages.map((pkg) => (
                   <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
                 ))}
-              </select>
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="text-slate-500">Notes</span>
-              <textarea value={sponsorModal.notes || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, notes: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm" placeholder="Notes" rows={4} />
-            </label>
+              </Select>
+            </Field>
+            <Field label="Notes">
+              <textarea value={sponsorModal.notes || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, notes: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none" placeholder="Notes" rows={4} />
+            </Field>
             <Button onClick={saveSponsor}>Create Sponsor</Button>
           </div>
         )}
       </Modal>
 
-      <Modal open={!!zoneModal} onClose={() => setZoneModal(null)} title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'}>
-        {zoneModal && <div className="space-y-3"><input value={zoneModal.name || ''} onChange={(e) => setZoneModal((current) => ({ ...current, name: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Zone name" /><input value={zoneModal.description || ''} onChange={(e) => setZoneModal((current) => ({ ...current, description: e.target.value }))} className="w-full rounded-xl border px-4 py-2" placeholder="Description" /><input type="number" value={zoneModal.capacity || 0} onChange={(e) => setZoneModal((current) => ({ ...current, capacity: Number(e.target.value) }))} className="w-full rounded-xl border px-4 py-2" placeholder="Capacity" /><Button onClick={saveZone}>Save Zone</Button></div>}
+      <Modal
+        open={!!zoneModal}
+        onClose={() => setZoneModal(null)}
+        title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'}
+        size="md"
+      >
+        {zoneModal && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50/60 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                <MapPinIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Zone setup</p>
+                <p className="text-xs text-blue-700">
+                  Name the area, set capacity, and pick a colour for maps &amp; badges
+                </p>
+              </div>
+            </div>
+
+            <Field label="Zone name">
+              <Input
+                value={zoneModal.name || ''}
+                onChange={(e) =>
+                  setZoneModal((current) => ({ ...current, name: e.target.value }))
+                }
+                placeholder="e.g. VIP Lounge, Gate A, Media Centre"
+              />
+            </Field>
+
+            <Field label="Description">
+              <Input
+                value={zoneModal.description || ''}
+                onChange={(e) =>
+                  setZoneModal((current) => ({
+                    ...current,
+                    description: e.target.value,
+                  }))
+                }
+                placeholder="Optional short description"
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Capacity">
+                <Input
+                  type="number"
+                  min="0"
+                  value={zoneModal.capacity || 0}
+                  onChange={(e) =>
+                    setZoneModal((current) => ({
+                      ...current,
+                      capacity: Number(e.target.value),
+                    }))
+                  }
+                  placeholder="0 = unlimited"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Leave 0 for no hard limit
+                </p>
+              </Field>
+
+              <Field label="Colour">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={zoneModal.color || '#2563eb'}
+                    onChange={(e) =>
+                      setZoneModal((current) => ({
+                        ...current,
+                        color: e.target.value,
+                      }))
+                    }
+                    className="h-11 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+                    title="Zone colour"
+                  />
+                  <Input
+                    value={zoneModal.color || '#2563eb'}
+                    onChange={(e) =>
+                      setZoneModal((current) => ({
+                        ...current,
+                        color: e.target.value,
+                      }))
+                    }
+                    placeholder="#2563eb"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Used on maps, badges and the zone list
+                </p>
+              </Field>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Preview
+              </p>
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+                <span
+                  className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
+                  style={{ backgroundColor: zoneModal.color || '#2563eb' }}
+                />
+                <span className="text-sm font-semibold text-slate-800">
+                  {zoneModal.name?.trim() || 'Zone name'}
+                </span>
+                {Number(zoneModal.capacity) > 0 && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                    Cap {zoneModal.capacity}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-slate-100 pt-4">
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5"
+                onClick={saveZone}
+              >
+                {zoneModal.id ? 'Save changes' : 'Create zone'}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 py-2.5"
+                onClick={() => setZoneModal(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Confirm delete"
+        size="sm"
+      >
+        {deleteConfirm && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+              <p className="text-sm text-slate-700">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-slate-900">
+                  {deleteConfirm.label || 'this item'}
+                </span>
+                ?
+              </p>
+              <p className="mt-1.5 text-xs text-slate-500">
+                {deleteConfirm.type === 'package'
+                  ? 'Sponsors linked to this package may be affected. This cannot be undone.'
+                  : 'This sponsor will be removed permanently.'}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 bg-rose-600 hover:bg-rose-500 py-2.5"
+                onClick={confirmDelete}
+              >
+                Delete
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 py-2.5"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!rejecting} onClose={() => setRejecting(null)} title="Reject Photo">
-        {rejecting && <div className="space-y-3"><textarea rows="4" value={rejecting.reason || ''} onChange={(e) => setRejecting((current) => ({ ...current, reason: e.target.value }))} className="w-full rounded-xl border px-4 py-3" placeholder="Reason for rejection" /><Button variant="danger" onClick={() => updateVerificationStatus(rejecting._id, { eventId, status: 'rejected', reason: rejecting.reason || '' }).then(() => { toast.success('Photo rejected'); setRejecting(null); loadWorkspace(); })}>Reject Photo</Button></div>}
+        {rejecting && (
+          <div className="space-y-3">
+            <textarea rows="4" value={rejecting.reason || ''} onChange={(e) => setRejecting((current) => ({ ...current, reason: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none" placeholder="Reason for rejection" />
+            <Button variant="outline" className="text-rose-500 border-rose-100 hover:bg-rose-50" onClick={rejectVerification}>Reject Photo</Button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal 
+        open={deleteTeamModalOpen} 
+        onClose={() => {
+          setDeleteTeamModalOpen(false);
+          setTeamMemberToDelete(null);
+        }}
+        title="Delete Team Member"
+        size="md"
+      >
+        {teamMemberToDelete && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+              <p className="text-sm text-slate-700">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-slate-900">
+                  {teamMemberToDelete.name}
+                </span>
+                ?
+              </p>
+              <p className="mt-1.5 text-xs text-slate-500">
+                This will permanently remove this team member from all events and revoke their access. This cannot be undone.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg border border-slate-200 p-4">
+              <p className="text-sm text-slate-600">
+                <span className="font-medium">Email:</span> {teamMemberToDelete.email}
+              </p>
+              <p className="text-sm text-slate-600 mt-1">
+                <span className="font-medium">Role:</span> {teamMemberToDelete.role}
+              </p>
+              <p className="text-sm text-slate-600 mt-1">
+                <span className="font-medium">Status:</span> {teamMemberToDelete.status}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 bg-rose-600 hover:bg-rose-500 py-2.5"
+                onClick={confirmDeleteTeamMember}
+              >
+                Delete
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 py-2.5"
+                onClick={() => {
+                  setDeleteTeamModalOpen(false);
+                  setTeamMemberToDelete(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </DashboardLayout>
   );
 };
 
 export default OrganiserDashboard;
+
+
+
+
+
+
+

@@ -8,10 +8,11 @@ import {
   ExclamationTriangleIcon,
   ArrowRightIcon,
   ClipboardDocumentIcon,
+  CheckCircleIcon,
+  ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
 const BankTransferInstructionsPage = () => {
-  const themeColor = '#2563EB';
   const navigate = useNavigate();
   const { orderId } = useParams();
   const [loading, setLoading] = useState(true);
@@ -78,210 +79,332 @@ const BankTransferInstructionsPage = () => {
   };
 
   const handleProceed = () => {
-    // Use the actual _id from order data, not the orderId from params
     const orderIdToUse = instructions.order._id || orderId;
     navigate(`/bank-transfer/submit/${orderIdToUse}`);
   };
 
+  // ─── Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
       <PublicLayout>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
         </div>
       </PublicLayout>
     );
   }
 
+  // ─── Error ────────────────────────────────────────────────────────
   if (!instructions) {
     return (
       <PublicLayout>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <p className="text-gray-600">Failed to load instructions</p>
+        <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 text-center">
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-amber-50">
+            <ExclamationTriangleIcon className="h-10 w-10 text-amber-500" />
+          </div>
+          <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+            Failed to Load
+          </h2>
+          <p className="mt-3 max-w-md text-sm font-medium text-slate-500">
+            We couldn’t load the bank transfer instructions. Please try again.
+          </p>
+          <button
+            onClick={() => navigate(-1)}
+            className="mt-8 rounded-2xl bg-slate-900 px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-brand-main"
+          >
+            Go Back
+          </button>
         </div>
       </PublicLayout>
     );
   }
 
   const { order, bankAccounts } = instructions;
-  const currency = order?.currency || order?.eventId?.settings?.currency || order?.event?.settings?.currency || 'LKR';
-  
-  // Check if payment has already been submitted
-  const isPaymentSubmitted = order.paymentStatus && 
-    order.paymentStatus !== 'pending' && 
+  const currency =
+    order?.currency ||
+    order?.eventId?.settings?.currency ||
+    order?.event?.settings?.currency ||
+    'LKR';
+
+  const isPaymentSubmitted =
+    order.paymentStatus &&
+    order.paymentStatus !== 'pending' &&
     order.paymentStatus !== 'awaiting_payment';
-  
+
   const isExpired = timeLeft === 'Expired';
 
   return (
     <PublicLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Bank Transfer Instructions</h1>
-            <p className="text-gray-600 mt-2">Complete your payment using direct bank transfer</p>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-10">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
+              Payment Instructions
+            </p>
+            <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 md:text-4xl">
+              Bank Transfer
+            </h1>
+            <p className="mt-2 text-sm font-medium text-slate-500">
+              Complete your payment using direct bank transfer
+            </p>
           </div>
 
-          {/* Order Summary */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Order Summary</h2>
-            
-            <div className="mb-4">
-              <h3 className="font-medium text-gray-900 text-lg">{order.eventName}</h3>
-              <p className="text-sm text-gray-600">Order Reference: {order.orderNumber}</p>
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+            {/* ────────────── Left Column ────────────── */}
+            <div className="space-y-6 lg:col-span-3">
+              {/* Status Banner */}
+              {isPaymentSubmitted ? (
+                <div className="overflow-hidden rounded-[32px] border border-emerald-100 bg-white shadow-sm">
+                  <div className="bg-emerald-50 px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100">
+                        <CheckCircleIcon className="h-7 w-7 text-emerald-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black uppercase tracking-wide text-emerald-900">
+                          Payment Submitted
+                        </h3>
+                        <p className="mt-1 text-sm font-medium text-emerald-700">
+                          Your details are under review
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <ul className="space-y-2.5 px-8 py-6 text-sm font-medium text-slate-600">
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      Payment details have been submitted and are under review
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      You will receive an email once verification is complete
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      Status:{' '}
+                      <strong>
+                        {order.paymentStatus === 'pending_verification'
+                          ? 'Awaiting Verification'
+                          : order.paymentStatus}
+                      </strong>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      Please allow up to 48 hours for verification
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-[32px] border border-amber-100 bg-white shadow-sm">
+                  <div className="bg-amber-50 px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100">
+                        <ExclamationTriangleIcon className="h-7 w-7 text-amber-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black uppercase tracking-wide text-amber-900">
+                          Important Notice
+                        </h3>
+                        <p className="mt-1 text-sm font-medium text-amber-700">
+                          Please read carefully before transferring
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <ul className="space-y-2.5 px-8 py-6 text-sm font-medium text-slate-600">
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      Transfer the <strong>exact amount</strong> shown in the order summary
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      Tickets are confirmed only after payment verification
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      Verification is normally completed within 48 hours
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      Keep your payment receipt for submission
+                    </li>
+                  </ul>
+                </div>
+              )}
+
+              {/* Bank Accounts */}
+              <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+                  <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                    Available Bank Accounts
+                  </h2>
+                </div>
+
+                <div className="space-y-0 divide-y divide-slate-50">
+                  {bankAccounts.map((bank, index) => (
+                    <div key={bank._id} className="px-8 py-6">
+                      <div className="mb-5 flex items-start justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            Option {index + 1}
+                          </p>
+                          <h3 className="mt-1 text-lg font-black text-slate-900">
+                            {bank.bankName}
+                          </h3>
+                        </div>
+                        {bank.qrCode && (
+                          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50">
+                            <BanknotesIcon className="h-7 w-7 text-slate-300" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3.5">
+                        {[
+                          { label: 'Account Name', value: bank.accountName, copyable: true },
+                          { label: 'Account Number', value: bank.accountNumber, copyable: true },
+                          { label: 'Branch', value: bank.branch, copyable: false },
+                          { label: 'SWIFT Code', value: bank.swiftCode, copyable: true },
+                        ].map((field) => (
+                          <div
+                            key={field.label}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                              {field.label}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-slate-900">
+                                {field.value}
+                              </span>
+                              {field.copyable && field.value && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopy(field.value, field.label)}
+                                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-brand-main"
+                                  title={`Copy ${field.label}`}
+                                >
+                                  <ClipboardDocumentIcon className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={handleProceed}
+                disabled={isExpired || isPaymentSubmitted}
+                className={`group flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xs font-black uppercase tracking-[0.2em] transition-all ${
+                  isExpired || isPaymentSubmitted
+                    ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                    : 'bg-slate-900 text-white shadow-xl hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)]'
+                }`}
+              >
+                <span>
+                  {isPaymentSubmitted
+                    ? 'Payment Already Submitted'
+                    : isExpired
+                      ? 'Reservation Expired'
+                      : 'I Have Made the Payment'}
+                </span>
+                {!isExpired && !isPaymentSubmitted && (
+                  <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                )}
+              </button>
+
+              <div className="text-center">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-brand-main"
+                >
+                  <ArrowLeftIcon className="h-4 w-4" />
+                  Back to Checkout
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3 mb-6">
-              {order.tickets.map((ticket, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{ticket.categoryName}</p>
-                    <p className="text-sm text-gray-600">
-                      {ticket.quantity} Ã— {currency} {ticket.price.toLocaleString()}
+            {/* ────────────── Right: Order Summary ────────────── */}
+            <div className="lg:col-span-2">
+              <div className="sticky top-8 overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                <div className="border-b border-slate-50 bg-slate-50/50 px-7 py-5">
+                  <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                    Order Summary
+                  </h2>
+                </div>
+
+                <div className="space-y-6 p-7">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Event
+                    </p>
+                    <p className="mt-1.5 line-clamp-2 text-base font-bold text-slate-900">
+                      {order.eventName}
                     </p>
                   </div>
-                  <p className="font-semibold text-gray-900">
-                    {currency} {(ticket.quantity * ticket.price).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-            </div>
 
-            <div className="border-t pt-4 space-y-2">
-              <div className="flex justify-between items-center text-lg font-bold">
-                <span className="text-gray-900">Total Amount</span>
-                <span className="text-blue-600">{currency} {order.totalAmount.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Payment Deadline</span>
-                <span className={`font-medium ${timeLeft === 'Expired' ? 'text-red-600' : 'text-green-600'}`}>
-                  {timeLeft === 'Expired' ? 'Expired' : timeLeft}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Important Notice */}
-          {isPaymentSubmitted ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
-              <div className="flex items-start gap-3">
-                <BanknotesIcon className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-green-900 mb-2">Payment Already Submitted</h3>
-                  <ul className="text-sm text-green-800 space-y-1">
-                    <li>• Your payment details have been submitted and are under review</li>
-                    <li>• You will receive an email once your payment is verified</li>
-                    <li>• Current status: {order.paymentStatus === 'pending_verification' ? 'Awaiting Verification' : order.paymentStatus}</li>
-                    <li>• Please allow up to 48 hours for verification</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
-              <div className="flex items-start gap-3">
-                <ExclamationTriangleIcon className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-amber-900 mb-2">Important Notice</h3>
-                  <ul className="text-sm text-amber-800 space-y-1">
-                    <li>• Please transfer the exact amount shown above</li>
-                    <li>• Your tickets will only be confirmed after payment verification</li>
-                    <li>• Verification is normally completed within 48 hours</li>
-                    <li>• Keep your payment receipt for submission</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Bank Accounts */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Available Bank Accounts</h2>
-            
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {bankAccounts.map((bank, index) => (
-                <div key={bank._id} className="bg-white rounded-lg shadow-md p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-lg">{bank.bankName}</h3>
-                      <p className="text-sm text-gray-600">Option {index + 1}</p>
-                    </div>
-                    {bank.qrCode && (
-                      <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <BanknotesIcon className="h-8 w-8 text-gray-400" />
-                      </div>
-                    )}
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Order Ref
+                    </p>
+                    <p className="mt-1.5 text-sm font-bold text-slate-900">
+                      {order.orderNumber}
+                    </p>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Account Name</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-900">{bank.accountName}</span>
-                        <button
-                          onClick={() => handleCopy(bank.accountName, 'Account name')}
-                          className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        >
-                          <ClipboardDocumentIcon className="h-4 w-4 text-gray-500" />
-                        </button>
+                  {/* Ticket lines */}
+                  <div className="space-y-4 border-t border-slate-50 pt-6">
+                    {order.tickets.map((ticket, index) => (
+                      <div key={index} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-slate-900">
+                            {ticket.categoryName}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {ticket.quantity} × {currency} {ticket.price.toLocaleString()}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-sm font-black text-slate-900">
+                          {currency} {(ticket.quantity * ticket.price).toLocaleString()}
+                        </p>
                       </div>
+                    ))}
+                  </div>
+
+                  {/* Total + Deadline */}
+                  <div className="space-y-4 border-t border-slate-50 pt-6">
+                    <div className="flex items-end justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        Total Amount
+                      </span>
+                      <span className="text-2xl font-black tracking-tighter text-brand-main">
+                        {currency} {order.totalAmount.toLocaleString()}
+                      </span>
                     </div>
 
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Account Number</span>
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-900">{bank.accountNumber}</span>
-                        <button
-                          onClick={() => handleCopy(bank.accountNumber, 'Account number')}
-                          className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        >
-                          <ClipboardDocumentIcon className="h-4 w-4 text-gray-500" />
-                        </button>
+                        <ClockIcon className="h-4 w-4 text-slate-400" />
+                        <span className="text-xs font-bold text-slate-500">Deadline</span>
                       </div>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Branch</span>
-                      <span className="font-semibold text-gray-900">{bank.branch}</span>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">SWIFT Code</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-900">{bank.swiftCode}</span>
-                        <button
-                          onClick={() => handleCopy(bank.swiftCode, 'SWIFT code')}
-                          className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        >
-                          <ClipboardDocumentIcon className="h-4 w-4 text-gray-500" />
-                        </button>
-                      </div>
+                      <span
+                        className={`text-sm font-black ${
+                          isExpired ? 'text-rose-600' : 'text-emerald-600'
+                        }`}
+                      >
+                        {timeLeft || '—'}
+                      </span>
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-
-          {/* Action Button */}
-          <div className="flex justify-center">
-            <button
-              onClick={handleProceed}
-              disabled={isExpired || isPaymentSubmitted}
-              className="inline-flex items-center gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-md"
-            >
-              <span>{isPaymentSubmitted ? 'Payment Already Submitted' : isExpired ? 'Reservation Expired' : "I Have Made the Payment"}</span>
-              {!isExpired && !isPaymentSubmitted && <ArrowRightIcon className="h-5 w-5" />}
-            </button>
-          </div>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => navigate(-1)}
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              ← Back to Checkout
-            </button>
           </div>
         </div>
       </div>
@@ -290,4 +413,3 @@ const BankTransferInstructionsPage = () => {
 };
 
 export default BankTransferInstructionsPage;
-

@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, WalletIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowLeftIcon,
+  CreditCardIcon,
+  ShieldCheckIcon,
+  WalletIcon,
+} from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent } from '../../api/events';
 import { createOrder } from '../../api/orders';
@@ -15,7 +20,6 @@ const CheckoutPage = () => {
   const navigate = useNavigate();
   const { selectedTickets, eventId, event: initialEvent } = location.state || {};
   const [event, setEvent] = useState(initialEvent);
-  const themeColor = '#2563EB'; // Reverted to default brand blue
   const { user } = useAuth();
 
   const [buyerDetails, setBuyerDetails] = useState({
@@ -27,30 +31,23 @@ const CheckoutPage = () => {
   const fetchEvent = () => {
     if (!eventId) return;
     getEvent(eventId)
-      .then((res) => {
-        setEvent(res.data?.data?.event);
-      })
+      .then((res) => setEvent(res.data?.data?.event))
       .catch((err) => console.error('Failed to sync event on checkout:', err));
   };
 
   useEffect(() => {
     if (!eventId) return undefined;
     const socket = io(getSocketUrl());
-    
     socket.emit('join_event', { eventId });
-
-    socket.on('event_update', (data) => {
-      console.log('Real-time update on checkout:', data);
-      fetchEvent();
-    });
-
+    socket.on('event_update', () => fetchEvent());
     return () => {
       socket.emit('leave_event', { eventId });
       socket.disconnect();
     };
   }, [eventId]);
+
   const [paymentMethod, setPaymentMethod] = useState(() => {
-    const methods = event.settings?.paymentMethods;
+    const methods = event?.settings?.paymentMethods;
     if (methods?.card ?? true) return 'card';
     if (methods?.bank_transfer ?? true) return 'bank_transfer';
     if (methods?.cash ?? true) return 'cash';
@@ -60,18 +57,16 @@ const CheckoutPage = () => {
   const [gatewayConfig, setGatewayConfig] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Fetch payment gateway config on mount
   useEffect(() => {
     if (!eventId) return;
     getPaymentConfig(eventId)
-      .then(res => {
+      .then((res) => {
         if (res.success) {
           setGatewayConfig(res.data);
           setSelectedGateway(res.data.defaultGateway || 'payhere');
         }
       })
-      .catch(err => {
-        console.warn('Could not fetch payment config:', err);
+      .catch(() => {
         setGatewayConfig({ gateways: ['payhere'], defaultGateway: 'payhere' });
         setSelectedGateway('payhere');
       });
@@ -89,19 +84,20 @@ const CheckoutPage = () => {
   if (!selectedTickets || !event) {
     return (
       <PublicLayout>
-        <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-black uppercase tracking-[0.3em]" style={{ color: themeColor }}>
+        <div className="mx-auto max-w-lg px-4 py-24 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-blue-600">
             Access Denied
           </p>
-          <h1 className="mt-6 text-5xl font-black text-slate-950 uppercase tracking-tight">No tickets selected</h1>
-          <p className="mt-6 text-lg text-slate-500 font-medium">
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+            No tickets selected
+          </h1>
+          <p className="mt-3 text-sm text-slate-500">
             Please select tickets from the event page before proceeding to checkout.
           </p>
-          <div className="mt-10">
+          <div className="mt-8">
             <Link
               to="/events"
-              className="inline-flex rounded-full bg-slate-950 px-8 py-4 text-sm font-black uppercase tracking-widest text-white transition shadow-xl brightness-110"
-              style={{ backgroundColor: themeColor }}
+              className="inline-flex rounded-2xl bg-blue-600 hover:bg-blue-700 px-6 py-3.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition-all"
             >
               Back to events
             </Link>
@@ -116,19 +112,20 @@ const CheckoutPage = () => {
   if (isExpired) {
     return (
       <PublicLayout>
-        <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
-          <p className="text-sm font-black uppercase tracking-[0.3em] text-red-500">
+        <div className="mx-auto max-w-lg px-4 py-24 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-red-500">
             Booking Closed
           </p>
-          <h1 className="mt-6 text-5xl font-black text-slate-950 uppercase tracking-tight">Event Has Ended</h1>
-          <p className="mt-6 text-lg text-slate-500 font-medium">
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+            Event Has Ended
+          </h1>
+          <p className="mt-3 text-sm text-slate-500">
             This event is overdue. Ticket bookings are no longer available.
           </p>
-          <div className="mt-10">
+          <div className="mt-8">
             <Link
               to="/events"
-              className="inline-flex rounded-full bg-slate-950 px-8 py-4 text-sm font-black uppercase tracking-widest text-white transition shadow-xl brightness-110"
-              style={{ backgroundColor: themeColor }}
+              className="inline-flex rounded-2xl bg-blue-600 hover:bg-blue-700 px-6 py-3.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition-all"
             >
               Back to fixtures
             </Link>
@@ -138,7 +135,9 @@ const CheckoutPage = () => {
     );
   }
 
-  const selectedCategories = event.categories.filter((category) => selectedTickets[category.id] > 0);
+  const selectedCategories = event.categories.filter(
+    (category) => selectedTickets[category.id] > 0
+  );
   const totalTickets = Object.values(selectedTickets).reduce((sum, qty) => sum + qty, 0);
   const totalPrice = event.categories.reduce((sum, category) => {
     return sum + category.price * (selectedTickets[category.id] || 0);
@@ -155,10 +154,7 @@ const CheckoutPage = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setBuyerDetails((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setBuyerDetails((prev) => ({ ...prev, [name]: value }));
   };
 
   const handlePayment = async () => {
@@ -166,19 +162,19 @@ const CheckoutPage = () => {
       toast.error('This event has already ended. Booking is closed.');
       return;
     }
-
     if (!buyerDetails.name || !buyerDetails.email) {
       toast.error('Please fill in all required fields');
       return;
     }
-
-    if (buyerDetails.phone && !/^\+?[1-9]\d{1,14}$/.test(buyerDetails.phone.trim().replace(/\s+/g, ''))) {
+    if (
+      buyerDetails.phone &&
+      !/^\+?[1-9]\d{1,14}$/.test(buyerDetails.phone.trim().replace(/\s+/g, ''))
+    ) {
       toast.error('Please enter a valid international phone number');
       return;
     }
 
     setIsProcessing(true);
-
     try {
       const tickets = selectedCategories.map((category) => ({
         categoryName: category.name,
@@ -201,17 +197,15 @@ const CheckoutPage = () => {
       if (response.data.success) {
         if (paymentMethod === 'card') {
           const resData = response.data.data;
-
           if (resData.gatewayUsed === 'stripe' && resData.stripeSessionUrl) {
-            // Redirect to Stripe Checkout
             toast.success('Redirecting to Stripe...');
             window.location.href = resData.stripeSessionUrl;
           } else if (resData.paymentData) {
-            // PayHere form submission
             toast.success('Redirecting to secure payment gateway...');
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = process.env.REACT_APP_PAYHERE_URL || 'https://sandbox.payhere.lk/pay/checkout';
+            form.action =
+              process.env.REACT_APP_PAYHERE_URL || 'https://sandbox.payhere.lk/pay/checkout';
             Object.entries(resData.paymentData).forEach(([key, value]) => {
               const input = document.createElement('input');
               input.type = 'hidden';
@@ -229,10 +223,8 @@ const CheckoutPage = () => {
           toast.success('Order created! Redirecting to instructions...');
           navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
         } else {
-          // For Cash, navigate to instructions
           toast.success('Reservation placed successfully!');
-          const confirmationToken = response.data.data.confirmationToken;
-          navigate(`/cash-entrance/instructions/${confirmationToken}`);
+          navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);
         }
       } else {
         toast.error(response.data.message || 'Failed to create order');
@@ -253,48 +245,46 @@ const CheckoutPage = () => {
 
   return (
     <PublicLayout>
-      <div className="relative min-h-screen bg-slate-50 pb-20">
-        {/* Dynamic Background Header */}
-        <div className="absolute inset-x-0 top-0 h-96 bg-slate-950">
-           <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-50" />
-           <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+      <div className="relative min-h-screen bg-slate-50 pb-16">
+        {/* Soft header background */}
+        <div className="absolute inset-x-0 top-0 h-72 bg-slate-950">
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-50" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-4 pt-12 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <button
-              onClick={() => navigate(-1)}
-              className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest transition hover:text-white"
-              style={{ color: themeColor }}
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-              Return to tickets
-            </button>
-          </div>
+        <div className="relative mx-auto max-w-6xl px-4 pt-10 sm:px-6 lg:px-8">
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors mb-8"
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            Return to tickets
+          </button>
 
-          <div className="mb-12">
-            <h1 className="text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">
-               Complete Purchase
+          <div className="mb-10">
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+              Complete Purchase
             </h1>
-            <p className="mt-4 text-lg font-medium text-slate-400">
-               {event.name} • Final Step
+            <p className="mt-2 text-base text-slate-400">
+              {event.name} • Final Step
             </p>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
-            <div className="space-y-8">
+          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+            {/* Left column */}
+            <div className="space-y-6">
               {/* Buyer Information */}
-              <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
-                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
-                      <ShieldCheckIcon className="h-6 w-6 text-amber-500" />
-                      Buyer Information
-                   </h2>
+              <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="bg-slate-900 px-5 sm:px-6 py-4 flex items-center gap-2.5">
+                  <ShieldCheckIcon className="h-5 w-5 text-blue-400" />
+                  <h2 className="text-base font-semibold text-white">Buyer Information</h2>
                 </div>
-                <div className="p-4 xs:p-6 sm:p-8 space-y-6">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-slate-500">
+                <div className="p-5 sm:p-6 space-y-5">
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="name"
+                        className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+                      >
                         Full Name *
                       </label>
                       <input
@@ -304,13 +294,15 @@ const CheckoutPage = () => {
                         autoFocus
                         value={buyerDetails.name}
                         onChange={handleInputChange}
-                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 placeholder:text-slate-400 transition focus:bg-white focus:outline-none"
-                        style={{ '--focus-border': themeColor }}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                         placeholder="John Doe"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label htmlFor="email" className="text-xs font-black uppercase tracking-widest text-slate-500">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="email"
+                        className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+                      >
                         Email Address *
                       </label>
                       <input
@@ -319,14 +311,17 @@ const CheckoutPage = () => {
                         name="email"
                         value={buyerDetails.email}
                         onChange={handleInputChange}
-                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 placeholder:text-slate-400 transition focus:border-blue-500 focus:bg-white focus:outline-none"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                         placeholder="john@example.com"
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-slate-500">
-                      Phone Number (for SMS confirmation)
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="phone"
+                      className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+                    >
+                      Phone Number <span className="text-slate-400 font-normal">(optional)</span>
                     </label>
                     <input
                       type="tel"
@@ -334,160 +329,212 @@ const CheckoutPage = () => {
                       name="phone"
                       value={buyerDetails.phone}
                       onChange={handleInputChange}
-                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 placeholder:text-slate-400 transition focus:border-blue-500 focus:bg-white focus:outline-none"
-                      placeholder="+1234567890"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                      placeholder="+94 77 123 4567"
                     />
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Must be in international format (e.g., +1234567890)
+                    <p className="text-xs text-slate-400">
+                      International format recommended (e.g. +94771234567)
                     </p>
                   </div>
                 </div>
               </div>
+
               {/* Payment Methods */}
-              <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
-                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
-                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
-                      <CreditCardIcon className="h-6 w-6 text-emerald-500" />
-                      Payment Method
-                   </h2>
+              <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="bg-slate-900 px-5 sm:px-6 py-4 flex items-center gap-2.5">
+                  <CreditCardIcon className="h-5 w-5 text-emerald-400" />
+                  <h2 className="text-base font-semibold text-white">Payment Method</h2>
                 </div>
-                <div className="p-4 xs:p-6 sm:p-8 space-y-4">
-                   {/* Option 1: Card */}
-                   {enabledMethods.card && (
-                     <div className="space-y-3">
-                       <div 
-                          onClick={() => setPaymentMethod('card')}
-                          className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
-                            paymentMethod === 'card' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                          }`}
-                       >
-                          <div className="flex items-center justify-between gap-2">
-                             <div className="flex items-center gap-3 xs:gap-4">
-                                <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'}`}>
-                                   <CreditCardIcon className="h-6 w-6" />
-                                </div>
-                                <div>
-                                   <p className="font-black text-slate-900 text-sm xs:text-base">Standard Checkout</p>
-                                   <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Debit / Credit Card</p>
-                                </div>
-                             </div>
-                             <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
-                               paymentMethod === 'card' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
-                             }`} />
+                <div className="p-5 sm:p-6 space-y-3">
+                  {enabledMethods.card && (
+                    <div className="space-y-3">
+                      <div
+                        onClick={() => setPaymentMethod('card')}
+                        className={`cursor-pointer rounded-2xl border-2 p-4 transition-all ${
+                          paymentMethod === 'card'
+                            ? 'border-blue-500 bg-blue-50/40'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-slate-100 ${
+                                paymentMethod === 'card' ? 'text-blue-600' : 'text-slate-400'
+                              }`}
+                            >
+                              <CreditCardIcon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">
+                                Card Payment
+                              </p>
+                              <p className="text-xs text-slate-500">Debit / Credit Card</p>
+                            </div>
                           </div>
-                       </div>
-                       
-                       {/* Gateway sub-selection — only shown when card is selected and multiple gateways exist */}
-                       {paymentMethod === 'card' && gatewayConfig && gatewayConfig.gateways && gatewayConfig.gateways.length > 1 && (
-                         <div className="ml-6 pl-4 border-l-2 border-blue-200 space-y-2 mt-2">
-                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Choose Payment Provider</p>
-                           {gatewayConfig.gateways.includes('payhere') && (
-                             <label className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-colors ${selectedGateway === 'payhere' ? 'border-blue-400 bg-white shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
-                               <input
-                                 type="radio"
-                                 name="gateway"
-                                 value="payhere"
-                                 checked={selectedGateway === 'payhere'}
-                                 onChange={(e) => setSelectedGateway(e.target.value)}
-                                 className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                               />
-                               <div className="ml-3">
-                                 <span className="text-sm font-black text-slate-900">PayHere</span>
-                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Local Sri Lankan gateway</p>
-                               </div>
-                             </label>
-                           )}
-                           {gatewayConfig.gateways.includes('stripe') && (
-                             <label className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-colors ${selectedGateway === 'stripe' ? 'border-blue-400 bg-white shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
-                               <input
-                                 type="radio"
-                                 name="gateway"
-                                 value="stripe"
-                                 checked={selectedGateway === 'stripe'}
-                                 onChange={(e) => setSelectedGateway(e.target.value)}
-                                 className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                               />
-                               <div className="ml-3">
-                                 <span className="text-sm font-black text-slate-900">Stripe</span>
-                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">International card payments</p>
-                               </div>
-                             </label>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                   )}
-
-                   {/* Option 2: Bank Transfer */}
-                   {enabledMethods.bank_transfer && (
-                     <div 
-                        onClick={() => setPaymentMethod('bank_transfer')}
-                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
-                          paymentMethod === 'bank_transfer' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                        }`}
-                     >
-                        <div className="flex items-center justify-between gap-2">
-                           <div className="flex items-center gap-3 xs:gap-4">
-                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'bank_transfer' ? 'text-blue-600' : 'text-slate-400'}`}>
-                                 <WalletIcon className="h-6 w-6" />
-                              </div>
-                              <div>
-                                 <p className="font-black text-slate-900 text-sm xs:text-base">Direct Bank Transfer</p>
-                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Manual Verification</p>
-                              </div>
-                           </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
-                             paymentMethod === 'bank_transfer' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
-                           }`} />
+                          <div
+                            className={`h-5 w-5 rounded-full border-[3px] transition-all ${
+                              paymentMethod === 'card'
+                                ? 'bg-blue-600 border-blue-200'
+                                : 'bg-white border-slate-300'
+                            }`}
+                          />
                         </div>
-                     </div>
-                   )}
+                      </div>
 
-                   {/* Option 3: Cash */}
-                   {enabledMethods.cash && (
-                     <div 
-                        onClick={() => setPaymentMethod('cash')}
-                        className={`cursor-pointer rounded-2xl border-2 p-4 xs:p-6 transition-all ${
-                          paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
-                        }`}
-                     >
-                        <div className="flex items-center justify-between gap-2">
-                           <div className="flex items-center gap-3 xs:gap-4">
-                              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm font-black transition-colors ${paymentMethod === 'cash' ? 'text-blue-600' : 'text-slate-400'}`}>
-                                 <ShieldCheckIcon className="h-6 w-6" />
-                              </div>
-                              <div>
-                                 <p className="font-black text-slate-900 text-sm xs:text-base">Cash at Entrance</p>
-                                 <p className="text-[10px] xs:text-sm font-bold text-slate-400 uppercase tracking-widest">Pay on Event Day</p>
-                              </div>
-                           </div>
-                           <div className={`h-6 w-6 rounded-full border-4 transition-all shrink-0 ${
-                             paymentMethod === 'cash' ? 'bg-blue-500 border-blue-200 ring-4 ring-blue-500/10' : 'bg-white border-slate-200'
-                           }`} />
+                      {paymentMethod === 'card' &&
+                        gatewayConfig?.gateways?.length > 1 && (
+                          <div className="ml-4 pl-4 border-l-2 border-blue-100 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                              Choose Provider
+                            </p>
+                            {gatewayConfig.gateways.includes('payhere') && (
+                              <label
+                                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                                  selectedGateway === 'payhere'
+                                    ? 'border-blue-400 bg-white'
+                                    : 'border-transparent hover:bg-slate-50'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="gateway"
+                                  value="payhere"
+                                  checked={selectedGateway === 'payhere'}
+                                  onChange={(e) => setSelectedGateway(e.target.value)}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                  <span className="text-sm font-semibold text-slate-900">
+                                    PayHere
+                                  </span>
+                                  <p className="text-xs text-slate-500">Local Sri Lankan gateway</p>
+                                </div>
+                              </label>
+                            )}
+                            {gatewayConfig.gateways.includes('stripe') && (
+                              <label
+                                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                                  selectedGateway === 'stripe'
+                                    ? 'border-blue-400 bg-white'
+                                    : 'border-transparent hover:bg-slate-50'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="gateway"
+                                  value="stripe"
+                                  checked={selectedGateway === 'stripe'}
+                                  onChange={(e) => setSelectedGateway(e.target.value)}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                  <span className="text-sm font-semibold text-slate-900">
+                                    Stripe
+                                  </span>
+                                  <p className="text-xs text-slate-500">
+                                    International card payments
+                                  </p>
+                                </div>
+                              </label>
+                            )}
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  {enabledMethods.bank_transfer && (
+                    <div
+                      onClick={() => setPaymentMethod('bank_transfer')}
+                      className={`cursor-pointer rounded-2xl border-2 p-4 transition-all ${
+                        paymentMethod === 'bank_transfer'
+                          ? 'border-blue-500 bg-blue-50/40'
+                          : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-slate-100 ${
+                              paymentMethod === 'bank_transfer'
+                                ? 'text-blue-600'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            <WalletIcon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              Bank Transfer
+                            </p>
+                            <p className="text-xs text-slate-500">Manual verification</p>
+                          </div>
                         </div>
-                     </div>
-                   )}
+                        <div
+                          className={`h-5 w-5 rounded-full border-[3px] transition-all ${
+                            paymentMethod === 'bank_transfer'
+                              ? 'bg-blue-600 border-blue-200'
+                              : 'bg-white border-slate-300'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                   <div className="mt-8 flex items-center gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-200">
-                      < ShieldCheckIcon className="h-5 w-5 text-amber-600 shrink-0" />
-                      <p className="text-[10px] xs:text-xs font-bold text-amber-800 uppercase tracking-wide">
-                          Transactions are secured with industry-standard 256-bit encryption.
-                      </p>
-                   </div>
+                  {enabledMethods.cash && (
+                    <div
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`cursor-pointer rounded-2xl border-2 p-4 transition-all ${
+                        paymentMethod === 'cash'
+                          ? 'border-blue-500 bg-blue-50/40'
+                          : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-11 w-11 items-center justify-center rounded-xl bg-white border border-slate-100 ${
+                              paymentMethod === 'cash' ? 'text-blue-600' : 'text-slate-400'
+                            }`}
+                          >
+                            <ShieldCheckIcon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              Cash at Entrance
+                            </p>
+                            <p className="text-xs text-slate-500">Pay on event day</p>
+                          </div>
+                        </div>
+                        <div
+                          className={`h-5 w-5 rounded-full border-[3px] transition-all ${
+                            paymentMethod === 'cash'
+                              ? 'bg-blue-600 border-blue-200'
+                              : 'bg-white border-slate-300'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-start gap-2.5 rounded-2xl bg-amber-50 border border-amber-100 p-3.5">
+                    <ShieldCheckIcon className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-800">
+                      Transactions are secured with industry-standard encryption.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-8">
-              {/* Order Summary Summary */}
-              <div className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl lg:sticky lg:top-8">
-                <div className="bg-slate-900 px-4 xs:px-6 sm:px-8 py-5 sm:py-6">
-                   <h2 className="flex items-center gap-3 text-lg sm:text-xl font-black uppercase tracking-wide text-white">
-                      <WalletIcon className="h-6 w-6 text-amber-500" />
-                      Order Summary
-                   </h2>
+            {/* Order Summary */}
+            <div>
+              <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden lg:sticky lg:top-8">
+                <div className="bg-slate-900 px-5 sm:px-6 py-4 flex items-center gap-2.5">
+                  <WalletIcon className="h-5 w-5 text-amber-400" />
+                  <h2 className="text-base font-semibold text-white">Order Summary</h2>
                 </div>
-                <div className="p-4 xs:p-6 sm:p-8">
+                <div className="p-5 sm:p-6">
                   <div className="space-y-4">
                     {selectedCategories.map((category) => (
                       <div
@@ -495,54 +542,59 @@ const CheckoutPage = () => {
                         className="flex items-start justify-between border-b border-slate-100 pb-4 last:border-0 last:pb-0"
                       >
                         <div>
-                          <p className="font-black text-slate-900 uppercase tracking-tight">{category.name}</p>
-                          <p className="mt-1 text-sm font-bold text-slate-400 uppercase tracking-widest">
-                            {selectedTickets[category.id]} Units × {formatCurrency(category.price)}
-                            <span className="ml-2 block text-[10px] text-slate-500">
-                               Remaining: {Math.max(0, category.capacity - (category.sold || 0))} seats
-                            </span>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {category.name}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {selectedTickets[category.id]} × {formatCurrency(category.price)}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            {Math.max(0, category.capacity - (category.sold || 0))} seats left
                           </p>
                         </div>
-                        <p className="font-black" style={{ color: themeColor }}>
+                        <p className="text-sm font-semibold text-blue-600">
                           {formatCurrency(selectedTickets[category.id] * category.price)}
                         </p>
                       </div>
                     ))}
                   </div>
 
-                  <div className="mt-8 space-y-4 rounded-2xl bg-slate-50 p-6 border border-slate-200">
-                    <div className="flex items-center justify-between text-slate-500 font-bold uppercase tracking-widest text-xs">
-                       <span>Subtotal</span>
-                       <span>{formatCurrency(totalPrice)}</span>
+                  <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                    <div className="flex items-center justify-between text-sm text-slate-500">
+                      <span>Subtotal</span>
+                      <span className="font-medium text-slate-700">
+                        {formatCurrency(totalPrice)}
+                      </span>
                     </div>
-                    <div className="flex items-center justify-between text-slate-500 font-bold uppercase tracking-widest text-xs">
-                       <span>Taxes & Fees</span>
-                       <span>Included</span>
+                    <div className="flex items-center justify-between text-sm text-slate-500">
+                      <span>Taxes & Fees</span>
+                      <span className="font-medium text-slate-700">Included</span>
                     </div>
-                    <div className="border-t border-slate-200 pt-4 flex items-center justify-between">
-                      <span className="text-lg font-black uppercase tracking-widest text-slate-950">Total</span>
-                      <span className="text-2xl font-black text-slate-950">{formatCurrency(totalPrice)}</span>
+                    <div className="border-t border-slate-200 pt-3 flex items-center justify-between">
+                      <span className="text-base font-semibold text-slate-900">Total</span>
+                      <span className="text-xl font-bold text-slate-900">
+                        {formatCurrency(totalPrice)}
+                      </span>
                     </div>
                   </div>
 
                   <button
                     onClick={handlePayment}
                     disabled={isProcessing}
-                    className="mt-8 flex w-full items-center justify-center rounded-2xl py-5 text-lg font-black uppercase tracking-[0.15em] text-white shadow-xl transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                    style={{ backgroundColor: themeColor }}
+                    className="mt-6 w-full rounded-2xl bg-blue-600 hover:bg-blue-500 py-4 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isProcessing ? (
-                       <span className="flex items-center gap-3">
-                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Processing...
-                       </span>
+                      <span className="flex items-center justify-center gap-2.5">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        Processing...
+                      </span>
                     ) : (
-                       `Pay ${formatCurrency(totalPrice)}`
+                      `Pay ${formatCurrency(totalPrice)}`
                     )}
                   </button>
-                  
-                  <p className="mt-6 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                     By clicking Pay, you agree to our <br/> Terms of Service & Privacy Policy.
+
+                  <p className="mt-4 text-center text-xs text-slate-400">
+                    By clicking Pay, you agree to our Terms of Service & Privacy Policy.
                   </p>
                 </div>
               </div>

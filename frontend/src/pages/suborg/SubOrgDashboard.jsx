@@ -1,60 +1,179 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { getSubDashboard, createSubTicket, updateSubTicket, deleteSubTicket, regenerateTicketCode } from '../../api/sub';
+import {
+  getSubDashboard,
+  createSubTicket,
+  updateSubTicket,
+  deleteSubTicket,
+  regenerateTicketCode,
+} from '../../api/sub';
 import toast from 'react-hot-toast';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
-import { v4 as uuidv4 } from 'uuid';
+import Card from '../../components/ui/Card';
 import { listSubOrganisers } from '../../api/organiser';
+import PermissionGuard from '../../components/auth/PermissionGuard';
+import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import {
+  UsersIcon,
+  CheckBadgeIcon,
+  ClockIcon,
+  MapPinIcon,
+  TicketIcon,
+  BanknotesIcon,
+  UserPlusIcon,
+  PhotoIcon,
+  EnvelopeIcon,
+  ArrowUpTrayIcon,
+  QrCodeIcon,
+  ArrowPathIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
-const metricCards = [
-  { key: 'totalAttendees', label: 'Attendees in scope', accent: 'text-slate-900' },
-  { key: 'checkedInCount', label: 'Checked in', accent: 'text-emerald-600' },
-  { key: 'pendingVerifications', label: 'Pending verification', accent: 'text-amber-600' },
-  { key: 'zoneCount', label: 'Assigned zones', accent: 'text-sky-600' },
-];
+/* ───────────────────── Helpers ───────────────────── */
 
-const formatTime = (value) => new Date(value).toLocaleString();
+const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
+  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</p>
+        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">{value}</p>
+        {subtitle && <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>}
+      </div>
+      {Icon && (
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
+    </div>
+  </Card>
+);
 
-const emptyCategory = { 
-  name: '', 
-  description: '', 
-  price: 0, 
-  capacity: 0, 
-  allowedZones: [], 
-  isPrivate: true,
-  maxUsage: null 
+const CapabilityCard = ({
+  permission,
+  title,
+  description,
+  linkTo,
+  linkLabel,
+  icon: Icon,
+  tone = 'blue',
+  enabledTitle,
+  enabledDesc,
+}) => {
+  const toneMap = {
+    emerald: 'bg-emerald-50 text-emerald-600',
+    blue: 'bg-blue-50 text-blue-600',
+    purple: 'bg-purple-50 text-purple-600',
+    cyan: 'bg-cyan-50 text-cyan-600',
+    amber: 'bg-amber-50 text-amber-600',
+    rose: 'bg-rose-50 text-rose-600',
+  };
+
+  return (
+    <PermissionGuard permission={permission} fallback={null}>
+      <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-start gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneMap[tone]}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+            <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+            <div className="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+              <p className="text-xs font-semibold text-slate-700">{enabledTitle}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{enabledDesc}</p>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Link to={linkTo}>
+                <Button variant="outline" size="sm" className="border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50">
+                  {linkLabel}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </PermissionGuard>
+  );
 };
+
+const formatTime = (value) => {
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return '—';
+  }
+};
+
+const emptyCategory = {
+  name: '',
+  description: '',
+  price: 0,
+  capacity: 0,
+  allowedZones: [],
+  isPrivate: true,
+  maxUsage: null,
+  assignedSubOrganisers: [],
+};
+
+const getCurrency = (payload) =>
+  payload?.event?.settings?.currency ||
+  payload?.event?.currency ||
+  payload?.settings?.currency ||
+  payload?.currency ||
+  localStorage.getItem('lastEventCurrency') ||
+  'LKR';
+
+/* ───────────────────── Main Component ───────────────────── */
 
 const SubOrgDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [currentEventId, setCurrentEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
+  const [currentEventId, setCurrentEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
   const [categoryModal, setCategoryModal] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const { user } = useAuth();
+  const { permissions } = usePermissions();
 
   const load = (eventId) => {
+    if (!eventId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     Promise.all([
       getSubDashboard({ eventId }),
-      listSubOrganisers({ eventId }).catch(() => ({ data: { data: { users: [] } } }))
+      listSubOrganisers({ eventId }).catch(() => ({
+        data: { data: { users: [] } },
+      })),
     ])
       .then(([subRes, teamRes]) => {
         const dashboardData = subRes.data?.data || null;
         setData(dashboardData);
         setTeamMembers(teamRes.data?.data?.users || []);
         setLoadError('');
-        
-        // Sync currentEventId if backend fell back to a different one
-        if (dashboardData?.event?._id && String(dashboardData.event._id) !== String(eventId)) {
-          console.log(`[Dashboard] Syncing event ID to ${dashboardData.event._id}`);
+        const dashboardCurrency = getCurrency(dashboardData);
+        if (dashboardCurrency) {
+          localStorage.setItem('lastEventCurrency', dashboardCurrency);
+        }
+
+        if (
+          dashboardData?.event?._id &&
+          String(dashboardData.event._id) !== String(eventId)
+        ) {
           setCurrentEventId(String(dashboardData.event._id));
-          localStorage.setItem('lastSelectedEventId', String(dashboardData.event._id));
+          localStorage.setItem(
+            'lastSelectedEventId',
+            String(dashboardData.event._id)
+          );
         }
       })
       .catch((error) => {
@@ -63,7 +182,9 @@ const SubOrgDashboard = () => {
           localStorage.removeItem('lastSelectedEventId');
           setCurrentEventId('');
         }
-        const message = error.response?.data?.message || 'Unable to load sub-organiser workspace.';
+        const message =
+          error.response?.data?.message ||
+          'Unable to load sub-organiser workspace.';
         setLoadError(message);
         toast.error(message);
       })
@@ -73,12 +194,11 @@ const SubOrgDashboard = () => {
   };
 
   useEffect(() => {
-    load(currentEventId);
-
     const handleEventSelect = (e) => {
       const newId = e.detail ? String(e.detail) : '';
       if (!newId || newId === 'undefined') return;
       setCurrentEventId(newId);
+      localStorage.setItem('lastSelectedEventId', newId);
       load(newId);
     };
 
@@ -88,8 +208,25 @@ const SubOrgDashboard = () => {
     };
   }, []);
 
+  // Initial load + auto-refresh
+  useEffect(() => {
+    if (!currentEventId) {
+      setLoading(false);
+      return;
+    }
+    load(currentEventId);
+
+    const interval = setInterval(() => {
+      load(currentEventId);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [currentEventId]);
+
   const saveCategory = async () => {
-    if (!categoryModal.name.trim()) return toast.error('Category name is required');
+    if (!categoryModal?.name?.trim()) {
+      return toast.error('Category name is required');
+    }
     setIsSaving(true);
     try {
       const payload = { ...categoryModal, eventId: currentEventId };
@@ -109,11 +246,12 @@ const SubOrgDashboard = () => {
     }
   };
 
-  const removeCategory = async (catId) => {
-    if (!window.confirm('Are you sure you want to delete this category?')) return;
+  const confirmDeleteCategory = async () => {
+    if (!deleteConfirm?.id) return;
     try {
-      await deleteSubTicket(catId, { eventId: currentEventId });
+      await deleteSubTicket(deleteConfirm.id, { eventId: currentEventId });
       toast.success('Category deleted');
+      setDeleteConfirm(null);
       load(currentEventId);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to delete category');
@@ -130,300 +268,575 @@ const SubOrgDashboard = () => {
     }
   };
 
+  const currency = getCurrency(data);
+  const zones = data?.zones || [];
+  const categories = data?.categories || [];
+  const activity = data?.activity || [];
+  const currentUserId = String(user?._id || '');
+
+  const getEventStatus = () => {
+    const event = data?.event;
+    if (!event) return 'Unknown';
+    const status = event.status || event.eventStatus || event.state || event.publishedStatus;
+    if (!status) {
+      if (event.isPublished === true || event.published === true) return 'Published';
+      if (event.isPublished === false || event.published === false) return 'Draft';
+    }
+    return status || 'Published';
+  };
+
+  const eventStatus = getEventStatus();
+
+  const isPublished = () => {
+    const status = eventStatus.toLowerCase();
+    return ['published', 'ongoing', 'live', 'active'].includes(status);
+  };
+
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="rounded-[28px] bg-gradient-to-br from-slate-950 via-slate-900 to-sky-900 p-6 text-white shadow-xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-sky-200">Sub Organiser workspace</p>
-          <div className="mt-3">
-            <div>
-              <h1 className="text-3xl font-bold">{data?.event?.name || 'Assigned event'}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-200">
-                Keep your zone operations fast and clear. This workspace only shows the zones and attendees assigned to you.
-              </p>
+      <div className="space-y-6 pb-20">
+        {/* Header */}
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-6 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15 animate-pulse" />
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    Sub-Organiser Workspace
+                  </p>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-medium text-slate-500">
+                    Scoped
+                  </span>
+                </div>
+                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                  {data?.event?.name || 'Assigned Event'}
+                </h1>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        isPublished()
+                          ? 'bg-emerald-500'
+                          : eventStatus.toLowerCase() === 'draft'
+                          ? 'bg-amber-400'
+                          : 'bg-slate-400'
+                      }`}
+                    />
+                    {eventStatus}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                    <MapPinIcon className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="truncate max-w-[180px]">
+                      {data?.event?.venue?.name || 'Venue TBD'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-3 shrink-0">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Zones</p>
+                  <p className="mt-0.5 text-xl font-bold text-slate-900">{loading ? '—' : zones.length}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Categories</p>
+                  <p className="mt-0.5 text-xl font-bold text-slate-900">{loading ? '—' : categories.length}</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {metricCards.map((card) => (
-            <div key={card.key} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-slate-500">{card.label}</p>
-              <p className={`mt-3 text-3xl font-bold ${card.accent}`}>
-                {loading ? '-' : data?.metrics?.[card.key] || 0}
-              </p>
-            </div>
+        {/* KPI cards */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            title="Attendees in Scope"
+            value={loading ? '—' : data?.metrics?.totalAttendees ?? 0}
+            subtitle="Assigned to your zones"
+            icon={UsersIcon}
+          />
+          <MetricCard
+            title="Checked-In"
+            value={loading ? '—' : data?.metrics?.checkedInCount ?? 0}
+            subtitle={
+              data?.metrics?.totalAttendees
+                ? `${Math.min(
+                    100,
+                    Math.round(
+                      ((data?.metrics?.checkedInCount || 0) / (data?.metrics?.totalAttendees || 1)) * 100
+                    )
+                  )}% of scoped attendees`
+                : 'No attendees yet'
+            }
+            icon={CheckBadgeIcon}
+          />
+          <MetricCard
+            title="Pending Verification"
+            value={loading ? '—' : data?.metrics?.pendingVerifications ?? 0}
+            subtitle="Photo reviews waiting"
+            icon={ClockIcon}
+          />
+          <MetricCard
+            title="Assigned Zones"
+            value={loading ? '—' : data?.metrics?.zoneCount ?? zones.length}
+            subtitle="Your operational scope"
+            icon={MapPinIcon}
+          />
+        </section>
+
+        {/* Quick control cards */}
+        <section className="grid gap-4 xl:grid-cols-3">
+          {[
+            {
+              title: 'Zone Control',
+              sub: 'Areas & movement',
+              count1: zones.length || 0,
+              label1: 'Zones',
+              count2: data?.metrics?.checkedInCount || 0,
+              label2: 'Checked-in',
+              to: '/suborg/zones',
+            },
+            {
+              title: 'Ticket Control',
+              sub: 'Categories & sales',
+              count1: categories.length || 0,
+              label1: 'Categories',
+              count2: categories.reduce((s, c) => s + (c.sold || 0), 0),
+              label2: 'Sold',
+              to: null,
+            },
+            {
+              title: 'Activity',
+              sub: 'Recent operations',
+              count1: activity.length || 0,
+              label1: 'Actions',
+              count2: data?.metrics?.pendingVerifications || 0,
+              label2: 'Pending',
+              to: '/suborg/logs',
+            },
+          ].map((item) => (
+            <Card
+              key={item.title}
+              className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
+            >
+              <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{item.sub}</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-blue-50/80 border border-blue-100/70 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">{item.label1}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{loading ? '—' : item.count1}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{item.label2}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{loading ? '—' : item.count2}</p>
+                </div>
+              </div>
+              {item.to && (
+                <div className="mt-4 flex justify-end">
+                  <Link to={item.to}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50"
+                    >
+                      Open
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </Card>
           ))}
-        </div>
+        </section>
 
         {loadError && (
-          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
             {loadError}
           </div>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[1.25fr,0.95fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Assigned zones</h2>
-                <p className="mt-1 text-sm text-slate-500">Capacity and operational visibility for your current scope.</p>
-              </div>
-              <Link to="/suborg/zones" className="text-sm font-semibold text-sky-700">Open zone workspace</Link>
-            </div>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {(data?.zones || []).map((zone) => (
-                <div key={zone.id || zone.name} className="rounded-2xl bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-lg font-semibold text-slate-900">{zone.name}</h3>
-                    <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">cap {zone.capacity || 0}</span>
+        <div className="grid gap-6 xl:grid-cols-2">
+          {/* ──────────── Left column ──────────── */}
+          <div className="space-y-5">
+            <PermissionGuard permission="canViewZones" fallback={null}>
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                      <MapPinIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">Assigned zones</h2>
+                      <p className="text-sm text-slate-500">Capacity and operational visibility for your scope</p>
+                    </div>
                   </div>
-                  <p className="mt-3 text-sm text-slate-500">Use entry and zone scans here only. Other event areas stay hidden.</p>
+                  <Link to="/suborg/zones" className="text-sm font-semibold text-blue-600 hover:text-blue-700 shrink-0">
+                    Open zones
+                  </Link>
                 </div>
-              ))}
-              {!loading && (data?.zones || []).length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500 md:col-span-2">
-                  No zones assigned yet. Ask the main organiser to assign at least one zone.
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Managed Categories Section */}
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm flex flex-col">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600 font-bold">Ticket Management</h2>
-                <p className="mt-1 text-[10px] text-slate-400">Manage categories delegated to you or created by you.</p>
-              </div>
-              <Button size="sm" onClick={() => setCategoryModal({ ...emptyCategory, id: '', allowedZones: (data?.zones || []).map(z => z.id || z.name) })}>Add Ticket</Button>
-            </div>
-            
-            <div className="mt-6 space-y-4 flex-1">
-              {data?.categories?.map((cat) => (
-                <div key={cat.id} className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 transition-all hover:bg-slate-50">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-slate-900">{cat.name}</h3>
-                        {cat.isPrivate && <Badge color="indigo" size="xs">Private</Badge>}
-                      </div>
-                      <p className="text-xs text-slate-500 line-clamp-1">{cat.description || 'No description provided.'}</p>
-                      <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-medium text-slate-400">
-                        <span>Price: {data?.event?.settings?.currency || 'LKR'} {Number(cat.price).toLocaleString()}</span>
-                        <span>Sold: {cat.sold || 0} / {cat.capacity || 0}</span>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {zones.map((zone) => (
+                    <div
+                      key={zone.id || zone.name}
+                      className="relative overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-4 transition-all hover:border-sky-200 hover:bg-sky-50/40"
+                    >
+                      {zone.color && (
+                        <div
+                          className="absolute inset-y-0 left-0 w-1 rounded-l-xl"
+                          style={{ backgroundColor: zone.color }}
+                        />
+                      )}
+                      <div className={zone.color ? 'pl-2' : ''}>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-bold text-slate-900 truncate">{zone.name}</h3>
+                          <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold text-sky-700">
+                            Cap {zone.capacity || 0}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-xs text-slate-500 line-clamp-2">
+                          {zone.description || 'Use entry and zone scans here only.'}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <button onClick={() => setCategoryModal(cat)} className="text-[10px] font-bold text-blue-600 uppercase hover:underline">Edit</button>
-                      <button onClick={() => removeCategory(cat.id)} className="text-[10px] font-bold text-rose-600 uppercase hover:underline">Delete</button>
-                    </div>
-                  </div>
-                  
-                  {cat.isPrivate && cat.accessCode && (
-                    <div className="mt-3 flex items-center justify-between rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black uppercase text-slate-400">Access Code</span>
-                        <span className="text-xs font-mono font-bold text-indigo-600 tracking-wider">{cat.accessCode}</span>
+                  ))}
+                  {!loading && zones.length === 0 && (
+                    <div className="sm:col-span-2 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                        <MapPinIcon className="h-6 w-6" />
                       </div>
-                      <button 
-                        onClick={() => handleRegenerateCode(cat.id)}
-                        className="rounded-lg bg-slate-50 p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        title="Regenerate Code"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                      </button>
+                      <p className="text-sm font-semibold text-slate-700">No zones assigned yet</p>
+                      <p className="mt-1 text-xs text-slate-500 max-w-xs">
+                        Ask the main organiser to assign at least one zone to your account.
+                      </p>
                     </div>
                   )}
                 </div>
-              ))}
-              {(!data?.categories || data.categories.length === 0) && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div className="rounded-full bg-slate-100 p-3 text-slate-400">
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4v-3a2 2 0 00-2-2H5z" /></svg>
-                  </div>
-                  <p className="mt-3 text-xs font-medium text-slate-400 italic">No managed categories yet.</p>
-                </div>
-              )}
-            </div>
-            
-            <p className="mt-4 text-[10px] italic text-slate-400">
-              You can only create and manage tickets for the zones assigned to your workspace.
-            </p>
+              </Card>
+            </PermissionGuard>
+
+            <CapabilityCard
+              permission="canCollectCash"
+              title="Cash Payments"
+              description="Manage cash at entrance and confirm payments"
+              linkTo="/suborg/cash-payments"
+              linkLabel="Manage payments"
+              icon={BanknotesIcon}
+              tone="emerald"
+              enabledTitle="Cash collection enabled"
+              enabledDesc="You can view and confirm cash payments at the venue"
+            />
+
+            <CapabilityCard
+              permission="canAddAttendees"
+              title="Add Attendees"
+              description="Register guests directly to the event"
+              linkTo="/suborg/attendees"
+              linkLabel="Manage attendees"
+              icon={UserPlusIcon}
+              tone="blue"
+              enabledTitle="Attendee registration enabled"
+              enabledDesc="You can add new attendees directly to the event"
+            />
+
+            <CapabilityCard
+              permission="canVerifyPhotos"
+              title="Photo Verification"
+              description="Approve attendee photo uploads"
+              linkTo="/suborg/verification"
+              linkLabel="View queue"
+              icon={PhotoIcon}
+              tone="purple"
+              enabledTitle="Photo verification enabled"
+              enabledDesc="You can approve attendee photo uploads"
+            />
+
+            <CapabilityCard
+              permission="canInviteAttendees"
+              title="Send Invitations"
+              description="Resend confirmation emails to attendees"
+              linkTo="/suborg/invites"
+              linkLabel="Manage invitations"
+              icon={EnvelopeIcon}
+              tone="cyan"
+              enabledTitle="Invitation management enabled"
+              enabledDesc="You can resend confirmation emails"
+            />
+
+            <CapabilityCard
+              permission="canBulkUpload"
+              title="Excel Bulk Imports"
+              description="Upload spreadsheets for bulk registration"
+              linkTo="/suborg/upload"
+              linkLabel="Manage bulk upload"
+              icon={ArrowUpTrayIcon}
+              tone="amber"
+              enabledTitle="Bulk import enabled"
+              enabledDesc="You can upload Excel files for bulk registration"
+            />
+
+            <CapabilityCard
+              permission="canGateScanAccess"
+              title="Gate Scan Access"
+              description="Scan check-ins at entry points"
+              linkTo="/suborg/scan"
+              linkLabel="Go to scanner"
+              icon={QrCodeIcon}
+              tone="rose"
+              enabledTitle="Gate scan access enabled"
+              enabledDesc="You can scan tickets at entry points"
+            />
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Last 5 actions</h2>
-                <p className="mt-1 text-sm text-slate-500">Recent entry and zone activity inside your assignment.</p>
-              </div>
-              <Link to="/suborg/logs" className="text-sm font-semibold text-sky-700">View all</Link>
-            </div>
-            <div className="mt-5 space-y-3">
-              {(data?.activity || []).map((item) => (
-                <div key={item.id} className="rounded-2xl border border-slate-100 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-900">{item.action}</p>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                      {item.status}
-                    </span>
+          {/* ──────────── Right column ──────────── */}
+          <div className="space-y-5">
+            <PermissionGuard permission="canViewTickets" fallback={null}>
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                      <TicketIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">Ticket Management</h2>
+                      <p className="text-sm text-slate-500">Categories delegated to you or created by you</p>
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">{item.attendeeName} - {item.zoneName}</p>
-                  <p className="mt-1 text-xs text-slate-400">{item.actorName} - {formatTime(item.timestamp)}</p>
+                  <PermissionGuard permission="canEditTickets">
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-500 shrink-0"
+                      onClick={() =>
+                        setCategoryModal({
+                          ...emptyCategory,
+                          id: '',
+                          allowedZones: zones.map((z) => z.id || z.name),
+                        })
+                      }
+                    >
+                      + Add Ticket
+                    </Button>
+                  </PermissionGuard>
                 </div>
-              ))}
-              {!loading && (data?.activity || []).length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                  No actions recorded yet.
+
+                <div className="mt-5 space-y-3">
+                  {categories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 transition-all hover:border-indigo-100 hover:bg-indigo-50/30"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-bold text-slate-900 truncate">{cat.name}</h3>
+                            {cat.isPrivate && <Badge color="indigo">Private</Badge>}
+                          </div>
+                          <p className="text-xs text-slate-500 line-clamp-1">
+                            {cat.description || 'No description provided.'}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-medium text-slate-500">
+                            <span>
+                              {cat.currency || currency} {Number(cat.price || 0).toLocaleString()}
+                            </span>
+                            <span>
+                              Sold: {cat.sold || 0} / {cat.capacity || 0}
+                            </span>
+                            {cat.accessCode && (
+                              <span className="font-mono text-indigo-600">Code: {cat.accessCode}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 gap-2">
+                          {String(cat.createdBy || '') === currentUserId ? (
+                            <>
+                              <Button variant="outline" size="sm" onClick={() => setCategoryModal(cat)}>
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                                onClick={() => setDeleteConfirm({ id: cat.id, label: cat.name })}
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </Button>
+                              {cat.isPrivate && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  title="Regenerate access code"
+                                  onClick={() => handleRegenerateCode(cat.id)}
+                                >
+                                  <ArrowPathIcon className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                              Assigned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {!loading && categories.length === 0 && (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                        <TicketIcon className="h-6 w-6" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-700">No ticket categories yet</p>
+                      <p className="mt-1 text-xs text-slate-500 max-w-xs">
+                        Create a private ticket category or wait for the organiser to assign one to you.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </Card>
+            </PermissionGuard>
+
+            {/* Recent Activity */}
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Recent Activity</h2>
+                  <p className="text-sm text-slate-500">Latest actions in your scope</p>
+                </div>
+                <Link to="/suborg/logs" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                  View all
+                </Link>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {activity.slice(0, 8).map((item, idx) => (
+                  <div
+                    key={item.id || idx}
+                    className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-3"
+                  >
+                    <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-800 line-clamp-1">
+                        {item.message || item.action || 'Action performed'}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">{formatTime(item.createdAt || item.timestamp)}</p>
+                    </div>
+                  </div>
+                ))}
+
+                {!loading && activity.length === 0 && (
+                  <div className="py-8 text-center text-sm text-slate-500">No recent activity</div>
+                )}
+              </div>
+            </Card>
           </div>
         </div>
       </div>
 
-      <CategoryModal 
+      {/* ──────────── Category Modal ──────────── */}
+      <Modal
         open={!!categoryModal}
         onClose={() => setCategoryModal(null)}
-        category={categoryModal}
-        setCategory={setCategoryModal}
-        zones={data?.zones || []}
-        teamMembers={teamMembers}
-        currency={data?.event?.settings?.currency || 'LKR'}
-        onSave={saveCategory}
-        loading={isSaving}
-      />
+        title={categoryModal?.id ? 'Edit Ticket Category' : 'Create Ticket Category'}
+      >
+        {categoryModal && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Name *</label>
+              <input
+                type="text"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={categoryModal.name}
+                onChange={(e) => setCategoryModal({ ...categoryModal, name: e.target.value })}
+                placeholder="e.g. VIP Guest, Staff, Press"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Description</label>
+              <textarea
+                rows={2}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={categoryModal.description}
+                onChange={(e) => setCategoryModal({ ...categoryModal, description: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Price ({currency})</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={categoryModal.price}
+                  onChange={(e) => setCategoryModal({ ...categoryModal, price: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Capacity</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={categoryModal.capacity}
+                  onChange={(e) => setCategoryModal({ ...categoryModal, capacity: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="isPrivate"
+                type="checkbox"
+                checked={!!categoryModal.isPrivate}
+                onChange={(e) => setCategoryModal({ ...categoryModal, isPrivate: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="isPrivate" className="text-sm text-slate-700">
+                Private category (requires access code)
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setCategoryModal(null)} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button onClick={saveCategory} disabled={isSaving} className="bg-blue-600 hover:bg-blue-500">
+                {isSaving ? 'Saving…' : categoryModal.id ? 'Update' : 'Create'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ──────────── Delete Confirmation ──────────── */}
+      <Modal
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete Category"
+      >
+        {deleteConfirm && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to delete <strong>{deleteConfirm.label}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-rose-600 hover:bg-rose-500 text-white"
+                onClick={confirmDeleteCategory}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </DashboardLayout>
   );
 };
-
-const CategoryModal = ({ open, onClose, category, setCategory, zones, teamMembers, currency, onSave, loading }) => (
-  <Modal 
-    open={open} 
-    onClose={onClose} 
-    title={category?.id ? 'Edit Ticket Category' : 'Create New Ticket'}
-    footer={(
-      <Button className="w-full py-4 shadow-lg shadow-blue-100" onClick={onSave} loading={loading}>
-        {category?.id ? 'Update Category' : 'Create Category'}
-      </Button>
-    )}
-  >
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <label className="block space-y-1">
-          <span className="text-xs font-bold uppercase text-slate-500">Category Name</span>
-          <input 
-            value={category?.name || ''} 
-            onChange={(e) => setCategory(curr => ({ ...curr, name: e.target.value }))} 
-            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20" 
-            placeholder="e.g. VIP Seating" 
-          />
-        </label>
-        
-        <label className="block space-y-1">
-          <span className="text-xs font-bold uppercase text-slate-500">Description</span>
-          <textarea 
-            value={category?.description || ''} 
-            onChange={(e) => setCategory(curr => ({ ...curr, description: e.target.value }))} 
-            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20" 
-            placeholder="What's included in this ticket?"
-            rows={2}
-          />
-        </label>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block space-y-1">
-            <span className="text-xs font-bold uppercase text-slate-500">Price ({currency})</span>
-            <input 
-              type="number"
-              value={category?.price || 0} 
-              onChange={(e) => setCategory(curr => ({ ...curr, price: Number(e.target.value) }))} 
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20" 
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-bold uppercase text-slate-500">Total Capacity</span>
-            <input 
-              type="number"
-              value={category?.capacity || 0} 
-              onChange={(e) => setCategory(curr => ({ ...curr, capacity: Number(e.target.value) }))} 
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20" 
-            />
-          </label>
-        </div>
-
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!category?.isPrivate}
-              onChange={(e) => setCategory(curr => ({ ...curr, isPrivate: e.target.checked }))}
-              className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-indigo-900">Private Ticket</span>
-              <span className="text-[10px] text-indigo-600/70 leading-tight">Requires a special access code to view and purchase.</span>
-            </div>
-          </label>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 p-4">
-          <span className="text-xs font-bold uppercase text-slate-500">Authorized Zones</span>
-          <p className="mt-1 text-[10px] text-slate-400">Choose which zones this ticket gives access to.</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {zones.map(zone => (
-              <label key={zone.id} className="flex items-center gap-2 rounded-lg border border-slate-100 p-2 text-xs hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={(category?.allowedZones || []).includes(zone.id || zone.name)}
-                  onChange={(e) => {
-                    const zid = zone.id || zone.name;
-                    const next = e.target.checked
-                      ? [...new Set([...(category?.allowedZones || []), zid])]
-                      : (category?.allowedZones || []).filter(id => id !== zid);
-                    setCategory(curr => ({ ...curr, allowedZones: next }));
-                  }}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600"
-                />
-                <span className="truncate">{zone.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 p-4">
-          <span className="text-xs font-bold uppercase text-slate-500">Management Delegation</span>
-          <p className="mt-1 text-[10px] text-slate-400">Assign other sub-organisers to help manage this category.</p>
-          <div className="mt-3 space-y-2">
-            {teamMembers.filter(m => m.role === 'SubOrganiser' || m.role === 'sub_organiser').map((member) => (
-              <label key={member._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-2 text-sm hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={(category?.assignedSubOrganisers || []).includes(member._id)}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...new Set([...(category?.assignedSubOrganisers || []), member._id])]
-                      : (category?.assignedSubOrganisers || []).filter(id => id !== member._id);
-                    setCategory(curr => ({ ...curr, assignedSubOrganisers: next }));
-                  }}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div className="flex flex-col">
-                  <span className="font-semibold text-slate-700">{member.name}</span>
-                  <span className="text-[10px] text-slate-500">{member.email}</span>
-                </div>
-              </label>
-            ))}
-            {teamMembers.filter(m => m.role === 'SubOrganiser' || m.role === 'sub_organiser').length === 0 && (
-              <p className="text-xs italic text-slate-400 py-2">No other sub-organisers found.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </Modal>
-);
 
 export default SubOrgDashboard;

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { format } from 'date-fns';
 import {
   ResponsiveContainer,
@@ -29,7 +30,7 @@ import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import LoadingSkeleton from '../../components/shared/LoadingSkeleton';
-import AdminSettingsPanel from './AdminSettingsPanel';
+
 import toast from 'react-hot-toast';
 import { duplicateAdminEvent } from '../../api/events';
 import { getSystemLogs } from '../../api/audit';
@@ -72,7 +73,7 @@ const SECTION_LABELS = {
   notifications: 'Notifications',
   reports: 'Reports',
   'system-logs': 'System Logs',
-  settings: 'System Settings',
+
   'bank-accounts': 'Bank Accounts',
   payments: 'Payments',
 };
@@ -341,6 +342,7 @@ const SectionContent = ({
   lastUpdated,
   handleDeleteDashboard,
   handleDeleteCompany,
+  exportReport,
 }) => {
   const overview = workspace?.overview;
   const eventRows = workspace?.events?.rows || [];
@@ -1184,7 +1186,12 @@ const SectionContent = ({
               subtitle="Total for selected period"
               icon={CurrencyDollarIcon}
             />
-            <MetricCard title="Report Tickets" value={reports?.summary?.totalTickets || 0} subtitle="Tickets issued in report" icon={TicketIcon} />
+            <MetricCard
+              title="Report Tickets"
+              value={reports?.summary?.totalTickets || 0}
+              subtitle="Tickets issued in report"
+              icon={TicketIcon}
+            />
             <MetricCard
               title="Report Entry"
               value={reports?.summary?.totalAttendance || 0}
@@ -1206,7 +1213,11 @@ const SectionContent = ({
                 subtitle="Financial breakdown per event"
                 className="px-6 pt-6"
                 action={
-                  <Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('revenue', params)}>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => exportReport('revenue')}
+                  >
                     Export CSV
                   </Button>
                 }
@@ -1229,7 +1240,9 @@ const SectionContent = ({
                         </Td>
                         <Td>{row.ticketsSold}</Td>
                         <Td>{row.orders}</Td>
-                        <Td className="font-semibold text-slate-900">{money(row.revenue, workspace?.settings?.currency)}</Td>
+                        <Td className="font-semibold text-slate-900">
+                          {money(row.revenue, workspace?.settings?.currency)}
+                        </Td>
                       </Tr>
                     ))}
                   </tbody>
@@ -1243,7 +1256,11 @@ const SectionContent = ({
                 subtitle="Top throughput leaders"
                 className="px-6 pt-6"
                 action={
-                  <Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('organisers', params)}>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => exportReport('organisers')}
+                  >
                     Export CSV
                   </Button>
                 }
@@ -1279,7 +1296,11 @@ const SectionContent = ({
               subtitle="Entry validation metrics per event"
               className="px-6 pt-6"
               action={
-                <Button variant="outline" size="sm" onClick={() => exportSuperAdminReport('attendance', params)}>
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => exportReport('attendance')}
+                >
                   Export CSV
                 </Button>
               }
@@ -2269,13 +2290,18 @@ const AdminDashboard = () => {
     loadWorkspace();
   }, [params.toString()]);
 
-  useEffect(() => {
-    if (section !== 'overview') return undefined;
-    const intervalId = window.setInterval(() => {
+  useAutoRefresh(
+    () => {
+      if (section !== 'overview') return;
       loadWorkspace({ showSpinner: false });
-    }, 15000);
-    return () => window.clearInterval(intervalId);
-  }, [section, params.toString()]);
+    },
+    {
+      enabled: section === 'overview',
+      interval: 15000,
+      immediate: false,
+      deps: [section, params.toString()],
+    }
+  );
 
   useEffect(() => {
     if (section !== 'system-logs') return;
@@ -2590,6 +2616,7 @@ const AdminDashboard = () => {
             sysLoading={sysLoading}
             lastUpdated={lastUpdated}
             handleDeleteCompany={handleDeleteCompany}
+            exportReport={exportReport}
           />
         )}
 

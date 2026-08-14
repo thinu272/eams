@@ -3,15 +3,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { getDashboardPathForRole } from '../../config/roleNavigation';
-import { 
-  LockClosedIcon, 
-  EnvelopeIcon, 
-  EyeIcon, 
+import {
+  LockClosedIcon,
+  EnvelopeIcon,
+  EyeIcon,
   EyeSlashIcon,
   ChevronRightIcon,
-  BoltIcon
+  BoltIcon,
 } from '@heroicons/react/24/outline';
-
 
 const LoginPage = () => {
   const { user, login } = useAuth();
@@ -61,147 +60,203 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-sans selection:bg-blue-500/30 flex items-center justify-center p-6 sm:p-12">
-      {/* Premium Gradient Background */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30" />
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-sans selection:bg-blue-500/20 flex items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
+      {/* Soft modern gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-blue-50/30" />
 
-      {/* Soft Daylight Glows */}
-      <div className="absolute top-0 right-1/4 h-[600px] w-[600px] rounded-full bg-blue-500/5 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 h-[600px] w-[600px] rounded-full bg-sky-500/5 blur-[120px] pointer-events-none" />
+      {/* Subtle ambient glows */}
+      <div className="absolute top-0 right-1/4 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 h-[500px] w-[500px] rounded-full bg-sky-400/5 blur-[100px] pointer-events-none" />
 
-      <div className="relative z-10 w-full max-w-[480px] animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
-        {/* Branding Section */}
-        <div className="mb-10 text-center">
-          <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-brand-main/10 mb-6 border border-brand-main/20 shadow-sm backdrop-blur-md">
-             <img src="/logo.png" alt="Logo" className="h-10 w-10 object-contain" onError={(e) => e.target.style.display='none'} />
+      <div className="relative z-10 w-full max-w-[480px] sm:max-w-[520px]">
+        {/* Branding */}
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center justify-center p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm mb-5">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="h-9 w-9 object-contain"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
           </div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 mb-2">
-             Secure <span className="text-brand-main">Gateway</span>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+            Secure <span className="text-blue-600">Gateway</span>
           </h1>
-          <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
             Precision Access Management
           </p>
         </div>
 
-        {/* Login Card (Light Glass) */}
-        <div className="group relative rounded-[2.5rem] border border-white/60 bg-white/80 p-10 backdrop-blur-2xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)]">
-          <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
-          
-          <form onSubmit={handleSubmit} className="space-y-7">
+        {/* Main Card – hybrid style */}
+        <div className="relative rounded-[28px] border border-slate-200 bg-white/90 backdrop-blur-sm shadow-[0_8px_30px_-6px_rgba(0,0,0,0.06)] p-6 sm:p-8">
+          <div className="absolute inset-x-8 -top-px h-px bg-gradient-to-r from-transparent via-blue-400/50 to-transparent" />
+
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {!mfaStep ? (
               <>
-                {/* Identity Email */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Verification Email</label>
-                  <div className="relative group/field">
-                    <EnvelopeIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                {/* Email */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="email"
+                    className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 ml-0.5"
+                  >
+                    Verification Email
+                  </label>
+                  <div className="relative group">
+                    <EnvelopeIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
                     <input
+                      id="email"
                       type="email"
                       required
+                      autoComplete="email"
                       value={form.email}
-                      onChange={e => setForm(f => ({...f, email: e.target.value}))}
+                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                       placeholder="identity@stadium.entrynex.com"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-brand-main/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-main/50 shadow-sm"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                     />
                   </div>
                 </div>
 
-                {/* Access Key */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between px-1">
-                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Key</label>
-                     <Link to="/forgot-password" core="true" className="text-[10px] font-bold text-blue-600 hover:text-blue-500 transition-colors uppercase tracking-[0.2em] underline-offset-4 hover:underline">
-                       Lost Key?
-                     </Link>
+                {/* Password */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="password"
+                      className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 ml-0.5"
+                    >
+                      Access Key
+                    </label>
+                    <Link
+                      to="/forgot-password"
+                      className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      Lost Key?
+                    </Link>
                   </div>
-                  <div className="relative group/field">
-                    <LockClosedIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within/field:text-blue-600 transition-colors" />
+                  <div className="relative group">
+                    <LockClosedIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
                     <input
+                      id="password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete="current-password"
                       value={form.password}
-                      onChange={e => setForm(f => ({...f, password: e.target.value}))}
+                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                       placeholder="••••••••••••"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-5 pl-14 pr-14 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500/50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-3.5 pl-12 pr-12 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
                     >
-                      {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                      {showPassword ? (
+                        <EyeSlashIcon className="h-5 w-5" />
+                      ) : (
+                        <EyeIcon className="h-5 w-5" />
+                      )}
                     </button>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-blue-600 ml-1">MFA Security Token</label>
-                <div className="relative group/field">
-                  <BoltIcon className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-600 transition-colors" />
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="mfaToken"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 ml-0.5"
+                >
+                  MFA Security Token
+                </label>
+                <div className="relative group">
+                  <BoltIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-600 pointer-events-none" />
                   <input
+                    id="mfaToken"
                     type="text"
                     required
                     autoFocus
                     value={form.mfaToken}
-                    onChange={e => setForm(f => ({...f, mfaToken: e.target.value}))}
+                    onChange={(e) => setForm((f) => ({ ...f, mfaToken: e.target.value }))}
                     placeholder="Enter 6-digit code"
-                    className="w-full rounded-2xl border border-blue-200 bg-blue-50/30 py-5 pl-14 pr-6 text-sm font-semibold text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/5 shadow-sm"
+                    className="w-full rounded-2xl border border-blue-200 bg-blue-50/40 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-                <button type="button" onClick={() => setMfaStep(false)} className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2 hover:text-slate-600 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setMfaStep(false)}
+                  className="text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors mt-1"
+                >
                   ← Back to Credentials
                 </button>
               </div>
             )}
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full overflow-hidden rounded-2xl bg-brand-dark py-5 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-[0_10px_25px_-5px_rgba(10,17,40,0.3)] transition-all duration-300 hover:bg-brand-main hover:shadow-[0_15px_30px_-5px_rgba(38,132,255,0.4)] disabled:opacity-50 active:scale-[0.98]"
+              className="group relative w-full overflow-hidden rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed py-4 text-[12px] font-bold uppercase tracking-wider text-white shadow-sm shadow-blue-200 transition-all duration-300 active:scale-[0.98]"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer" />
-              
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_ease-in-out]" />
               {loading ? (
-                <span className="flex items-center justify-center gap-3">
-                  <div className="h-4 w-4 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+                <span className="flex items-center justify-center gap-2.5">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                   Authenticating...
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
                   {mfaStep ? 'Verify Security Token' : 'Initiate Secure Access'}
-                  <ChevronRightIcon className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
+                  <ChevronRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </span>
               )}
             </button>
           </form>
 
-          <div className="mt-10 flex items-center gap-5">
-             <div className="h-[1px] flex-1 bg-slate-200" />
-             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Operations</span>
-             <div className="h-[1px] flex-1 bg-slate-200" />
+          {/* Divider */}
+          <div className="mt-8 flex items-center gap-4">
+            <div className="h-px flex-1 bg-slate-100" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Operations
+            </span>
+            <div className="h-px flex-1 bg-slate-100" />
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-4 text-center">
-            <Link to="/signup" className="group p-5 rounded-2xl border border-slate-100 bg-slate-50/50 transition-all hover:bg-white hover:border-blue-500/20 hover:shadow-md">
-               <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Recruit Attendee</span>
-               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Join the high-fidelity ecosystem</span>
+          {/* Quick links */}
+          <div className="mt-6 grid grid-cols-1 gap-3">
+            <Link
+              to="/signup"
+              className="group p-4 rounded-2xl border border-slate-200 bg-slate-50/60 transition-all hover:bg-white hover:border-blue-200 hover:shadow-sm text-center"
+            >
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-0.5">
+                Recruit Attendee
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Join the high-fidelity ecosystem
+              </span>
             </Link>
-            
-            <Link to="/" className="group p-5 rounded-2xl border border-slate-100 bg-slate-50/50 transition-all hover:bg-white hover:border-amber-500/20 hover:shadow-md">
-               <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-amber-600 mb-1">Public Terminal</span>
-               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Access as unregistered guest</span>
+
+            <Link
+              to="/"
+              className="group p-4 rounded-2xl border border-slate-200 bg-slate-50/60 transition-all hover:bg-white hover:border-amber-200 hover:shadow-sm text-center"
+            >
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-0.5">
+                Public Terminal
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Access as unregistered guest
+              </span>
             </Link>
           </div>
 
-          {/* Quick Access Lab Dropdown */}
-          <div className="mt-6 border-t border-slate-100 pt-6">
+          {/* Lab Access (dev credentials) */}
+          <div className="mt-6 border-t border-slate-100 pt-5">
             <details className="group/details">
-              <summary className="flex items-center justify-center gap-2 cursor-pointer list-none text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 hover:text-blue-600 transition-colors">
-                <span className="bg-blue-500/10 px-2 py-0.5 rounded text-blue-600">Lab Access</span>
+              <summary className="flex items-center justify-center gap-2 cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-blue-600 transition-colors">
+                <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md text-[10px]">
+                  Lab Access
+                </span>
                 View System Credentials
               </summary>
-              <div className="mt-4 grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-2">
+              <div className="mt-4 grid grid-cols-1 gap-2">
                 {[
                   { r: 'Admin', e: 'admin@stadium.entrynex.com', p: 'Admin@Matrix.Reset' },
                   { r: 'Organiser', e: 'organiser@stadium.entrynex.com', p: 'Organiser@Matrix.Reset' },
@@ -210,13 +265,15 @@ const LoginPage = () => {
                   { r: 'Auditor', e: 'auditor@stadium.entrynex.com', p: 'Auditor@Matrix.Reset' },
                   { r: 'Sponsor', e: 'sponsor@stadium.entrynex.com', p: 'Sponsor@Matrix.Reset' },
                   { r: 'Attendee', e: 'attendee@stadium.entrynex.com', p: 'Attendee@Matrix.Reset' },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100 text-[9px] font-bold tracking-wider">
-                    <span className="text-blue-600 uppercase mb-1">{item.r} Identity</span>
-                    <div className="flex justify-between text-slate-600">
-                       <span>{item.e}</span>
-                       <span className="text-slate-300">/</span>
-                       <span>{item.p}</span>
+                ].map((item) => (
+                  <div
+                    key={item.r}
+                    className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px]"
+                  >
+                    <span className="font-semibold text-blue-600 uppercase mb-1">{item.r}</span>
+                    <div className="flex flex-wrap justify-between gap-x-2 text-slate-600 font-medium">
+                      <span className="truncate">{item.e}</span>
+                      <span className="text-slate-400">{item.p}</span>
                     </div>
                   </div>
                 ))}
@@ -225,27 +282,30 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* Footer Status */}
-         <div className="mt-12 text-center">
-          <div className="inline-flex items-center gap-4 bg-white/60 px-6 py-2.5 rounded-full border border-white shadow-sm backdrop-blur-md">
-             <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
-               Network Status: <span className="text-blue-600/80">Secured</span>
-             </p>
+        {/* Status + Footer */}
+        <div className="mt-8 text-center space-y-4">
+          <div className="inline-flex items-center gap-3 bg-white/80 px-5 py-2 rounded-full border border-slate-200 shadow-sm">
+            <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Network Status: <span className="text-blue-600">Secured</span>
+            </p>
           </div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
+            ENTRYNEX Elite Network • Authorized Personnel Only
+          </p>
         </div>
       </div>
 
-      {/* Modern Branding Bar */}
-      <div className="absolute bottom-10 inset-x-12 hidden lg:flex items-center justify-between pointer-events-none">
+      {/* Desktop branding bar */}
+      <div className="absolute bottom-8 inset-x-10 hidden lg:flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-3">
-           <div className="h-0.5 w-12 bg-blue-500 rounded-full shadow-sm" />
-           <span className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
-             Elite Registry Protocol
-           </span>
+          <div className="h-0.5 w-10 bg-blue-500 rounded-full" />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Elite Registry Protocol
+          </span>
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
-           © 2026 ENTRYNEX High Fidelity System
+        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-300">
+          © 2026 ENTRYNEX High Fidelity System
         </span>
       </div>
     </div>

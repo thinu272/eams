@@ -2,11 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   BellIcon,
   MagnifyingGlassIcon,
-  ChevronDownIcon,
   Bars3Icon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
-import { getRoleLabel } from '../../config/roleNavigation';
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -17,11 +15,11 @@ import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
-const Topbar = ({ onMenuClick }) => {
-  const { user, logout } = useAuth();
+const Header = ({ onMenuClick }) => {
+  const { user } = useAuth();
   const navigate = useNavigate();
+
   const [open, setOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [search, setSearch] = useState('');
@@ -35,9 +33,7 @@ const Topbar = ({ onMenuClick }) => {
   );
   const isSuperAdminWorkspace = user?.role === 'MainAdmin';
   const isStaffWorkspace = user?.role === 'Staff';
-  const assignedGateText = (user?.assignedGates || [])
-    .filter(Boolean)
-    .join(', ');
+  const assignedGateText = (user?.assignedGates || []).filter(Boolean).join(', ');
   const getEventObjectId = (event) => event?._id || event?.id || '';
 
   const workspaceTitle = isOrganiserWorkspace
@@ -147,30 +143,15 @@ const Topbar = ({ onMenuClick }) => {
     );
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
-  const settingsPath = isOrganiserWorkspace
-    ? '/organiser/dashboard?section=settings'
-    : isStaffWorkspace
-    ? '/dashboard'
-    : '/admin/dashboard?section=settings';
-
-  const closeDropdowns = () => {
-    setOpen(false);
-    setProfileOpen(false);
-  };
-
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
       <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+        {/* Left: menu + brand */}
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={onMenuClick}
-            className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 lg:hidden"
+            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 transition lg:hidden"
             aria-label="Open menu"
           >
             <Bars3Icon className="h-6 w-6" />
@@ -194,7 +175,9 @@ const Topbar = ({ onMenuClick }) => {
           </div>
         </div>
 
+        {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {/* Event selector (organiser) */}
           {isOrganiserWorkspace && events.length > 0 && (
             <select
               value={selectedEventId}
@@ -202,16 +185,14 @@ const Topbar = ({ onMenuClick }) => {
               className="hidden max-w-[180px] truncate rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition md:block lg:max-w-[220px]"
             >
               {events.map((event) => (
-                <option
-                  key={getEventObjectId(event)}
-                  value={getEventObjectId(event)}
-                >
+                <option key={getEventObjectId(event)} value={getEventObjectId(event)}>
                   {event.name}
                 </option>
               ))}
             </select>
           )}
 
+          {/* Search (non-staff, desktop) */}
           {!isStaffWorkspace && (
             <div className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-400 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition lg:flex">
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
@@ -224,6 +205,7 @@ const Topbar = ({ onMenuClick }) => {
             </div>
           )}
 
+          {/* Staff gate badge */}
           {isStaffWorkspace && (
             <span className="hidden rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 sm:inline-flex">
               {assignedGateText || 'General Gate'}
@@ -234,11 +216,8 @@ const Topbar = ({ onMenuClick }) => {
           <div className="relative">
             <button
               type="button"
-              onClick={() => {
-                setProfileOpen(false);
-                setOpen((v) => !v);
-              }}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+              onClick={() => setOpen((v) => !v)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 transition"
               aria-label="Notifications"
             >
               <BellIcon className="h-5 w-5" />
@@ -251,7 +230,11 @@ const Topbar = ({ onMenuClick }) => {
 
             {open && (
               <>
-                <div className="fixed inset-0 z-40" onClick={closeDropdowns} />
+                {/* Backdrop for mobile tap-outside */}
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setOpen(false)}
+                />
                 <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-lg">
                   <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                     <p className="text-sm font-bold text-slate-900">
@@ -260,11 +243,12 @@ const Topbar = ({ onMenuClick }) => {
                     <button
                       type="button"
                       onClick={handleMarkAll}
-                      className="text-[11px] font-semibold text-blue-600 transition hover:text-blue-700"
+                      className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 transition"
                     >
                       Mark all read
                     </button>
                   </div>
+
                   <div className="max-h-80 space-y-1 overflow-auto p-2">
                     {items.length > 0 ? (
                       items.map((item) => (
@@ -303,67 +287,10 @@ const Topbar = ({ onMenuClick }) => {
               </>
             )}
           </div>
-
-          {/* Profile */}
-          {user && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  setProfileOpen((v) => !v);
-                }}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2 shadow-sm transition hover:bg-slate-50"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-bold text-white">
-                  {user.name?.charAt(0)?.toUpperCase() || 'U'}
-                </div>
-                <ChevronDownIcon
-                  className={`h-4 w-4 text-slate-400 transition ${
-                    profileOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-
-              {profileOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={closeDropdowns} />
-                  <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-lg">
-                    <div className="border-b border-slate-100 px-4 py-3">
-                      <p className="truncate text-sm font-bold text-slate-900">
-                        {user.name}
-                      </p>
-                      <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        {getRoleLabel(user.role) || user.role}
-                      </p>
-                    </div>
-                    <div className="p-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          closeDropdowns();
-                          navigate(settingsPath);
-                        }}
-                        className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Dashboard Settings
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                      >
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
+      {/* Mobile event selector (organiser) */}
       {isOrganiserWorkspace && events.length > 0 && (
         <div className="border-t border-slate-100 px-4 py-2 md:hidden">
           <select
@@ -372,10 +299,7 @@ const Topbar = ({ onMenuClick }) => {
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
           >
             {events.map((event) => (
-              <option
-                key={getEventObjectId(event)}
-                value={getEventObjectId(event)}
-              >
+              <option key={getEventObjectId(event)} value={getEventObjectId(event)}>
                 {event.name}
               </option>
             ))}
@@ -386,4 +310,4 @@ const Topbar = ({ onMenuClick }) => {
   );
 };
 
-export default Topbar;
+export default Header;

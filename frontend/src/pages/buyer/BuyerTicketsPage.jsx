@@ -10,17 +10,12 @@ import {
   CalendarIcon,
   ArrowRightIcon,
   ArrowDownTrayIcon,
-  ShoppingBagIcon,
-  CircleStackIcon,
-  UserPlusIcon,
-  QuestionMarkCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CreditCardIcon,
   BanknotesIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline';
-
 import { useAuth } from '../../context/AuthContext';
 import { io } from 'socket.io-client';
 import { getSocketUrl } from '../../utils/backend';
@@ -45,10 +40,9 @@ const BuyerTicketsPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!user || !user._id) return;
+    if (!user?._id) return;
 
-    const socketUrl = getSocketUrl();
-    const socket = io(socketUrl, {
+    const socket = io(getSocketUrl(), {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
@@ -60,7 +54,11 @@ const BuyerTicketsPage = () => {
     });
 
     socket.on('order_status_changed', (data) => {
-      toast.success(`Order #${data.orderNumber} status updated to ${data.paymentStatus || data.status}!`);
+      toast.success(
+        `Order #${data.orderNumber} status updated to ${
+          data.paymentStatus || data.status
+        }!`
+      );
       fetchOrders();
     });
 
@@ -74,11 +72,11 @@ const BuyerTicketsPage = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Date TBD';
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -104,45 +102,55 @@ const BuyerTicketsPage = () => {
     }
   };
 
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [orders]);
+  const sortedOrders = useMemo(
+    () =>
+      [...orders].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      ),
+    [orders]
+  );
 
-  // Filter orders by payment method
   const filteredOrders = useMemo(() => {
-    if (paymentMethodFilter === 'all') {
-      return sortedOrders;
-    }
+    if (paymentMethodFilter === 'all') return sortedOrders;
     if (paymentMethodFilter === 'cash_entrance') {
-      return sortedOrders.filter(order => ['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod));
+      return sortedOrders.filter((o) =>
+        ['cash_on_entrance', 'cash_at_entrance'].includes(o.paymentMethod)
+      );
     }
-    return sortedOrders.filter(order => order.paymentMethod === paymentMethodFilter);
+    return sortedOrders.filter(
+      (o) => o.paymentMethod === paymentMethodFilter
+    );
   }, [sortedOrders, paymentMethodFilter]);
 
-  // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [paymentMethodFilter]);
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredOrders.length / itemsPerPage)
+  );
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+  const paginatedOrders = filteredOrders.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
   const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Overall Stats
   const overallStats = useMemo(() => {
-    let totalsByCurrency = {};
+    const totalsByCurrency = {};
     let totalTickets = 0;
     let totalAssigned = 0;
-    
-    orders.forEach(o => {
+
+    orders.forEach((o) => {
       const cur = o.currency || o.event?.currency || 'LKR';
-      totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + (o.totalAmount || 0);
+      totalsByCurrency[cur] =
+        (totalsByCurrency[cur] || 0) + (o.totalAmount || 0);
       totalTickets += o.stats?.total || 0;
       totalAssigned += o.stats?.assigned || 0;
     });
@@ -150,354 +158,440 @@ const BuyerTicketsPage = () => {
     return { totalsByCurrency, totalTickets, totalAssigned };
   }, [orders]);
 
+  const filterOptions = [
+    { value: 'all', label: 'All', icon: null },
+    { value: 'card', label: 'Card', icon: CreditCardIcon },
+    { value: 'bank_transfer', label: 'Bank Transfer', icon: BanknotesIcon },
+    { value: 'cash_entrance', label: 'Cash at Entrance', icon: TicketIcon },
+  ];
+
   return (
     <BuyerLayout>
-      <div className="space-y-6 animate-fade-in">
-        
-        {/* Info Header Banner */}
-        <div className="bg-white border border-slate-200 rounded-[32px] p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-1 max-w-xl">
-            <h2 className="text-xl font-extrabold text-slate-900">Your Purchased Tickets & Orders</h2>
-            <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              As a ticket buyer, you can view your active orders, assign individual attendee details to activate passes, or download official summary receipts.
-            </p>
-          </div>
-          
-          <div className="flex gap-4 shrink-0 w-full md:w-auto">
-            <Link
-              to="/events"
-              className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-main px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark transition-all active:scale-95"
-            >
-              <span>Browse Events</span>
-              <ArrowRightIcon className="h-3.5 w-3.5" />
-            </Link>
+      <div className="space-y-5 sm:space-y-6 pb-16 sm:pb-20">
+        {/* ── Header ── */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/15" />
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                    Ticket Owner
+                  </p>
+                </div>
+                <h1 className="mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
+                  Purchased Tickets & Orders
+                </h1>
+                <p className="mt-1.5 text-sm text-slate-500 max-w-xl">
+                  View active orders, assign attendees, and download receipts.
+                </p>
+              </div>
+              <Link
+                to="/events"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+              >
+                Browse Events
+                <ArrowRightIcon className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Payment Method Filter */}
+        {/* ── Payment filter ── */}
         {!loading && orders.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-[32px] p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <FunnelIcon className="h-5 w-5 text-slate-400" />
-              <span className="text-sm font-bold text-slate-700">Filter by Payment Method:</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPaymentMethodFilter('all')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethodFilter === 'all'
-                      ? 'bg-brand-main text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>All</span>
-                </button>
-                <button
-                  onClick={() => setPaymentMethodFilter('card')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethodFilter === 'card'
-                      ? 'bg-brand-main text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <CreditCardIcon className="h-4 w-4" />
-                  <span>Card</span>
-                </button>
-                <button
-                  onClick={() => setPaymentMethodFilter('bank_transfer')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethodFilter === 'bank_transfer'
-                      ? 'bg-brand-main text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <BanknotesIcon className="h-4 w-4" />
-                  <span>Bank Transfer</span>
-                </button>
-                <button
-                  onClick={() => setPaymentMethodFilter('cash_entrance')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethodFilter === 'cash_entrance'
-                      ? 'bg-brand-main text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <TicketIcon className="h-4 w-4" />
-                  <span>Cash at Entrance</span>
-                </button>
+          <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3.5 sm:px-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-2 shrink-0">
+                <FunnelIcon className="h-4 w-4 text-slate-400" />
+                <span className="text-xs font-semibold text-slate-600">
+                  Payment method
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {filterOptions.map((opt) => {
+                  const active = paymentMethodFilter === opt.value;
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPaymentMethodFilter(opt.value)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                        active
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {Icon && <Icon className="h-3.5 w-3.5" />}
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
 
-        {/* Global Summary Cards */}
+        {/* ── Stats ── */}
         {!loading && orders.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total Spent</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">
-                {Object.entries(overallStats.totalsByCurrency).length > 0 
-                  ? Object.entries(overallStats.totalsByCurrency).map(([cur, amt]) => `${cur} ${amt.toLocaleString()}`).join(', ') 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Total Spent
+              </p>
+              <p className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
+                {Object.entries(overallStats.totalsByCurrency).length > 0
+                  ? Object.entries(overallStats.totalsByCurrency)
+                      .map(
+                        ([cur, amt]) => `${cur} ${amt.toLocaleString()}`
+                      )
+                      .join(', ')
                   : 'LKR 0'}
               </p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Purchased Tickets</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{overallStats.totalTickets} Passes</p>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Purchased Tickets
+              </p>
+              <p className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                {overallStats.totalTickets}{' '}
+                <span className="text-base font-semibold text-slate-500">
+                  Passes
+                </span>
+              </p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Status Assignments</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">
-                {overallStats.totalAssigned} / {overallStats.totalTickets} Assigned
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Assignments
+              </p>
+              <p className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                {overallStats.totalAssigned}{' '}
+                <span className="text-base font-semibold text-slate-500">
+                  / {overallStats.totalTickets}
+                </span>
               </p>
             </div>
           </div>
         )}
 
+        {/* Loading */}
         {loading && (
           <div className="space-y-4">
-            <div className="h-44 rounded-[32px] bg-slate-200 animate-pulse" />
-            <div className="h-44 rounded-[32px] bg-slate-200 animate-pulse" />
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-44 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
+              />
+            ))}
           </div>
         )}
 
+        {/* Empty */}
         {empty && (
-          <div className="rounded-[32px] bg-white p-12 text-center shadow-sm border border-slate-200 max-w-xl mx-auto my-8">
-            <TicketIcon className="mx-auto h-12 w-12 text-slate-400" />
-            <h3 className="mt-6 text-xl font-extrabold text-slate-900">No purchased orders</h3>
-            <p className="mt-2 text-sm text-slate-500 font-medium leading-relaxed max-w-sm mx-auto">
-              You haven't bought any tickets yet. Explore upcoming events to purchase your passes!
+          <div className="rounded-2xl border border-slate-200/80 bg-white px-6 py-14 text-center shadow-sm max-w-lg mx-auto">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <TicketIcon className="h-7 w-7" />
+            </div>
+            <h3 className="mt-5 text-base font-bold text-slate-900">
+              No purchased orders
+            </h3>
+            <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto">
+              You haven’t bought any tickets yet. Explore upcoming events to
+              purchase your passes.
             </p>
             <Link
               to="/events"
-              className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-brand-main px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-brand-dark transition-all active:scale-95"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition"
             >
-              <span>Browse Events</span>
+              Browse Events
               <ArrowRightIcon className="h-4 w-4" />
             </Link>
           </div>
         )}
 
+        {/* Orders grid */}
         {!loading && !empty && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {paginatedOrders.map((order) => {
-              const total = order.stats?.total || 0;
-              const assigned = order.stats?.assigned || 0;
-              const progressPercent = total > 0 ? Math.round((assigned / total) * 100) : 0;
+          <div className="space-y-5">
+            {filteredOrders.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-12 text-center">
+                <p className="text-sm font-medium text-slate-500">
+                  No orders match this payment method filter.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {paginatedOrders.map((order) => {
+                  const total = order.stats?.total || 0;
+                  const assigned = order.stats?.assigned || 0;
+                  const progressPercent =
+                    total > 0 ? Math.round((assigned / total) * 100) : 0;
 
-              return (
-                <div
-                  key={order._id}
-                  className="rounded-[32px] bg-white border border-slate-200 p-6 shadow-sm flex flex-col justify-between gap-6 hover:shadow-md transition-all duration-300"
-                >
-                  <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
-                    {/* Event & Order info */}
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-slate-200">
-                          Order #{order.orderNumber}
-                        </span>
-                        <span className="text-xs text-slate-400 font-medium">
-                          Purchased on {new Date(order.createdAt).toLocaleDateString()}
-                        </span>
-                        {order.paymentMethod && (
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border ${
-                            order.paymentMethod === 'card'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-green-50 text-green-700 border-green-200'
-                          }`}>
-                            {order.paymentMethod === 'card' ? (
-                              <>
-                                <CreditCardIcon className="h-3 w-3" />
-                                <span>Card</span>
-                              </>
-                            ) : order.paymentMethod === 'bank_transfer' ? (
-                              <>
-                                <BanknotesIcon className="h-3 w-3" />
-                                <span>Bank Transfer</span>
-                              </>
-                            ) : ['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) ? (
-                              <>
-                                <TicketIcon className="h-3 w-3" />
-                                <span>Cash at Entrance</span>
-                              </>
-                            ) : null}
-                          </span>
-                        )}
-                        {order.paymentMethod === 'bank_transfer' && order.paymentStatus !== 'paid' && order.paymentStatus !== 'success' && (
-                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-amber-200">
-                            On Hold / Payment Verification Pending
-                          </span>
-                        )}
-                        {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && (
-                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider rounded-md border border-amber-200">
-                            Payment Pending / Reserved
-                          </span>
-                        )}
-                      </div>
-                      
-                      <h3 className="text-xl font-extrabold text-slate-900 leading-snug">
-                        {order.event?.name || 'Event'}
-                      </h3>
-                      
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 font-semibold">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CalendarIcon className="h-4 w-4 text-brand-main" />
-                          {formatDate(order.event?.startDate)}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <MapPinIcon className="h-4 w-4 text-brand-main" />
-                          {order.event?.venue?.name || 'Venue TBD'}
-                        </span>
-                      </div>
-                    </div>
+                  const isPaid =
+                    ['paid', 'success', 'approved', 'verified'].includes(
+                      order.paymentStatus?.toLowerCase()
+                    ) || order.status === 'CONFIRMED';
+                  const isCashReserved =
+                    (order.paymentMethod === 'cash_at_entrance' ||
+                      order.paymentMethod === 'cash_on_entrance') &&
+                    order.status === 'RESERVED' &&
+                    !isPaid;
+                  const isBankPending =
+                    order.paymentMethod === 'bank_transfer' && !isPaid;
+                  const isLocked = (isCashReserved || isBankPending) && !isPaid;
 
-                    {/* Progress tracking */}
-                    <div className="w-full lg:w-60 shrink-0 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                        <span>Assignee Activation</span>
-                        <span>{progressPercent}%</span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-brand-main transition-all duration-500"
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                        <span>{assigned} Assigned</span>
-                        <span>{total - assigned} Pending</span>
-                      </div>
-                    </div>
-                  </div>
+                  const paymentLabel =
+                    order.paymentMethod === 'card'
+                      ? 'Card'
+                      : order.paymentMethod === 'bank_transfer'
+                      ? 'Bank Transfer'
+                      : ['cash_on_entrance', 'cash_at_entrance'].includes(
+                          order.paymentMethod
+                        )
+                      ? 'Cash at Entrance'
+                      : null;
 
-                   {/* Reserved warning notice */}
-                   {(order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && !['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) && order.status !== 'CONFIRMED' && (
-                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
-                       <p className="font-semibold">
-                         Your ticket has been reserved. Please pay at the event entrance to activate your entry pass.
-                       </p>
-                       <p className="mt-1 font-medium text-amber-600">
-                         All entry passes, QR codes, guest invites, and download functions will remain locked until cash payment is processed at the venue entrance.
-                       </p>
-                     </div>
-                   )}
-                   {order.paymentMethod === 'bank_transfer' && !['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) && order.status !== 'CONFIRMED' && (
-                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs">
-                       <p className="font-semibold">
-                         Your bank transfer payment details are submitted and on hold for verification.
-                       </p>
-                       <p className="mt-1 font-medium text-amber-600">
-                         All entry passes, QR codes, guest invites, and download functions will remain locked until verification is complete (normally within 48 hours).
-                       </p>
-                     </div>
-                   )}
+                  return (
+                    <div
+                      key={order._id}
+                      className="flex flex-col gap-5 rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {/* Top */}
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1 space-y-2.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                              Order #{order.orderNumber}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              {new Date(order.createdAt).toLocaleDateString()}
+                            </span>
+                            {paymentLabel && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+                                {order.paymentMethod === 'card' ? (
+                                  <CreditCardIcon className="h-3 w-3" />
+                                ) : order.paymentMethod === 'bank_transfer' ? (
+                                  <BanknotesIcon className="h-3 w-3" />
+                                ) : (
+                                  <TicketIcon className="h-3 w-3" />
+                                )}
+                                {paymentLabel}
+                              </span>
+                            )}
+                            {isBankPending && (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                                On Hold · Verification Pending
+                              </span>
+                            )}
+                            {isCashReserved && (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                                Reserved · Payment Pending
+                              </span>
+                            )}
+                          </div>
 
-                  {/* Categories detail */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 border-t border-slate-100 pt-5">
-                    {order.categories?.map((c) => (
-                      <div key={c.categoryId || c.categoryName} className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                        <p className="text-sm font-bold text-slate-900 truncate">{c.categoryName}</p>
-                        <div className="mt-2 flex items-center justify-between text-xs text-slate-500 font-medium">
-                          <span>Qty: {c.quantity}</span>
-                          <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-bold">
-                            {c.assigned} / {c.quantity} Assigned
-                          </span>
+                          <h3 className="text-lg font-bold text-slate-900 leading-snug">
+                            {order.event?.name || 'Event'}
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarIcon className="h-4 w-4 text-blue-500 shrink-0" />
+                              {formatDate(order.event?.startDate)}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <MapPinIcon className="h-4 w-4 text-blue-500 shrink-0" />
+                              <span className="truncate max-w-[180px]">
+                                {order.event?.venue?.name || 'Venue TBD'}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Progress */}
+                        <div className="w-full sm:w-48 shrink-0 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                            <span>Activation</span>
+                            <span className="tabular-nums">
+                              {progressPercent}%
+                            </span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                isLocked ? 'bg-amber-400' : 'bg-blue-600'
+                              }`}
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            <span>{assigned} Assigned</span>
+                            <span>{total - assigned} Pending</span>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
 
-                  {/* Action Bar */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 pt-5">
-                    <p className="text-base font-extrabold text-slate-900">
-                      {order.status === 'RESERVED' ? 'Total to Pay:' : 'Total Paid:'} {order.currency || order.event?.currency || 'LKR'} {Number(order.totalAmount || 0).toLocaleString()}
-                    </p>
+                      {/* Locked notices */}
+                      {isCashReserved && (
+                        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3.5 py-3">
+                          <p className="text-xs font-semibold text-amber-800">
+                            Ticket reserved — pay at the entrance to activate.
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-amber-700">
+                            QR codes, invites, and downloads stay locked until
+                            cash payment is processed at the venue.
+                          </p>
+                        </div>
+                      )}
+                      {isBankPending && (
+                        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3.5 py-3">
+                          <p className="text-xs font-semibold text-amber-800">
+                            Bank transfer on hold for verification.
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-amber-700">
+                            Features unlock after approval (usually within 48
+                            hours).
+                          </p>
+                        </div>
+                      )}
 
-                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                      {(() => {
-                        const isPaid = ['paid', 'success', 'approved', 'verified'].includes(order.paymentStatus?.toLowerCase()) || order.status === 'CONFIRMED';
-                        const isCashReserved = (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') && order.status === 'RESERVED' && !isPaid;
-                        const isBankPending = order.paymentMethod === 'bank_transfer' && !isPaid;
-                        const isLocked = (isCashReserved || isBankPending) && !isPaid;
-                        
-                        return (
-                          <>
-                            <button
-                              onClick={() => !isLocked && handleDownloadOrder(order._id)}
-                              disabled={isLocked}
-                              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all ${
-                                isLocked 
-                                  ? 'opacity-40 cursor-not-allowed bg-slate-100' 
-                                  : 'hover:bg-slate-50 active:scale-95'
-                              }`}
-                              title={isLocked ? 'Payment must be verified to activate ticket download.' : ''}
+                      {/* Categories */}
+                      {order.categories?.length > 0 && (
+                        <div className="grid grid-cols-1 gap-2.5 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                          {order.categories.map((c) => (
+                            <div
+                              key={c.categoryId || c.categoryName}
+                              className="rounded-xl border border-slate-100 bg-slate-50/80 px-3.5 py-3"
                             >
-                              <ArrowDownTrayIcon className="h-4 w-4" />
-                              <span>Order Receipt</span>
-                            </button>
+                              <p className="truncate text-sm font-semibold text-slate-900">
+                                {c.categoryName}
+                              </p>
+                              <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500">
+                                <span>Qty: {c.quantity}</span>
+                                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                  {c.assigned} / {c.quantity} Assigned
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                            <Link
-                              to={isLocked ? '#' : `/buyer/assign/${order._id}`}
-                              onClick={(e) => isLocked && e.preventDefault()}
-                              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all ${
-                                isLocked 
-                                  ? 'opacity-40 cursor-not-allowed bg-slate-400' 
-                                  : 'bg-brand-main hover:bg-brand-dark active:scale-95'
-                              }`}
-                              title={isLocked ? 'Awaiting payment confirmation/verification.' : ''}
-                            >
-                              <span>Manage Attendees</span>
-                              <ArrowRightIcon className="h-3.5 w-3.5" />
-                            </Link>
-                          </>
-                        );
-                      })()}
+                      {/* Footer actions */}
+                      <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm font-bold text-slate-900 tabular-nums">
+                          {order.status === 'RESERVED'
+                            ? 'Total to Pay: '
+                            : 'Total Paid: '}
+                          {order.currency || order.event?.currency || 'LKR'}{' '}
+                          {Number(order.totalAmount || 0).toLocaleString()}
+                        </p>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              !isLocked && handleDownloadOrder(order._id)
+                            }
+                            disabled={isLocked}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition sm:flex-none"
+                            title={
+                              isLocked
+                                ? 'Payment must be verified to download'
+                                : ''
+                            }
+                          >
+                            <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                            Receipt
+                          </button>
+
+                          <Link
+                            to={isLocked ? '#' : `/buyer/assign/${order._id}`}
+                            onClick={(e) => isLocked && e.preventDefault()}
+                            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition sm:flex-none ${
+                              isLocked
+                                ? 'bg-slate-300 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-500'
+                            }`}
+                            title={
+                              isLocked
+                                ? 'Awaiting payment confirmation'
+                                : ''
+                            }
+                          >
+                            Manage Attendees
+                            <ArrowRightIcon className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-2">
-                <p className="text-xs text-slate-500 font-medium">
-                  Showing {startIndex + 1} to {Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length} orders
+            {/* Pagination */}
+            {totalPages > 1 && filteredOrders.length > 0 && (
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
+                <p className="text-center sm:text-left text-xs text-slate-500">
+                  Showing {startIndex + 1}–
+                  {Math.min(startIndex + itemsPerPage, filteredOrders.length)}{' '}
+                  of {filteredOrders.length} orders
                 </p>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center justify-center gap-1.5">
                   <button
+                    type="button"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                   >
                     <ChevronLeftIcon className="h-3.5 w-3.5" />
-                    <span>Previous</span>
+                    <span className="hidden xs:inline">Previous</span>
                   </button>
-                  
+
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <button
-                        key={page}
-                        onClick={() => handlePageChange(page)}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold transition-all ${
-                          currentPage === page
-                            ? 'bg-brand-main text-white shadow-sm'
-                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((page) => {
+                        if (totalPages <= 5) return true;
+                        return (
+                          page === 1 ||
+                          page === totalPages ||
+                          Math.abs(page - currentPage) <= 1
+                        );
+                      })
+                      .map((page, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        const showEllipsis = prev && page - prev > 1;
+                        return (
+                          <React.Fragment key={page}>
+                            {showEllipsis && (
+                              <span className="px-1 text-xs text-slate-400">
+                                …
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handlePageChange(page)}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition ${
+                                currentPage === page
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                   >
-                    <span>Next</span>
+                    <span className="hidden xs:inline">Next</span>
                     <ChevronRightIcon className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -505,7 +599,6 @@ const BuyerTicketsPage = () => {
             )}
           </div>
         )}
-
       </div>
     </BuyerLayout>
   );

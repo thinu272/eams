@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { io } from 'socket.io-client';
 import { 
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieChart, Pie 
@@ -342,14 +343,18 @@ const LiveEventDashboard = () => {
     fetchInitialData();
   }, [fetchInitialData, selectedEventId]);
 
-  // Auto-refresh data periodically to keep KPIs and analytics current
-  useEffect(() => {
-    if (!selectedEventId) return undefined;
-    const interval = window.setInterval(() => {
+  useAutoRefresh(
+    () => {
+      if (!selectedEventId) return;
       fetchInitialData({ silent: true });
-    }, 15000);
-    return () => window.clearInterval(interval);
-  }, [fetchInitialData, selectedEventId]);
+    },
+    {
+      enabled: !!selectedEventId,
+      interval: 15000,
+      immediate: true,
+      deps: [selectedEventId],
+    }
+  );
 
   // Metric Card Component
   const MetricCard = ({ title, value, subtitle, icon: Icon, trend, color = 'blue' }) => {
@@ -457,7 +462,7 @@ const LiveEventDashboard = () => {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-slate-100">
+              <span className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-slate-400">
                 Auto-refreshing every 15s
               </span>
             </div>

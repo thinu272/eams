@@ -29,6 +29,25 @@ const hasEventAccess = async (user, eventId) => {
   );
 };
 
+const getUserAssignedZoneIds = (user) => Array.from(new Set([
+  ...(user.assignedZones || []).map(String),
+  ...(user.responsibilities?.zoneIds || []).map(String),
+]));
+
+const canUserAccessCategory = (user, category) => {
+  if (!category) return false;
+  const role = normalizeRole(user.role);
+  if (role === ROLES.MAIN_ADMIN || role === ROLES.MAIN_ORGANISER) return true;
+
+  const userId = String(user._id);
+  if (category.createdBy && String(category.createdBy) === userId) return true;
+  if ((category.assignedSubOrganisers || []).map(String).includes(userId)) return true;
+
+  const myZoneIds = getUserAssignedZoneIds(user);
+  const categoryZones = (category.allowedZones || []).map(String);
+  return categoryZones.length === 0 || categoryZones.some((zoneId) => myZoneIds.includes(zoneId));
+};
+
 const euclideanDistance = (a, b) => {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return null;
   let sum = 0;
@@ -275,17 +294,13 @@ router.post('/', protect, requirePermission('canAddAttendees'), async (req, res,
     const category = event.categories.find(c => c.id === categoryId);
     if (!category) return res.status(404).json({ success: false, message: 'Category not found.' });
 
-    // Zone validation for Sub-Organisers (Overlap logic)
+    // Zone and category access validation for Sub-Organisers
     const role = normalizeRole(req.user.role);
     if (role === ROLES.SUB_ORGANISER) {
-      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-      const categoryZones = (category.allowedZones || []).map(String);
-      
-      const hasOverlap = categoryZones.length === 0 || categoryZones.some(z => myZoneIds.includes(z));
-      if (!hasOverlap) {
+      if (!canUserAccessCategory(req.user, category)) {
         return res.status(403).json({ 
           success: false, 
-          message: `This category does not grant access to any of your assigned zones.` 
+          message: 'This category does not grant access to any of your assigned zones or category assignments.' 
         });
       }
     }
@@ -365,16 +380,12 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
     const smsRequired = event.settings?.communicationChannels?.sms === true;
     const emailRequired = event.settings?.communicationChannels?.email === true;
 
-    // Zone validation for Sub-Organisers (Overlap logic)
+    // Zone and category access validation for Sub-Organisers
     if (role === ROLES.SUB_ORGANISER) {
-      const myZoneIds = (req.user.responsibilities?.zoneIds || []).map(String);
-      const categoryZones = (category.allowedZones || []).map(String);
-      
-      const hasOverlap = categoryZones.length === 0 || categoryZones.some(z => myZoneIds.includes(z));
-      if (!hasOverlap) {
+      if (!canUserAccessCategory(req.user, category)) {
         return res.status(403).json({ 
           success: false, 
-          message: `This category does not grant access to any of your assigned zones.` 
+          message: 'This category does not grant access to any of your assigned zones or category assignments.' 
         });
       }
     }

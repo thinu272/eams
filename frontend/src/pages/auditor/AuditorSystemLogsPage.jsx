@@ -1,30 +1,32 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getMyEvents } from '../../api/events';
 import { getSystemLogs } from '../../api/audit';
-import Badge from '../../components/ui/Badge';
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import { Table, Td, Th, Tr } from '../../components/ui/Table';
 import toast from 'react-hot-toast';
 
-const logActionColor = {
-  login: 'green',
-  logout: 'gray',
-  ticket_creation: 'indigo',
-  ticket_scan: 'blue',
-  event_update: 'amber',
-  user_creation: 'indigo',
-  qr_verification: 'green',
-  sponsor_action: 'purple',
-  mfa_activity: 'rose'
+const actionStyles = {
+  login: 'bg-emerald-50 text-emerald-700',
+  logout: 'bg-slate-100 text-slate-600',
+  ticket_creation: 'bg-indigo-50 text-indigo-700',
+  ticket_scan: 'bg-blue-50 text-blue-700',
+  event_update: 'bg-amber-50 text-amber-700',
+  user_creation: 'bg-indigo-50 text-indigo-700',
+  qr_verification: 'bg-emerald-50 text-emerald-700',
+  sponsor_action: 'bg-violet-50 text-violet-700',
+  mfa_activity: 'bg-rose-50 text-rose-700',
 };
 
 const AuditorSystemLogsPage = () => {
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(localStorage.getItem('lastSelectedEventId') || '');
-  const [sysLogsData, setSysLogsData] = useState({ logs: [], total: 0, pages: 1 });
+  const [selectedEventId, setSelectedEventId] = useState(
+    localStorage.getItem('lastSelectedEventId') || ''
+  );
+  const [sysLogsData, setSysLogsData] = useState({
+    logs: [],
+    total: 0,
+    pages: 1,
+  });
   const [sysLoading, setSysLoading] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -37,8 +39,9 @@ const AuditorSystemLogsPage = () => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
       setEvents(nextEvents);
-      const isValidEvent = nextEvents.some(e => e._id === selectedEventId);
-      const fallbackEventId = (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
+      const isValidEvent = nextEvents.some((e) => e._id === selectedEventId);
+      const fallbackEventId =
+        (isValidEvent ? selectedEventId : nextEvents[0]?._id) || '';
       if (fallbackEventId) {
         setSelectedEventId(fallbackEventId);
         localStorage.setItem('lastSelectedEventId', fallbackEventId);
@@ -48,12 +51,11 @@ const AuditorSystemLogsPage = () => {
 
   useEffect(() => {
     const handleEventSelect = (event) => {
-      const nextId = event.detail || '';
-      setSelectedEventId(nextId);
+      setSelectedEventId(event.detail || '');
     };
-
     window.addEventListener('entrynex:event-select', handleEventSelect);
-    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+    return () =>
+      window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
   useEffect(() => {
@@ -71,11 +73,13 @@ const AuditorSystemLogsPage = () => {
         from: from || undefined,
         to: to || undefined,
         page,
-        limit: 15
+        limit: 15,
       });
       setSysLogsData(response.data?.data || { logs: [], total: 0, pages: 1 });
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to fetch activity logs');
+      toast.error(
+        error.response?.data?.message || 'Failed to fetch activity logs'
+      );
     } finally {
       setSysLoading(false);
     }
@@ -88,41 +92,57 @@ const AuditorSystemLogsPage = () => {
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
     localStorage.setItem('lastSelectedEventId', nextId);
-    window.dispatchEvent(new CustomEvent('entrynex:event-select', { detail: nextId }));
+    window.dispatchEvent(
+      new CustomEvent('entrynex:event-select', { detail: nextId })
+    );
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <section className="rounded-[32px] bg-gradient-to-br from-indigo-950 via-slate-950 to-slate-900 p-6 text-white shadow-xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-indigo-300">Auditor Telemetry</p>
-              <h1 className="mt-3 text-4xl font-black tracking-tight">System Audit Logs</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium text-slate-300">
-                Full read-only access to track security audits, user creations, configuration updates, and MFA events.
-              </p>
-            </div>
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 sm:px-6">
+        {/* Header */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Auditor Telemetry
+            </p>
           </div>
-        </section>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            System Audit Logs
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Full read-only access to track security audits, user creations,
+            configuration updates, and MFA events.
+          </p>
+        </div>
 
-        <Card className="rounded-[28px] border-slate-200 bg-white">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <select value={selectedEventId} onChange={(event) => handleEventChange(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
+        {/* Filters */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <select
+              value={selectedEventId}
+              onChange={(e) => handleEventChange(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            >
               {events.map((event) => (
-                <option key={event._id} value={event._id}>{event.name}</option>
+                <option key={event._id} value={event._id}>
+                  {event.name}
+                </option>
               ))}
             </select>
-            <input 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              placeholder="Search logs..." 
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" 
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search logs..."
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white"
             />
-            <select 
-              value={action} 
-              onChange={(e) => setAction(e.target.value)} 
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900"
+
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
             >
               <option value="">All action types</option>
               <option value="login">Login</option>
@@ -135,58 +155,139 @@ const AuditorSystemLogsPage = () => {
               <option value="sponsor_action">Sponsor Action</option>
               <option value="mfa_activity">MFA Activity</option>
             </select>
-            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900" />
-          </div>
-        </Card>
 
-        <Card className="rounded-[28px] border-slate-200 bg-white" padding={false}>
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            />
+          </div>
+        </div>
+
+        {/* Logs table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Audit Actions Grid</h2>
-              <p className="mt-1 text-sm text-slate-500">{sysLogsData?.total || 0} results</p>
+              <h2 className="text-lg font-bold text-slate-900">
+                Audit Actions Grid
+              </h2>
+              <p className="mt-0.5 text-sm text-slate-500">
+                {sysLogsData?.total || 0} results
+              </p>
             </div>
-            {sysLoading && <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Refreshing</p>}
+            {sysLoading && (
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                Refreshing...
+              </p>
+            )}
           </div>
 
-          <Table>
-            <thead>
-              <tr>
-                <Th>Timestamp</Th>
-                <Th>Operator</Th>
-                <Th>Role</Th>
-                <Th>Action</Th>
-                <Th>Details</Th>
-                <Th>IP Address</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {sysLogsData?.logs?.map((log) => (
-                <Tr key={log._id}>
-                  <Td>{format(new Date(log.createdAt), 'MMM d, yyyy HH:mm:ss')}</Td>
-                  <Td><span className="font-semibold text-slate-950">{log.userEmail || 'system'}</span></Td>
-                  <Td><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase">{log.userRole || 'System'}</span></Td>
-                  <Td><Badge color={logActionColor[log.action] || 'gray'}>{String(log.action).replace('_', ' ').toUpperCase()}</Badge></Td>
-                  <Td><p className="max-w-md text-sm font-medium text-slate-800 break-words">{log.details?.message}</p></Td>
-                  <Td><span className="font-mono text-xs text-slate-500">{log.ipAddress || '-'}</span></Td>
-                </Tr>
-              ))}
-              {!sysLoading && (!sysLogsData?.logs || sysLogsData.logs.length === 0) && (
-                <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-sm text-slate-500">No activity logs match the current filters.</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/80">
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Timestamp
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Operator
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Role
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Action
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Details
+                  </th>
+                  <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    IP Address
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sysLogsData?.logs?.map((log) => (
+                  <tr key={log._id} className="hover:bg-slate-50/50">
+                    <td className="whitespace-nowrap px-5 py-3.5 text-slate-600">
+                      {format(new Date(log.createdAt), 'MMM d, yyyy HH:mm:ss')}
+                    </td>
+                    <td className="px-5 py-3.5 font-medium text-slate-900">
+                      {log.userEmail || 'system'}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+                        {log.userRole || 'System'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                          actionStyles[log.action] ||
+                          'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {String(log.action).replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="max-w-xs px-5 py-3.5 text-slate-700">
+                      <p className="truncate">
+                        {log.details?.message || '—'}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5 font-mono text-xs text-slate-500">
+                      {log.ipAddress || '—'}
+                    </td>
+                  </tr>
+                ))}
+                {!sysLoading &&
+                  (!sysLogsData?.logs || sysLogsData.logs.length === 0) && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-5 py-12 text-center text-sm text-slate-500"
+                      >
+                        No activity logs match the current filters.
+                      </td>
+                    </tr>
+                  )}
+              </tbody>
+            </table>
+          </div>
 
-          <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-            <p className="text-xs font-semibold text-slate-500">Page {page} of {sysLogsData?.pages || 1}</p>
+          {/* Pagination */}
+          <div className="flex flex-col items-center justify-between gap-4 border-t border-slate-100 px-5 py-4 sm:flex-row">
+            <p className="text-xs font-medium text-slate-500">
+              Page {page} of {sysLogsData?.pages || 1}
+            </p>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button>
-              <Button variant="outline" disabled={page >= (sysLogsData?.pages || 1)} onClick={() => setPage((current) => Math.min(current + 1, sysLogsData.pages))}>Next</Button>
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((c) => Math.max(c - 1, 1))}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                disabled={page >= (sysLogsData?.pages || 1)}
+                onClick={() =>
+                  setPage((c) => Math.min(c + 1, sysLogsData.pages))
+                }
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
             </div>
           </div>
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
   );

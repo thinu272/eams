@@ -1,12 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { CheckBadgeIcon, ShieldCheckIcon, UserPlusIcon, PhotoIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import {
+  CheckBadgeIcon,
+  ShieldCheckIcon,
+  PhotoIcon,
+  InformationCircleIcon,
+  CameraIcon,
+} from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
 import { getConfirmInviteInfo, submitConfirmInviteDetails } from '../../api/confirm';
 import { photoQualityChecker, photoEnhancer } from '../../utils/photoQualityChecker';
 import CameraCapture from '../../components/shared/CameraCapture';
-import { CameraIcon } from '@heroicons/react/24/outline';
 
 const AttendeeIdentityConfirmPage = () => {
   const { inviteToken } = useParams();
@@ -50,12 +55,11 @@ const AttendeeIdentityConfirmPage = () => {
           phone: data?.attendee?.phone || prev.phone,
         }));
       } catch (err) {
-        // handled by empty state below
+        // handled by empty state
       } finally {
         setLoading(false);
       }
     };
-
     if (inviteToken) load();
   }, [inviteToken]);
 
@@ -104,7 +108,6 @@ const AttendeeIdentityConfirmPage = () => {
         toast.error('Face matching is temporarily unavailable. You can still submit your photo.');
       }
     };
-
     loadFaceApi();
   }, []);
 
@@ -133,11 +136,19 @@ const AttendeeIdentityConfirmPage = () => {
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
         const gx =
-          -1 * toGray(x - 1, y - 1) - 2 * toGray(x - 1, y) - 1 * toGray(x - 1, y + 1) +
-          1 * toGray(x + 1, y - 1) + 2 * toGray(x + 1, y) + 1 * toGray(x + 1, y + 1);
+          -1 * toGray(x - 1, y - 1) -
+          2 * toGray(x - 1, y) -
+          1 * toGray(x - 1, y + 1) +
+          1 * toGray(x + 1, y - 1) +
+          2 * toGray(x + 1, y) +
+          1 * toGray(x + 1, y + 1);
         const gy =
-          -1 * toGray(x - 1, y - 1) - 2 * toGray(x, y - 1) - 1 * toGray(x + 1, y - 1) +
-          1 * toGray(x - 1, y + 1) + 2 * toGray(x, y + 1) + 1 * toGray(x + 1, y + 1);
+          -1 * toGray(x - 1, y - 1) -
+          2 * toGray(x, y - 1) -
+          1 * toGray(x + 1, y - 1) +
+          1 * toGray(x - 1, y + 1) +
+          2 * toGray(x, y + 1) +
+          1 * toGray(x + 1, y + 1);
         const mag = Math.sqrt(gx * gx + gy * gy);
         sum += mag;
         sumSq += mag * mag;
@@ -271,8 +282,8 @@ const AttendeeIdentityConfirmPage = () => {
     setPreview(URL.createObjectURL(file));
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     if (!form.fullName || !form.email) {
       toast.error('Full name and email are required.');
       return;
@@ -322,8 +333,8 @@ const AttendeeIdentityConfirmPage = () => {
       <PublicLayout>
         <div className="flex min-h-screen items-center justify-center bg-slate-50">
           <div className="flex flex-col items-center gap-4">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            <p className="text-sm font-black uppercase tracking-widest text-slate-500">Verifying Secure Link...</p>
+            <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-blue-600 border-t-transparent" />
+            <p className="text-sm font-medium text-slate-500">Verifying secure link...</p>
           </div>
         </div>
       </PublicLayout>
@@ -333,12 +344,16 @@ const AttendeeIdentityConfirmPage = () => {
   if (!inviteInfo) {
     return (
       <PublicLayout>
-        <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
-          <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-600">
-            <InformationCircleIcon className="h-10 w-10" />
+        <div className="mx-auto max-w-lg px-4 py-24 text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
+            <InformationCircleIcon className="h-8 w-8" />
           </div>
-          <h1 className="text-4xl font-black uppercase tracking-tight text-slate-950">Access Link Invalid</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg font-medium text-slate-500">This invitation link has expired, been revoked, or already successfully used.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Access Link Invalid
+          </h1>
+          <p className="mt-3 text-sm text-slate-500 max-w-sm mx-auto">
+            This invitation link has expired, been revoked, or already used.
+          </p>
         </div>
       </PublicLayout>
     );
@@ -347,13 +362,16 @@ const AttendeeIdentityConfirmPage = () => {
   if (submitted) {
     return (
       <PublicLayout>
-        <div className="mx-auto max-w-4xl px-4 py-32 text-center sm:px-6 lg:px-8">
-          <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-            <CheckBadgeIcon className="h-10 w-10" />
+        <div className="mx-auto max-w-lg px-4 py-24 text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <CheckBadgeIcon className="h-8 w-8" />
           </div>
-          <h1 className="text-4xl font-black uppercase tracking-tight text-slate-950">Submission Received</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg font-medium text-slate-500">
-            Your identity details are under verification. You'll receive your final {inviteInfo?.attendee?.isPass ? 'Pass QR' : 'Ticket QR'} email once approved.
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Submission Received
+          </h1>
+          <p className="mt-3 text-sm text-slate-500 max-w-sm mx-auto">
+            Your identity details are under verification. You’ll receive your final{' '}
+            {inviteInfo?.attendee?.isPass ? 'Pass QR' : 'Ticket QR'} email once approved.
           </p>
         </div>
       </PublicLayout>
@@ -362,147 +380,266 @@ const AttendeeIdentityConfirmPage = () => {
 
   return (
     <PublicLayout>
-      <div className="relative min-h-screen bg-slate-50 pb-24">
-        <div className="h-80 bg-slate-950 px-4 pt-16 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl">
-            <p className="mb-4 text-sm font-black uppercase tracking-[0.3em] text-blue-500">Identity Verification</p>
-            <h1 className="text-4xl font-black uppercase tracking-tight text-white sm:text-6xl">Secure Attendance</h1>
-            <p className="mt-6 text-lg font-medium text-slate-400">
-              Confirming {inviteInfo?.attendee?.isPass ? 'Pass' : 'Entry'} for <span className="font-bold text-white">{inviteInfo.event?.name}</span>
+      <div className="relative min-h-screen bg-slate-50 pb-16">
+        {/* Header */}
+        <div className="bg-slate-950 px-4 pt-14 pb-24 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-blue-400 mb-3">
+              Identity Verification
+            </p>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+              Secure Attendance
+            </h1>
+            <p className="mt-3 text-base text-slate-400">
+              Confirming {inviteInfo?.attendee?.isPass ? 'Pass' : 'Entry'} for{' '}
+              <span className="font-medium text-white">{inviteInfo.event?.name}</span>
             </p>
           </div>
         </div>
 
-        <div className="relative mx-auto -mt-16 max-w-4xl px-4 sm:px-6 lg:px-8">
-          <form onSubmit={handleSubmit} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-            <div className="bg-slate-900 px-8 py-6">
-              <h2 className="flex items-center gap-3 text-xl font-black uppercase tracking-wide text-white">
-                <ShieldCheckIcon className="h-6 w-6 text-blue-500" />
-                Attendee Profile Form
-              </h2>
+        {/* Form Card */}
+        <div className="relative mx-auto -mt-14 max-w-3xl px-4 sm:px-6 lg:px-8">
+          <form
+            onSubmit={handleSubmit}
+            className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm"
+          >
+            <div className="bg-slate-900 px-5 sm:px-6 py-4 flex items-center gap-2.5">
+              <ShieldCheckIcon className="h-5 w-5 text-blue-400" />
+              <h2 className="text-base font-semibold text-white">Attendee Profile Form</h2>
             </div>
 
-            <div className="space-y-10 p-8 lg:p-12">
-              <div className="grid gap-8 lg:grid-cols-2">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Full Identity Name *</label>
-                    <input type="text" value={form.fullName} onChange={(e) => handleChange('fullName', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="Current full name" required />
+            <div className="p-5 sm:p-7 space-y-8">
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Left column */}
+                <div className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Full Identity Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={form.fullName}
+                      onChange={(e) => handleChange('fullName', e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                      placeholder="Current full name"
+                      required
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">NIC / Passport Number</label>
-                    <input type="text" value={form.idNumber} onChange={(e) => handleChange('idNumber', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder="For gate verification (Optional)" />
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      NIC / Passport Number
+                    </label>
+                    <input
+                      type="text"
+                      value={form.idNumber}
+                      onChange={(e) => handleChange('idNumber', e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                      placeholder="Optional"
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Date of Birth</label>
-                    <input type="date" value={form.dateOfBirth} onChange={(e) => handleChange('dateOfBirth', e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" />
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Date of Birth
+                    </label>
+                    <input
+                      type="date"
+                      value={form.dateOfBirth}
+                      onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Contact Email *</label>
-                    <input type="email" value={form.email} readOnly className="w-full rounded-2xl border-2 border-slate-100 bg-slate-100 px-5 py-4 font-bold text-slate-500 cursor-not-allowed focus:outline-none" required />
+                {/* Right column */}
+                <div className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Contact Email *
+                    </label>
+                    <input
+                      type="email"
+                      value={form.email}
+                      readOnly
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3.5 text-sm font-medium text-slate-500 cursor-not-allowed"
+                      required
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Phone Number {smsEnabled ? '*' : '(Optional)'}</label>
-                    <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} required={smsEnabled} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 py-4 font-bold text-slate-950 transition focus:border-blue-500 focus:bg-white focus:outline-none" placeholder={smsEnabled ? '+1234567890' : '+1234567890 (Optional)'} />
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Phone Number {smsEnabled ? '*' : '(Optional)'}
+                    </label>
+                    <input
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => handleChange('phone', e.target.value)}
+                      required={smsEnabled}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                      placeholder="+94 77 123 4567"
+                    />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Identity Photo (Selfie) *</label>
-                    <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
-                        <label className="flex-1 group relative flex h-[132px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50">
-                          {form.photo ? (
-                            <div className="relative h-full w-full">
-                              <img src={enhancedPreview || preview} alt="Preview" ref={imageRef} className="h-full w-full rounded-xl object-cover shadow-md" />
-                              <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-900/40 opacity-0 transition-opacity group-hover:opacity-100">
-                                <PhotoIcon className="h-6 w-6 text-white" />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center py-4">
-                              <PhotoIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
-                              <p className="text-[10px] text-center font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Upload Photo</p>
-                            </div>
-                          )}
-                          <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowCamera(true)}
-                          className="flex-1 group relative flex h-[132px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
-                        >
-                          <CameraIcon className="mb-2 h-8 w-8 text-slate-300 transition-colors group-hover:text-blue-500" />
-                          <p className="text-[10px] text-center font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-700">Take Live Photo</p>
-                        </button>
-                      </div>
-                      
-                      {showCamera && (
-                        <CameraCapture 
-                          onCapture={async (file) => {
-                            const errors = await validatePhoto(file);
-                            setValidationErrors(errors);
-                            setAllowOverride(errors.length > 0);
-                            setEnhancedPreview(null);
-                            setActiveFilter('none');
-                            setForm((prev) => ({ ...prev, photo: file }));
-                            setPreview(URL.createObjectURL(file));
-                          }} 
-                          onClose={() => setShowCamera(false)} 
+                  {/* Photo upload */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Identity Photo (Selfie) *
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="group relative flex h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 transition-all hover:border-blue-400 hover:bg-blue-50/30">
+                        {form.photo ? (
+                          <div className="relative h-full w-full p-1.5">
+                            <img
+                              src={enhancedPreview || preview}
+                              alt="Preview"
+                              ref={imageRef}
+                              className="h-full w-full rounded-xl object-cover"
+                            />
+                            <canvas
+                              ref={overlayRef}
+                              className="pointer-events-none absolute inset-1.5 h-[calc(100%-12px)] w-[calc(100%-12px)]"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center">
+                            <PhotoIcon className="mb-1.5 h-7 w-7 text-slate-300 group-hover:text-blue-500" />
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 group-hover:text-blue-600">
+                              Upload
+                            </p>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoChange}
+                          className="hidden"
                         />
-                      )}
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowCamera(true)}
+                        className="group flex h-32 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 transition-all hover:border-blue-400 hover:bg-blue-50/30"
+                      >
+                        <CameraIcon className="mb-1.5 h-7 w-7 text-slate-300 group-hover:text-blue-500" />
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 group-hover:text-blue-600">
+                          Take Photo
+                        </p>
+                      </button>
                     </div>
-                    {modelLoadFailed && <p className="text-sm text-amber-700">Advanced face matching is temporarily unavailable. Your photo can still be submitted for manual review.</p>}
+
+                    {showCamera && (
+                      <CameraCapture
+                        onCapture={async (file) => {
+                          const errors = await validatePhoto(file);
+                          setValidationErrors(errors);
+                          setAllowOverride(errors.length > 0);
+                          setEnhancedPreview(null);
+                          setActiveFilter('none');
+                          setForm((prev) => ({ ...prev, photo: file }));
+                          setPreview(URL.createObjectURL(file));
+                        }}
+                        onClose={() => setShowCamera(false)}
+                      />
+                    )}
+
+                    {modelLoadFailed && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Advanced face matching is temporarily unavailable. Your photo can still be
+                        submitted for manual review.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
+              {/* Quality analysis */}
               {qualityAnalysis && (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="font-bold text-slate-900">Photo Quality: {qualityAnalysis.qualityRating?.rating || 'Pending'}</span>
-                    <span className="text-sm font-semibold text-slate-600">Score {qualityAnalysis.qualityRating?.score || 0}%</span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      Photo Quality: {qualityAnalysis.qualityRating?.rating || 'Pending'}
+                    </span>
+                    <span className="text-sm font-medium text-slate-600">
+                      Score {qualityAnalysis.qualityRating?.score || 0}%
+                    </span>
                   </div>
-                  <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                    {qualityAnalysis.resolution && <div>Resolution: {qualityAnalysis.resolution.dimensions?.width}x{qualityAnalysis.resolution.dimensions?.height}</div>}
-                    {qualityAnalysis.brightness && <div>Brightness: {qualityAnalysis.brightness.brightness}</div>}
-                    {qualityAnalysis.blur && <div>Sharpness: {qualityAnalysis.blur.sharpness}</div>}
-                    {qualityAnalysis.contrast && <div>Contrast: {qualityAnalysis.contrast.contrast}</div>}
+                  <div className="grid gap-1.5 text-xs text-slate-500 sm:grid-cols-2">
+                    {qualityAnalysis.resolution && (
+                      <div>
+                        Resolution: {qualityAnalysis.resolution.dimensions?.width}×
+                        {qualityAnalysis.resolution.dimensions?.height}
+                      </div>
+                    )}
+                    {qualityAnalysis.brightness && (
+                      <div>Brightness: {qualityAnalysis.brightness.brightness}</div>
+                    )}
+                    {qualityAnalysis.blur && (
+                      <div>Sharpness: {qualityAnalysis.blur.sharpness}</div>
+                    )}
+                    {qualityAnalysis.contrast && (
+                      <div>Contrast: {qualityAnalysis.contrast.contrast}</div>
+                    )}
                     {faceAnalysis && <div>Face count: {faceAnalysis.faceCount}</div>}
-                    {faceAnalysis && <div>Face confidence: {(faceAnalysis.confidence * 100).toFixed(1)}%</div>}
+                    {faceAnalysis && (
+                      <div>
+                        Face confidence: {(faceAnalysis.confidence * 100).toFixed(1)}%
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button type="button" onClick={resetPreview} className={`rounded px-3 py-1 text-xs ${activeFilter === 'none' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Original</button>
-                    <button type="button" onClick={() => applyEnhancementFilter('brighten')} className={`rounded px-3 py-1 text-xs ${activeFilter === 'brighten' ? 'bg-yellow-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Brighten</button>
-                    <button type="button" onClick={() => applyEnhancementFilter('enhance')} className={`rounded px-3 py-1 text-xs ${activeFilter === 'enhance' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Enhance</button>
-                    <button type="button" onClick={() => applyEnhancementFilter('vivid')} className={`rounded px-3 py-1 text-xs ${activeFilter === 'vivid' ? 'bg-purple-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Vivid</button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['none', 'brighten', 'enhance', 'vivid'].map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() =>
+                          filter === 'none' ? resetPreview() : applyEnhancementFilter(filter)
+                        }
+                        className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                          activeFilter === filter
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                        }`}
+                      >
+                        {filter === 'none' ? 'Original' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
+              {/* Validation errors */}
               {validationErrors.length > 0 && (
-                <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
-                  <ul className="space-y-1 text-sm text-yellow-800">
-                    {validationErrors.map((error, index) => <li key={index}>- {error}</li>)}
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <ul className="space-y-1 text-sm text-amber-800">
+                    {validationErrors.map((error, index) => (
+                      <li key={index}>• {error}</li>
+                    ))}
                   </ul>
                   <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={allowOverride} onChange={(e) => setAllowOverride(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={allowOverride}
+                      onChange={(e) => setAllowOverride(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
                     Ignore warnings and proceed
                   </label>
                 </div>
               )}
 
-              <div className="flex flex-col items-center justify-between gap-6 border-t border-slate-100 pt-6 sm:flex-row">
-                <div className="flex items-center gap-3 text-blue-600">
-                  <CheckBadgeIcon className="h-5 w-5" />
-                  <span className="text-xs font-black uppercase tracking-widest">Secure Verification Link</span>
+              {/* Submit */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 pt-6">
+                <div className="flex items-center gap-2 text-blue-600">
+                  <CheckBadgeIcon className="h-4 w-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">
+                    Secure Verification Link
+                  </span>
                 </div>
-                <button type="submit" disabled={submitting || (validationErrors.length > 0 && !allowOverride)} className="w-full rounded-full bg-slate-950 px-10 py-5 text-sm font-black uppercase tracking-[0.2em] text-white shadow-2xl transition hover:bg-blue-600 disabled:opacity-50 active:scale-95 sm:w-auto">
-                  {submitting ? 'Authenticating...' : 'Confirm My Identity'}
+                <button
+                  type="submit"
+                  disabled={submitting || (validationErrors.length > 0 && !allowOverride)}
+                  className="w-full sm:w-auto rounded-2xl bg-blue-600 hover:bg-blue-500 px-8 py-3.5 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Submitting...' : 'Confirm My Identity'}
                 </button>
               </div>
             </div>

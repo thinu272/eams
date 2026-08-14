@@ -36,7 +36,13 @@ const hasScanPermission = (user) => {
   return !!(
     user?.permissions?.canEntryAccess ||
     user?.permissions?.canScanEntry ||
-    user?.responsibilities?.entryAccess
+    user?.responsibilities?.entryAccess ||
+    user?.canGateScanAccess ||
+    user?.canEntryAccess ||
+    user?.canScanEntry ||
+    // Auto-grant scan access if user has assigned zones or gates
+    (user?.assignedZones?.length > 0) ||
+    (user?.assignedGates?.length > 0)
   );
 };
 
@@ -82,6 +88,7 @@ const getAssignedZoneIds = (user, event) => {
 const getPermittedCategories = (user, event) => {
   const role = normalizeRole(user?.role);
   const categories = event?.categories || [];
+  const currency = event?.settings?.currency || event?.currency || 'LKR';
   
   if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) {
     return categories.map((cat) => ({
@@ -89,6 +96,7 @@ const getPermittedCategories = (user, event) => {
       name: cat.name,
       description: cat.description,
       price: cat.price,
+      currency,
       capacity: cat.capacity,
       sold: cat.sold,
       allowedZones: cat.allowedZones || [],
@@ -97,6 +105,7 @@ const getPermittedCategories = (user, event) => {
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
       assignedSubOrganisers: cat.assignedSubOrganisers || [],
+      createdBy: cat.createdBy ? String(cat.createdBy) : null,
       isVisible: cat.isVisible !== false,
     }));
   }
@@ -122,6 +131,7 @@ const getPermittedCategories = (user, event) => {
       name: cat.name,
       description: cat.description,
       price: cat.price,
+      currency,
       capacity: cat.capacity,
       sold: cat.sold,
       allowedZones: cat.allowedZones || [],
@@ -130,6 +140,7 @@ const getPermittedCategories = (user, event) => {
       usageCount: cat.usageCount || 0,
       maxUsage: cat.maxUsage || null,
       assignedSubOrganisers: cat.assignedSubOrganisers || [],
+      createdBy: cat.createdBy ? String(cat.createdBy) : null,
       isVisible: cat.isVisible !== false,
     }));
 };
@@ -318,6 +329,10 @@ router.get('/dashboard', async (req, res, next) => {
           name: event.name,
           startDate: event.startDate,
           venue: event.venue,
+          currency: event.settings?.currency || event.currency || 'LKR',
+          settings: {
+            currency: event.settings?.currency || event.currency || 'LKR',
+          },
         },
         permissions: {
           canVerifyPhotos: hasVerificationPermission(req.user),
@@ -378,6 +393,7 @@ router.get('/zones', async (req, res, next) => {
       const allowedCategories = (event.categories || []).filter((category) =>
         (category.allowedZones || []).some((value) => zoneKeys.includes(value))
       );
+      const currency = event.settings?.currency || event.currency || 'LKR';
 
       return {
         id: zone.id || zone.name,
@@ -389,6 +405,7 @@ router.get('/zones', async (req, res, next) => {
           id: category.id,
           name: category.name,
           price: category.price,
+          currency,
         })),
       };
     }));
@@ -952,10 +969,9 @@ router.patch('/tickets/:categoryId', async (req, res, next) => {
     const cat = event.categories[index];
     const userId = req.user._id.toString();
     const isOwner = cat.createdBy && cat.createdBy.toString() === userId;
-    const isAssigned = (cat.assignedSubOrganisers || []).some(id => id.toString() === userId);
 
-    if (!isOwner && !isAssigned) {
-      return res.status(403).json({ success: false, message: 'You are not authorized to modify this category.' });
+    if (!isOwner && req.user.role !== 'main_admin') {
+      return res.status(403).json({ success: false, message: 'Only the creator can modify this category.' });
     }
 
     if (name) cat.name = name;
@@ -1013,7 +1029,7 @@ router.delete('/tickets/:categoryId', async (req, res, next) => {
     const userId = req.user._id.toString();
     const isOwner = cat.createdBy && cat.createdBy.toString() === userId;
 
-    if (!isOwner) {
+    if (!isOwner && req.user.role !== 'main_admin') {
       return res.status(403).json({ success: false, message: 'Only the creator can delete this category.' });
     }
 

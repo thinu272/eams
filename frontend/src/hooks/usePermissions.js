@@ -8,7 +8,10 @@ export const usePermissions = () => {
 
   const permissions = useMemo(() => {
     const hasPower = (requiredRole) => hasRolePower(user?.role, requiredRole);
-    const hasCustom = (permKey) => !!user?.permissions?.[permKey];
+    const hasCustom = (permKey) => {
+      // Check both permissions object and direct flags
+      return !!user?.permissions?.[permKey] || !!user?.[permKey];
+    };
 
     return {
       // Basic permissions
@@ -27,6 +30,27 @@ export const usePermissions = () => {
       canDeleteAttendees: hasPower('MainAdmin') || hasCustom('canDeleteAttendees'),
       canInviteAttendees: hasPower('MainOrganiser') || hasCustom('canInviteAttendees'),
       canBulkUpload: hasPower('SubOrganiser') || hasCustom('canBulkUpload'),
+      canAddAttendees: hasCustom('canAddAttendees'),
+      canPhotoVerification: hasPower('MainOrganiser') || hasCustom('canPhotoVerification'),
+      canSendInvitations: hasPower('MainOrganiser') || hasCustom('canSendInvitations'),
+      canExcelBulkImports: hasCustom('canExcelBulkImports'),
+      canGateScanAccess: hasCustom('canGateScanAccess') || hasCustom('canEntryAccess') || (hasPower('SubOrganiser') && (user?.assignedZones?.length > 0 || user?.assignedGates?.length > 0)),
+      canEntryAccess: hasCustom('canEntryAccess') || hasCustom('canGateScanAccess') || (hasPower('SubOrganiser') && (user?.assignedZones?.length > 0 || user?.assignedGates?.length > 0)),
+      // Event permissions
+      canViewEvents: hasCustom('canViewEvents'),
+      canEditEvents: hasCustom('canEditEvents'),
+      // Additional attendee permissions
+      canViewTickets: hasCustom('canViewTickets'),
+      canEditTickets: hasCustom('canEditTickets'),
+      canScanTickets: hasCustom('canScanTickets'),
+      // Zone permissions
+      canViewZones: hasCustom('canViewZones'),
+      canManageZones: hasCustom('canManageZones'),
+      // Report permissions
+      canViewReports: hasCustom('canViewReports'),
+      canExportReports: hasCustom('canExportReports'),
+      // Notification permissions
+      canSendNotifications: hasCustom('canSendNotifications'),
       
       // Ticket permissions
       canViewTickets: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canViewTickets'),
@@ -86,6 +110,14 @@ export const usePermissions = () => {
       canViewRevenue: hasPower('MainOrganiser') || hasCustom('canViewRevenue'),
       canViewOrders: hasPower('MainOrganiser') || hasCustom('canViewOrders'),
       canProcessRefunds: hasPower('MainAdmin') || hasCustom('canProcessRefunds'),
+      canCollectCash: hasCustom('canCollectCash'),
+      canConfirmCashPayments: hasCustom('canConfirmCashPayments'),
+      canApproveBankTransfer: hasPower('MainOrganiser') || hasCustom('canApproveBankTransfer'),
+      canViewPayments: hasPower('MainOrganiser') || hasCustom('canViewPayments'),
+      canManagePaymentMethods: hasPower('MainOrganiser') || hasCustom('canManagePaymentMethods'),
+      canViewPaymentHistory: hasPower('MainOrganiser') || hasCustom('canViewPaymentHistory'),
+      canHandlePaymentDisputes: hasPower('MainOrganiser') || hasCustom('canHandlePaymentDisputes'),
+      canGeneratePaymentReports: hasPower('MainOrganiser') || hasCustom('canGeneratePaymentReports'),
       
       // Communication permissions
       canSendNotifications: hasPower('MainOrganiser') || hasCustom('canSendNotifications'),

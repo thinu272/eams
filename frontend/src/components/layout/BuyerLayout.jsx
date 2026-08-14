@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import BottomNav from './BottomNav';
 import {
@@ -10,21 +10,24 @@ import {
   ArrowRightOnRectangleIcon,
   GlobeAltIcon,
   CreditCardIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 
 const BuyerLayout = ({ children }) => {
   const { user, logout } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
 
-  const items = useMemo(() => ([
-    { to: '/buyer/home', label: 'Home', icon: HomeIcon, end: true },
-    { to: '/buyer/orders', label: 'Orders', icon: TicketIcon },
-    { to: '/buyer/tickets', label: 'Tickets', icon: TicketIcon },
-    { to: '/buyer/payment-history', label: 'Payments', icon: CreditCardIcon },
-    { to: '/buyer/invites', label: 'Invites', icon: BellIcon },
-    { to: '/buyer/profile', label: 'Profile', icon: UserCircleIcon },
-  ]), []);
+  const items = useMemo(
+    () => [
+      { to: '/buyer/home', label: 'Home', icon: HomeIcon, end: true },
+      { to: '/buyer/orders', label: 'Orders', icon: ClipboardDocumentListIcon },
+      { to: '/buyer/tickets', label: 'Tickets', icon: TicketIcon },
+      { to: '/buyer/payment-history', label: 'Payments', icon: CreditCardIcon },
+      { to: '/buyer/invites', label: 'Invites', icon: BellIcon },
+      { to: '/buyer/profile', label: 'Profile', icon: UserCircleIcon },
+    ],
+    []
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -33,20 +36,32 @@ const BuyerLayout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
-          <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-2.5 transition-all hover:opacity-90">
-              <img src="/logo.png" alt="Entrynex Logo" className="w-8 h-8 object-contain" />
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-brand-main">ENTRYNEX</p>
-                <h1 className="text-xs font-extrabold text-slate-900 leading-tight">Buyer Dashboard</h1>
+      {/* Sticky header */}
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          {/* Brand + desktop nav */}
+          <div className="flex min-w-0 items-center gap-4 lg:gap-6">
+            <Link
+              to="/buyer/home"
+              className="flex shrink-0 items-center gap-2.5 transition hover:opacity-90"
+            >
+              <img
+                src="/logo.png"
+                alt="Entrynex"
+                className="h-8 w-8 object-contain"
+              />
+              <div className="hidden sm:block">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-blue-600">
+                  Entrynex
+                </p>
+                <h1 className="text-xs font-bold leading-tight text-slate-900">
+                  Buyer Dashboard
+                </h1>
               </div>
             </Link>
-            
-            {/* Desktop Navigation Links */}
-            <div className="hidden md:flex items-center gap-1 border-l border-slate-200 pl-6 h-8">
+
+            {/* Desktop nav — lg+ only */}
+            <nav className="hidden items-center gap-0.5 border-l border-slate-200 pl-4 lg:flex lg:pl-6">
               {items.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -54,38 +69,44 @@ const BuyerLayout = ({ children }) => {
                     key={item.to}
                     to={item.to}
                     end={item.end}
-                    className={({ isActive }) => (
-                      `flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ` +
-                      (isActive
-                        ? 'bg-brand-main text-white shadow-sm shadow-brand-main/20'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900')
-                    )}
+                    className={({ isActive }) =>
+                      [
+                        'inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition',
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                      ].join(' ')
+                    }
                   >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="hidden xl:inline">{item.label}</span>
                   </NavLink>
                 );
               })}
-            </div>
+            </nav>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Actions */}
+          <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
             <Link
               to="/"
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-white px-3.5 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 transition-all"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition sm:px-3.5"
               title="Public Portal"
             >
               <GlobeAltIcon className="h-4 w-4 text-slate-500" />
               <span className="hidden sm:inline">Public Portal</span>
             </Link>
-            
-            <div className="text-right hidden lg:block">
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hi, {user?.name?.split(' ')[0] || 'Buyer'}</p>
+
+            <div className="hidden text-right md:block">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Hi, {user?.name?.split(' ')[0] || 'Buyer'}
+              </p>
             </div>
 
             <button
+              type="button"
               onClick={handleLogout}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 px-3 text-xs font-bold text-white shadow-sm transition-all active:scale-95"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-rose-600 px-2.5 text-xs font-semibold text-white shadow-sm hover:bg-rose-500 transition sm:px-3"
               title="Logout"
             >
               <ArrowRightOnRectangleIcon className="h-4 w-4" />
@@ -93,13 +114,41 @@ const BuyerLayout = ({ children }) => {
             </button>
           </div>
         </div>
+
+        {/* Tablet nav only — md to lg (not mobile, not desktop) */}
+        <div className="hidden border-t border-slate-100 md:block lg:hidden">
+          <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-2 sm:px-6 scrollbar-none">
+            {items.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    [
+                      'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap',
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100',
+                    ].join(' ')
+                  }
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
       </header>
 
-      {/* Main Content Container */}
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 md:px-6 md:pb-8">
+      {/* Main content — extra bottom padding only on mobile for bottom nav */}
+      <main className="mx-auto max-w-7xl px-4 pb-24 pt-5 sm:px-6 sm:pt-6 md:pb-10">
         {children}
-      </div>
+      </main>
 
+      {/* Mobile bottom nav — below md only */}
       <BottomNav items={items} />
     </div>
   );

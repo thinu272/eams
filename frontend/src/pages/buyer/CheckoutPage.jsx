@@ -3,12 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { createOrder } from '../../api/orders';
 import { getPaymentConfig } from '../../api/payment';
 import PublicLayout from '../../components/layout/PublicLayout';
-import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import {
+  CreditCardIcon,
+  BanknotesIcon,
+  EnvelopeIcon,
+  DevicePhoneMobileIcon,
+  ArrowLeftIcon,
+  CheckIcon,
+} from '@heroicons/react/24/outline';
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
   const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+
   const [checkoutData, setCheckoutData] = useState(null);
   const [buyerInfo, setBuyerInfo] = useState({
     name: '',
@@ -21,6 +29,7 @@ const CheckoutPage = () => {
   const [gatewayConfig, setGatewayConfig] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [errors, setErrors] = useState({});
+  const [cashTermsAccepted, setCashTermsAccepted] = useState(false);
 
   useEffect(() => {
     const data = localStorage.getItem('checkoutData');
@@ -29,22 +38,26 @@ const CheckoutPage = () => {
       navigate('/events');
       return;
     }
+
     try {
       const parsed = JSON.parse(data);
       setCheckoutData(parsed);
 
-      // Fetch payment gateway config for this event
       if (parsed.eventId) {
         getPaymentConfig(parsed.eventId)
-          .then(res => {
+          .then((res) => {
             if (res.success) {
               setGatewayConfig(res.data);
               setSelectedGateway(res.data.defaultGateway || 'payhere');
             }
           })
-          .catch(err => {
+          .catch((err) => {
             console.warn('Could not fetch payment config, using defaults:', err);
-            setGatewayConfig({ gateways: ['payhere'], defaultGateway: 'payhere', paymentMethods: ['card'] });
+            setGatewayConfig({
+              gateways: ['payhere'],
+              defaultGateway: 'payhere',
+              paymentMethods: ['card'],
+            });
             setSelectedGateway('payhere');
           });
       }
@@ -57,16 +70,9 @@ const CheckoutPage = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setBuyerInfo(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-    // Clear error when user starts typing
+    setBuyerInfo((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: '',
-      }));
+      setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
@@ -93,17 +99,17 @@ const CheckoutPage = () => {
       newErrors.phone = 'Enter a valid international phone number (e.g. +1234567890)';
     }
 
+    if (paymentMethod === 'cash' && !cashTermsAccepted) {
+      newErrors.cashTerms = 'Please accept the venue payment terms';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     if (!checkoutData) {
       toast.error('Checkout data not found');
       return;
@@ -113,15 +119,14 @@ const CheckoutPage = () => {
     setErrors({});
 
     try {
-      // Prepare tickets data for backend
       const tickets = Object.keys(checkoutData.selectedTickets)
-        .filter(categoryId => checkoutData.selectedTickets[categoryId] > 0)
-        .map(categoryId => {
-          const category = checkoutData.categories.find(cat => cat.id === categoryId);
+        .filter((categoryId) => checkoutData.selectedTickets[categoryId] > 0)
+        .map((categoryId) => {
+          const category = checkoutData.categories.find((cat) => cat.id === categoryId);
           return {
             categoryName: category.name,
             quantity: checkoutData.selectedTickets[categoryId],
-            price: category.price, // Frontend price (backend will validate)
+            price: category.price,
           };
         });
 
@@ -137,53 +142,36 @@ const CheckoutPage = () => {
       };
 
       if (paymentMethod === 'bank_transfer') {
-        // For bank transfer, create order and redirect to instructions page
         const response = await createOrder(orderData);
-        
-        // Clear checkout data
         localStorage.removeItem('checkoutData');
-        
-        // Redirect to bank transfer instructions page
         navigate(`/bank-transfer/instructions/${response.data.data.orderId}`);
       } else if (paymentMethod === 'cash') {
-        // For cash on entrance reservation
         const response = await createOrder(orderData);
         toast.success('Reservation placed successfully!');
-        
-        // Clear checkout data
         localStorage.removeItem('checkoutData');
-        
-        // Redirect to Cash Entrance Instructions
         navigate(`/cash-entrance/instructions/${response.data.data.confirmationToken}`);
       } else {
-        // For card payment — multi-gateway
         const response = await createOrder(orderData);
         const resData = response.data.data;
-
-        // Clear checkout data
         localStorage.removeItem('checkoutData');
 
         if (resData.gatewayUsed === 'stripe' && resData.stripeSessionUrl) {
-          // Redirect to Stripe Checkout
           window.location.href = resData.stripeSessionUrl;
         } else {
-          // PayHere flow — redirect to confirmation page (existing behavior)
           toast.success('Order placed successfully!');
           navigate(`/confirm/${resData.confirmationToken}`);
         }
       }
     } catch (error) {
       console.error('Order placement failed:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to place order. Please try again.';
+      const errorMessage =
+        error.response?.data?.message || 'Failed to place order. Please try again.';
       toast.error(errorMessage);
 
-      // Handle validation errors from backend
       if (error.response?.data?.errors) {
         const backendErrors = {};
-        error.response.data.errors.forEach(err => {
-          if (err.param) {
-            backendErrors[err.param] = err.msg;
-          }
+        error.response.data.errors.forEach((err) => {
+          if (err.param) backendErrors[err.param] = err.msg;
         });
         setErrors(backendErrors);
       }
@@ -192,285 +180,429 @@ const CheckoutPage = () => {
     }
   };
 
+  // ─── Loading ──────────────────────────────────────────────────────
   if (!checkoutData) {
     return (
       <PublicLayout>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-brand-main border-t-transparent" />
         </div>
       </PublicLayout>
     );
   }
 
-  const totalTickets = Object.values(checkoutData.selectedTickets).reduce((sum, qty) => sum + qty, 0);
+  const totalTickets = Object.values(checkoutData.selectedTickets).reduce(
+    (sum, qty) => sum + qty,
+    0
+  );
   const totalPrice = checkoutData.categories.reduce((sum, cat) => {
-    return sum + (cat.price * (checkoutData.selectedTickets[cat.id] || 0));
+    return sum + cat.price * (checkoutData.selectedTickets[cat.id] || 0);
   }, 0);
-
   const currency = checkoutData.event?.settings?.currency || 'LKR';
 
   return (
     <PublicLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Checkout</h1>
-            <p className="text-gray-600 mt-2">Complete your order for {checkoutData.eventName}</p>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-10">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
+              Secure Checkout
+            </p>
+            <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 md:text-4xl">
+              Checkout
+            </h1>
+            <p className="mt-2 text-sm font-medium text-slate-500">
+              Complete your order for{' '}
+              <span className="font-bold text-slate-700">{checkoutData.eventName}</span>
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left Column - Buyer Information Form */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Buyer Information</h2>
-
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+            {/* ────────────── Left: Form ────────────── */}
+            <div className="lg:col-span-3">
               <form onSubmit={handlePlaceOrder} className="space-y-6">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={buyerInfo.name}
-                    onChange={handleInputChange}
-                    required
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.name ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your full name"
-                  />
-                  {errors.name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-                  )}
+                {/* Buyer Information */}
+                <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                  <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+                    <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                      Buyer Information
+                    </h2>
+                  </div>
+
+                  <div className="space-y-5 p-8">
+                    {/* Name */}
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Full Name *
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={buyerInfo.name}
+                        onChange={handleInputChange}
+                        placeholder="Enter your full name"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-main/20 ${
+                          errors.name
+                            ? 'border-rose-400 focus:border-rose-400'
+                            : 'border-slate-200 focus:border-brand-main'
+                        }`}
+                      />
+                      {errors.name && (
+                        <p className="mt-1.5 text-xs font-medium text-rose-600">{errors.name}</p>
+                      )}
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={buyerInfo.email}
+                        onChange={handleInputChange}
+                        placeholder="Enter your email address"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-main/20 ${
+                          errors.email
+                            ? 'border-rose-400 focus:border-rose-400'
+                            : 'border-slate-200 focus:border-brand-main'
+                        }`}
+                      />
+                      {errors.email && (
+                        <p className="mt-1.5 text-xs font-medium text-rose-600">{errors.email}</p>
+                      )}
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={buyerInfo.phone}
+                        onChange={handleInputChange}
+                        placeholder="+1234567890"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-main/20 ${
+                          errors.phone
+                            ? 'border-rose-400 focus:border-rose-400'
+                            : 'border-slate-200 focus:border-brand-main'
+                        }`}
+                      />
+                      <p className="mt-1.5 text-[11px] text-slate-400">
+                        Format: +1234567890 (required for SMS)
+                      </p>
+                      {errors.phone && (
+                        <p className="mt-1 text-xs font-medium text-rose-600">{errors.phone}</p>
+                      )}
+                    </div>
+
+                    {/* Notification Channel */}
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Send Notifications Via
+                      </label>
+                      <div className="grid grid-cols-3 gap-3">
+                        {[
+                          { value: 'email', label: 'Email', icon: EnvelopeIcon },
+                          { value: 'sms', label: 'SMS', icon: DevicePhoneMobileIcon },
+                          { value: 'both', label: 'Both', icon: null },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                              setBuyerInfo((prev) => ({
+                                ...prev,
+                                notificationChannel: opt.value,
+                              }))
+                            }
+                            className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold uppercase tracking-wider transition ${
+                              buyerInfo.notificationChannel === opt.value
+                                ? 'border-brand-main bg-brand-main/5 text-brand-main'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {opt.icon && <opt.icon className="h-4 w-4" />}
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={buyerInfo.email}
-                    onChange={handleInputChange}
-                    required
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.email ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your email address"
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-                  )}
-                </div>
+                {/* Payment Method */}
+                <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                  <div className="border-b border-slate-50 bg-slate-50/50 px-8 py-5">
+                    <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                      Payment Method
+                    </h2>
+                  </div>
 
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    id="phone"
-                    name="phone"
-                    value={buyerInfo.phone}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter your phone number"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Format: +1234567890</p>
-                  {errors.phone && (
-                    <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="notificationChannel" className="block text-sm font-medium text-gray-700 mb-2">
-                    Send Notifications Via
-                  </label>
-                  <select
-                    id="notificationChannel"
-                    name="notificationChannel"
-                    value={buyerInfo.notificationChannel}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="email">Email</option>
-                    <option value="sms">SMS</option>
-                    <option value="both">Email + SMS</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Payment Method *
-                  </label>
-                  <div className="space-y-3">
-                    <label className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${paymentMethod === 'card' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
+                  <div className="space-y-3 p-8">
+                    {/* Card */}
+                    <label
+                      className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
+                        paymentMethod === 'card'
+                          ? 'border-brand-main bg-brand-main/5'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="paymentMethod"
                         value="card"
                         checked={paymentMethod === 'card'}
                         onChange={(e) => setPaymentMethod(e.target.value)}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        className="mt-1 h-4 w-4 text-brand-main focus:ring-brand-main"
                       />
-                      <div className="ml-3">
-                        <span className="font-medium text-gray-900">Credit/Debit Card</span>
-                        <p className="text-sm text-gray-500">Instant payment with card</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <CreditCardIcon className="h-5 w-5 text-slate-600" />
+                          <span className="font-bold text-slate-900">Credit / Debit Card</span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">Instant payment with card</p>
                       </div>
+                      {paymentMethod === 'card' && (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-main text-white">
+                          <CheckIcon className="h-3.5 w-3.5" />
+                        </div>
+                      )}
                     </label>
 
-                    {/* Gateway sub-selection — only shown when card is selected and multiple gateways exist */}
-                    {paymentMethod === 'card' && gatewayConfig && gatewayConfig.gateways && gatewayConfig.gateways.length > 1 && (
-                      <div className="ml-7 pl-4 border-l-2 border-blue-200 space-y-2">
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Choose Payment Provider</p>
-                        {gatewayConfig.gateways.includes('payhere') && (
-                          <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedGateway === 'payhere' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                            <input
-                              type="radio"
-                              name="gateway"
-                              value="payhere"
-                              checked={selectedGateway === 'payhere'}
-                              onChange={(e) => setSelectedGateway(e.target.value)}
-                              className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
-                            />
-                            <div className="ml-2.5">
-                              <span className="text-sm font-medium text-gray-900">PayHere</span>
-                              <p className="text-xs text-gray-500">Local Sri Lankan payment gateway</p>
-                            </div>
-                          </label>
-                        )}
-                        {gatewayConfig.gateways.includes('stripe') && (
-                          <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedGateway === 'stripe' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                            <input
-                              type="radio"
-                              name="gateway"
-                              value="stripe"
-                              checked={selectedGateway === 'stripe'}
-                              onChange={(e) => setSelectedGateway(e.target.value)}
-                              className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500"
-                            />
-                            <div className="ml-2.5">
-                              <span className="text-sm font-medium text-gray-900">Stripe</span>
-                              <p className="text-xs text-gray-500">International card payments</p>
-                            </div>
-                          </label>
-                        )}
-                      </div>
-                    )}
+                    {/* Gateway sub-selection */}
+                    {paymentMethod === 'card' &&
+                      gatewayConfig?.gateways?.length > 1 && (
+                        <div className="ml-8 space-y-2 border-l-2 border-brand-main/20 pl-5">
+                          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            Choose Provider
+                          </p>
+                          {gatewayConfig.gateways.includes('payhere') && (
+                            <label
+                              className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition ${
+                                selectedGateway === 'payhere'
+                                  ? 'border-brand-main/40 bg-brand-main/5'
+                                  : 'border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="gateway"
+                                value="payhere"
+                                checked={selectedGateway === 'payhere'}
+                                onChange={(e) => setSelectedGateway(e.target.value)}
+                                className="h-3.5 w-3.5 text-brand-main"
+                              />
+                              <div>
+                                <span className="text-sm font-bold text-slate-900">PayHere</span>
+                                <p className="text-xs text-slate-500">
+                                  Local Sri Lankan payment gateway
+                                </p>
+                              </div>
+                            </label>
+                          )}
+                          {gatewayConfig.gateways.includes('stripe') && (
+                            <label
+                              className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition ${
+                                selectedGateway === 'stripe'
+                                  ? 'border-brand-main/40 bg-brand-main/5'
+                                  : 'border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="gateway"
+                                value="stripe"
+                                checked={selectedGateway === 'stripe'}
+                                onChange={(e) => setSelectedGateway(e.target.value)}
+                                className="h-3.5 w-3.5 text-brand-main"
+                              />
+                              <div>
+                                <span className="text-sm font-bold text-slate-900">Stripe</span>
+                                <p className="text-xs text-slate-500">
+                                  International card payments
+                                </p>
+                              </div>
+                            </label>
+                          )}
+                        </div>
+                      )}
 
-                    <label className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}>
+                    {/* Cash */}
+                    <label
+                      className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
+                        paymentMethod === 'cash'
+                          ? 'border-brand-main bg-brand-main/5'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="paymentMethod"
                         value="cash"
                         checked={paymentMethod === 'cash'}
                         onChange={(e) => setPaymentMethod(e.target.value)}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        className="mt-1 h-4 w-4 text-brand-main focus:ring-brand-main"
                       />
-                      <div className="ml-3">
-                        <span className="font-medium text-gray-900">Cash at Entrance (Pay on Event Day)</span>
-                        <p className="text-sm text-gray-500">Pay at the venue on the day of the event</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <BanknotesIcon className="h-5 w-5 text-slate-600" />
+                          <span className="font-bold text-slate-900">
+                            Cash at Entrance
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Pay at the venue on the day of the event
+                        </p>
                       </div>
+                      {paymentMethod === 'cash' && (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-main text-white">
+                          <CheckIcon className="h-3.5 w-3.5" />
+                        </div>
+                      )}
                     </label>
                   </div>
+
+                  {/* Cash terms notice */}
+                  {paymentMethod === 'cash' && (
+                    <div className="mx-8 mb-8 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50">
+                      <div className="px-6 py-5">
+                        <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-amber-900">
+                          Pay at the Venue
+                        </h4>
+                        <ul className="space-y-2 text-sm text-amber-800">
+                          <li>
+                            Your tickets will be <strong>reserved</strong> until the event.
+                          </li>
+                          <li>
+                            Arrive <strong>30–60 minutes before</strong> the event to complete
+                            payment.
+                          </li>
+                          <li className="text-xs text-amber-700">
+                            Failure to arrive may result in cancellation of your reservation.
+                          </li>
+                        </ul>
+
+                        <label className="mt-5 flex cursor-pointer items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={cashTermsAccepted}
+                            onChange={(e) => setCashTermsAccepted(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-medium text-amber-800">
+                            I accept that I must pay at the venue entrance and failure to arrive
+                            early may result in cancellation. *
+                          </span>
+                        </label>
+                        {errors.cashTerms && (
+                          <p className="mt-2 text-xs font-medium text-rose-600">
+                            {errors.cashTerms}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {paymentMethod === 'cash' && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 text-sm space-y-3">
-                    <h4 className="font-bold text-amber-800 flex items-center gap-1.5">
-                      ⚠️ Pay at the Venue
-                    </h4>
-                    <p className="font-semibold">
-                      Your tickets will be reserved until the event. Payment must be made at the entrance before entry is granted.
-                    </p>
-                    <p>
-                      Please arrive at least <span className="font-bold text-amber-900">30–60 minutes before the event starts</span> to complete payment and avoid delays.
-                    </p>
-                    <p className="text-xs text-amber-700 font-medium">
-                      Failure to arrive within the reservation period may result in cancellation of your reservation.
-                    </p>
-                    
-                    <label className="flex items-start gap-2.5 pt-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                      />
-                      <span className="text-xs text-amber-800 select-none">
-                        I accept that I must pay at the venue entrance and failure to arrive early may result in cancellation. *
-                      </span>
-                    </label>
-                  </div>
-                )}
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={placing}
+                  className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:bg-brand-main hover:shadow-[0_0_30px_rgba(37,99,235,0.35)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {placing ? 'Placing Order…' : 'Confirm & Continue'}
+                </button>
 
-                <div className="pt-4">
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    loading={placing}
-                    disabled={placing}
-                  >
-                    {placing ? 'Placing Order...' : 'Confirm & Continue'}
-                  </Button>
-                </div>
-
-                <p className="text-xs text-gray-500 text-center">
-                  By placing this order, you agree to our terms and conditions.
-                  You will receive a confirmation notification based on your selected channel.
+                <p className="text-center text-[11px] text-slate-400">
+                  By placing this order, you agree to our terms and conditions. You will receive a
+                  confirmation notification based on your selected channel.
                 </p>
               </form>
             </div>
 
-            {/* Right Column - Order Summary */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Order Summary</h2>
+            {/* ────────────── Right: Order Summary ────────────── */}
+            <div className="lg:col-span-2">
+              <div className="sticky top-8 overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
+                <div className="border-b border-slate-50 bg-slate-50/50 px-7 py-5">
+                  <h2 className="text-xs font-black uppercase tracking-[0.25em] text-slate-900">
+                    Order Summary
+                  </h2>
+                </div>
 
-              <div className="mb-4">
-                <h3 className="font-medium text-gray-900 text-lg">{checkoutData.eventName}</h3>
-                <p className="text-sm text-gray-600">Event ID: {checkoutData.eventId}</p>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                {checkoutData.categories
-                  .filter(category => checkoutData.selectedTickets[category.id] > 0)
-                  .map((category) => (
-                  <div key={category.id} className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{category.name}</p>
-                      <p className="text-sm text-gray-600">
-                        {checkoutData.selectedTickets[category.id]} × {currency} {category.price.toLocaleString()}
-                      </p>
-                    </div>
-                    <p className="font-semibold text-gray-900">
-                      {currency} {(checkoutData.selectedTickets[category.id] * category.price).toLocaleString()}
+                <div className="space-y-6 p-7">
+                  {/* Event name */}
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Event
+                    </p>
+                    <p className="mt-1.5 line-clamp-2 text-base font-bold text-slate-900">
+                      {checkoutData.eventName}
                     </p>
                   </div>
-                ))}
-              </div>
 
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Total Tickets</span>
-                  <span className="font-medium">{totalTickets}</span>
-                </div>
-                <div className="flex justify-between items-center text-lg font-bold">
-                  <span className="text-gray-900">Total Amount</span>
-                  <span className="text-gray-900">{currency} {totalPrice.toLocaleString()}</span>
+                  {/* Ticket lines */}
+                  <div className="space-y-4 border-t border-slate-50 pt-6">
+                    {checkoutData.categories
+                      .filter((cat) => checkoutData.selectedTickets[cat.id] > 0)
+                      .map((category) => {
+                        const qty = checkoutData.selectedTickets[category.id];
+                        const lineTotal = qty * category.price;
+
+                        return (
+                          <div
+                            key={category.id}
+                            className="flex items-start justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {category.name}
+                              </p>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                {qty} × {currency} {category.price.toLocaleString()}
+                              </p>
+                            </div>
+                            <p className="shrink-0 text-sm font-black text-slate-900">
+                              {currency} {lineTotal.toLocaleString()}
+                            </p>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Totals */}
+                  <div className="space-y-3 border-t border-slate-50 pt-6">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">Total Tickets</span>
+                      <span className="font-bold text-slate-900">{totalTickets}</span>
+                    </div>
+                    <div className="flex items-end justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        Total Amount
+                      </span>
+                      <span className="text-2xl font-black tracking-tighter text-brand-main">
+                        {currency} {totalPrice.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 text-center">
+          {/* Back link */}
+          <div className="mt-10 text-center">
             <button
               onClick={() => navigate(-1)}
-              className="text-blue-600 hover:text-blue-800 font-medium"
               disabled={placing}
+              className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-brand-main disabled:opacity-50"
             >
-              ← Back to Event
+              <ArrowLeftIcon className="h-4 w-4" />
+              Back to Event
             </button>
           </div>
         </div>

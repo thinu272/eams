@@ -39,7 +39,7 @@ export const ROLE_NAVIGATION = {
           { to: '/admin/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
           { to: '/admin/dashboard?section=system-logs', label: 'System Logs', icon: ClipboardDocumentListIcon },
           { to: '/admin/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
-          { to: '/admin/dashboard?section=settings', label: 'System Settings', icon: ShieldCheckIcon },
+          
         ],
       },
     ],
@@ -66,7 +66,7 @@ export const ROLE_NAVIGATION = {
           { to: '/organiser/dashboard?section=system-logs', label: 'Activity Logs', icon: ClipboardDocumentListIcon },
           { to: '/organiser/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
           { to: '/organiser/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
-          { to: '/organiser/dashboard?section=settings', label: 'Settings', icon: ShieldCheckIcon },
+          
         ],
       },
     ],

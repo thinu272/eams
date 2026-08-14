@@ -103,14 +103,132 @@ const listSubOrganisers = async (req, res, next) => {
 const createSubOrganiser = async (req, res, next) => {
   try {
     const eventId = resolveEventId(req.user);
-    const { canCollectCash, canApproveBankTransfer, ...rest } = req.body;
+    const { 
+      canCollectCash, 
+      canConfirmCashPayments,
+      canApproveBankTransfer, 
+      canViewPayments,
+      canProcessRefunds,
+      canManagePaymentMethods,
+      canViewPaymentHistory,
+      canHandlePaymentDisputes,
+      canGeneratePaymentReports,
+      canAddAttendees,
+      canPhotoVerification,
+      canSendInvitations,
+      canExcelBulkImports,
+      canGateScanAccess,
+      canViewEvents,
+      canEditEvents,
+      canViewAttendees,
+      canEditAttendees,
+      canViewTickets,
+      canEditTickets,
+      canScanTickets,
+      canViewZones,
+      canManageZones,
+      canViewReports,
+      canExportReports,
+      canViewRevenue,
+      canSendNotifications,
+      assignedCategories, 
+      ...rest 
+    } = req.body;
+    
+    const permissions = {
+      canCollectCash: canCollectCash || false,
+      canConfirmCashPayments: canConfirmCashPayments || false,
+      canApproveBankTransfer: canApproveBankTransfer || false,
+      canViewPayments: canViewPayments || false,
+      canProcessRefunds: canProcessRefunds || false,
+      canManagePaymentMethods: canManagePaymentMethods || false,
+      canViewPaymentHistory: canViewPaymentHistory || false,
+      canHandlePaymentDisputes: canHandlePaymentDisputes || false,
+      canGeneratePaymentReports: canGeneratePaymentReports || false,
+      canAddAttendees: canAddAttendees || false,
+      canPhotoVerification: canPhotoVerification || false,
+      canSendInvitations: canSendInvitations || false,
+      canExcelBulkImports: canExcelBulkImports || false,
+      canGateScanAccess: canGateScanAccess || false,
+      canViewEvents: canViewEvents || false,
+      canEditEvents: canEditEvents || false,
+      canViewAttendees: canViewAttendees || false,
+      canEditAttendees: canEditAttendees || false,
+      canViewTickets: canViewTickets || false,
+      canEditTickets: canEditTickets || false,
+      canScanTickets: canScanTickets || false,
+      canViewZones: canViewZones || false,
+      canManageZones: canManageZones || false,
+      canViewReports: canViewReports || false,
+      canExportReports: canExportReports || false,
+      canViewRevenue: canViewRevenue || false,
+      canSendNotifications: canSendNotifications || false,
+    };
+    
+    // Also set individual permission fields for backward compatibility
+    const permissionFields = {
+      canCollectCash: canCollectCash || false,
+      canConfirmCashPayments: canConfirmCashPayments || false,
+      canApproveBankTransfer: canApproveBankTransfer || false,
+      canViewPayments: canViewPayments || false,
+      canProcessRefunds: canProcessRefunds || false,
+      canManagePaymentMethods: canManagePaymentMethods || false,
+      canViewPaymentHistory: canViewPaymentHistory || false,
+      canHandlePaymentDisputes: canHandlePaymentDisputes || false,
+      canGeneratePaymentReports: canGeneratePaymentReports || false,
+      canAddAttendees: canAddAttendees || false,
+      canPhotoVerification: canPhotoVerification || false,
+      canSendInvitations: canSendInvitations || false,
+      canExcelBulkImports: canExcelBulkImports || false,
+      canGateScanAccess: canGateScanAccess || false,
+      canViewEvents: canViewEvents || false,
+      canEditEvents: canEditEvents || false,
+      canViewAttendees: canViewAttendees || false,
+      canEditAttendees: canEditAttendees || false,
+      canViewTickets: canViewTickets || false,
+      canEditTickets: canEditTickets || false,
+      canScanTickets: canScanTickets || false,
+      canViewZones: canViewZones || false,
+      canManageZones: canManageZones || false,
+      canViewReports: canViewReports || false,
+      canExportReports: canExportReports || false,
+      canViewRevenue: canViewRevenue || false,
+      canSendNotifications: canSendNotifications || false,
+    };
+    
     const payload = {
       ...rest,
       role: normalizeRole('SubOrganiser'),
       assignedEvents: [eventId],
       status: 'Active',
       canCollectCash: canCollectCash || false,
+      canConfirmCashPayments: canConfirmCashPayments || false,
       canApproveBankTransfer: canApproveBankTransfer || false,
+      canViewPayments: canViewPayments || false,
+      canProcessRefunds: canProcessRefunds || false,
+      canManagePaymentMethods: canManagePaymentMethods || false,
+      canViewPaymentHistory: canViewPaymentHistory || false,
+      canHandlePaymentDisputes: canHandlePaymentDisputes || false,
+      canGeneratePaymentReports: canGeneratePaymentReports || false,
+      canAddAttendees: canAddAttendees || false,
+      canPhotoVerification: canPhotoVerification || false,
+      canSendInvitations: canSendInvitations || false,
+      canExcelBulkImports: canExcelBulkImports || false,
+      canGateScanAccess: canGateScanAccess || false,
+      canViewEvents: canViewEvents || false,
+      canEditEvents: canEditEvents || false,
+      canViewAttendees: canViewAttendees || false,
+      canEditAttendees: canEditAttendees || false,
+      canViewTickets: canViewTickets || false,
+      canEditTickets: canEditTickets || false,
+      canScanTickets: canScanTickets || false,
+      canViewZones: canViewZones || false,
+      canManageZones: canManageZones || false,
+      canViewReports: canViewReports || false,
+      canExportReports: canExportReports || false,
+      canViewRevenue: canViewRevenue || false,
+      canSendNotifications: canSendNotifications || false,
+      permissions,
     };
     const user = await User.create(payload);
     
@@ -134,6 +252,15 @@ const createSubOrganiser = async (req, res, next) => {
         )
       ));
     }
+
+    // Update Ticket Categories
+    if (assignedCategories && Array.isArray(assignedCategories)) {
+      const mongoose = require('mongoose');
+      await mongoose.model('TicketCategory').updateMany(
+        { eventId, _id: { $in: assignedCategories } },
+        { $addToSet: { assignedSubOrganisers: user._id } }
+      );
+    }
     
     await notifySubOrganiserInvite({ user, event, phone: user.phone, email: user.email });
     res.status(201).json({ success: true, data: { user } });
@@ -143,7 +270,42 @@ const createSubOrganiser = async (req, res, next) => {
 const updateSubOrganiserStatus = async (req, res, next) => {
   try {
     const eventId = resolveEventId(req.user);
-    const { status, name, email, phone, password, canCollectCash, canApproveBankTransfer } = req.body;
+    const { 
+      status, 
+      name, 
+      email, 
+      phone, 
+      password, 
+      canCollectCash, 
+      canConfirmCashPayments,
+      canApproveBankTransfer,
+      canViewPayments,
+      canProcessRefunds,
+      canManagePaymentMethods,
+      canViewPaymentHistory,
+      canHandlePaymentDisputes,
+      canGeneratePaymentReports,
+      canAddAttendees,
+      canPhotoVerification,
+      canSendInvitations,
+      canExcelBulkImports,
+      canGateScanAccess,
+      canViewEvents,
+      canEditEvents,
+      canViewAttendees,
+      canEditAttendees,
+      canViewTickets,
+      canEditTickets,
+      canScanTickets,
+      canViewZones,
+      canManageZones,
+      canViewReports,
+      canExportReports,
+      canViewRevenue,
+      canSendNotifications,
+      permissions,
+      assignedCategories 
+    } = req.body;
     
     // Handle both simple status updates and full user updates
     const updateData = {};
@@ -156,13 +318,55 @@ const updateSubOrganiserStatus = async (req, res, next) => {
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (password) updateData.password = password;
+    
+    // Handle individual permission flags
     if (canCollectCash !== undefined) {
       updateData.canCollectCash = canCollectCash;
-      updateData.permissions = { canCollectCash };
+    }
+    if (canConfirmCashPayments !== undefined) {
+      updateData.canConfirmCashPayments = canConfirmCashPayments;
     }
     if (canApproveBankTransfer !== undefined) {
       updateData.canApproveBankTransfer = canApproveBankTransfer;
-      updateData.permissions = { ...updateData.permissions, canApproveBankTransfer };
+    }
+    
+    // Handle permissions object if provided
+    if (permissions && typeof permissions === 'object') {
+      updateData.permissions = permissions;
+    } else {
+      // Build permissions from individual flags
+      const builtPermissions = {};
+      if (canCollectCash !== undefined) builtPermissions.canCollectCash = canCollectCash;
+      if (canConfirmCashPayments !== undefined) builtPermissions.canConfirmCashPayments = canConfirmCashPayments;
+      if (canApproveBankTransfer !== undefined) builtPermissions.canApproveBankTransfer = canApproveBankTransfer;
+      if (canViewPayments !== undefined) builtPermissions.canViewPayments = canViewPayments;
+      if (canProcessRefunds !== undefined) builtPermissions.canProcessRefunds = canProcessRefunds;
+      if (canManagePaymentMethods !== undefined) builtPermissions.canManagePaymentMethods = canManagePaymentMethods;
+      if (canViewPaymentHistory !== undefined) builtPermissions.canViewPaymentHistory = canViewPaymentHistory;
+      if (canHandlePaymentDisputes !== undefined) builtPermissions.canHandlePaymentDisputes = canHandlePaymentDisputes;
+      if (canGeneratePaymentReports !== undefined) builtPermissions.canGeneratePaymentReports = canGeneratePaymentReports;
+      if (canAddAttendees !== undefined) builtPermissions.canAddAttendees = canAddAttendees;
+      if (canPhotoVerification !== undefined) builtPermissions.canPhotoVerification = canPhotoVerification;
+      if (canSendInvitations !== undefined) builtPermissions.canSendInvitations = canSendInvitations;
+      if (canExcelBulkImports !== undefined) builtPermissions.canExcelBulkImports = canExcelBulkImports;
+      if (canGateScanAccess !== undefined) builtPermissions.canGateScanAccess = canGateScanAccess;
+      if (canViewEvents !== undefined) builtPermissions.canViewEvents = canViewEvents;
+      if (canEditEvents !== undefined) builtPermissions.canEditEvents = canEditEvents;
+      if (canViewAttendees !== undefined) builtPermissions.canViewAttendees = canViewAttendees;
+      if (canEditAttendees !== undefined) builtPermissions.canEditAttendees = canEditAttendees;
+      if (canViewTickets !== undefined) builtPermissions.canViewTickets = canViewTickets;
+      if (canEditTickets !== undefined) builtPermissions.canEditTickets = canEditTickets;
+      if (canScanTickets !== undefined) builtPermissions.canScanTickets = canScanTickets;
+      if (canViewZones !== undefined) builtPermissions.canViewZones = canViewZones;
+      if (canManageZones !== undefined) builtPermissions.canManageZones = canManageZones;
+      if (canViewReports !== undefined) builtPermissions.canViewReports = canViewReports;
+      if (canExportReports !== undefined) builtPermissions.canExportReports = canExportReports;
+      if (canViewRevenue !== undefined) builtPermissions.canViewRevenue = canViewRevenue;
+      if (canSendNotifications !== undefined) builtPermissions.canSendNotifications = canSendNotifications;
+      
+      if (Object.keys(builtPermissions).length > 0) {
+        updateData.permissions = builtPermissions;
+      }
     }
     
     const user = await User.findOneAndUpdate(
@@ -172,6 +376,24 @@ const updateSubOrganiserStatus = async (req, res, next) => {
     ).select('-password');
     
     if (!user) return res.status(404).json({ success: false, message: 'Sub organiser not found.' });
+
+    // Update Ticket Categories
+    if (assignedCategories && Array.isArray(assignedCategories)) {
+      const mongoose = require('mongoose');
+      // Remove this user from all categories for this event first
+      await mongoose.model('TicketCategory').updateMany(
+        { eventId },
+        { $pull: { assignedSubOrganisers: user._id } }
+      );
+      // Then add to the selected ones
+      if (assignedCategories.length > 0) {
+        await mongoose.model('TicketCategory').updateMany(
+          { eventId, _id: { $in: assignedCategories } },
+          { $addToSet: { assignedSubOrganisers: user._id } }
+        );
+      }
+    }
+    
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 };

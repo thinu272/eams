@@ -54,6 +54,43 @@ const clamp = (value, min, max, fallback) => {
   return Math.min(Math.max(parsed, min), max);
 };
 
+const parseBodyField = (value, fallback = {}) => {
+  if (value == null || value === '') return fallback;
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
+const parseBooleanFlag = (value) =>
+  value === true || value === 'true' || value === '1' || value === 1;
+
+/** Map DB / RBAC role → UI label used by OrganiserDashboard */
+const toUiRole = (role) => {
+  const r = String(role || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const map = {
+    sub_organiser: 'SubOrganiser',
+    suborganiser: 'SubOrganiser',
+    staff: 'Staff',
+    volunteer: 'Volunteer',
+    auditor: 'Auditor',
+    main_organiser: 'MainOrganiser',
+    main_admin: 'MainAdmin',
+    super_admin: 'SuperAdmin',
+    sponsor: 'Sponsor',
+  };
+  return map[r] || role || 'Staff';
+};
+
 const buildActivityNotification = async ({ userId, eventId, title, message, type = 'info', metadata = {} }) => {
   if (!userId) return null;
 
@@ -87,9 +124,9 @@ const getScopedEvent = async (req) => {
   return Event.findById(eventId)
     .populate('mainOrganisers', 'name email phone')
     .populate({
-      path: 'subOrganisers',
-      select: 'name email phone status permissions assignedEvents assignedGates assignedZones responsibilities',
-    })
+        path: 'subOrganisers',
+        select: 'name email phone role status permissions assignedEvents assignedGates assignedZones responsibilities createdBy',
+      })
     .lean();
 };
 
@@ -468,8 +505,15 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
           pages: Math.ceil(attendeeTotal / limit) || 1,
         },
         tickets: ticketCategories,
-        subOrganisers: req.scopedEvent.subOrganisers || [],
-        teamMembers,
+        subOrganisers: (req.scopedEvent.subOrganisers || []).map((m) => ({
+          ...m,
+          _id: m._id,
+          role: toUiRole(m.role || ROLES.SUB_ORGANISER),
+        })),
+        teamMembers: (teamMembers || []).map((m) => ({
+          ...m,
+          role: toUiRole(m.role),
+        })),
         teamPage,
         teamPages: Math.ceil(teamTotal / limit) || 1,
         teamTotal,
@@ -507,7 +551,6 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
             startDate: req.scopedEvent.startDate,
             endDate: req.scopedEvent.endDate,
             venue: req.scopedEvent.venue || {},
-            currency: req.scopedEvent.settings?.currency || 'LKR',
           },
           branding: {
             bannerImage: req.scopedEvent.bannerImage || req.scopedEvent.branding?.bannerImage || '',
@@ -1258,6 +1301,89 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
         if (req.body.permissions) {
           user.permissions = { ...(user.permissions || {}), ...req.body.permissions };
         }
+        
+        // Handle individual permission fields
+        if (req.body.canCollectCash !== undefined) {
+          user.canCollectCash = req.body.canCollectCash;
+        }
+        if (req.body.canConfirmCashPayments !== undefined) {
+          user.canConfirmCashPayments = req.body.canConfirmCashPayments;
+        }
+        if (req.body.canApproveBankTransfer !== undefined) {
+          user.canApproveBankTransfer = req.body.canApproveBankTransfer;
+        }
+        if (req.body.canViewPayments !== undefined) {
+          user.canViewPayments = req.body.canViewPayments;
+        }
+        if (req.body.canProcessRefunds !== undefined) {
+          user.canProcessRefunds = req.body.canProcessRefunds;
+        }
+        if (req.body.canManagePaymentMethods !== undefined) {
+          user.canManagePaymentMethods = req.body.canManagePaymentMethods;
+        }
+        if (req.body.canViewPaymentHistory !== undefined) {
+          user.canViewPaymentHistory = req.body.canViewPaymentHistory;
+        }
+        if (req.body.canHandlePaymentDisputes !== undefined) {
+          user.canHandlePaymentDisputes = req.body.canHandlePaymentDisputes;
+        }
+        if (req.body.canGeneratePaymentReports !== undefined) {
+          user.canGeneratePaymentReports = req.body.canGeneratePaymentReports;
+        }
+        if (req.body.canAddAttendees !== undefined) {
+          user.canAddAttendees = req.body.canAddAttendees;
+        }
+        if (req.body.canPhotoVerification !== undefined) {
+          user.canPhotoVerification = req.body.canPhotoVerification;
+        }
+        if (req.body.canSendInvitations !== undefined) {
+          user.canSendInvitations = req.body.canSendInvitations;
+        }
+        if (req.body.canExcelBulkImports !== undefined) {
+          user.canExcelBulkImports = req.body.canExcelBulkImports;
+        }
+        if (req.body.canGateScanAccess !== undefined) {
+          user.canGateScanAccess = req.body.canGateScanAccess;
+        }
+        if (req.body.canViewEvents !== undefined) {
+          user.canViewEvents = req.body.canViewEvents;
+        }
+        if (req.body.canEditEvents !== undefined) {
+          user.canEditEvents = req.body.canEditEvents;
+        }
+        if (req.body.canViewAttendees !== undefined) {
+          user.canViewAttendees = req.body.canViewAttendees;
+        }
+        if (req.body.canEditAttendees !== undefined) {
+          user.canEditAttendees = req.body.canEditAttendees;
+        }
+        if (req.body.canViewTickets !== undefined) {
+          user.canViewTickets = req.body.canViewTickets;
+        }
+        if (req.body.canEditTickets !== undefined) {
+          user.canEditTickets = req.body.canEditTickets;
+        }
+        if (req.body.canScanTickets !== undefined) {
+          user.canScanTickets = req.body.canScanTickets;
+        }
+        if (req.body.canViewZones !== undefined) {
+          user.canViewZones = req.body.canViewZones;
+        }
+        if (req.body.canManageZones !== undefined) {
+          user.canManageZones = req.body.canManageZones;
+        }
+        if (req.body.canViewReports !== undefined) {
+          user.canViewReports = req.body.canViewReports;
+        }
+        if (req.body.canExportReports !== undefined) {
+          user.canExportReports = req.body.canExportReports;
+        }
+        if (req.body.canViewRevenue !== undefined) {
+          user.canViewRevenue = req.body.canViewRevenue;
+        }
+        if (req.body.canSendNotifications !== undefined) {
+          user.canSendNotifications = req.body.canSendNotifications;
+        }
 
         user.assignedGates = Array.from(new Set(requestedAssignedGates));
         user.assignedZones = Array.from(new Set(requestedAssignedZones));
@@ -1301,6 +1427,32 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
           assignedGates: Array.from(new Set(requestedAssignedGates)),
           assignedZones: Array.from(new Set(requestedAssignedZones)),
           canCollectCash: !!req.body.canCollectCash,
+          canConfirmCashPayments: !!req.body.canConfirmCashPayments,
+          canApproveBankTransfer: !!req.body.canApproveBankTransfer,
+          canViewPayments: !!req.body.canViewPayments,
+          canProcessRefunds: !!req.body.canProcessRefunds,
+          canManagePaymentMethods: !!req.body.canManagePaymentMethods,
+          canViewPaymentHistory: !!req.body.canViewPaymentHistory,
+          canHandlePaymentDisputes: !!req.body.canHandlePaymentDisputes,
+          canGeneratePaymentReports: !!req.body.canGeneratePaymentReports,
+          canAddAttendees: !!req.body.canAddAttendees,
+          canPhotoVerification: !!req.body.canPhotoVerification,
+          canSendInvitations: !!req.body.canSendInvitations,
+          canExcelBulkImports: !!req.body.canExcelBulkImports,
+          canGateScanAccess: !!req.body.canGateScanAccess,
+          canViewEvents: !!req.body.canViewEvents,
+          canEditEvents: !!req.body.canEditEvents,
+          canViewAttendees: !!req.body.canViewAttendees,
+          canEditAttendees: !!req.body.canEditAttendees,
+          canViewTickets: !!req.body.canViewTickets,
+          canEditTickets: !!req.body.canEditTickets,
+          canScanTickets: !!req.body.canScanTickets,
+          canViewZones: !!req.body.canViewZones,
+          canManageZones: !!req.body.canManageZones,
+          canViewReports: !!req.body.canViewReports,
+          canExportReports: !!req.body.canExportReports,
+          canViewRevenue: !!req.body.canViewRevenue,
+          canSendNotifications: !!req.body.canSendNotifications,
           permissions: {
           canAddAttendees: !!req.body.permissions?.canAddAttendees,
           canVerifyPhotos: !!req.body.permissions?.canVerifyPhotos,
@@ -1308,6 +1460,31 @@ router.post('/sub-organiser', requireEventAccess, async (req, res, next) => {
           canBulkUpload: !!req.body.permissions?.canBulkUpload,
           canEntryAccess: !!req.body.permissions?.canEntryAccess,
           canCollectCash: !!req.body.canCollectCash,
+          canConfirmCashPayments: !!req.body.canConfirmCashPayments,
+          canApproveBankTransfer: !!req.body.canApproveBankTransfer,
+          canViewPayments: !!req.body.canViewPayments,
+          canProcessRefunds: !!req.body.canProcessRefunds,
+          canManagePaymentMethods: !!req.body.canManagePaymentMethods,
+          canViewPaymentHistory: !!req.body.canViewPaymentHistory,
+          canHandlePaymentDisputes: !!req.body.canHandlePaymentDisputes,
+          canGeneratePaymentReports: !!req.body.canGeneratePaymentReports,
+          canPhotoVerification: !!req.body.canPhotoVerification,
+          canSendInvitations: !!req.body.canSendInvitations,
+          canExcelBulkImports: !!req.body.canExcelBulkImports,
+          canGateScanAccess: !!req.body.canGateScanAccess,
+          canViewEvents: !!req.body.canViewEvents,
+          canEditEvents: !!req.body.canEditEvents,
+          canViewAttendees: !!req.body.canViewAttendees,
+          canEditAttendees: !!req.body.canEditAttendees,
+          canViewTickets: !!req.body.canViewTickets,
+          canEditTickets: !!req.body.canEditTickets,
+          canScanTickets: !!req.body.canScanTickets,
+          canViewZones: !!req.body.canViewZones,
+          canManageZones: !!req.body.canManageZones,
+          canViewReports: !!req.body.canViewReports,
+          canExportReports: !!req.body.canExportReports,
+          canViewRevenue: !!req.body.canViewRevenue,
+          canSendNotifications: !!req.body.canSendNotifications,
         },
         responsibilities: {
           zoneIds: Array.from(new Set([...(req.body.responsibilities?.zoneIds || []), ...(requestedAssignedZones || [])])),
@@ -1395,16 +1572,120 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     user.phone = req.body.phone ?? user.phone;
     user.status = req.body.status ?? user.status;
     
-    // Handle canCollectCash permission specifically
+    // Handle payment permission fields specifically
     if (req.body.canCollectCash !== undefined) {
       user.canCollectCash = req.body.canCollectCash;
+    }
+    if (req.body.canConfirmCashPayments !== undefined) {
+      user.canConfirmCashPayments = req.body.canConfirmCashPayments;
+    }
+    if (req.body.canApproveBankTransfer !== undefined) {
+      user.canApproveBankTransfer = req.body.canApproveBankTransfer;
+    }
+    if (req.body.canViewPayments !== undefined) {
+      user.canViewPayments = req.body.canViewPayments;
+    }
+    if (req.body.canProcessRefunds !== undefined) {
+      user.canProcessRefunds = req.body.canProcessRefunds;
+    }
+    if (req.body.canManagePaymentMethods !== undefined) {
+      user.canManagePaymentMethods = req.body.canManagePaymentMethods;
+    }
+    if (req.body.canViewPaymentHistory !== undefined) {
+      user.canViewPaymentHistory = req.body.canViewPaymentHistory;
+    }
+    if (req.body.canHandlePaymentDisputes !== undefined) {
+      user.canHandlePaymentDisputes = req.body.canHandlePaymentDisputes;
+    }
+    if (req.body.canGeneratePaymentReports !== undefined) {
+      user.canGeneratePaymentReports = req.body.canGeneratePaymentReports;
+    }
+    if (req.body.canAddAttendees !== undefined) {
+      user.canAddAttendees = req.body.canAddAttendees;
+    }
+    if (req.body.canPhotoVerification !== undefined) {
+      user.canPhotoVerification = req.body.canPhotoVerification;
+    }
+    if (req.body.canSendInvitations !== undefined) {
+      user.canSendInvitations = req.body.canSendInvitations;
+    }
+    if (req.body.canExcelBulkImports !== undefined) {
+      user.canExcelBulkImports = req.body.canExcelBulkImports;
+    }
+    if (req.body.canGateScanAccess !== undefined) {
+      user.canGateScanAccess = req.body.canGateScanAccess;
+    }
+    if (req.body.canViewEvents !== undefined) {
+      user.canViewEvents = req.body.canViewEvents;
+    }
+    if (req.body.canEditEvents !== undefined) {
+      user.canEditEvents = req.body.canEditEvents;
+    }
+    if (req.body.canViewAttendees !== undefined) {
+      user.canViewAttendees = req.body.canViewAttendees;
+    }
+    if (req.body.canEditAttendees !== undefined) {
+      user.canEditAttendees = req.body.canEditAttendees;
+    }
+    if (req.body.canViewTickets !== undefined) {
+      user.canViewTickets = req.body.canViewTickets;
+    }
+    if (req.body.canEditTickets !== undefined) {
+      user.canEditTickets = req.body.canEditTickets;
+    }
+    if (req.body.canScanTickets !== undefined) {
+      user.canScanTickets = req.body.canScanTickets;
+    }
+    if (req.body.canViewZones !== undefined) {
+      user.canViewZones = req.body.canViewZones;
+    }
+    if (req.body.canManageZones !== undefined) {
+      user.canManageZones = req.body.canManageZones;
+    }
+    if (req.body.canViewReports !== undefined) {
+      user.canViewReports = req.body.canViewReports;
+    }
+    if (req.body.canExportReports !== undefined) {
+      user.canExportReports = req.body.canExportReports;
+    }
+    if (req.body.canViewRevenue !== undefined) {
+      user.canViewRevenue = req.body.canViewRevenue;
+    }
+    if (req.body.canSendNotifications !== undefined) {
+      user.canSendNotifications = req.body.canSendNotifications;
     }
     
     user.permissions = {
       ...(user.permissions || {}),
       ...(req.body.permissions || {}),
-      // Ensure canCollectCash is synced in permissions
+      // Ensure all permission fields are synced in permissions
       ...(req.body.canCollectCash !== undefined ? { canCollectCash: req.body.canCollectCash } : {}),
+      ...(req.body.canConfirmCashPayments !== undefined ? { canConfirmCashPayments: req.body.canConfirmCashPayments } : {}),
+      ...(req.body.canApproveBankTransfer !== undefined ? { canApproveBankTransfer: req.body.canApproveBankTransfer } : {}),
+      ...(req.body.canViewPayments !== undefined ? { canViewPayments: req.body.canViewPayments } : {}),
+      ...(req.body.canProcessRefunds !== undefined ? { canProcessRefunds: req.body.canProcessRefunds } : {}),
+      ...(req.body.canManagePaymentMethods !== undefined ? { canManagePaymentMethods: req.body.canManagePaymentMethods } : {}),
+      ...(req.body.canViewPaymentHistory !== undefined ? { canViewPaymentHistory: req.body.canViewPaymentHistory } : {}),
+      ...(req.body.canHandlePaymentDisputes !== undefined ? { canHandlePaymentDisputes: req.body.canHandlePaymentDisputes } : {}),
+      ...(req.body.canGeneratePaymentReports !== undefined ? { canGeneratePaymentReports: req.body.canGeneratePaymentReports } : {}),
+      ...(req.body.canAddAttendees !== undefined ? { canAddAttendees: req.body.canAddAttendees } : {}),
+      ...(req.body.canPhotoVerification !== undefined ? { canPhotoVerification: req.body.canPhotoVerification } : {}),
+      ...(req.body.canSendInvitations !== undefined ? { canSendInvitations: req.body.canSendInvitations } : {}),
+      ...(req.body.canExcelBulkImports !== undefined ? { canExcelBulkImports: req.body.canExcelBulkImports } : {}),
+      ...(req.body.canGateScanAccess !== undefined ? { canGateScanAccess: req.body.canGateScanAccess } : {}),
+      ...(req.body.canViewEvents !== undefined ? { canViewEvents: req.body.canViewEvents } : {}),
+      ...(req.body.canEditEvents !== undefined ? { canEditEvents: req.body.canEditEvents } : {}),
+      ...(req.body.canViewAttendees !== undefined ? { canViewAttendees: req.body.canViewAttendees } : {}),
+      ...(req.body.canEditAttendees !== undefined ? { canEditAttendees: req.body.canEditAttendees } : {}),
+      ...(req.body.canViewTickets !== undefined ? { canViewTickets: req.body.canViewTickets } : {}),
+      ...(req.body.canEditTickets !== undefined ? { canEditTickets: req.body.canEditTickets } : {}),
+      ...(req.body.canScanTickets !== undefined ? { canScanTickets: req.body.canScanTickets } : {}),
+      ...(req.body.canViewZones !== undefined ? { canViewZones: req.body.canViewZones } : {}),
+      ...(req.body.canManageZones !== undefined ? { canManageZones: req.body.canManageZones } : {}),
+      ...(req.body.canViewReports !== undefined ? { canViewReports: req.body.canViewReports } : {}),
+      ...(req.body.canExportReports !== undefined ? { canExportReports: req.body.canExportReports } : {}),
+      ...(req.body.canViewRevenue !== undefined ? { canViewRevenue: req.body.canViewRevenue } : {}),
+      ...(req.body.canSendNotifications !== undefined ? { canSendNotifications: req.body.canSendNotifications } : {}),
     };
     user.assignedGates = canHaveCheckpoints && Array.isArray(req.body.assignedGates)
       ? Array.from(new Set(req.body.assignedGates.map(String).filter(Boolean)))
@@ -1454,17 +1735,45 @@ router.put('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
     res.json({ success: true, data: { user: updatedUser }, message: 'Sub-organiser updated.' });
 
     // Create notification for team member update
-    await buildActivityNotification({
-      userId: req.user._id,
-      eventId: eventId || req.user.assignedEvents?.[0],
-      title: 'Team member updated',
-      message: `${user.name} (${user.role}) details were updated.`,
-      type: 'info',
-      metadata: { actionType: 'team_member_update', subOrganiserId: String(user._id) },
+  } catch (err) { next(err); }
+});
+
+router.delete('/sub-organiser/:id', requireEventAccess, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Team member not found.' });
+
+    const requesterRole = normalizeRole(req.user.role);
+    const targetRole = normalizeRole(user.role);
+
+    // Check if the requester has sufficient role level to delete this user
+    if (ROLE_LEVELS[targetRole] >= ROLE_LEVELS[requesterRole]) {
+      return res.status(403).json({ success: false, message: 'Cannot delete a user with role equal to or higher than your own.' });
+    }
+
+    // Remove user from all events
+    const events = await Event.find({
+      $or: [
+        { subOrganisers: user._id },
+        { staff: user._id },
+        { volunteers: user._id },
+        { auditors: user._id },
+      ],
     });
-  } catch (err) {
-    next(err);
-  }
+
+    for (const event of events) {
+      event.subOrganisers = event.subOrganisers.filter(id => String(id) !== String(user._id));
+      event.staff = event.staff.filter(id => String(id) !== String(user._id));
+      event.volunteers = event.volunteers.filter(id => String(id) !== String(user._id));
+      event.auditors = event.auditors.filter(id => String(id) !== String(user._id));
+      await event.save();
+    }
+
+    // Delete the user
+    await User.findByIdAndDelete(req.params.id);
+
+    res.json({ success: true, message: 'Team member deleted successfully.' });
+  } catch (err) { next(err); }
 });
 
 router.get('/verification', requireEventAccess, async (req, res, next) => {
@@ -1952,7 +2261,7 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
         event.markModified('venue');
       }
 
-      if (basicInfo.currency) {
+      if (isAdmin && basicInfo.currency) {
         if (!event.settings) event.settings = {};
         event.settings.currency = basicInfo.currency;
         event.markModified('settings.currency');
@@ -1963,7 +2272,15 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       const b = branding || {};
       if (!event.branding) event.branding = {};
 
+      const oldLogo = event.branding.logoImage;
+      const oldBanner = event.branding.bannerImage;
+      const oldCover = event.branding.coverImage;
+
       Object.assign(event.branding, b);
+
+      if (oldLogo && !b.logoImage) event.branding.logoImage = oldLogo;
+      if (oldBanner && !b.bannerImage) event.branding.bannerImage = oldBanner;
+      if (oldCover && !b.coverImage) event.branding.coverImage = oldCover;
 
       // Handle new image uploads
       if (req.files?.coverImage) {
@@ -2490,3 +2807,4 @@ router.get('/payments', requireEventAccess, requirePermission('canViewPayments')
 });
 
 module.exports = router;
+

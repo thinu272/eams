@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getDashboardPathForRole } from '../../config/roleNavigation';
@@ -7,88 +7,127 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 const PublicLayout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const closeMenu = () => setIsMenuOpen(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+    closeMenu();
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col w-full overflow-x-hidden max-w-full">
-      <nav className="bg-brand-dark/95 backdrop-blur-md border-b border-white/5 sticky top-0 z-50 shadow-2xl shadow-brand-dark/20 w-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            <Link to="/" className="flex items-center gap-3 py-2 transition-all duration-300">
-              <img src="/logo.png" alt="Entrynex Logo" className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(38,132,255,0.4)]" />
-              <span className="font-black text-white text-xl tracking-tighter flex items-center">
-                ENTRY<span className="text-brand-main">NEX</span>
+    <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-slate-50">
+      {/* ── Nav ── */}
+      <nav className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-slate-950/95 backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between sm:h-18 lg:h-20">
+            {/* Brand */}
+            <Link
+              to="/"
+              className="flex items-center gap-2.5 transition hover:opacity-90"
+              onClick={closeMenu}
+            >
+              <img
+                src="/logo.png"
+                alt="Entrynex"
+                className="h-9 w-9 object-contain sm:h-10 sm:w-10"
+              />
+              <span className="text-lg font-bold tracking-tight text-white sm:text-xl">
+                ENTRY<span className="text-blue-400">NEX</span>
               </span>
             </Link>
-            
-            <div className="flex items-center gap-4">
-              <Link to="/events" className="hidden sm:block text-sm font-bold text-slate-300 hover:text-white transition-colors">
-                Upcoming Matches
-              </Link>
-              
-              <div className="h-6 w-px bg-slate-800 hidden sm:block"></div>
 
-              <div className="hidden sm:flex items-center gap-6">
-                {user ? (
-                  <div className="flex items-center gap-4">
-                    <Link to={getDashboardPathForRole(user.role)} className="text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors">
-                      Dashboard
-                    </Link>
-                    <button onClick={() => { logout(); navigate('/'); }} className="text-sm font-bold text-slate-400 hover:text-slate-200 transition-colors">
-                      Logout
-                    </button>
-                  </div>
-                ) : (
-                  <Link to="/login" className="bg-brand-main text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-brand-accent transition-colors shadow-lg shadow-brand-main/40">
-                    Partner Sign In
-                  </Link>
-                )}
-              </div>
-
-              {/* Mobile Menu Button */}
-              <button 
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="sm:hidden p-2 rounded-xl bg-white/5 text-white hover:bg-white/10 transition-colors"
+            {/* Desktop links */}
+            <div className="hidden items-center gap-5 sm:flex">
+              <Link
+                to="/events"
+                className="text-sm font-semibold text-slate-300 transition hover:text-white"
               >
-                {isMenuOpen ? <XMarkIcon className="h-6 w-6" /> : <Bars3Icon className="h-6 w-6" />}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile Menu Overlay */}
-        {isMenuOpen && (
-          <div className="sm:hidden border-t border-white/10 bg-brand-dark/95 backdrop-blur-xl animate-in slide-in-from-top duration-300">
-            <div className="px-4 py-6 space-y-4">
-              <Link 
-                to="/events" 
-                onClick={() => setIsMenuOpen(false)}
-                className="block text-lg font-black uppercase tracking-widest text-slate-300 hover:text-white"
-              >
-                Upcoming Matches
+                Upcoming Events
               </Link>
-              <div className="h-px bg-white/5 w-full" />
+
+              <div className="h-5 w-px bg-slate-700" />
+
               {user ? (
-                <div className="space-y-4">
-                  <Link 
-                    to={getDashboardPathForRole(user.role)} 
-                    onClick={() => setIsMenuOpen(false)}
-                    className="block text-lg font-black uppercase tracking-widest text-blue-400"
+                <div className="flex items-center gap-4">
+                  <Link
+                    to={getDashboardPathForRole(user.role)}
+                    className="text-sm font-semibold text-blue-400 transition hover:text-blue-300"
                   >
                     Dashboard
                   </Link>
-                  <button 
-                    onClick={() => { logout(); navigate('/'); setIsMenuOpen(false); }} 
-                    className="block text-lg font-black uppercase tracking-widest text-slate-400 w-full text-left"
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="text-sm font-semibold text-slate-400 transition hover:text-slate-200"
                   >
                     Logout
                   </button>
                 </div>
               ) : (
-                <Link 
-                  to="/login" 
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block w-full bg-brand-main text-white px-6 py-4 rounded-2xl text-center font-black uppercase tracking-widest shadow-lg shadow-brand-main/40"
+                <Link
+                  to="/login"
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
+                >
+                  Partner Sign In
+                </Link>
+              )}
+            </div>
+
+            {/* Mobile menu button */}
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((v) => !v)}
+              className="rounded-xl bg-white/5 p-2 text-white transition hover:bg-white/10 sm:hidden"
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            >
+              {isMenuOpen ? (
+                <XMarkIcon className="h-6 w-6" />
+              ) : (
+                <Bars3Icon className="h-6 w-6" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile menu */}
+        {isMenuOpen && (
+          <div className="border-t border-white/10 bg-slate-950/98 backdrop-blur-xl sm:hidden">
+            <div className="space-y-1 px-4 py-4">
+              <Link
+                to="/events"
+                onClick={closeMenu}
+                className="block rounded-xl px-3 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+              >
+                Upcoming Events
+              </Link>
+
+              <div className="my-2 h-px bg-white/10" />
+
+              {user ? (
+                <>
+                  <Link
+                    to={getDashboardPathForRole(user.role)}
+                    onClick={closeMenu}
+                    className="block rounded-xl px-3 py-3 text-sm font-semibold text-blue-400 transition hover:bg-white/5"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="block w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={closeMenu}
+                  className="mt-2 block w-full rounded-xl bg-blue-600 px-4 py-3.5 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
                 >
                   Partner Sign In
                 </Link>
@@ -97,30 +136,38 @@ const PublicLayout = ({ children }) => {
           </div>
         )}
       </nav>
-      
-      <main className="flex-1 flex flex-col">
-        {children}
-      </main>
-      
-      <footer className="bg-brand-dark border-t border-white/10 text-slate-400 py-12 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain opacity-80" onError={(e) => e.target.style.display='none'} />
-              <div className="flex flex-col leading-none">
-                <span className="font-black text-slate-200 text-lg tracking-tighter flex items-center">
-                  ENTRY<span className="text-brand-main">NEX</span>
-                </span>
-                <span className="text-[6px] font-black uppercase tracking-[0.2em] text-slate-600">
-                  Precision Registry
-                </span>
+
+      {/* Content */}
+      <main className="flex flex-1 flex-col">{children}</main>
+
+      {/* ── Footer ── */}
+      <footer className="mt-auto border-t border-slate-800 bg-slate-950 text-slate-400">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src="/logo.png"
+                  alt="Entrynex"
+                  className="h-8 w-8 object-contain opacity-80"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+                <div className="leading-tight">
+                  <span className="text-base font-bold tracking-tight text-slate-200">
+                    ENTRY<span className="text-blue-400">NEX</span>
+                  </span>
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Event Access Management
+                  </p>
+                </div>
               </div>
-              <span className="h-4 w-px bg-slate-800 ml-2 hidden sm:block"></span>
-              <span className="text-xs hidden sm:block text-slate-500 font-bold uppercase tracking-widest ml-2">Event Access Management</span>
             </div>
-            <div className="text-sm font-medium">
-              &copy; {new Date().getFullYear()} All rights reserved.
-            </div>
+
+            <p className="text-sm text-slate-500">
+              © {new Date().getFullYear()} Entrynex. All rights reserved.
+            </p>
           </div>
         </div>
       </footer>
