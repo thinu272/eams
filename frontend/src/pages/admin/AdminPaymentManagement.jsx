@@ -11,7 +11,7 @@ import {
   exportPayments,
 } from '../../api/adminPaymentManagement';
 import { getAllEventsAdmin } from '../../api/events';
-import Card, { CardHeader } from '../../components/ui/Card';
+import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
@@ -23,8 +23,6 @@ import {
   XCircleIcon,
   ArrowDownTrayIcon,
   EyeIcon,
-  CreditCardIcon,
-  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 const statusConfig = {
@@ -39,11 +37,20 @@ const statusConfig = {
   failed: { label: 'Rejected', variant: 'red' },
 };
 
-const formatCurrency = (amount, currency = 'LKR') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount || 0);
+const formatCurrency = (amount, currency = 'LKR') => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'LKR',
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  } catch {
+    return `${currency || 'LKR'} ${Number(amount || 0).toLocaleString()}`;
+  }
+};
 
 const formatDate = (dateString) => {
-  if (!dateString) return '-';
+  if (!dateString) return '—';
   return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -58,40 +65,18 @@ const formatMethod = (m) => {
   if (m === 'bank_transfer') return 'Bank Transfer';
   if (m === 'cash_at_entrance') return 'Cash at Venue';
   if (m === 'cash_on_entrance') return 'Cash on Entrance';
-  return m || '-';
+  return m || '—';
 };
 
-// Matches the MetricCard style used in AdminDashboard overview / reports
-const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border-slate-200 bg-gradient-to-br from-white to-slate-50/80 shadow-sm">
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-slate-500">{title}</p>
-        <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{value}</p>
-        <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
-      </div>
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900/5 text-slate-700">
-        <Icon className="h-5 w-5" />
-      </div>
-    </div>
-  </Card>
-);
+const normalizeStatus = (status) => {
+  if (status === 'success' || status === 'paid') return 'approved';
+  if (status === 'failed') return 'rejected';
+  return status;
+};
 
 const AdminPaymentManagement = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [payments, setPayments] = useState([]);
-  const [statistics, setStatistics] = useState({
-    overview: {
-      totalPayments: 0,
-      pendingPayments: 0,
-      approvedPayments: 0,
-      rejectedPayments: 0,
-      needsInfoPayments: 0,
-      totalAmount: 0,
-      approvedAmount: 0,
-      pendingAmount: 0,
-    },
-  });
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -104,13 +89,17 @@ const AdminPaymentManagement = () => {
   const [showRequestInfoModal, setShowRequestInfoModal] = useState(false);
   const [infoMessage, setInfoMessage] = useState('');
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [searchInput, setSearchInput] = useState('');
 
-  // Always read filters from URL so they stay in sync
   const eventFilter = searchParams.get('eventId') || '';
   const statusFilter = searchParams.get('status') || '';
   const paymentMethodFilter = searchParams.get('paymentMethod') || 'all';
   const searchQuery = searchParams.get('search') || '';
   const currentPage = searchParams.get('page') || '1';
+
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
 
   const updateQuery = (key, value) => {
     const next = new URLSearchParams(searchParams);
@@ -130,64 +119,40 @@ const AdminPaymentManagement = () => {
         status: statusFilter || undefined,
         eventId: eventFilter || undefined,
         search: searchQuery || undefined,
-        paymentMethod: paymentMethodFilter !== 'all' ? paymentMethodFilter : undefined,
+        paymentMethod:
+          paymentMethodFilter !== 'all' ? paymentMethodFilter : undefined,
       };
       const response = await getAllPayments(params);
       const data = response.data?.data || {};
       setPayments(data.payments || []);
       setPagination({
-        page: data.currentPage || 1,
-        pages: data.pages || 1,
-        total: data.total || 0,
+        page: data.currentPage || data.pagination?.page || 1,
+        pages: data.pages || data.pagination?.pages || 1,
+        total: data.total || data.pagination?.total || 0,
       });
-    } catch (err) {
+    } catch {
       setError('Failed to load payments');
       toast.error('Failed to load payments');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, eventFilter, statusFilter, paymentMethodFilter, searchQuery]);
-
-  const fetchStatistics = useCallback(async () => {
-    try {
-      const response = await getPaymentStatistics({
-        eventId: eventFilter || undefined,
-      });
-      const data = response.data?.data || {};
-      setStatistics({
-        overview: {
-          totalPayments: data.overview?.totalPayments || 0,
-          pendingPayments: data.overview?.pendingPayments || 0,
-          approvedPayments: data.overview?.approvedPayments || 0,
-          rejectedPayments: data.overview?.rejectedPayments || 0,
-          needsInfoPayments: data.overview?.needsInfoPayments || 0,
-          totalAmount: data.overview?.totalAmount || 0,
-          approvedAmount: data.overview?.approvedAmount || 0,
-          pendingAmount: data.overview?.pendingAmount || 0,
-        },
-      });
-    } catch (err) {
-      console.error('Failed to load statistics:', err);
-    }
-  }, [eventFilter]);
+  }, [
+    currentPage,
+    eventFilter,
+    statusFilter,
+    paymentMethodFilter,
+    searchQuery,
+  ]);
 
   const fetchEvents = async () => {
     try {
       const response = await getAllEventsAdmin({ limit: 200 });
-      // Try every common shape used in this codebase
       const payload = response?.data?.data ?? response?.data ?? response ?? {};
-
       let list = [];
-      if (Array.isArray(payload)) {
-        list = payload;
-      } else if (Array.isArray(payload.events)) {
-        list = payload.events;
-      } else if (Array.isArray(payload.rows)) {
-        list = payload.rows;
-      } else if (Array.isArray(payload.data)) {
-        list = payload.data;
-      }
-
+      if (Array.isArray(payload)) list = payload;
+      else if (Array.isArray(payload.events)) list = payload.events;
+      else if (Array.isArray(payload.rows)) list = payload.rows;
+      else if (Array.isArray(payload.data)) list = payload.data;
       setEvents(list);
     } catch (err) {
       console.error('Failed to load events:', err);
@@ -197,8 +162,7 @@ const AdminPaymentManagement = () => {
 
   useEffect(() => {
     fetchPayments();
-    fetchStatistics();
-  }, [fetchPayments, fetchStatistics]);
+  }, [fetchPayments]);
 
   useEffect(() => {
     fetchEvents();
@@ -212,7 +176,7 @@ const AdminPaymentManagement = () => {
     try {
       const response = await getPaymentDetails(payment._id);
       setPaymentDetails(response.data?.data || {});
-    } catch (err) {
+    } catch {
       toast.error('Failed to load payment details');
     } finally {
       setDetailsLoading(false);
@@ -225,7 +189,6 @@ const AdminPaymentManagement = () => {
       await approvePayment(paymentId);
       toast.success('Payment approved successfully');
       fetchPayments();
-      fetchStatistics();
       setSelectedPayment(null);
       setPaymentDetails(null);
     } catch (err) {
@@ -240,7 +203,8 @@ const AdminPaymentManagement = () => {
       toast.error('Please provide a reason for rejection');
       return;
     }
-    const targetId = selectedPayment?.submissionId || paymentDetails?.paymentSubmission?._id;
+    const targetId =
+      selectedPayment?.submissionId || paymentDetails?.paymentSubmission?._id;
     if (!targetId) {
       toast.error('Payment submission ID not found');
       return;
@@ -252,7 +216,6 @@ const AdminPaymentManagement = () => {
       setShowRejectModal(false);
       setRejectReason('');
       fetchPayments();
-      fetchStatistics();
       setSelectedPayment(null);
       setPaymentDetails(null);
     } catch (err) {
@@ -267,7 +230,8 @@ const AdminPaymentManagement = () => {
       toast.error('Please provide a message requesting more information');
       return;
     }
-    const targetId = selectedPayment?.submissionId || paymentDetails?.paymentSubmission?._id;
+    const targetId =
+      selectedPayment?.submissionId || paymentDetails?.paymentSubmission?._id;
     if (!targetId) {
       toast.error('Payment submission ID not found');
       return;
@@ -279,7 +243,6 @@ const AdminPaymentManagement = () => {
       setShowRequestInfoModal(false);
       setInfoMessage('');
       fetchPayments();
-      fetchStatistics();
       setSelectedPayment(null);
       setPaymentDetails(null);
     } catch (err) {
@@ -291,16 +254,21 @@ const AdminPaymentManagement = () => {
 
   const handleExport = async () => {
     try {
-      const response = await exportPayments({ eventId: eventFilter || undefined });
+      const response = await exportPayments({
+        eventId: eventFilter || undefined,
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `payments_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute(
+        'download',
+        `payments_export_${new Date().toISOString().split('T')[0]}.csv`
+      );
       document.body.appendChild(link);
       link.click();
       link.remove();
       toast.success('Payments exported successfully');
-    } catch (err) {
+    } catch {
       toast.error('Failed to export payments');
     }
   };
@@ -316,57 +284,24 @@ const AdminPaymentManagement = () => {
     return nums;
   };
 
-  const normalizeStatus = (status) => {
-    if (status === 'success' || status === 'paid') return 'approved';
-    if (status === 'failed') return 'rejected';
-    return status;
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Top actions only – subtitle is already shown by AdminDashboard */}
+    <div className="space-y-6 pb-10">
       <div className="flex justify-end">
-        <Button onClick={handleExport} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+        <Button
+          onClick={handleExport}
+          className="bg-blue-600 hover:bg-blue-500 text-white"
+        >
+          <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
           Export CSV
         </Button>
       </div>
 
-      {/* Statistics – same MetricCard style as Overview / Reports */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          title="Total Payments"
-          value={statistics.overview.totalPayments}
-          subtitle={`${formatCurrency(statistics.overview.totalAmount)} total`}
-          icon={BanknotesIcon}
-        />
-        <MetricCard
-          title="Pending"
-          value={statistics.overview.pendingPayments}
-          subtitle={formatCurrency(statistics.overview.pendingAmount)}
-          icon={CreditCardIcon}
-        />
-        <MetricCard
-          title="Approved"
-          value={statistics.overview.approvedPayments}
-          subtitle={formatCurrency(statistics.overview.approvedAmount)}
-          icon={CheckCircleIcon}
-        />
-        <MetricCard
-          title="Needs Info"
-          value={statistics.overview.needsInfoPayments}
-          subtitle="Awaiting buyer response"
-          icon={ShieldCheckIcon}
-        />
-      </div>
-
-      {/* Filters – same Card + grid style as SectionFilters */}
-      <Card className="rounded-[28px] border-slate-200">
-        {/* Method tabs */}
-        <div className="flex space-x-2 border-b border-slate-100 pb-4 mb-4 overflow-x-auto">
+      {/* Filters */}
+      <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+        <div className="mb-4 flex gap-2 overflow-x-auto border-b border-slate-100 pb-4">
           {[
             { key: 'all', label: 'All Payments' },
-            { key: 'card', label: 'Credit/Debit Card' },
+            { key: 'card', label: 'Card' },
             { key: 'bank_transfer', label: 'Bank Transfer' },
             { key: 'cash_at_entrance', label: 'Cash at Venue' },
           ].map(({ key, label }) => {
@@ -374,11 +309,14 @@ const AdminPaymentManagement = () => {
             return (
               <button
                 key={key}
-                onClick={() => updateQuery('paymentMethod', key === 'all' ? null : key)}
-                className={`whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                type="button"
+                onClick={() =>
+                  updateQuery('paymentMethod', key === 'all' ? null : key)
+                }
+                className={`whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
                   active
-                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
                 }`}
               >
                 {label}
@@ -386,22 +324,24 @@ const AdminPaymentManagement = () => {
             );
           })}
         </div>
+
         <div className="grid gap-3 md:grid-cols-3">
           <input
             type="text"
-            placeholder="Search by order number, email..."
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            defaultValue={searchQuery}
+            placeholder="Search order #, email…"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') updateQuery('search', e.target.value || null);
+              if (e.key === 'Enter') {
+                updateQuery('search', searchInput.trim() || null);
+              }
             }}
           />
-
-          {/* Event selector – value comes from URL, change updates URL */}
           <select
             value={eventFilter}
             onChange={(e) => updateQuery('eventId', e.target.value || null)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">All Events</option>
             {events.map((event) => (
@@ -410,11 +350,10 @@ const AdminPaymentManagement = () => {
               </option>
             ))}
           </select>
-
           <select
             value={statusFilter}
             onChange={(e) => updateQuery('status', e.target.value || null)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">All Status</option>
             <option value="pending">Pending</option>
@@ -427,25 +366,37 @@ const AdminPaymentManagement = () => {
         </div>
       </Card>
 
-      {/* Payments table */}
-      <Card className="rounded-[28px] border-slate-200" padding={false}>
-        <CardHeader
-          title="Payment Submissions"
-          subtitle={`${pagination.total} payment${pagination.total !== 1 ? 's' : ''} found`}
-          className="px-6 pt-6"
-        />
+      {/* Table */}
+      <Card
+        className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
+        padding={false}
+      >
+        <div className="border-b border-slate-100 bg-slate-50/40 px-5 py-4">
+          <h2 className="text-lg font-bold text-slate-900">
+            Payment Submissions
+          </h2>
+          <p className="text-sm text-slate-500">
+            {pagination.total} payment{pagination.total !== 1 ? 's' : ''} found
+          </p>
+        </div>
 
         {loading ? (
           <div className="p-6">
             <LoadingSkeleton />
           </div>
         ) : error ? (
-          <div className="p-6 text-center text-red-500">{error}</div>
+          <div className="p-8 text-center text-sm text-rose-600">{error}</div>
         ) : payments.length === 0 ? (
-          <div className="p-12 text-center">
-            <BanknotesIcon className="mx-auto h-12 w-12 text-slate-300" />
-            <h3 className="mt-4 text-lg font-medium text-slate-900">No payments found</h3>
-            <p className="mt-2 text-sm text-slate-500">Try adjusting your filters</p>
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <BanknotesIcon className="h-7 w-7" />
+            </div>
+            <p className="text-base font-semibold text-slate-800">
+              No payments found
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Try adjusting your filters
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -454,8 +405,8 @@ const AdminPaymentManagement = () => {
                 <Tr>
                   <Th>Order #</Th>
                   <Th>Event</Th>
-                  <Th>Method / Gateway</Th>
-                  <Th>Payer Details</Th>
+                  <Th>Method</Th>
+                  <Th>Payer</Th>
                   <Th>Amount</Th>
                   <Th>Date</Th>
                   <Th>Status</Th>
@@ -464,63 +415,81 @@ const AdminPaymentManagement = () => {
               </thead>
               <tbody>
                 {payments.map((payment) => {
-                  const displayStatus = normalizeStatus(payment.verificationStatus);
+                  const displayStatus = normalizeStatus(
+                    payment.verificationStatus || payment.paymentStatus
+                  );
                   const statusInfo = statusConfig[displayStatus] || {
                     label: displayStatus || 'Unknown',
                     variant: 'gray',
                   };
+                  const rowCurrency =
+                    payment.currency || payment.order?.currency || 'LKR';
 
                   return (
                     <Tr key={payment._id}>
                       <Td>
                         <span className="font-mono text-sm font-medium text-slate-900">
-                          {payment.orderNumber || payment.orderId?.orderNumber || '-'}
+                          {payment.orderNumber ||
+                            payment.orderId?.orderNumber ||
+                            '—'}
                         </span>
                       </Td>
                       <Td>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{payment.event?.name || '-'}</p>
-                          {payment.event?.startDate && (
-                            <p className="text-xs text-slate-500">
-                              {new Date(payment.event.startDate).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                      </Td>
-                      <Td>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">
-                            {formatMethod(payment.paymentMethod)}
+                        <p className="text-sm font-medium text-slate-900">
+                          {payment.event?.name || '—'}
+                        </p>
+                        {payment.event?.startDate && (
+                          <p className="text-xs text-slate-500">
+                            {new Date(
+                              payment.event.startDate
+                            ).toLocaleDateString()}
                           </p>
-                          {(payment.gatewayUsed || payment.bankUsed) && (
-                            <p className="text-xs text-slate-500 uppercase">
-                              {payment.gatewayUsed || payment.bankUsed}
-                            </p>
-                          )}
-                        </div>
+                        )}
                       </Td>
                       <Td>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{payment.buyer?.name || '-'}</p>
-                          <p className="text-xs text-slate-500">{payment.buyer?.email || '-'}</p>
-                        </div>
+                        <p className="text-sm font-medium text-slate-900">
+                          {formatMethod(payment.paymentMethod)}
+                        </p>
+                        {(payment.gatewayUsed || payment.bankUsed) && (
+                          <p className="text-xs uppercase text-slate-500">
+                            {payment.gatewayUsed || payment.bankUsed}
+                          </p>
+                        )}
+                      </Td>
+                      <Td>
+                        <p className="text-sm font-medium text-slate-900">
+                          {payment.buyer?.name || '—'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {payment.buyer?.email || '—'}
+                        </p>
                       </Td>
                       <Td>
                         <span className="text-sm font-semibold text-slate-900">
-                          {formatCurrency(payment.totalAmount || payment.amountPaid)}
+                          {formatCurrency(
+                            payment.totalAmount || payment.amountPaid,
+                            rowCurrency
+                          )}
                         </span>
                       </Td>
                       <Td>
-                        <p className="text-sm text-slate-900">{formatDate(payment.submittedAt)}</p>
+                        <p className="text-sm text-slate-600">
+                          {formatDate(
+                            payment.submittedAt || payment.createdAt
+                          )}
+                        </p>
                       </Td>
                       <Td>
-                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                        <Badge variant={statusInfo.variant}>
+                          {statusInfo.label}
+                        </Badge>
                       </Td>
                       <Td className="text-right">
                         <button
+                          type="button"
                           onClick={() => handleViewDetails(payment)}
-                          className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                          title="View Details"
+                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"
+                          title="View details"
                         >
                           <EyeIcon className="h-4 w-4" />
                         </button>
@@ -533,28 +502,28 @@ const AdminPaymentManagement = () => {
           </div>
         )}
 
-        {/* Pagination – same style as AdminDashboard */}
         {payments.length > 0 && (
-          <div className="mt-auto flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
+          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-1">
               <Button
                 variant="outline"
                 size="sm"
                 disabled={pagination.page <= 1}
-                onClick={() => updateQuery('page', pagination.page - 1)}
+                onClick={() => updateQuery('page', String(pagination.page - 1))}
                 className="h-8 rounded-lg px-3 text-xs"
               >
                 Prev
               </Button>
-              <div className="flex items-center gap-1 mx-1">
+              <div className="mx-1 flex items-center gap-1">
                 {getPageNumbers().map((n) => (
                   <button
                     key={n}
-                    onClick={() => updateQuery('page', n)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-all ${
+                    type="button"
+                    onClick={() => updateQuery('page', String(n))}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition ${
                       pagination.page === n
-                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
-                        : 'text-slate-500 hover:bg-white hover:text-slate-900 hover:shadow-sm'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-500 hover:bg-white hover:text-slate-900'
                     }`}
                   >
                     {n}
@@ -565,194 +534,229 @@ const AdminPaymentManagement = () => {
                 variant="outline"
                 size="sm"
                 disabled={pagination.page >= pagination.pages}
-                onClick={() => updateQuery('page', pagination.page + 1)}
+                onClick={() => updateQuery('page', String(pagination.page + 1))}
                 className="h-8 rounded-lg px-3 text-xs"
               >
                 Next
               </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Page</span>
-              <span className="text-sm font-bold text-slate-900">{pagination.page}</span>
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">of</span>
-              <span className="text-sm font-bold text-slate-900">{pagination.pages}</span>
-            </div>
+            <p className="text-sm text-slate-500">
+              Page {pagination.page} of {pagination.pages}
+            </p>
           </div>
         )}
       </Card>
 
-      {/* Payment Details Modal */}
-      {selectedPayment && (
-        <Modal
-          open
-          onClose={() => {
-            setSelectedPayment(null);
-            setPaymentDetails(null);
-          }}
-          title="Payment Details"
-          size="xl"
-        >
-          {detailsLoading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent" />
-            </div>
-          ) : paymentDetails ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Order Number</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {paymentDetails.order?.orderNumber || '-'}
+      {/* Details modal */}
+      <Modal
+        open={!!selectedPayment}
+        onClose={() => {
+          setSelectedPayment(null);
+          setPaymentDetails(null);
+        }}
+        title="Payment Details"
+        size="xl"
+      >
+        {detailsLoading ? (
+          <div className="py-12 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          </div>
+        ) : paymentDetails ? (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                {
+                  label: 'Order Number',
+                  value: paymentDetails.order?.orderNumber || '—',
+                },
+                {
+                  label: 'Amount',
+                  value: formatCurrency(
+                    paymentDetails.order?.totalAmount,
+                    selectedPayment?.currency ||
+                      paymentDetails.order?.currency ||
+                      'LKR'
+                  ),
+                },
+                {
+                  label: 'Payment Method',
+                  value: formatMethod(paymentDetails.order?.paymentMethod),
+                },
+                {
+                  label: 'Date Created',
+                  value: formatDate(paymentDetails.order?.createdAt),
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {item.value}
                   </p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Amount Paid</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {formatCurrency(paymentDetails.order?.totalAmount)}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Payment Method</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {formatMethod(paymentDetails.order?.paymentMethod)}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Date Created</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">
-                    {formatDate(paymentDetails.order?.createdAt)}
-                  </p>
-                </div>
-
-                {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
-                  paymentDetails.paymentSubmission && (
-                    <>
-                      <div className="p-4 bg-slate-50 rounded-2xl">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider">Bank Used</p>
-                        <p className="mt-1 text-lg font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.bankUsed || '-'}
-                        </p>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider">Reference Number</p>
-                        <p className="mt-1 text-lg font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.referenceNumber || '-'}
-                        </p>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl">
-                        <p className="text-xs text-slate-500 uppercase tracking-wider">Transfer Date</p>
-                        <p className="mt-1 text-lg font-semibold text-slate-900">
-                          {formatDate(paymentDetails.paymentSubmission.transferDate)}
-                        </p>
-                      </div>
-                    </>
-                  )}
-
-                <div className="p-4 bg-slate-50 rounded-2xl">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Status</p>
-                  <div className="mt-2">
-                    {(() => {
-                      const raw =
-                        paymentDetails.paymentSubmission?.verificationStatus ||
-                        paymentDetails.order?.paymentStatus ||
-                        'pending';
-                      const status = normalizeStatus(raw);
-                      const info = statusConfig[status] || { label: status, variant: 'gray' };
-                      return <Badge variant={info.variant}>{info.label}</Badge>;
-                    })()}
-                  </div>
-                </div>
-              </div>
+              ))}
 
               {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
-                paymentDetails.paymentSubmission &&
-                ['pending', 'pending_verification', 'needs_info'].includes(
-                  paymentDetails.paymentSubmission.verificationStatus
-                ) && (
-                  <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200">
-                    <Button
-                      onClick={() => handleApprove(paymentDetails.paymentSubmission._id)}
-                      loading={actionLoading === paymentDetails.paymentSubmission._id}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      <CheckCircleIcon className="h-4 w-4 mr-2" />
-                      Approve Payment
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowRequestInfoModal(true)}>
-                      Request More Info
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowRejectModal(true)}
-                      className="text-rose-600 border-rose-100 hover:bg-rose-50"
-                    >
-                      <XCircleIcon className="h-4 w-4 mr-2" />
-                      Reject Payment
-                    </Button>
-                  </div>
+                paymentDetails.paymentSubmission && (
+                  <>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Bank Used
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {paymentDetails.paymentSubmission.bankUsed || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Reference
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {paymentDetails.paymentSubmission.referenceNumber ||
+                          '—'}
+                      </p>
+                    </div>
+                  </>
                 )}
             </div>
-          ) : (
-            <div className="text-center py-8 text-slate-500">Failed to load details</div>
-          )}
-        </Modal>
-      )}
 
-      {/* Reject Modal */}
-      {showRejectModal && (
-        <Modal open onClose={() => setShowRejectModal(false)} title="Reject Payment" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Please provide a reason for rejecting this payment. This will be shown to the buyer.
-            </p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Enter rejection reason..."
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-              rows={4}
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRejectModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleReject}
-                loading={actionLoading === 'reject'}
-                className="bg-rose-600 hover:bg-rose-500"
-              >
-                Reject Payment
-              </Button>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                Status
+              </p>
+              {(() => {
+                const raw =
+                  paymentDetails.paymentSubmission?.verificationStatus ||
+                  paymentDetails.order?.paymentStatus ||
+                  'pending';
+                const status = normalizeStatus(raw);
+                const info = statusConfig[status] || {
+                  label: status,
+                  variant: 'gray',
+                };
+                return <Badge variant={info.variant}>{info.label}</Badge>;
+              })()}
             </div>
-          </div>
-        </Modal>
-      )}
 
-      {/* Request Info Modal */}
-      {showRequestInfoModal && (
-        <Modal open onClose={() => setShowRequestInfoModal(false)} title="Request More Information" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Send a request to the buyer for additional information or documentation.
-            </p>
-            <textarea
-              value={infoMessage}
-              onChange={(e) => setInfoMessage(e.target.value)}
-              placeholder="What information do you need?"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-              rows={4}
-            />
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRequestInfoModal(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleRequestInfo} loading={actionLoading === 'request_info'}>
-                Send Request
-              </Button>
-            </div>
+            {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
+              paymentDetails.paymentSubmission &&
+              ['pending', 'pending_verification', 'needs_info'].includes(
+                paymentDetails.paymentSubmission.verificationStatus
+              ) && (
+                <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+                  <Button
+                    onClick={() =>
+                      handleApprove(paymentDetails.paymentSubmission._id)
+                    }
+                    disabled={
+                      actionLoading === paymentDetails.paymentSubmission._id
+                    }
+                    className="bg-blue-600 hover:bg-blue-500"
+                  >
+                    <CheckCircleIcon className="mr-1.5 h-4 w-4" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                    onClick={() => setShowRequestInfoModal(true)}
+                  >
+                    Request info
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                    onClick={() => setShowRejectModal(true)}
+                  >
+                    <XCircleIcon className="mr-1.5 h-4 w-4" />
+                    Reject
+                  </Button>
+                </div>
+              )}
           </div>
-        </Modal>
-      )}
+        ) : (
+          <p className="py-8 text-center text-sm text-slate-500">
+            Failed to load details
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        title="Reject Payment"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Provide a reason for rejecting this payment. The buyer will see this
+            message.
+          </p>
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Rejection reason…"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            rows={4}
+          />
+          <div className="flex gap-3">
+            <Button
+              className="flex-1 bg-rose-600 hover:bg-rose-500"
+              onClick={handleReject}
+              disabled={actionLoading === 'reject'}
+            >
+              Reject payment
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowRejectModal(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showRequestInfoModal}
+        onClose={() => setShowRequestInfoModal(false)}
+        title="Request More Information"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Ask the buyer for additional information or documentation.
+          </p>
+          <textarea
+            value={infoMessage}
+            onChange={(e) => setInfoMessage(e.target.value)}
+            placeholder="What information do you need?"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            rows={4}
+          />
+          <div className="flex gap-3">
+            <Button
+              className="flex-1 bg-blue-600 hover:bg-blue-500"
+              onClick={handleRequestInfo}
+              disabled={actionLoading === 'request_info'}
+            >
+              Send request
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowRequestInfoModal(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
