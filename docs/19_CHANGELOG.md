@@ -12,7 +12,6 @@ All notable changes to the **ENTRYNEX / EAMS** project documentation are listed 
   - `15_ENVIRONMENT_CONFIGURATION.md`
   - `16_DEPLOYMENT_GUIDE.md`
   - `17_OPERATIONS_GUIDE.md`
-  - `17_TESTING_GUIDE.md`
   - `18_TROUBLESHOOTING.md`
   - `19_CHANGELOG.md`
 - Updated `README.md` with a documentation index linking to all new markdown files.

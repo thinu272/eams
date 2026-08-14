@@ -68,12 +68,11 @@ npm start   # runs on http://localhost:3000
 - [14_ERROR_HANDLING_LOGGING.md](docs/14_ERROR_HANDLING_LOGGING.md)
 - [15_ENVIRONMENT_CONFIGURATION.md](docs/15_ENVIRONMENT_CONFIGURATION.md)
 - [16_DEPLOYMENT_GUIDE.md](docs/16_DEPLOYMENT_GUIDE.md)
-- [17_TESTING_GUIDE.md](docs/17_TESTING_GUIDE.md)
 - [18_TROUBLESHOOTING.md](docs/18_TROUBLESHOOTING.md)
 - [19_CHANGELOG.md](docs/19_CHANGELOG.md)
 
 ## Running Tests
-`npm test` (if test scripts are defined).
+No automated test suites are included in this repository. The previous testing guide has been archived in `docs/17_TESTING_GUIDE.md`.
 
 ## Deploying
 See [16_DEPLOYMENT_GUIDE.md](docs/16_DEPLOYMENT_GUIDE.md).
