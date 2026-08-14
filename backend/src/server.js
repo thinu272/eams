@@ -86,7 +86,7 @@ app.use('/api/user', require('./routes/userPortal'));
 app.use('/api/short-links', require('./routes/shortLinks'));
 
 // --- DATABASE CONNECTION ---
-const MONGO_URI = process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 
 mongoose
   .connect(MONGO_URI)
