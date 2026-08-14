@@ -205,7 +205,7 @@ app.use('/api/upload', require('./routes/upload'));;
 app.use('/api/devices', require('./routes/devices'));
 
 // --- DATABASE CONNECTION ---
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI; 
 
 if (!MONGO_URI) {
   console.error('Fatal: MONGODB_URI (or MONGO_URI) is not set. Aborting startup to avoid using embedded credentials.');
