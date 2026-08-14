@@ -18,13 +18,13 @@ Zone access control determines whether an attendee may **enter** or **exit** a p
 ## Access Evaluation Flow
 ```mermaid
 flowchart TD
-    A[Scan QR/RFID] --> B{Validate Ticket}
+    A[Scan QR or RFID] --> B{Validate Ticket}
     B -->|Valid| C{Check Allowed Zones}
     C -->|Allowed| D[Grant Access]
     C -->|Not Allowed| E[Deny Access]
     D --> F[Create EntryLog]
-    E --> G[Create ZoneLog (denied)]
-    D --> H[Notify Staff via Socket.io]
+    E --> G[Create ZoneLog - denied]
+    D --> H[Notify Staff via Socketio]
     E --> I[Notify Staff via Notification Service]
 ```
 1. **Validate Ticket** – `Ticket` is fetched and must be in a status that permits entry (`CONFIRMED`, `SOLD`).
