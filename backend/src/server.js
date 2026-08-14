@@ -205,12 +205,17 @@ app.use('/api/upload', require('./routes/upload'));;
 app.use('/api/devices', require('./routes/devices'));
 
 // --- DATABASE CONNECTION ---
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://eams_db_user:Fab3JzfDqeFXuZMN@ac-eibrjtr-shard-00-00.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-01.qsnrhfu.mongodb.net:27017,ac-eibrjtr-shard-00-02.qsnrhfu.mongodb.net:27017/?ssl=true&replicaSet=atlas-lyu9mw-shard-0&authSource=admin&appName=Cluster0";
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI; 
+
+if (!MONGO_URI) {
+  console.error('Fatal: MONGODB_URI (or MONGO_URI) is not set. Aborting startup to avoid using embedded credentials.');
+  process.exit(1);
+}
 
 mongoose
   .connect(MONGO_URI)
   .then(() => {
-    console.log("MongoDB connected");
+    console.log('MongoDB connected');
     // Initialize S3 cleanup scheduler after database connection
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       initializeCleanupScheduler();
@@ -228,3 +233,14 @@ app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
 // Bind to localhost only for local-only development.
 server.listen(PORT, '127.0.0.1', () => console.log(`Server running on port ${PORT}`));
+
+// Runtime environment presence check (prints which critical env vars are present without revealing values)
+(() => {
+  const critical = ['MONGODB_URI', 'JWT_SECRET', 'PAYHERE_SECRET', 'STRIPE_SECRET_KEY', 'AZURE_STORAGE_CONNECTION_STRING'];
+  const present = critical.filter(k => !!process.env[k]);
+  const missing = critical.filter(k => !process.env[k]);
+  console.log(`Env check - present: ${present.length ? present.join(',') : 'none'}; missing: ${missing.length ? missing.join(',') : 'none'}`);
+  if (missing.length) {
+    console.warn('Warning: Missing critical env vars - set them in your environment or secrets store for full feature availability.');
+  }
+})();
