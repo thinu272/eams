@@ -6,7 +6,7 @@ const Event = require('../models/Event');
 const Attendee = require('../models/Attendee');
 const Notification = require('../models/Notification');
 const { logActivity } = require('../utils/logger');
-const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
+const { notifyFinalTicket, notifyBuyerTicketProgress, sendCashPaymentConfirmedEmail } = require('../services/notificationService');
 const { emitDashboardEvent, emitBuyerEvent } = require('../utils/socket');
 const { sendBankTransferPaymentApproved, sendBankTransferPaymentRejected, sendBankTransferMoreInfoRequired } = require('../utils/email');
 const { sendBuyerPurchaseSummaryEmail } = require('../services/ticketDeliveryService');
@@ -160,8 +160,17 @@ const getPaymentSubmissions = async (req, res, next) => {
         });
         
         assignedCategoryNames = Array.from(new Set(assignedCategoryNames));
+        
         if (assignedCategoryNames.length === 0) {
-           return res.json({ success: true, data: { payments: [], total: 0, pages: 0 } });
+           return res.json({ 
+             success: true, 
+             data: { 
+               payments: [], 
+               total: 0, 
+               pages: 0,
+               _message: 'No categories assigned. Please contact organizer.'
+             } 
+           });
         }
         
         filter['tickets.categoryName'] = { $in: assignedCategoryNames };
@@ -518,7 +527,29 @@ const approvePayment = async (req, res, next) => {
     try {
       if (order.paymentMethod === 'bank_transfer') {
         await sendBankTransferPaymentApproved(order, order.eventId);
+      } else if (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') {
+        // Cash payment - send full confirmation flow
+        await notifyBuyerTicketProgress(order.buyerEmail, {
+          orderNumber: order.orderNumber,
+          eventName: order.eventId?.name,
+          status: 'confirmed',
+        });
+        
+        for (const ticket of tickets) {
+          if (ticket.attendee) {
+            await notifyFinalTicket(ticket.attendee, order.eventId);
+          }
+        }
+
+        await sendBuyerPurchaseSummaryEmail({ order, event: order.eventId });
+        
+        // Send specific cash payment confirmation email
+        await sendCashPaymentConfirmedEmail(
+          { name: order.buyerName, email: order.buyerEmail },
+          order
+        );
       } else {
+        // Other payment methods (card, etc.)
         await notifyBuyerTicketProgress(order.buyerEmail, {
           orderNumber: order.orderNumber,
           eventName: order.eventId?.name,
@@ -536,10 +567,10 @@ const approvePayment = async (req, res, next) => {
       
       if (order.buyerPhone) {
         try {
-          await sendSMS(
-            order.buyerPhone,
-            `ENTRYNEX: Your payment has been approved. Your order ${order.orderNumber} is confirmed. Please complete your attendee details through your ENTRYNEX account.`
-          );
+          const smsMessage = order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance'
+            ? `ENTRYNEX: Your cash payment for order ${order.orderNumber} has been received. Your tickets are now confirmed! Complete your attendee details at your ENTRYNEX account.`
+            : `ENTRYNEX: Your payment has been approved. Your order ${order.orderNumber} is confirmed. Please complete your attendee details through your ENTRYNEX account.`;
+          await sendSMS(order.buyerPhone, smsMessage);
         } catch (smsErr) {
           console.error('Error sending approval SMS:', smsErr);
         }
@@ -993,18 +1024,35 @@ const getPaymentStatistics = async (req, res, next) => {
         assignedCategoryNames = [];
         
         accessibleEvents.forEach(event => {
-          (event.categories || []).forEach(cat => {
-            if (cat.assignedSubOrganisers && cat.assignedSubOrganisers.some(id => id.toString() === user._id.toString())) {
-              assignedCategoryNames.push(cat.name);
-            }
-          });
+          const eventCategories = getSubOrgPermittedCategoryNames(user, event);
+          assignedCategoryNames.push(...eventCategories);
         });
         
-        if (assignedCategoryNames.length === 0) {
-           return res.json({ success: true, data: { overview: {}, recentPayments: [] } });
-        }
+        assignedCategoryNames = Array.from(new Set(assignedCategoryNames));
         
-        // Don't apply filter at Order level - will handle in aggregation pipeline
+        if (assignedCategoryNames.length === 0) {
+           return res.json({
+             success: true,
+             data: {
+               overview: {
+                 currency: scopedCurrency,
+                 totalPayments: 0,
+                 pendingPayments: 0,
+                 approvedPayments: 0,
+                 rejectedPayments: 0,
+                 needsInfoPayments: 0,
+                 totalAmount: 0,
+                 approvedAmount: 0,
+                 pendingAmount: 0,
+                 pendingBankTransfers: 0,
+                 approvedBankTransfers: 0,
+                 cashReservations: 0,
+                 cashCollected: 0,
+               },
+               recentPayments: [],
+             }
+           });
+        }
       }
     }
 
@@ -1045,14 +1093,21 @@ const getPaymentStatistics = async (req, res, next) => {
 
     // For sub-organizers, we need to count orders that have at least one ticket in their assigned categories
     let countFilter = filter;
+    let hasSubOrgCategories = assignedCategoryNames.length > 0;
+    
     if (role === 'sub_organiser' || role === 'suborganiser') {
-      // For counting, we need to find orders that have tickets in assigned categories
-      const ordersWithAssignedCategories = await Order.find({
-        ...filter,
-        'tickets.categoryName': { $in: assignedCategoryNames }
-      }).select('_id');
-      const orderIds = ordersWithAssignedCategories.map(o => o._id);
-      countFilter = { _id: { $in: orderIds } };
+      if (hasSubOrgCategories) {
+        // For counting, we need to find orders that have tickets in assigned categories
+        const ordersWithAssignedCategories = await Order.find({
+          ...filter,
+          'tickets.categoryName': { $in: assignedCategoryNames }
+        }).select('_id');
+        const orderIds = ordersWithAssignedCategories.map(o => o._id);
+        countFilter = { _id: { $in: orderIds } };
+      } else {
+        // No categories assigned - return zeros
+        countFilter = { _id: { $in: [] } };
+      }
     }
 
     const [

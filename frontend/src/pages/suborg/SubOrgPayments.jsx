@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import useAutoRefresh from '../../hooks/useAutoRefresh';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
@@ -123,6 +122,7 @@ const SubOrgPayments = () => {
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
@@ -140,6 +140,7 @@ const SubOrgPayments = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showRequestInfoModal, setShowRequestInfoModal] = useState(false);
   const [showConfirmCashModal, setShowConfirmCashModal] = useState(false);
+  const [showConfirmApproveModal, setShowConfirmApproveModal] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
   const [viewingReceipt, setViewingReceipt] = useState(false);
@@ -151,6 +152,26 @@ const SubOrgPayments = () => {
   const [eventCurrency, setEventCurrency] = useState(
     localStorage.getItem('lastEventCurrency') || 'LKR'
   );
+
+  // Use refs to store current filter values for stable fetch functions
+  const filterRefs = useRef({
+    statusFilter,
+    methodFilter,
+    searchQuery,
+    pagination,
+    currentEventId,
+  });
+
+  // Update refs when values change
+  useEffect(() => {
+    filterRefs.current = {
+      statusFilter,
+      methodFilter,
+      searchQuery,
+      pagination,
+      currentEventId,
+    };
+  }, [statusFilter, methodFilter, searchQuery, pagination, currentEventId]);
 
   const currency = getCurrency(
     statistics,
@@ -166,10 +187,12 @@ const SubOrgPayments = () => {
     localStorage.setItem('lastEventCurrency', nextCurrency);
   }, []);
 
-  const fetchPayments = useCallback(async () => {
-    setLoading(true);
+  const fetchPayments = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true);
     setError(null);
     try {
+      const { statusFilter, methodFilter, searchQuery, pagination, currentEventId } = filterRefs.current;
+      
       const cleanId =
         currentEventId &&
         currentEventId !== 'undefined' &&
@@ -193,87 +216,197 @@ const SubOrgPayments = () => {
       rememberCurrency(resolveCurrency(data, data.payments?.[0]));
 
       const backendPagination = data.pagination || {};
-      const total =
-        Number(backendPagination.total) || Number(data.total) || 0;
-      const limit =
-        Number(backendPagination.limit) || pagination.limit || 10;
-      const pages =
-        Number(backendPagination.pages) || Math.ceil(total / limit) || 1;
+      const total = Number(data.total ?? backendPagination.total ?? 0);
+      const limit = Number(backendPagination.limit || pagination.limit || 10);
+      const pages = Number(data.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
 
       setPagination((prev) => ({
         ...prev,
-        page: Number(backendPagination.page) || prev.page,
+        page: data.page || Number(backendPagination.page) || prev.page,
         limit,
         total,
         pages,
       }));
+      setLastUpdated(new Date());
     } catch (err) {
       setError('Failed to load payments');
       toast.error('Failed to load payments');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
-  }, [
-    statusFilter,
-    methodFilter,
-    searchQuery,
-    pagination.page,
-    pagination.limit,
-    currentEventId,
-    rememberCurrency,
-  ]);
+  }, []);
 
-  const fetchStats = useCallback(async () => {
-    setStatsLoading(true);
+  const fetchStats = useCallback(async (isInitial = false) => {
+    if (isInitial) setStatsLoading(true);
     try {
+      const { currentEventId } = filterRefs.current;
+      
       const cleanId =
         currentEventId &&
         currentEventId !== 'undefined' &&
         currentEventId !== 'null'
           ? currentEventId
           : undefined;
+
       const res = await getSubOrgPaymentStatistics({ eventId: cleanId });
-      const nextStats = res.data?.data?.overview || null;
+      const nextStats = res.data?.data?.overview || {};
       setStatistics(nextStats);
       rememberCurrency(resolveCurrency(res.data?.data, nextStats));
-    } catch {
-      /* silent */
+      setLastUpdated(new Date());
+    } catch (err) {
+      setStatistics({});
     } finally {
-      setStatsLoading(false);
+      if (isInitial) setStatsLoading(false);
     }
-  }, [currentEventId, rememberCurrency]);
+  }, []);
 
   useEffect(() => {
-    fetchPayments();
-    fetchStats();
-  }, [fetchPayments, fetchStats]);
+    // Initial data fetch
+    let mounted = true;
+    
+    const loadInitialData = async () => {
+      if (!currentEventId) return;
+      
+      setLoading(true);
+      setStatsLoading(true);
+      
+      try {
+        const { statusFilter, methodFilter, searchQuery, pagination } = filterRefs.current;
+        
+        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null' 
+          ? currentEventId 
+          : undefined;
 
-  useAutoRefresh(
-    () => {
-      fetchPayments();
-      fetchStats();
-    },
-    {
-      enabled: !!currentEventId,
-      interval: 15000,
-      immediate: false,
-      deps: [currentEventId, statusFilter, methodFilter, searchQuery, pagination.page, pagination.limit],
-    }
-  );
+        // Fetch payments and stats in parallel
+        const [paymentsRes, statsRes] = await Promise.all([
+          getSubOrgPayments({
+            page: pagination.page,
+            limit: pagination.limit,
+            eventId: cleanId,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            paymentMethod: methodFilter !== 'all' ? methodFilter : undefined,
+            search: searchQuery || undefined,
+          }),
+          getSubOrgPaymentStatistics({ eventId: cleanId }),
+        ]);
 
+        if (!mounted) return;
+
+        // Handle payments
+        const paymentsData = paymentsRes.data?.data || {};
+        setPayments(paymentsData.payments || []);
+
+        const backendPagination = paymentsData.pagination || {};
+        const total = Number(paymentsData.total ?? backendPagination.total ?? 0);
+        const limit = Number(backendPagination.limit || pagination.limit || 10);
+        const pages = Number(paymentsData.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
+
+        setPagination((prev) => ({
+          ...prev,
+          page: paymentsData.page || Number(backendPagination.page) || prev.page,
+          limit,
+          total,
+          pages,
+        }));
+
+        // Handle statistics
+        const statsData = statsRes.data?.data || {};
+        setStatistics(statsData.overview || {});
+        rememberCurrency(resolveCurrency(statsData, statsData.overview));
+
+        setLastUpdated(new Date());
+      } catch (err) {
+        if (mounted) {
+          setError('Failed to load payments');
+          setStatistics({});
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          setStatsLoading(false);
+        }
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentEventId]);
+
+  // Trigger data refresh when filters change (use ref to avoid stale closures)
   useEffect(() => {
-    const cleanId =
-      currentEventId &&
-      currentEventId !== 'undefined' &&
-      currentEventId !== 'null'
-        ? currentEventId
-        : undefined;
-    getSubDashboard({ eventId: cleanId })
-      .then((response) => {
+    if (!currentEventId) return;
+
+    const fetchFilteredData = async () => {
+      setLoading(true);
+      try {
+        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null'
+          ? currentEventId
+          : undefined;
+
+        const res = await getSubOrgPayments({
+          page: pagination.page,
+          limit: pagination.limit,
+          eventId: cleanId,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          paymentMethod: methodFilter !== 'all' ? methodFilter : undefined,
+          search: searchQuery || undefined,
+        });
+
+        const data = res.data?.data || {};
+        setPayments(data.payments || []);
+
+        const backendPagination = data.pagination || {};
+        const total = Number(data.total ?? backendPagination.total ?? 0);
+        const limit = Number(backendPagination.limit || pagination.limit || 10);
+        const pages = Number(data.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
+
+        setPagination((prev) => ({
+          ...prev,
+          page: data.page || Number(backendPagination.page) || prev.page,
+          limit,
+          total,
+          pages,
+        }));
+      } catch (err) {
+        setError('Failed to load payments');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchFilteredData, 300);
+    return () => clearTimeout(timeoutId);
+  }, [statusFilter, methodFilter, searchQuery, pagination.page, pagination.limit, currentEventId]);
+
+  // Set up periodic refresh and currency sync
+  useEffect(() => {
+    if (!currentEventId) return;
+
+    // Initial load of currency from dashboard
+    const loadCurrency = async () => {
+      try {
+        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null'
+          ? currentEventId
+          : undefined;
+        const response = await getSubDashboard({ eventId: cleanId });
         rememberCurrency(resolveCurrency(response.data?.data));
-      })
-      .catch(() => {});
-  }, [currentEventId, rememberCurrency]);
+      } catch (e) {
+        // Silent fail for currency
+      }
+    };
+
+    loadCurrency();
+
+    // Periodic refresh every 60 seconds
+    const intervalId = setInterval(() => {
+      fetchStats(false);
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [currentEventId]);
 
   useEffect(() => {
     const handleEventSelect = (e) => {
@@ -308,6 +441,7 @@ const SubOrgPayments = () => {
     setShowRejectModal(false);
     setShowRequestInfoModal(false);
     setShowConfirmCashModal(false);
+    setShowConfirmApproveModal(false);
     setActionMessage('');
   };
 
@@ -344,21 +478,18 @@ const SubOrgPayments = () => {
     }
   };
 
-  const handleApprove = async (id, skipConfirm = false) => {
-    if (
-      !skipConfirm &&
-      !window.confirm(
-        'Approve this payment? This will confirm the order and activate tickets.'
-      )
-    )
-      return;
+  const openApproveConfirm = (payment) => {
+    setSelectedPayment(payment);
+    setShowConfirmApproveModal(true);
+  };
+
+  const handleApprove = async (id) => {
     setActionLoading(id);
     try {
       await approveSubOrgPayment(id);
       toast.success('Payment approved successfully!');
       closeDetails();
-      fetchPayments();
-      fetchStats();
+      await Promise.all([fetchPayments(false), fetchStats(false)]);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to approve payment');
     } finally {
@@ -376,8 +507,7 @@ const SubOrgPayments = () => {
       });
       toast.success('Payment rejected');
       closeDetails();
-      fetchPayments();
-      fetchStats();
+      await Promise.all([fetchPayments(false), fetchStats(false)]);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reject payment');
     } finally {
@@ -394,8 +524,7 @@ const SubOrgPayments = () => {
       });
       toast.success('Information request sent to buyer');
       closeDetails();
-      fetchPayments();
-      fetchStats();
+      await Promise.all([fetchPayments(false), fetchStats(false)]);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send request');
     } finally {
@@ -436,67 +565,94 @@ const SubOrgPayments = () => {
           </div>
         </Card>
 
+        {/* Auto-refresh indicator */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
+            Auto-updating payment data
+          </span>
+          {lastUpdated && <span>Updated {new Date(lastUpdated).toLocaleTimeString()}</span>}
+        </div>
+
         {/* Metrics — 4 then 4 */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="Total Assigned"
-            value={statsLoading ? '—' : statistics?.totalPayments || 0}
-            subtitle="Transactions"
-            icon={BanknotesIcon}
-          />
-          <MetricCard
-            title="Total Paid"
-            value={
-              statsLoading
-                ? '—'
-                : formatCurrency(statistics?.approvedAmount || 0, currency)
-            }
-            subtitle="Confirmed revenue"
-            icon={CheckCircleIcon}
-          />
-          <MetricCard
-            title="Pending Bank"
-            value={statsLoading ? '—' : statistics?.pendingBankTransfers || 0}
-            subtitle="Awaiting review"
-            icon={ClockIcon}
-          />
-          <MetricCard
-            title="Approved Bank"
-            value={statsLoading ? '—' : statistics?.approvedBankTransfers || 0}
-            subtitle="Verified transfers"
-            icon={CheckCircleIcon}
-          />
-        </section>
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="Cash Reservations"
-            value={statsLoading ? '—' : statistics?.cashReservations || 0}
-            subtitle="At entrance"
-            icon={ClockIcon}
-          />
-          <MetricCard
-            title="Cash Collected"
-            value={
-              statsLoading
-                ? '—'
-                : formatCurrency(statistics?.cashCollected || 0, currency)
-            }
-            subtitle="Confirmed cash"
-            icon={BanknotesIcon}
-          />
-          <MetricCard
-            title="Awaiting Info"
-            value={statsLoading ? '—' : statistics?.needsInfoPayments || 0}
-            subtitle="Buyer response needed"
-            icon={ExclamationTriangleIcon}
-          />
-          <MetricCard
-            title="Rejected"
-            value={statsLoading ? '—' : statistics?.rejectedPayments || 0}
-            subtitle="Declined payments"
-            icon={XCircleIcon}
-          />
-        </section>
+        {!statsLoading && Object.keys(statistics || {}).length === 0 ? (
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6">
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <ExclamationTriangleIcon className="h-6 w-6" />
+              </div>
+              <p className="text-base font-semibold text-slate-800">
+                No payment statistics available
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                You may not have any ticket categories assigned to you. Please contact the event organizer to assign categories.
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <>
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                title="Total Assigned"
+                value={statsLoading ? '—' : statistics?.totalPayments || 0}
+                subtitle="Transactions"
+                icon={BanknotesIcon}
+              />
+              <MetricCard
+                title="Total Paid"
+                value={
+                  statsLoading
+                    ? '—'
+                    : formatCurrency(statistics?.approvedAmount || 0, currency)
+                }
+                subtitle="Confirmed revenue"
+                icon={CheckCircleIcon}
+              />
+              <MetricCard
+                title="Pending Bank"
+                value={statsLoading ? '—' : statistics?.pendingBankTransfers || 0}
+                subtitle="Awaiting review"
+                icon={ClockIcon}
+              />
+              <MetricCard
+                title="Approved Bank"
+                value={statsLoading ? '—' : statistics?.approvedBankTransfers || 0}
+                subtitle="Verified transfers"
+                icon={CheckCircleIcon}
+              />
+            </section>
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                title="Cash Reservations"
+                value={statsLoading ? '—' : statistics?.cashReservations || 0}
+                subtitle="At entrance"
+                icon={ClockIcon}
+              />
+              <MetricCard
+                title="Cash Collected"
+                value={
+                  statsLoading
+                    ? '—'
+                    : formatCurrency(statistics?.cashCollected || 0, currency)
+                }
+                subtitle="Confirmed cash"
+                icon={BanknotesIcon}
+              />
+              <MetricCard
+                title="Awaiting Info"
+                value={statsLoading ? '—' : statistics?.needsInfoPayments || 0}
+                subtitle="Buyer response needed"
+                icon={ExclamationTriangleIcon}
+              />
+              <MetricCard
+                title="Rejected"
+                value={statsLoading ? '—' : statistics?.rejectedPayments || 0}
+                subtitle="Declined payments"
+                icon={XCircleIcon}
+              />
+            </section>
+          </>
+        )}
 
         {/* Filters */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
@@ -674,11 +830,7 @@ const SubOrgPayments = () => {
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      handleApprove(
-                                        payment.submissionId || payment._id
-                                      )
-                                    }
+                                    onClick={() => openApproveConfirm(payment)}
                                     disabled={
                                       actionLoading ===
                                       (payment.submissionId || payment._id)
@@ -766,185 +918,202 @@ const SubOrgPayments = () => {
       </div>
 
       {/* Details modal */}
-      {selectedPayment && !showRejectModal && !showRequestInfoModal && !showConfirmCashModal && (
-        <Modal open onClose={closeDetails} title="Payment Details" size="xl">
-          {detailsLoading ? (
-            <div className="py-12 text-center">
-              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            </div>
-          ) : paymentDetails ? (
-            <div className="space-y-5">
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  {
-                    label: 'Order Number',
-                    value: paymentDetails.order?.orderNumber || '—',
-                  },
-                  {
-                    label: 'Amount',
-                    value: formatCurrency(
-                      paymentDetails.order?.totalAmount,
-                      getCurrency(paymentDetails, selectedPayment, statistics)
-                    ),
-                  },
-                  {
-                    label: 'Payment Method',
-                    value:
-                      paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') ||
-                      '—',
-                  },
-                  {
-                    label: 'Date Created',
-                    value: formatDate(paymentDetails.order?.createdAt),
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5"
-                  >
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      {item.label}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900 capitalize">
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-                {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
-                  paymentDetails.paymentSubmission && (
-                    <>
-                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Bank Used
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.bankUsed || '—'}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Reference
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">
-                          {paymentDetails.paymentSubmission.referenceNumber ||
-                            '—'}
-                        </p>
-                      </div>
-                    </>
-                  )}
+      {selectedPayment &&
+        !showRejectModal &&
+        !showRequestInfoModal &&
+        !showConfirmCashModal &&
+        !showConfirmApproveModal && (
+          <Modal open onClose={closeDetails} title="Payment Details" size="xl">
+            {detailsLoading ? (
+              <div className="py-12 text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
               </div>
-
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Buyer
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <p>
-                    <span className="text-slate-500">Name:</span>{' '}
-                    <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerName || '—'}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Email:</span>{' '}
-                    <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerEmail || '—'}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Phone:</span>{' '}
-                    <span className="font-semibold text-slate-900">
-                      {paymentDetails.order?.buyerPhone || '—'}
-                    </span>
-                  </p>
+            ) : paymentDetails ? (
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    {
+                      label: 'Order Number',
+                      value: paymentDetails.order?.orderNumber || '—',
+                    },
+                    {
+                      label: 'Amount',
+                      value: formatCurrency(
+                        paymentDetails.order?.totalAmount,
+                        getCurrency(paymentDetails, selectedPayment, statistics)
+                      ),
+                    },
+                    {
+                      label: 'Payment Method',
+                      value:
+                        paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') ||
+                        '—',
+                    },
+                    {
+                      label: 'Date Created',
+                      value: formatDate(paymentDetails.order?.createdAt),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5"
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900 capitalize">
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                  {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
+                    paymentDetails.paymentSubmission && (
+                      <>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Bank Used
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {paymentDetails.paymentSubmission.bankUsed || '—'}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Reference
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {paymentDetails.paymentSubmission.referenceNumber ||
+                              '—'}
+                          </p>
+                        </div>
+                      </>
+                    )}
                 </div>
-              </div>
 
-              {paymentDetails.paymentSubmission?.receiptFile && (
                 <div className="rounded-xl border border-slate-200 p-4">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Receipt
+                    Buyer
                   </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleViewReceipt(
-                        selectedPayment?.submissionId || selectedPayment?._id || paymentDetails.paymentSubmission?._id
-                      )
-                    }
-                    disabled={viewingReceipt}
-                    className="text-sm font-semibold text-blue-600 hover:underline"
-                  >
-                    View receipt →
-                  </button>
-                </div>
-              )}
-
-              {(() => {
-                const s = normalizeStatus(
-                  paymentDetails.paymentSubmission?.verificationStatus ||
-                    paymentDetails.order?.paymentStatus
-                );
-                const isPending =
-                  s === 'pending' ||
-                  s === 'pending_verification' ||
-                  s === 'awaiting_payment';
-                if (!isPending) return null;
-                return (
-                  <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-500"
-                      onClick={() => {
-                        if (
-                          paymentDetails.order?.paymentMethod ===
-                            'cash_at_entrance' ||
-                          paymentDetails.order?.paymentMethod ===
-                            'cash_on_entrance'
-                        ) {
-                          setSelectedPayment(paymentDetails.order);
-                          setShowConfirmCashModal(true);
-                        } else {
-                          handleApprove(
-                            paymentDetails.paymentSubmission?._id ||
-                              paymentDetails.order?._id
-                          );
-                        }
-                      }}
-                    >
-                      <CheckCircleIcon className="mr-1.5 h-4 w-4" />
-                      Approve
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={() => setShowRequestInfoModal(true)}
-                    >
-                      Request info
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="text-rose-600 border-rose-200 hover:bg-rose-50"
-                      onClick={() => setShowRejectModal(true)}
-                    >
-                      <XCircleIcon className="mr-1.5 h-4 w-4" />
-                      Reject
-                    </Button>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <p>
+                      <span className="text-slate-500">Name:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        {paymentDetails.order?.buyerName || '—'}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-slate-500">Email:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        {paymentDetails.order?.buyerEmail || '—'}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-slate-500">Phone:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        {paymentDetails.order?.buyerPhone || '—'}
+                      </span>
+                    </p>
                   </div>
-                );
-              })()}
-            </div>
-          ) : (
-            <p className="py-6 text-center text-sm text-slate-500">
-              No details available.
-            </p>
-          )}
-        </Modal>
-      )}
+                </div>
+
+                {paymentDetails.paymentSubmission?.receiptFile && (
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Receipt
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleViewReceipt(
+                          selectedPayment?.submissionId ||
+                            selectedPayment?._id ||
+                            paymentDetails.paymentSubmission?._id
+                        )
+                      }
+                      disabled={viewingReceipt}
+                      className="text-sm font-semibold text-blue-600 hover:underline"
+                    >
+                      View receipt →
+                    </button>
+                  </div>
+                )}
+
+                {(() => {
+                  const s = normalizeStatus(
+                    paymentDetails.paymentSubmission?.verificationStatus ||
+                      paymentDetails.order?.paymentStatus
+                  );
+                  const isPending =
+                    s === 'pending' ||
+                    s === 'pending_verification' ||
+                    s === 'awaiting_payment';
+                  if (!isPending) return null;
+                  return (
+                    <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+                      <Button
+                        className="bg-blue-600 hover:bg-blue-500"
+                        onClick={() => {
+                          if (
+                            paymentDetails.order?.paymentMethod ===
+                              'cash_at_entrance' ||
+                            paymentDetails.order?.paymentMethod ===
+                              'cash_on_entrance'
+                          ) {
+                            setSelectedPayment(paymentDetails.order);
+                            setShowConfirmCashModal(true);
+                          } else {
+                            openApproveConfirm({
+                              ...selectedPayment,
+                              ...paymentDetails.order,
+                              submissionId:
+                                paymentDetails.paymentSubmission?._id ||
+                                selectedPayment.submissionId ||
+                                selectedPayment._id,
+                              totalAmount: paymentDetails.order?.totalAmount,
+                              orderNumber: paymentDetails.order?.orderNumber,
+                            });
+                          }
+                        }}
+                      >
+                        <CheckCircleIcon className="mr-1.5 h-4 w-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={() => setShowRequestInfoModal(true)}
+                      >
+                        Request info
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                        onClick={() => setShowRejectModal(true)}
+                      >
+                        <XCircleIcon className="mr-1.5 h-4 w-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-slate-500">
+                No details available.
+              </p>
+            )}
+          </Modal>
+        )}
 
       {/* Reject */}
       <Modal
         open={showRejectModal}
-        onClose={() => setShowRejectModal(false)}
+        onClose={() => {
+          setShowRejectModal(false);
+          if (!paymentDetails) {
+            closeDetails();
+          }
+        }}
         title="Reject Payment"
         size="md"
       >
@@ -971,7 +1140,12 @@ const SubOrgPayments = () => {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => setShowRejectModal(false)}
+              onClick={() => {
+                setShowRejectModal(false);
+                if (!paymentDetails) {
+                  closeDetails();
+                }
+              }}
             >
               Cancel
             </Button>
@@ -982,7 +1156,12 @@ const SubOrgPayments = () => {
       {/* Request info */}
       <Modal
         open={showRequestInfoModal}
-        onClose={() => setShowRequestInfoModal(false)}
+        onClose={() => {
+          setShowRequestInfoModal(false);
+          if (!paymentDetails) {
+            closeDetails();
+          }
+        }}
         title="Request More Information"
         size="md"
       >
@@ -1008,7 +1187,12 @@ const SubOrgPayments = () => {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => setShowRequestInfoModal(false)}
+              onClick={() => {
+                setShowRequestInfoModal(false);
+                if (!paymentDetails) {
+                  closeDetails();
+                }
+              }}
             >
               Cancel
             </Button>
@@ -1019,7 +1203,12 @@ const SubOrgPayments = () => {
       {/* Confirm cash */}
       <Modal
         open={!!showConfirmCashModal && !!selectedPayment}
-        onClose={() => setShowConfirmCashModal(false)}
+        onClose={() => {
+          setShowConfirmCashModal(false);
+          if (!paymentDetails) {
+            closeDetails();
+          }
+        }}
         title="Confirm Cash Payment"
         size="md"
       >
@@ -1046,8 +1235,7 @@ const SubOrgPayments = () => {
                 className="flex-1 bg-blue-600 hover:bg-blue-500"
                 onClick={() =>
                   handleApprove(
-                    selectedPayment.submissionId || selectedPayment._id,
-                    true
+                    selectedPayment.submissionId || selectedPayment._id
                   )
                 }
                 disabled={
@@ -1055,12 +1243,92 @@ const SubOrgPayments = () => {
                   (selectedPayment.submissionId || selectedPayment._id)
                 }
               >
-                Confirm received
+                {actionLoading ===
+                (selectedPayment.submissionId || selectedPayment._id)
+                  ? 'Confirming…'
+                  : 'Confirm received'}
               </Button>
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => setShowConfirmCashModal(false)}
+                onClick={() => {
+                  setShowConfirmCashModal(false);
+                  if (!paymentDetails) {
+                    closeDetails();
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Confirm Bank Transfer Approve */}
+      <Modal
+        open={!!showConfirmApproveModal && !!selectedPayment}
+        onClose={() => {
+          setShowConfirmApproveModal(false);
+          if (!paymentDetails) {
+            closeDetails();
+          }
+        }}
+        title="Confirm Payment Approval"
+        size="md"
+      >
+        {selectedPayment && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Approve this payment? This will confirm the order and activate
+              tickets.
+            </p>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 text-sm">
+              <p>
+                <span className="text-slate-500">Order:</span>{' '}
+                <span className="font-semibold text-slate-900">
+                  {selectedPayment.orderNumber ||
+                    selectedPayment.orderId?.orderNumber ||
+                    '—'}
+                </span>
+              </p>
+              <p className="mt-1">
+                <span className="text-slate-500">Amount:</span>{' '}
+                <span className="font-semibold text-slate-900">
+                  {formatCurrency(
+                    selectedPayment.totalAmount || selectedPayment.amountPaid,
+                    getCurrency(selectedPayment, statistics)
+                  )}
+                </span>
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+                onClick={() =>
+                  handleApprove(
+                    selectedPayment.submissionId || selectedPayment._id
+                  )
+                }
+                disabled={
+                  actionLoading ===
+                  (selectedPayment.submissionId || selectedPayment._id)
+                }
+              >
+                {actionLoading ===
+                (selectedPayment.submissionId || selectedPayment._id)
+                  ? 'Approving…'
+                  : 'Confirm Approve'}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowConfirmApproveModal(false);
+                  if (!paymentDetails) {
+                    closeDetails();
+                  }
+                }}
               >
                 Cancel
               </Button>

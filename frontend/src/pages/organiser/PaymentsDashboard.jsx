@@ -1096,6 +1096,8 @@ const PaymentsDashboard = ({ eventId, currency: currencyProp }) => {
               onClick={() => {
                 setActionModal(null);
                 setActionMessage('');
+                setSelectedPayment(null);
+                setPaymentDetails(null);
               }}
             >
               Cancel

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, forwardRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
@@ -217,6 +217,7 @@ const OrganiserDashboard = () => {
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [settingsForm, setSettingsForm] = useState(null);
   const [customizationForm, setCustomizationForm] = useState(null);
+
   const [customizationTab, setCustomizationTab] = useState('general');
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [logoImageFile, setLogoImageFile] = useState(null);
@@ -293,6 +294,35 @@ const OrganiserDashboard = () => {
     return nextEventId;
   };
 
+  const normalizeVenue = (event) => {
+  const v = event?.venue;
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    return {
+      name: v.name || v.venueName || '',
+      address: v.address || v.venueAddress || v.location || '',
+      city: v.city || '',
+      country: v.country || '',
+      mapUrl: v.mapUrl || v.mapURL || v.map_url || v.googleMapsUrl || '',
+    };
+  }
+  if (typeof v === 'string') {
+    return {
+      name: v,
+      address: event?.venueAddress || event?.address || '',
+      city: event?.city || '',
+      country: event?.country || '',
+      mapUrl: event?.mapUrl || event?.mapURL || '',
+    };
+  }
+  return {
+    name: event?.venueName || '',
+    address: event?.venueAddress || event?.address || '',
+    city: event?.city || '',
+    country: event?.country || '',
+    mapUrl: event?.mapUrl || event?.mapURL || '',
+  };
+};
+
   const loadWorkspace = async (selectedEventId = eventId) => {
     if (!selectedEventId) return;
     setLoading(true);
@@ -331,6 +361,7 @@ const OrganiserDashboard = () => {
           customEventType: nextData?.event?.customEventType || '',
           venue: {
             name: nextData?.event?.venue?.name || '',
+            // Keep address, city, country, mapUrl for display but they are admin-only
             address: nextData?.event?.venue?.address || '',
             city: nextData?.event?.venue?.city || '',
             country: nextData?.event?.venue?.country || '',
@@ -338,6 +369,7 @@ const OrganiserDashboard = () => {
           },
           currency: nextData?.settings?.currency || nextData?.event?.settings?.currency || 'LKR',
         },
+        // Ensure venue object exists even if nextData doesn't have it
         matchDetails: nextData?.event?.matchDetails || { teamA: '', teamB: '', matchType: '', series: '' },
         concertDetails: nextData?.event?.concertDetails || { mainArtist: '', supportingBands: [], genre: '', tourName: '' },
         conferenceDetails: nextData?.event?.conferenceDetails || { theme: '', speakers: [], scheduleUrl: '' },
@@ -944,7 +976,18 @@ const OrganiserDashboard = () => {
       const formData = new FormData();
       formData.append('eventId', activeEventId);
       const { currency: _currency, ...basicInfoPayload } = customizationForm.basicInfo || {};
-      formData.append('basicInfo', JSON.stringify(basicInfoPayload));
+      
+      // Only send venue name (address and map URL are admin-only)
+      const venuePayload = basicInfoPayload.venue || {};
+      const cleanedBasicInfo = {
+        ...basicInfoPayload,
+        venue: {
+          name: venuePayload.name || '',
+          // Don't send address, city, country, mapUrl - they are admin-only
+        }
+      };
+      
+      formData.append('basicInfo', JSON.stringify(cleanedBasicInfo));
       const brandingPayload = { ...customizationForm.branding };
       delete brandingPayload.logoImage;
       delete brandingPayload.coverImage;
@@ -976,7 +1019,7 @@ const OrganiserDashboard = () => {
       if (removeLogo && !logoImageFile) formData.append('removeLogoImage', 'true');
       if (removeBanner && !bannerImageFile) formData.append('removeBannerImage', 'true');
 
-      await updateOrganiserEventCustomization(formData);
+      const response = await updateOrganiserEventCustomization(formData);
       toast.success('Event customization updated');
       setCoverImageFile(null);
       setLogoImageFile(null);
@@ -984,7 +1027,9 @@ const OrganiserDashboard = () => {
       setRemoveCover(false);
       setRemoveLogo(false);
       setRemoveBanner(false);
-      loadWorkspace(activeEventId);
+      
+      // Force reload workspace to get fresh data from server
+      await loadWorkspace(activeEventId);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
     }
@@ -1358,6 +1403,17 @@ const OrganiserDashboard = () => {
                     />
                   </Field>
 
+                </div>
+
+                <div className="space-y-4">
+                  <Field label="Venue name">
+                    <Input
+                      value={customizationForm.basicInfo.venue?.name || ''}
+                      readOnly
+                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
+                    />
+                  </Field>
+                  
                   <Field label="Event type">
                     <Input
                       value={
@@ -1379,59 +1435,7 @@ const OrganiserDashboard = () => {
                       className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
                     />
                   </Field>
-
-                </div>
-
-                <div className="space-y-4">
-                  <Field label="Venue name">
-                    <Input
-                      value={customizationForm.basicInfo.venue?.name || ''}
-                      readOnly
-                      className="bg-gray-100 text-gray-700 border border-gray-300 rounded-md"
-                    />
-                  </Field>
-
-                  <Field label="Venue address">
-                    <Input
-                      value={customizationForm.basicInfo.venue?.address || ''}
-                      onChange={(e) =>
-                        setCustomizationForm((c) => ({
-                          ...c,
-                          basicInfo: {
-                            ...c.basicInfo,
-                            venue: { ...c.basicInfo.venue, address: e.target.value },
-                          },
-                        }))
-                      }
-                    />
-                  </Field>
-
-                  <Field label="Map URL">
-                    <Input
-                      value={customizationForm.basicInfo.venue?.mapUrl || ''}
-                      placeholder="https://maps.google.com/..."
-                      onChange={(e) =>
-                        setCustomizationForm((c) => ({
-                          ...c,
-                          basicInfo: {
-                            ...c.basicInfo,
-                            venue: { ...c.basicInfo.venue, mapUrl: e.target.value },
-                          },
-                        }))
-                      }
-                    />
-                  </Field>
-
-                  {customizationForm.basicInfo.venue?.mapUrl && (
-                    <a
-                      href={customizationForm.basicInfo.venue.mapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      View Map
-                    </a>
-                  )}
+                  
                 </div>
               </div>
             )}
@@ -1848,136 +1852,184 @@ const OrganiserDashboard = () => {
                 {
                   label: 'Sponsors',
                   value: sponsors.length || 0,
-                  accent: 'text-indigo-600',
-                  bg: 'bg-indigo-50/70',
-                  border: 'border-indigo-100',
+                  accent: 'text-blue-600',
+                  bg: 'bg-blue-50/70',
+                  border: 'border-blue-100',
                 },
                 {
                   label: 'Total Value',
-                  value: `${selectedEvent?.settings?.currency || 'LKR'} ${sponsorPackages
-                    .reduce((sum, p) => sum + Number(p.price || 0) * Number(p.capacity || 1), 0)
+                  value: `${selectedEvent?.settings?.currency || eventCurrency || 'LKR'} ${sponsorPackages
+                    .reduce(
+                      (sum, p) =>
+                        sum + Number(p.price || 0) * Number(p.capacity || 1),
+                      0
+                    )
                     .toLocaleString()}`,
                   accent: 'text-blue-600',
                   bg: 'bg-blue-50/70',
                   border: 'border-blue-100',
                 },
               ].map(({ label, value, accent, bg, border }) => (
-                <div key={label} className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-                  <p className={`mt-1 text-xl font-bold truncate ${accent}`}>{value}</p>
+                <div
+                  key={label}
+                  className={`rounded-2xl border ${border} ${bg} px-4 py-3.5 shadow-sm`}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {label}
+                  </p>
+                  <p className={`mt-1 text-xl font-bold truncate ${accent}`}>
+                    {value}
+                  </p>
                 </div>
               ))}
             </div>
 
-            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
+            <Card
+              className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
+              padding={false}
+            >
               <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
                     <BanknotesIcon className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">Sponsor Packages</h2>
-                    <p className="text-sm text-slate-500">Create tiers and pricing for sponsors</p>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Sponsor Packages
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      Create tiers and pricing for sponsors
+                    </p>
                   </div>
                 </div>
                 <Button
-                  onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}
+                  onClick={() =>
+                    setSponsorPackageModal({ ...emptySponsorPackage })
+                  }
                   className="bg-blue-600 hover:bg-blue-500 shrink-0"
                 >
                   + Add Package
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
-                <Table className="min-w-[700px]">
-                  <thead>
-                    <Tr>
-                      <Th>Name</Th>
-                      <Th>Level</Th>
-                      <Th>Price</Th>
-                      <Th>Capacity</Th>
-                      <Th>Visible</Th>
-                      <Th>Actions</Th>
-                    </Tr>
-                  </thead>
-                  <tbody>
-                    {sponsorPackages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-                      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                        <BanknotesIcon className="h-7 w-7" />
-                      </div>
-                      <p className="text-base font-semibold text-slate-800">No packages yet</p>
-                      <p className="mt-1.5 max-w-sm text-sm text-slate-500">
-                        Create a package to define pricing, capacity, and benefits for sponsors.
-                      </p>
-                      <Button
-                        onClick={() => setSponsorPackageModal({ ...emptySponsorPackage })}
-                        className="mt-6 bg-blue-600 hover:bg-blue-500"
-                        size="sm"
-                      >
-                        + Create first package
-                      </Button>
-                    </div>
-                    ) : (
-                      sponsorPackagePage.rows.map((pkg) => {
-                        const levelColor =
-                          pkg.level === 'Platinum'
-                            ? 'bg-slate-800 text-white'
-                            : pkg.level === 'Gold'
-                            ? 'bg-amber-100 text-amber-800'
-                            : pkg.level === 'Silver'
-                            ? 'bg-slate-200 text-slate-700'
-                            : 'bg-indigo-50 text-indigo-700';
-                        return (
-                          <Tr key={pkg.id}>
-                            <Td>
-                              <p className="font-semibold text-slate-900">{pkg.name}</p>
-                              {pkg.description && (
-                                <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{pkg.description}</p>
-                              )}
-                            </Td>
-                            <Td>
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${levelColor}`}>
-                                {pkg.level || 'Custom'}
-                              </span>
-                            </Td>
-                            <Td className="font-medium text-slate-800">
-                              {selectedEvent?.settings?.currency || 'LKR'}{' '}
-                              {Number(pkg.price || 0).toLocaleString()}
-                            </Td>
-                            <Td>
-                              <span className="rounded-full bg-slate-50 border border-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                                {pkg.capacity}
-                              </span>
-                            </Td>
-                            <Td>
-                              <Badge color={pkg.isVisible ? 'green' : 'gray'}>
-                                {pkg.isVisible ? 'Yes' : 'No'}
-                              </Badge>
-                            </Td>
-                            <Td>
-                              <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => setSponsorPackageModal(pkg)}>
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-rose-500 border-rose-100 hover:bg-rose-50"
-                                  onClick={() => setDeleteConfirm({ type: 'package', id: pkg.id, label: pkg.name,})}
+              {/* Empty state OUTSIDE the table */}
+              {sponsorPackages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <BanknotesIcon className="h-7 w-7" />
+                  </div>
+                  <p className="text-base font-semibold text-slate-800">
+                    No packages yet
+                  </p>
+                  <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+                    Create a package to define pricing, capacity, and benefits for
+                    sponsors.
+                  </p>
+                  <Button
+                    onClick={() =>
+                      setSponsorPackageModal({ ...emptySponsorPackage })
+                    }
+                    className="mt-6 bg-blue-600 hover:bg-blue-500"
+                    size="sm"
+                  >
+                    + Create first package
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[700px]">
+                      <thead>
+                        <Tr>
+                          <Th>Name</Th>
+                          <Th>Level</Th>
+                          <Th>Price</Th>
+                          <Th>Capacity</Th>
+                          <Th>Visible</Th>
+                          <Th className="text-right">Actions</Th>
+                        </Tr>
+                      </thead>
+                      <tbody>
+                        {sponsorPackagePage.rows.map((pkg) => {
+                          const levelColor =
+                            pkg.level === 'Platinum'
+                              ? 'bg-slate-800 text-white'
+                              : pkg.level === 'Gold'
+                              ? 'bg-amber-100 text-amber-800'
+                              : pkg.level === 'Silver'
+                              ? 'bg-slate-200 text-slate-700'
+                              : 'bg-blue-50 text-blue-700';
+
+                          return (
+                            <Tr key={pkg.id || pkg._id}>
+                              <Td>
+                                <p className="font-semibold text-slate-900">
+                                  {pkg.name}
+                                </p>
+                                {pkg.description && (
+                                  <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
+                                    {pkg.description}
+                                  </p>
+                                )}
+                              </Td>
+                              <Td>
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${levelColor}`}
                                 >
-                                  Delete
-                                </Button>
-                              </div>
-                            </Td>
-                          </Tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </Table>
-              </div>
-              <Pagination {...sponsorPackagePage} updateQuery={setQuery} />
+                                  {pkg.level || 'Custom'}
+                                </span>
+                              </Td>
+                              <Td className="font-medium text-slate-800">
+                                {selectedEvent?.settings?.currency ||
+                                  eventCurrency ||
+                                  'LKR'}{' '}
+                                {Number(pkg.price || 0).toLocaleString()}
+                              </Td>
+                              <Td>
+                                <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                  {pkg.capacity}
+                                </span>
+                              </Td>
+                              <Td>
+                                <Badge color={pkg.isVisible ? 'green' : 'gray'}>
+                                  {pkg.isVisible ? 'Yes' : 'No'}
+                                </Badge>
+                              </Td>
+                              <Td className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                                    onClick={() => setSponsorPackageModal(pkg)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-rose-100 text-rose-500 hover:bg-rose-50"
+                                    onClick={() =>
+                                      setDeleteConfirm({
+                                        type: 'package',
+                                        id: pkg.id || pkg._id,
+                                        label: pkg.name,
+                                      })
+                                    }
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </Td>
+                            </Tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
+                  <Pagination {...sponsorPackagePage} updateQuery={setQuery} />
+                </>
+              )}
             </Card>
           </div>
         )}

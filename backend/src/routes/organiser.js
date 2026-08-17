@@ -2183,7 +2183,14 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
 
     const parseJson = (val) => {
       if (typeof val === 'string') {
-        try { return JSON.parse(val); } catch (e) { return val; }
+        try { 
+          const parsed = JSON.parse(val);
+          console.log('Parsed JSON successfully:', parsed);
+          return parsed;
+        } catch (e) { 
+          console.log('JSON parse error:', e);
+          return val; 
+        }
       }
       return val;
     };
@@ -2241,22 +2248,23 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       }
       
       if (basicInfo.venue) {
+        // Organisers can only update venue name, address and map URL are admin-only
         if (isAdmin) {
           // Admin can update everything in venue
-          event.venue = {
-            ...(event.venue?.toObject ? event.venue.toObject() : event.venue || {}),
-            ...basicInfo.venue,
-          };
+          if (!event.venue) {
+            event.venue = { name: '', address: '', city: '', country: '', mapUrl: '' };
+          }
+          event.venue.name = basicInfo.venue.name !== undefined ? basicInfo.venue.name : event.venue.name;
+          event.venue.address = basicInfo.venue.address !== undefined ? basicInfo.venue.address : event.venue.address;
+          event.venue.city = basicInfo.venue.city !== undefined ? basicInfo.venue.city : event.venue.city;
+          event.venue.country = basicInfo.venue.country !== undefined ? basicInfo.venue.country : event.venue.country;
+          event.venue.mapUrl = basicInfo.venue.mapUrl !== undefined ? basicInfo.venue.mapUrl : event.venue.mapUrl;
         } else {
-          // Organiser can update address, city, country, mapUrl
-          const v = event.venue?.toObject ? event.venue.toObject() : (event.venue || {});
-          event.venue = {
-            ...v,
-            address: basicInfo.venue.address ?? v.address,
-            city: basicInfo.venue.city ?? v.city,
-            country: basicInfo.venue.country ?? v.country,
-            mapUrl: basicInfo.venue.mapUrl ?? v.mapUrl,
-          };
+          // Organisers can only update venue name (other fields are admin-only)
+          if (!event.venue) {
+            event.venue = { name: '', address: '', city: '', country: '', mapUrl: '' };
+          }
+          event.venue.name = basicInfo.venue.name !== undefined ? basicInfo.venue.name : event.venue.name;
         }
         event.markModified('venue');
       }
@@ -2374,13 +2382,17 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
 
     const io = req.app.get('io');
     if (io) {
+      // Emit to all relevant rooms for event updates
       io.to(`event:${event._id}`).emit('event_update', { eventId: event._id });
       io.to(`dashboard:${event._id}`).emit('event_update', { eventId: event._id });
+      io.to(event._id.toString()).emit('event_update', { eventId: event._id }); // For event detail pages
       // Notify the public listing page so cover/banner/logo images update live
       io.to('listings').emit('events_updated', { eventId: event._id });
     }
 
-    res.json({ success: true, data: { event }, message: 'Event customization updated.' });
+    // Return the updated event with venue data
+    const updatedEvent = await Event.findById(event._id).lean();
+    res.json({ success: true, data: { event: updatedEvent }, message: 'Event customization updated.' });
   } catch (err) {
     next(err);
   }
