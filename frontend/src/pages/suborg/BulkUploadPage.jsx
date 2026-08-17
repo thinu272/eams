@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getMyEvents } from '../../api/events';
 import { bulkUpload, downloadTemplate } from '../../api/attendees';
+import { getSubDashboard } from '../../api/sub';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -21,45 +21,49 @@ const BulkUploadPage = () => {
   const [selectedEvent, setSelectedEvent] = useState(
     localStorage.getItem('lastSelectedEventId') || ''
   );
+  const [eventData, setEventData] = useState(null);
   const [categoryId, setCategoryId] = useState('');
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const { user } = useAuth();
 
+  // Fetch assigned event and data via sub-dashboard API
   useEffect(() => {
-    getMyEvents().then((response) => {
-      const myEvents = response.data?.data?.events || [];
-      setEvents(myEvents);
-
+    const fetchEventData = async () => {
       const lastId = localStorage.getItem('lastSelectedEventId');
-      if (lastId && myEvents.some((e) => e._id === lastId)) {
-        setSelectedEvent(lastId);
-        const selected = myEvents.find((e) => e._id === lastId);
-        setCategoryId(selected?.categories?.[0]?.id || '');
-      } else if (myEvents.length > 0) {
-        setSelectedEvent(myEvents[0]._id);
-        if (myEvents[0].categories?.length) {
-          setCategoryId(myEvents[0].categories[0].id);
+      if (!lastId) return;
+      
+      try {
+        const response = await getSubDashboard({ eventId: lastId });
+        const data = response.data?.data;
+        if (data?.event) {
+          setEventData(data);
+          setEvents([data.event]); // Single assigned event for sub-org
+          setCategoryId(data.categories?.[0]?.id || '');
         }
+      } catch (err) {
+        console.error('Failed to load event data:', err);
       }
-    });
+    };
+
+    fetchEventData();
 
     const handleEventSelect = (e) => {
       const newId = e.detail ? String(e.detail) : '';
       if (!newId || newId === 'undefined') return;
       setSelectedEvent(newId);
       localStorage.setItem('lastSelectedEventId', newId);
-      getMyEvents().then((res) => {
-        const matching = (res.data?.data?.events || []).find(
-          (ev) => ev._id === newId
-        );
-        if (matching?.categories?.length) {
-          setCategoryId(matching.categories[0].id);
-        } else {
-          setCategoryId('');
-        }
-      });
+      getSubDashboard({ eventId: newId })
+        .then((res) => {
+          const data = res.data?.data;
+          setEventData(data);
+          setEvents(data.event ? [data.event] : []);
+          setCategoryId(data.categories?.[0]?.id || '');
+        })
+        .catch((err) => {
+          console.error('Failed to load event data:', err);
+        });
     };
 
     window.addEventListener('entrynex:event-select', handleEventSelect);
@@ -73,24 +77,9 @@ const BulkUploadPage = () => {
   );
 
   const availableCategories = useMemo(() => {
-    if (!selectedEventData?.categories) return [];
-
-    if (user?.role === 'SubOrganiser') {
-      const myZones = (
-        user.assignedZones ||
-        user.responsibilities?.zoneIds ||
-        []
-      ).map(String);
-      return selectedEventData.categories.filter((cat) => {
-        const catZones = (cat.allowedZones || []).map(String);
-        return (
-          catZones.length === 0 || catZones.some((z) => myZones.includes(z))
-        );
-      });
-    }
-
-    return selectedEventData.categories;
-  }, [selectedEventData, user]);
+    if (!eventData?.categories) return [];
+    return eventData.categories;
+  }, [eventData]);
 
   const handleDownload = async () => {
     try {
@@ -274,13 +263,11 @@ const BulkUploadPage = () => {
                     </option>
                   ))}
                 </select>
-                {user?.role === 'SubOrganiser' &&
-                  availableCategories.length === 0 &&
-                  selectedEvent && (
-                    <p className="text-xs text-rose-500">
-                      No categories available for your assigned zones.
-                    </p>
-                  )}
+                {availableCategories.length === 0 && selectedEvent && (
+                  <p className="text-xs text-rose-500">
+                    No categories available for your assigned zones.
+                  </p>
+                )}
               </label>
             </div>
 

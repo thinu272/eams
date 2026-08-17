@@ -2,10 +2,61 @@ const express = require('express');
 const router = express.Router();
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
+const Ticket = require('../models/Ticket');
 const ZoneLog = require('../models/ZoneLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
 const { normalizeRole, ROLES } = require('../utils/rbac');
+
+/**
+ * Check if a ticket is valid for entry.
+ * Rules:
+ * 1. Ticket must not be cancelled
+ * 2. Ticket must be confirmed/active
+ * 3. Ticket must not be expired (event end time)
+ */
+const isTicketValid = (ticket, event) => {
+  // Check if ticket is cancelled
+  if (ticket.status === 'CANCELLED' || ticket.status === 'EXPIRED') {
+    return { valid: false, reason: 'TICKET_CANCELLED', message: 'Ticket has been cancelled' };
+  }
+
+  // Check if ticket is confirmed/active
+  if (ticket.status !== 'CONFIRMED' && ticket.status !== 'SOLD' && ticket.status !== 'ACTIVE') {
+    return { valid: false, reason: 'TICKET_NOT_CONFIRMED', message: 'Ticket has not been confirmed' };
+  }
+
+  // Check if event has ended (ticket expiration is based on event end time)
+  if (event?.endDateTime) {
+    const eventEndTime = new Date(event.endDateTime);
+    if (eventEndTime < new Date()) {
+      return { valid: false, reason: 'EVENT_ENDED', message: 'Event has ended' };
+    }
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Check if a reservation ticket can be checked in (for cash at venue)
+ * Reservations are valid until the event ends
+ */
+const isReservationValid = (ticket, event) => {
+  // Check if ticket is reserved
+  if (ticket.status !== 'RESERVED' && ticket.status !== 'PENDING') {
+    return { valid: false, reason: 'NOT_RESERVED', message: 'Not a reservation ticket' };
+  }
+
+  // Check if event has ended
+  if (event?.endDateTime) {
+    const eventEndTime = new Date(event.endDateTime);
+    if (eventEndTime < new Date()) {
+      return { valid: false, reason: 'EVENT_ENDED', message: 'Event has ended' };
+    }
+  }
+
+  return { valid: true };
+};
 
 const DUPLICATE_SCAN_WINDOW_MS = 5000;
 
@@ -211,6 +262,47 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       });
 
       return res.status(denied.status).json(denied.body);
+    }
+
+    // Fetch the event with endDateTime for expiration check
+    const fullEvent = await Event.findById(event._id).select('endDateTime zones');
+    
+    // Validate ticket status against event end time
+    const ticketValidation = isTicketValid(attendee, fullEvent);
+    if (!ticketValidation.valid) {
+      const denied = await buildDeniedResponse({
+        attendee,
+        zoneName,
+        action,
+        scanMethod: qrToken ? 'QR' : 'RFID',
+        userId: req.user._id,
+        io,
+        denialReason: ticketValidation.reason,
+        httpStatus: 403,
+        message: ticketValidation.message,
+      });
+
+      return res.status(denied.status).json(denied.body);
+    }
+
+    // Check if event has ended (for any ticket status)
+    if (fullEvent?.endDateTime) {
+      const eventEndTime = new Date(fullEvent.endDateTime);
+      if (eventEndTime < new Date()) {
+        const denied = await buildDeniedResponse({
+          attendee,
+          zoneName,
+          action,
+          scanMethod: qrToken ? 'QR' : 'RFID',
+          userId: req.user._id,
+          io,
+          denialReason: 'EVENT_ENDED',
+          httpStatus: 403,
+          message: 'Event has ended. No further entries allowed.',
+        });
+
+        return res.status(denied.status).json(denied.body);
+      }
     }
 
     if (!attendee.isActive || attendee.isDisabled || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
