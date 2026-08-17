@@ -119,6 +119,18 @@ const downloadBlob = (blob, fallbackName) => {
 const fmt = (value) => (value ? format(new Date(value), 'dd MMM yyyy, HH:mm') : '-');
 const money = (value, currency = 'LKR') => `${currency} ${Number(value || 0).toLocaleString()}`;
 
+// Format multi-currency revenue display
+const formatMultiCurrencyRevenue = (workspace, reports) => {
+  const byCurrency = reports?.summary?.totalRevenueByCurrency;
+  if (!byCurrency || Object.keys(byCurrency).length === 0) {
+    return money(reports?.summary?.totalRevenue, workspace?.settings?.currency);
+  }
+  // If multiple currencies, show each currency's total
+  return Object.entries(byCurrency)
+    .map(([currency, amount]) => money(amount, currency))
+    .join(' | ');
+};
+
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
   <Card className="rounded-2xl border-slate-200 bg-gradient-to-br from-white to-slate-50/80 shadow-sm">
     <div className="flex items-start justify-between gap-4">
@@ -1179,13 +1191,7 @@ const SectionContent = ({
 
       {section === 'reports' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              title="Report Revenue"
-              value={money(reports?.summary?.totalRevenue, workspace?.settings?.currency)}
-              subtitle="Total for selected period"
-              icon={CurrencyDollarIcon}
-            />
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             <MetricCard
               title="Report Tickets"
               value={reports?.summary?.totalTickets || 0}
@@ -1241,7 +1247,7 @@ const SectionContent = ({
                         <Td>{row.ticketsSold}</Td>
                         <Td>{row.orders}</Td>
                         <Td className="font-semibold text-slate-900">
-                          {money(row.revenue, workspace?.settings?.currency)}
+                          {money(row.revenue, row.currency || workspace?.settings?.currency)}
                         </Td>
                       </Tr>
                     ))}

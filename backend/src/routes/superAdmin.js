@@ -568,26 +568,27 @@ const getReportsData = async (query = {}) => {
   const [revenue, attendance, organisers] = await Promise.all([
     Event.aggregate([
       { $match: eventFilter },
-      { 
-        $lookup: { 
-          from: 'orders', 
-          localField: '_id', 
-          foreignField: 'eventId', 
-          as: 'orderList' 
-        } 
+      {
+        $lookup: {
+          from: 'orders',
+          localField: '_id',
+          foreignField: 'eventId',
+          as: 'orderList'
+        }
       },
-      { 
-        $lookup: { 
-          from: 'sponsors', 
-          localField: '_id', 
-          foreignField: 'eventId', 
-          as: 'sponsorAssignments' 
-        } 
+      {
+        $lookup: {
+          from: 'sponsors',
+          localField: '_id',
+          foreignField: 'eventId',
+          as: 'sponsorAssignments'
+        }
       },
       {
         $project: {
           _id: 1,
           eventName: '$name',
+          eventCurrency: '$settings.currency',
           sponsorPackages: 1,
           orders: { $filter: { input: '$orderList', as: 'o', cond: { $ne: ['$$o.status', 'CANCELLED'] } } },
           sponsorAssignments: 1
@@ -637,6 +638,7 @@ const getReportsData = async (query = {}) => {
         $project: {
           _id: 1,
           eventName: 1,
+          currency: { $ifNull: ['$eventCurrency', 'LKR'] },
           revenue: { $add: ['$ticketRevenue', '$sponsorRevenue'] },
           orders: '$ordersCount',
           ticketsSold: 1
@@ -661,8 +663,23 @@ const getReportsData = async (query = {}) => {
       { $sort: { ticketsSold: -1 } },
     ]),
   ]);
+  // Calculate total revenue grouped by currency
+  const revenueByCurrency = revenue.reduce((acc, row) => {
+    const curr = row.currency || 'LKR';
+    if (!acc[curr]) acc[curr] = 0;
+    acc[curr] += row.revenue || 0;
+    return acc;
+  }, {});
+  
+  // Format multi-currency total string
+  const multiCurrencyTotal = Object.entries(revenueByCurrency)
+    .map(([currency, amount]) => `${currency} ${Number(amount).toLocaleString()}`)
+    .join(' | ');
+
   const summary = {
     totalRevenue: revenue.reduce((sum, r) => sum + (r.revenue || 0), 0),
+    totalRevenueByCurrency: revenueByCurrency,
+    multiCurrencyTotal: multiCurrencyTotal,
     totalTickets: revenue.reduce((sum, r) => sum + (r.ticketsSold || 0), 0),
     totalAttendance: attendance.reduce((sum, r) => sum + (r.allowedEntries || 0), 0),
     avgVerificationRate: attendance.length > 0 ? (attendance.reduce((sum, r) => sum + (r.allowedEntries / (r.allowedEntries + r.deniedEntries || 1)), 0) / attendance.length * 100).toFixed(1) : 0

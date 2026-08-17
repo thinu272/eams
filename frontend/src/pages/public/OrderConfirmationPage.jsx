@@ -50,12 +50,20 @@ const OrderConfirmationPage = () => {
     loadOrder();
   }, [token]);
 
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat('en-LK', {
+  const formatCurrency = (value) => {
+    // Get currency from order event settings, fallback to LKR
+    const currency = 
+      payload?.order?.event?.settings?.currency ||
+      payload?.order?.event?.currency ||
+      payload?.order?.currency ||
+      'LKR';
+    
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'LKR',
+      currency: currency,
       maximumFractionDigits: 0,
     }).format(value || 0);
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'TBD';
