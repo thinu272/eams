@@ -189,6 +189,37 @@ const runAction = async (fn, { successMessage, errorMessage = 'Something went wr
   }
 };
 
+
+const parseBool = (value, fallback = true) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (value === true || value === 1 || value === '1' || value === 'true') return true;
+  if (value === false || value === 0 || value === '0' || value === 'false') return false;
+  return Boolean(value);
+};
+
+const normalizePaymentMethods = (source, fallbackAll = true) => {
+  const pm =
+    source?.paymentMethods ||
+    source?.settings?.paymentMethods ||
+    source?.event?.settings?.paymentMethods ||
+    null;
+
+  // If no paymentMethods object at all, use fallbackAll for each key
+  if (!pm || typeof pm !== 'object') {
+    return {
+      card: fallbackAll,
+      bank_transfer: fallbackAll,
+      cash: fallbackAll,
+    };
+  }
+
+  return {
+    card: parseBool(pm.card, fallbackAll),
+    bank_transfer: parseBool(pm.bank_transfer, fallbackAll),
+    cash: parseBool(pm.cash, fallbackAll),
+  };
+};
+
 const OrganiserDashboard = () => {
   const { user } = useAuth();
   const { permissions } = usePermissions();
@@ -348,6 +379,7 @@ const OrganiserDashboard = () => {
         rememberSelectedEvent(loadedEventId);
       }
       const rawSettings = nextData?.settings || {};
+      console.log('Workspace rawSettings:', JSON.stringify(rawSettings, null, 2));
       setSettingsForm({
         ...rawSettings,
         emailTemplates: rawSettings.emailTemplates || {},
@@ -359,14 +391,8 @@ const OrganiserDashboard = () => {
           description: nextData?.event?.description || '',
           eventType: nextData?.event?.eventType || '',
           customEventType: nextData?.event?.customEventType || '',
-          venue: {
-            name: nextData?.event?.venue?.name || '',
-            // Keep address, city, country, mapUrl for display but they are admin-only
-            address: nextData?.event?.venue?.address || '',
-            city: nextData?.event?.venue?.city || '',
-            country: nextData?.event?.venue?.country || '',
-            mapUrl: nextData?.event?.venue?.mapUrl || '',
-          },
+          venue: normalizeVenue(nextData?.event),
+
           currency: nextData?.settings?.currency || nextData?.event?.settings?.currency || 'LKR',
         },
         // Ensure venue object exists even if nextData doesn't have it
@@ -379,11 +405,7 @@ const OrganiserDashboard = () => {
           bannerImage: nextData?.event?.branding?.bannerImage || nextData?.event?.bannerImage || '',
           coverImage: nextData?.event?.coverImage || '',
         },
-        paymentMethods: {
-          card: nextData?.settings?.paymentMethods?.card ?? true,
-          bank_transfer: nextData?.settings?.paymentMethods?.bank_transfer ?? true,
-          cash: nextData?.settings?.paymentMethods?.cash ?? true,
-        },
+        paymentMethods: normalizePaymentMethods(nextData, true),
         accessRules: {
           whoCanEnter: (nextData?.settings?.accessRules?.whoCanEnter || []).join(', '),
           entryWindowStart: nextData?.settings?.accessRules?.entryWindowStart || '',
@@ -993,7 +1015,12 @@ const OrganiserDashboard = () => {
       delete brandingPayload.coverImage;
       delete brandingPayload.bannerImage;
       formData.append('branding', JSON.stringify(brandingPayload));
-      formData.append('paymentMethods', JSON.stringify(customizationForm.paymentMethods));
+      const paymentMethodsPayload = {
+        card: parseBool(customizationForm.paymentMethods?.card, false),
+        bank_transfer: parseBool(customizationForm.paymentMethods?.bank_transfer, false),
+        cash: parseBool(customizationForm.paymentMethods?.cash, false),
+      };
+      formData.append('paymentMethods', JSON.stringify(paymentMethodsPayload));
       formData.append('accessRules', JSON.stringify({
         whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
         entryWindowStart: customizationForm.accessRules.entryWindowStart,
@@ -1020,6 +1047,25 @@ const OrganiserDashboard = () => {
       if (removeBanner && !bannerImageFile) formData.append('removeBannerImage', 'true');
 
       const response = await updateOrganiserEventCustomization(formData);
+      console.log('Save response:', JSON.stringify(response.data, null, 2));
+      // Persist payment methods via settings API (customization endpoint may ignore them)
+      try {
+        await updateOrganiserSettings({
+          eventId: activeEventId,
+          settings: {
+            ...(settingsForm || {}),
+            paymentMethods: paymentMethodsPayload,
+          },
+        });
+      } catch (settingsErr) {
+        console.warn('Settings paymentMethods update failed:', settingsErr);
+      }
+
+      setCustomizationForm((c) => ({
+        ...c,
+        paymentMethods: { ...paymentMethodsPayload },
+      }));
+
       toast.success('Event customization updated');
       setCoverImageFile(null);
       setLogoImageFile(null);
@@ -1028,8 +1074,29 @@ const OrganiserDashboard = () => {
       setRemoveLogo(false);
       setRemoveBanner(false);
       
-      // Force reload workspace to get fresh data from server
-      await loadWorkspace(activeEventId);
+      // Update customizationForm directly with saved payment methods from response
+      const savedEvent = response.data?.data?.event;
+      console.log('Full saved event:', JSON.stringify(savedEvent, null, 2));
+      // Try both settings locations - event.settings and event.settings.paymentMethods
+      const savedSettings = savedEvent?.settings || {};
+      const eventSettingsPaymentMethods = savedEvent?.settings?.paymentMethods;
+      const eventPaymentMethods = savedEvent?.paymentMethods;
+      
+      console.log('Saved settings:', JSON.stringify(savedSettings, null, 2));
+      console.log('event.settings.paymentMethods:', JSON.stringify(eventSettingsPaymentMethods, null, 2));
+      console.log('event.paymentMethods:', JSON.stringify(eventPaymentMethods, null, 2));
+      
+      setCustomizationForm((prev) => {
+        // Try multiple sources for paymentMethods
+        const pm = eventSettingsPaymentMethods || eventPaymentMethods || savedSettings.paymentMethods || {};
+        const newMethods = {
+          card: !!pm?.card,
+          bank_transfer: !!pm?.bank_transfer,
+          cash: !!pm?.cash,
+        };
+        console.log('Setting new payment methods:', JSON.stringify(newMethods, null, 2));
+        return { ...prev, paymentMethods: newMethods };
+      });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
     }
@@ -1616,73 +1683,90 @@ const OrganiserDashboard = () => {
               </div>
             )}
             {/* ==================== PAYMENT TAB ==================== */}
-            {customizationTab === 'payment' && (
-              <div className="space-y-8">
-                {/* Payment Methods */}
-                <div className="rounded-2xl border border-slate-200 p-5">
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500">
-                    Payment Methods
-                  </h3>
-                  <div className="space-y-4">
-                    {[
-                      {
-                        key: 'card',
-                        label: 'Card',
-                        desc: 'Accept credit/debit card payments',
-                      },
-                      {
-                        key: 'bank_transfer',
-                        label: 'Bank Transfer',
-                        desc: 'Allow offline bank transfer payments',
-                      },
-                      {
-                        key: 'cash',
-                        label: 'Cash',
-                        desc: 'Allow cash on delivery or at venue',
-                      },
-                    ].map(({ key, label, desc }) => (
-                      <label
+          {customizationTab === 'payment' && (
+            <div className="space-y-8">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="mb-1 text-sm font-bold uppercase tracking-wider text-slate-500">
+                  Payment Methods
+                </h3>
+                <p className="mb-5 text-sm text-slate-500">
+                  Choose which methods buyers can use at checkout.
+                </p>
+
+                <div className="space-y-3">
+                  {[
+                    {
+                      key: 'card',
+                      label: 'Card',
+                      desc: 'Accept credit/debit card payments',
+                    },
+                    {
+                      key: 'bank_transfer',
+                      label: 'Bank Transfer',
+                      desc: 'Allow offline bank transfer payments',
+                    },
+                    {
+                      key: 'cash',
+                      label: 'Cash',
+                      desc: 'Allow cash on delivery or at venue',
+                    },
+                  ].map(({ key, label, desc }) => {
+                    const enabled = parseBool(customizationForm?.paymentMethods?.[key], false);
+
+                    const toggle = () => {
+                      setCustomizationForm((c) => ({
+                        ...c,
+                        paymentMethods: {
+                          card: parseBool(c.paymentMethods?.card, true),
+                          bank_transfer: parseBool(c.paymentMethods?.bank_transfer, true),
+                          cash: parseBool(c.paymentMethods?.cash, true),
+                          [key]: !parseBool(c.paymentMethods?.[key], false),
+                        },
+                      }));
+                    };
+
+                    return (
+                      <button
                         key={key}
-                        className="flex cursor-pointer items-center justify-between group"
+                        type="button"
+                        onClick={toggle}
+                        className={`flex w-full items-center justify-between rounded-xl border px-4 py-3.5 text-left transition ${
+                          enabled
+                            ? 'border-blue-200 bg-blue-50/40'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                        }`}
                       >
-                        <div>
-                          <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                        <div className="min-w-0 pr-4">
+                          <p
+                            className={`font-semibold ${
+                              enabled ? 'text-blue-900' : 'text-slate-900'
+                            }`}
+                          >
                             {label}
-                          </div>
-                          <div className="text-sm text-slate-500">{desc}</div>
+                          </p>
+                          <p className="text-sm text-slate-500">{desc}</p>
                         </div>
-                        <div
-                          className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200 transition-colors data-[checked=true]:bg-blue-600"
-                          data-checked={!!customizationForm.paymentMethods?.[key]}
+
+                        <span
+                          role="switch"
+                          aria-checked={enabled}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                            enabled ? 'bg-blue-600' : 'bg-slate-300'
+                          }`}
                         >
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={!!customizationForm.paymentMethods?.[key]}
-                            onChange={(e) =>
-                              setCustomizationForm((c) => ({
-                                ...c,
-                                paymentMethods: {
-                                  ...c.paymentMethods,
-                                  [key]: e.target.checked,
-                                },
-                              }))
-                            }
-                          />
                           <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              customizationForm.paymentMethods?.[key]
-                                ? 'translate-x-6'
-                                : 'translate-x-1'
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                              enabled ? 'translate-x-6' : 'translate-x-1'
                             }`}
                           />
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            )}
+            </div>
+          )}
           </Card>
         )}
         {activeSection === 'attendees' && (
@@ -4150,10 +4234,3 @@ const OrganiserDashboard = () => {
 };
 
 export default OrganiserDashboard;
-
-
-
-
-
-
-
