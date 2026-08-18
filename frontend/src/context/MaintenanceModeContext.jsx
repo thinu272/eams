@@ -1,13 +1,22 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+import { io } from 'socket.io-client';
 import { getPublicConfig } from '../api/events';
-import io from 'socket.io-client';
+import { getSocketUrl } from '../utils/backend';
 
-const MaintenanceContext = createContext();
+const MaintenanceContext = createContext(null);
 
 export const useMaintenanceMode = () => {
   const context = useContext(MaintenanceContext);
   if (!context) {
-    throw new Error('useMaintenanceMode must be used within MaintenanceModeProvider');
+    throw new Error(
+      'useMaintenanceMode must be used within MaintenanceModeProvider'
+    );
   }
   return context;
 };
@@ -17,15 +26,19 @@ export const MaintenanceModeProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch initial maintenance mode status
   const fetchMaintenanceStatus = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getPublicConfig();
-      if (response?.success && response?.data) {
-        setMaintenanceMode(response.data.maintenanceMode || false);
-        setError(null);
-      }
+      // Support both axios shape and unwrapped shape
+      const payload = response?.data?.data ?? response?.data ?? response;
+      const enabled = !!(
+        payload?.maintenanceMode ??
+        payload?.settings?.maintenanceMode ??
+        false
+      );
+      setMaintenanceMode(enabled);
+      setError(null);
     } catch (err) {
       console.error('Failed to fetch maintenance status:', err);
       setError(err);
@@ -34,12 +47,11 @@ export const MaintenanceModeProvider = ({ children }) => {
     }
   }, []);
 
-  // Initialize socket connection and listen for maintenance mode changes
   useEffect(() => {
     fetchMaintenanceStatus();
 
-    // Connect to WebSocket
-    const socket = io(window.location.origin, {
+    const socket = io(getSocketUrl() || window.location.origin, {
+      path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -47,30 +59,32 @@ export const MaintenanceModeProvider = ({ children }) => {
       reconnectionAttempts: 5,
     });
 
-    // Listen for maintenance mode changes
     const handleMaintenanceModeChanged = (data) => {
-      console.log('Maintenance mode changed:', data);
-      setMaintenanceMode(data.maintenanceMode);
+      setMaintenanceMode(!!data?.maintenanceMode);
     };
 
     socket.on('system:maintenance-mode-changed', handleMaintenanceModeChanged);
+    socket.on('maintenance_mode_changed', handleMaintenanceModeChanged);
 
-    // Cleanup on unmount
     return () => {
-      socket.off('system:maintenance-mode-changed', handleMaintenanceModeChanged);
+      socket.off(
+        'system:maintenance-mode-changed',
+        handleMaintenanceModeChanged
+      );
+      socket.off('maintenance_mode_changed', handleMaintenanceModeChanged);
       socket.disconnect();
     };
   }, [fetchMaintenanceStatus]);
 
-  const value = {
-    maintenanceMode,
-    loading,
-    error,
-    refetch: fetchMaintenanceStatus,
-  };
-
   return (
-    <MaintenanceContext.Provider value={value}>
+    <MaintenanceContext.Provider
+      value={{
+        maintenanceMode,
+        loading,
+        error,
+        refetch: fetchMaintenanceStatus,
+      }}
+    >
       {children}
     </MaintenanceContext.Provider>
   );

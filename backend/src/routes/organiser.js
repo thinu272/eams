@@ -2345,10 +2345,13 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     }
 
     if (paymentMethods) {
+      console.log('Saving paymentMethods:', JSON.stringify(paymentMethods, null, 2));
+      console.log('Before save - event.settings.paymentMethods:', JSON.stringify(event.settings?.paymentMethods, null, 2));
       event.settings.paymentMethods = {
         ...(event.settings.paymentMethods?.toObject ? event.settings.paymentMethods.toObject() : event.settings.paymentMethods || {}),
         ...paymentMethods
       };
+      console.log('After merge - event.settings.paymentMethods:', JSON.stringify(event.settings.paymentMethods, null, 2));
       event.markModified('settings.paymentMethods');
     }
 

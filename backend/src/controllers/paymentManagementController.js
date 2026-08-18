@@ -28,6 +28,27 @@ const normalizeReceiptFileUrl = (filePath) => {
   return normalized;
 };
 
+
+const isPlatformAdmin = (role) => {
+  const r = String(role || '').toLowerCase().replace(/[\s-]/g, '_');
+  return ['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(r) ||
+    ['main_admin', 'super_admin'].includes(String(role || '').toLowerCase());
+};
+
+const isSubOrganiserRole = (role) => {
+  const r = String(role || '').toLowerCase().replace(/[\s-]/g, '_');
+  return r === 'sub_organiser' || r === 'suborganiser';
+};
+
+const createBuyerNotification = async (buyerId, payload) => {
+  if (!buyerId) return;
+  try {
+    await Notification.create({ user: buyerId, ...payload });
+  } catch (err) {
+    console.error('Notification create failed:', err.message);
+  }
+};
+
 const getSubOrgAssignedZoneIds = (user, event) => {
   if (!user || !event) return [];
 
@@ -128,7 +149,7 @@ const getPaymentSubmissions = async (req, res, next) => {
     // Event scoping based on user role
     let accessibleEventIds = [];
     
-    if (['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (isPlatformAdmin(role)) {
       if (eventId) {
         filter.eventId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId;
       }
@@ -151,7 +172,7 @@ const getPaymentSubmissions = async (req, res, next) => {
         filter.eventId = { $in: accessibleEventIds };
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const accessibleEvents = await Event.find({ _id: { $in: accessibleEventIds } });
         let assignedCategoryNames = [];
         
@@ -307,7 +328,7 @@ const getPaymentSubmissionDetails = async (req, res, next) => {
     const role = user.role?.toLowerCase();
     const assignedEventIds = (user.assignedEvents || []).map(id => id.toString());
     
-    if (!['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (!isPlatformAdmin(role)) {
       if (!assignedEventIds.includes(order.eventId?._id?.toString())) {
         return res.status(403).json({ 
           success: false, 
@@ -315,7 +336,7 @@ const getPaymentSubmissionDetails = async (req, res, next) => {
         });
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
         const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
@@ -371,6 +392,7 @@ const getPaymentSubmissionDetails = async (req, res, next) => {
           _id: order._id,
           orderNumber: order.orderNumber,
           totalAmount: order.totalAmount,
+          currency: order.eventId?.settings?.currency || order.eventId?.currency || order.currency || 'LKR',
           status: order.status,
           paymentStatus: order.paymentStatus,
           paymentMethod: order.paymentMethod,
@@ -455,7 +477,7 @@ const approvePayment = async (req, res, next) => {
     const role = user.role?.toLowerCase();
     const assignedEventIds = (user.assignedEvents || []).map(id => id.toString());
     
-    if (!['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (!isPlatformAdmin(role)) {
       if (!assignedEventIds.includes(order.eventId?._id?.toString())) {
         return res.status(403).json({ 
           success: false, 
@@ -463,7 +485,7 @@ const approvePayment = async (req, res, next) => {
         });
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
         const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
@@ -488,7 +510,8 @@ const approvePayment = async (req, res, next) => {
     
     // Update order status
     order.status = 'CONFIRMED';
-    order.paymentStatus = 'success';
+    order.paymentStatus = 'paid';
+    order.paidAt = order.paidAt || new Date();
     
     if (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') {
       if (!order.paymentDetails) order.paymentDetails = {};
@@ -527,6 +550,17 @@ const approvePayment = async (req, res, next) => {
     try {
       if (order.paymentMethod === 'bank_transfer') {
         await sendBankTransferPaymentApproved(order, order.eventId);
+        // Also deliver tickets + summary like other paid methods
+        for (const ticket of tickets) {
+          if (ticket.attendee) {
+            await notifyFinalTicket(ticket.attendee, order.eventId);
+          }
+        }
+        try {
+          await sendBuyerPurchaseSummaryEmail({ order, event: order.eventId });
+        } catch (e) {
+          console.error('Purchase summary email failed:', e.message);
+        }
       } else if (order.paymentMethod === 'cash_at_entrance' || order.paymentMethod === 'cash_on_entrance') {
         // Cash payment - send full confirmation flow
         await notifyBuyerTicketProgress(order.buyerEmail, {
@@ -576,7 +610,7 @@ const approvePayment = async (req, res, next) => {
         }
       }
       
-      await Notification.create({
+      if (order.buyerId) await Notification.create({
         user: order.buyerId,
         title: 'Payment Approved',
         message: `Your payment for order ${order.orderNumber} has been approved. Your tickets are now confirmed.`,
@@ -698,7 +732,7 @@ const rejectPayment = async (req, res, next) => {
     const role = user.role?.toLowerCase();
     const assignedEventIds = (user.assignedEvents || []).map(id => id.toString());
     
-    if (!['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (!isPlatformAdmin(role)) {
       if (!assignedEventIds.includes(order.eventId?._id?.toString())) {
         return res.status(403).json({ 
           success: false, 
@@ -706,7 +740,7 @@ const rejectPayment = async (req, res, next) => {
         });
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
         const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
@@ -757,7 +791,7 @@ const rejectPayment = async (req, res, next) => {
         }
       }
       
-      await Notification.create({
+      if (order.buyerId) await Notification.create({
         user: order.buyerId,
         title: 'Payment Rejected',
         message: `Your payment for order ${order.orderNumber} has been rejected. Reason: ${rejectionReason}`,
@@ -879,7 +913,7 @@ const requestMoreInfo = async (req, res, next) => {
     const role = user.role?.toLowerCase();
     const assignedEventIds = (user.assignedEvents || []).map(id => id.toString());
     
-    if (!['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (!isPlatformAdmin(role)) {
       if (!assignedEventIds.includes(order.eventId?._id?.toString())) {
         return res.status(403).json({ 
           success: false, 
@@ -887,7 +921,7 @@ const requestMoreInfo = async (req, res, next) => {
         });
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const Event = require('../models/Event');
         const event = await Event.findById(order.eventId?._id);
         const assignedCategoryNames = getSubOrgPermittedCategoryNames(user, event);
@@ -925,8 +959,8 @@ const requestMoreInfo = async (req, res, next) => {
         }
       }
       
-      await Notification.create({
-          user: order.buyerId,
+      if (order.buyerId) await Notification.create({
+        user: order.buyerId,
         title: 'Payment Information Requested',
         message: `Additional information is required for your payment for order ${order.orderNumber}: ${message}`,
         type: 'info',
@@ -945,7 +979,7 @@ const requestMoreInfo = async (req, res, next) => {
       eventId: order.eventId?._id,
       details: {
         message: `Information requested for order ${order.orderNumber}`,
-        submissionId: paymentSubmission?._id,
+        KPIsubmissionId: paymentSubmission?._id,
         requestedBy: user.name,
         infoRequest: message,
       },
@@ -999,7 +1033,7 @@ const getPaymentStatistics = async (req, res, next) => {
     let accessibleEventIds = [];
     let assignedCategoryNames = [];
     let scopedCurrency = 'LKR';
-    if (['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (isPlatformAdmin(role)) {
       if (eventId) {
         filter.eventId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId;
       }
@@ -1019,7 +1053,7 @@ const getPaymentStatistics = async (req, res, next) => {
         filter.eventId = { $in: accessibleEventIds };
       }
 
-      if (role === 'sub_organiser' || role === 'suborganiser') {
+      if (isSubOrganiserRole(role)) {
         const accessibleEvents = await Event.find({ _id: { $in: accessibleEventIds } });
         assignedCategoryNames = [];
         
@@ -1075,7 +1109,7 @@ const getPaymentStatistics = async (req, res, next) => {
       { $match: { ...filter, paymentMethod: { $in: ['cash_at_entrance', 'cash_on_entrance'] }, paymentStatus: { $in: ['paid', 'success'] } } }
     ];
 
-    if (role === 'sub_organiser' || role === 'suborganiser') {
+    if (isSubOrganiserRole(role)) {
       [revenuePipeline, pendingRevenuePipeline, totalRevenuePipeline, cashCollectedPipeline].forEach(pipeline => {
         pipeline.push(
           { $unwind: '$tickets' },
@@ -1095,7 +1129,7 @@ const getPaymentStatistics = async (req, res, next) => {
     let countFilter = filter;
     let hasSubOrgCategories = assignedCategoryNames.length > 0;
     
-    if (role === 'sub_organiser' || role === 'suborganiser') {
+    if (isSubOrganiserRole(role)) {
       if (hasSubOrgCategories) {
         // For counting, we need to find orders that have tickets in assigned categories
         const ordersWithAssignedCategories = await Order.find({
@@ -1215,7 +1249,7 @@ const exportPayments = async (req, res, next) => {
     }
     
     // Event scoping
-    if (['main_admin', 'super_admin', 'mainadmin', 'superadmin'].includes(role)) {
+    if (isPlatformAdmin(role)) {
       if (eventId) {
         filter.eventId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId;
       }
@@ -1331,7 +1365,7 @@ const getAllTransactions = async (req, res, next) => {
     const role = user.role?.toLowerCase();
 
     // Only Super Admin and Main Admin can access this endpoint
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
@@ -1529,7 +1563,7 @@ const getTransactionStatistics = async (req, res, next) => {
     const user = req.user;
     const role = user.role?.toLowerCase();
 
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
@@ -1609,7 +1643,7 @@ const getTransactionDetails = async (req, res, next) => {
     const user = req.user;
     const role = user.role?.toLowerCase();
 
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
@@ -1764,7 +1798,7 @@ const getTransactionTimeline = async (req, res, next) => {
     const user = req.user;
     const role = user.role?.toLowerCase();
 
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
@@ -1922,7 +1956,7 @@ const getTransactionAuditLog = async (req, res, next) => {
     const user = req.user;
     const role = user.role?.toLowerCase();
 
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
@@ -1975,7 +2009,7 @@ const exportAllTransactions = async (req, res, next) => {
     const user = req.user;
     const role = user.role?.toLowerCase();
 
-    if (role !== 'super_admin' && role !== 'main_admin') {
+    if (!isPlatformAdmin(role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
 
