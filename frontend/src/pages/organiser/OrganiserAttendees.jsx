@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+ import React, { useEffect, useMemo, useState } from 'react';
 import OrganiserLayout from '../../layouts/OrganiserLayout';
 import { getOrganiserAttendeesScoped, inviteOrganiserAttendee } from '../../api/organiser';
 import Button from '../../components/ui/Button';
