@@ -62,7 +62,7 @@ zoneLogSchema.post('save', async function(doc) {
 
     await SystemLog.create({
       userId: doc.scannedBy || undefined,
-      userEmail: operator?.email || 'system@entrynex.com',
+      userEmail: operator?.email || 'system@entrynex.lk',
       userRole: operator?.role || 'Staff',
       action: 'ticket_scan',
       eventId: doc.eventId,

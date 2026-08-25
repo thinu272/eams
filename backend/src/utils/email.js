@@ -57,7 +57,7 @@ const sendWithProvider = async ({ to, subject, html, templateId, dynamicTemplate
     console.log('EMAIL_BLOCKED: Global email sending is disabled by SystemConfig.email.enabled=false');
     throw new Error('Global email sending is disabled');
   }
-  const from = process.env.EMAIL_FROM || config.email?.senderEmail || config.general?.supportEmail || 'noreply@entrynex.com';
+  const from = process.env.EMAIL_FROM || config.email?.senderEmail || config.general?.supportEmail || 'noreply@entrynex.lk';
   const preferredProvider = config.email?.provider || (process.env.SENDGRID_API_KEY ? 'sendgrid' : 'smtp');
   const templateMode = config.email?.templateMode || 'code';
   
@@ -225,7 +225,7 @@ const baseTemplate = (content, scenarioTitle = '', eventOrganiser = 'Authorized 
             <tr>
               <td class="footer" style="background-color: #f1f5f9; padding: 24px 32px; font-size: 12px; color: #64748b; text-align: center; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;">
                 <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">Event Organizer: ${eventOrganiser}</p>
-                <p style="margin: 0 0 12px 0; color: #64748b;">Support Contact: support@entrynex.com</p>
+                <p style="margin: 0 0 12px 0; color: #64748b;">Support Contact: support@entrynex.lk</p>
                 <p style="margin: 0 0 16px 0; font-size: 10px; color: #94a3b8; line-height: 1.4;">QR Validation Notice: This QR code is secure and will be validated at the venue gates.</p>
                 <div style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase;">Powered by ENTRYNEX</div>
               </td>
@@ -458,7 +458,7 @@ const sendFinalConfirmation = async (payload) => {
     
     <div style="margin-top: 32px; padding: 20px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b; text-align: center;">
       Need help? Contact us at <br>
-      <strong>${supportEmail || 'support@entrynex.com'}</strong> ${supportPhone ? `| <strong>${supportPhone}</strong>` : ''}
+      <strong>${supportEmail || 'support@entrynex.lk'}</strong> ${supportPhone ? `| <strong>${supportPhone}</strong>` : ''}
     </div>
   `, scenarioTitle, orgName);
 
@@ -471,7 +471,7 @@ const sendFinalConfirmation = async (payload) => {
     ticketCategory: ticketCategory || attendee.categoryName,
     packageDescription: packageDescription || 'Standard access package',
     zoneAccessList: (zoneAccessList || []).join(', '),
-    supportEmail: supportEmail || 'support@entrynex.com',
+    supportEmail: supportEmail || 'support@entrynex.lk',
     supportPhone: supportPhone || 'N/A',
   };
   const finalSubjectTemplate = config.email?.templates?.ticketSubject;
@@ -517,7 +517,7 @@ const sendBuyerFinalSummary = async ({
     <div class="info-row"><span class="info-label">Venue</span><span>${event.venue?.name}, ${event.venue?.city}</span></div>
     <p style="margin-top:16px;font-weight:bold">Confirmed Attendees</p>
     <ul>${rows || '<li>No attendees found.</li>'}</ul>
-    <p style="font-size:13px;color:#555;">Support: ${supportEmail || 'support@entrynex.com'} | ${supportPhone || 'N/A'}</p>
+    <p style="font-size:13px;color:#555;">Support: ${supportEmail || 'support@entrynex.lk'} | ${supportPhone || 'N/A'}</p>
   `, 'ENTRYNEX Event Confirmation', orgName);
 
   await sendWithProvider({
@@ -531,7 +531,7 @@ const sendBuyerFinalSummary = async ({
       eventName: event.name,
       attendeeCount: (attendees || []).length,
       attendees: attendees || [],
-      supportEmail: supportEmail || 'support@entrynex.com',
+      supportEmail: supportEmail || 'support@entrynex.lk',
       supportPhone: supportPhone || 'N/A',
     },
   });

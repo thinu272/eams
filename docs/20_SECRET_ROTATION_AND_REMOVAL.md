@@ -9,7 +9,7 @@ Important: perform these steps after coordinating with your security team and cr
    - Revoke old keys and issue new ones.
 
 2) Update environment configuration
-   - Replace any hardcoded or example secrets in local files with placeholder values and store real secrets in a secret manager (Azure Key Vault, AWS Secrets Manager, HashiCorp Vault) or CI secrets.
+   - Replace any hardcoded or example secrets in local files with placeholder values and store real secrets in a secret manager (Azure Key Vault, ASUZE Secrets Manager, HashiCorp Vault) or CI secrets.
    - Commit only `.env.example` with no real values.
 
 3) Scrub git history (two common methods)

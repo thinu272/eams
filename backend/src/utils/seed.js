@@ -121,7 +121,7 @@ const seed = async () => {
   });
 
   const attendeeUser = await User.create({
-    name: 'Thinu Upadya', email: 'attendee@stadium.entrynex.com', password: 'Attendee@Matrix.Reset',
+    name: 'Sofia Flex', email: 'attendee@stadium.entrynex.com', password: 'Attendee@Matrix.Reset',
     role: 'attendee', isActive: true,
     phone: '+94766666666', isVerified: true
   });

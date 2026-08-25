@@ -565,7 +565,7 @@ const AttendeeDashboardPage = () => {
             <p className="mt-5 pt-4 border-t border-slate-100 text-center text-xs text-slate-400">
               Need help?{' '}
               <span className="font-semibold text-slate-600">
-                support@entrynex.com
+                support@entrynex.lk
               </span>
             </p>
           </div>

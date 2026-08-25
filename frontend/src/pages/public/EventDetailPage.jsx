@@ -19,16 +19,34 @@ import { getSocketUrl, getAssetUrl } from '../../utils/backend';
 const getCategoryId = (category) => category?.id || category?._id || category?.name;
 const getZoneId = (zone) => zone?.id || zone?._id || zone?.name;
 
-/** Same mapping as organiser dashboard */
 const resolveEventDetailKind = (eventType = '', customEventType = '') => {
   const raw = `${eventType || ''} ${customEventType || ''}`.toLowerCase().trim();
-  if (/cricket|match|sports?|football|soccer|rugby|tennis|hockey|basketball|game/.test(raw)) {
+  // Sports / Match
+  if (
+    /cricket|match|sports?|football|soccer|rugby|tennis|hockey|basketball|game|tournament|league|fixture/.test(
+      raw
+    )
+  ) {
     return 'match';
   }
-  if (/concert|music|musical|show|live|festival|gig|band|artist|performance/.test(raw)) {
+  // Concert / Music
+  if (
+    /concert|music|musical|show|live|festival|gig|band|artist|performance|dj|singer|orchestra/.test(
+      raw
+    )
+  ) {
     return 'concert';
   }
-  if (/conference|summit|seminar|meetup|workshop|talks?|expo/.test(raw)) {
+  // Workshop
+  if (/workshop|class|course|training|bootcamp/.test(raw)) {
+    return 'workshop';
+  }
+  // Conference / Business
+  if (
+    /conference|summit|seminar|meetup|talks?|expo|forum|convention|webinar|symposium/.test(
+      raw
+    )
+  ) {
     return 'conference';
   }
   return null;
@@ -52,7 +70,9 @@ const EventDetailPage = () => {
   const fetchEvent = () => {
     getEvent(id)
       .then((res) => {
-        setEvent(res.data?.data?.event || res.data?.event);
+        const fetchedEvent = res.data?.data?.event || res.data?.event;
+        console.log('FETCHED EVENT:', fetchedEvent);
+        setEvent(fetchedEvent);
         setIsExpired(res.data?.data?.isExpired || false);
       })
       .catch((err) => {
@@ -61,6 +81,10 @@ const EventDetailPage = () => {
       })
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    // No debug logging needed
+  }, [event]);
 
   useEffect(() => {
     fetchEvent();
@@ -164,9 +188,18 @@ const EventDetailPage = () => {
     event.branding?.bannerImage || event.coverImage || event.bannerImage;
 
   const detailKind = resolveEventDetailKind(event.eventType, event.customEventType);
-  const match = event.matchDetails;
-  const concert = event.concertDetails;
-  const conference = event.conferenceDetails;
+
+  // Helper to determine if an object contains any meaningful value
+  const hasValues = (obj) =>
+    obj &&
+    Object.values(obj).some((v) => {
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === 'string') return v.trim().length > 0;
+      return v !== undefined && v !== null && v !== '';
+    });
+
+
+
 
   const formatCurrency = (value) =>
     value === 0
@@ -365,129 +398,168 @@ const EventDetailPage = () => {
           <div className="grid grid-cols-1 gap-10 xl:grid-cols-[1fr_340px]">
             <div className="space-y-10">
               {/* Match details */}
-              {detailKind === 'match' &&
-                (match?.teamA || match?.teamB || match?.matchType || match?.series) && (
-                  <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm sm:p-7">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600">
-                      Match
-                    </p>
-                    <h2 className="mt-1 text-xl font-bold text-slate-900">
-                      {match?.teamA || 'TBA'}{' '}
-                      <span className="text-slate-400">vs</span> {match?.teamB || 'TBA'}
-                    </h2>
-                    <div className="mt-5 grid grid-cols-2 gap-5 md:grid-cols-4">
-                      {[
-                        { label: 'Team A', value: match?.teamA },
-                        { label: 'Team B', value: match?.teamB },
-                        { label: 'Match Type', value: match?.matchType },
-                        { label: 'Series', value: match?.series },
-                      ].map((item) => (
+              {detailKind === 'match' && (match?.teamA?.name || match?.teamB?.name || match?.matchType || match?.tournament) && (
+                <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm sm:p-7">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600">
+                    Match Details
+                  </p>
+                  
+                  {/* VS Banner Layout */}
+                  <div className="mt-4 mb-6 rounded-xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 p-5 text-center text-white shadow-sm">
+                    <div className="flex flex-col items-center justify-around gap-4 sm:flex-row">
+                      {/* Team A */}
+                      <div className="flex-1">
+                        <p className="text-lg font-bold text-white sm:text-xl">
+                          {match?.teamA?.name || 'TBA'}
+                        </p>
+                        {match?.teamA?.shortName && (
+                          <span className="mt-1 inline-block rounded bg-blue-600/30 px-2 py-0.5 text-xs font-semibold text-blue-400">
+                            {match.teamA.shortName}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* VS Divider */}
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white ring-2 ring-slate-900 shadow-sm">
+                        VS
+                      </div>
+
+                      {/* Team B */}
+                      <div className="flex-1">
+                        <p className="text-lg font-bold text-white sm:text-xl">
+                          {match?.teamB?.name || 'TBA'}
+                        </p>
+                        {match?.teamB?.shortName && (
+                          <span className="mt-1 inline-block rounded bg-blue-600/30 px-2 py-0.5 text-xs font-semibold text-blue-400">
+                            {match.teamB.shortName}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Metadata Fields (Shown only if present) */}
+                  <div className="mt-5 grid grid-cols-2 gap-5 md:grid-cols-4">
+                    {[
+                      { label: 'Match Type', value: match?.matchType },
+                      { label: 'Series / Tournament', value: match?.tournament },
+                      { label: 'Match Number', value: match?.matchNumber },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
                         <div key={item.label}>
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                             {item.label}
                           </p>
-                          <p className="text-base font-semibold text-slate-900">
-                            {item.value || 'TBD'}
-                          </p>
+                          <p className="text-base font-semibold text-slate-900">{item.value}</p>
                         </div>
                       ))}
-                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
               {/* Concert / musical */}
-              {detailKind === 'concert' &&
-                (concert?.mainArtist ||
-                  concert?.tourName ||
-                  concert?.genre ||
-                  concert?.supportingBands?.length > 0) && (
-                  <div className="rounded-2xl border border-violet-100 bg-white p-6 shadow-sm sm:p-7">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-600">
-                      Line-up
-                    </p>
+              {detailKind === 'concert' && (concert?.artistOrPerformer || concert?.mainArtist || concert?.supportingArtist || concert?.supportingBands || concert?.genre || concert?.performanceType || concert?.ageRestriction) && (
+                <div className="rounded-2xl border border-violet-100 bg-white p-6 shadow-sm sm:p-7">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-600">
+                    Concert Details
+                  </p>
+                  
+                  {(concert?.artistOrPerformer || concert?.mainArtist) && (
                     <h2 className="mt-1 text-xl font-bold text-slate-900">
-                      {concert?.mainArtist || 'Headliner TBA'}
+                      {concert.artistOrPerformer || concert.mainArtist}
                     </h2>
-                    {concert?.tourName && (
-                      <p className="mt-1 text-sm text-slate-500">{concert.tourName}</p>
-                    )}
-                    <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
-                      {[
-                        { label: 'Main Artist', value: concert?.mainArtist },
-                        { label: 'Genre', value: concert?.genre },
-                        { label: 'Tour / Show', value: concert?.tourName },
-                      ].map((item) => (
+                  )}
+
+                  <div className="mt-5 grid grid-cols-2 gap-5 md:grid-cols-4">
+                    {[
+                      { label: 'Artist / Performer', value: concert?.artistOrPerformer || concert?.mainArtist },
+                      { label: 'Supporting Artist', value: concert?.supportingArtist || (Array.isArray(concert?.supportingBands) ? concert.supportingBands.join(', ') : concert?.supportingBands) },
+                      { label: 'Genre', value: concert?.genre },
+                      { label: 'Performance Type', value: concert?.performanceType },
+                      { label: 'Age Restriction', value: concert?.ageRestriction },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
                         <div key={item.label}>
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                             {item.label}
                           </p>
-                          <p className="text-base font-semibold text-slate-900">
-                            {item.value || 'TBD'}
-                          </p>
+                          <p className="text-base font-semibold text-slate-900">{item.value}</p>
                         </div>
                       ))}
-                    </div>
-                    {concert?.supportingBands?.length > 0 && (
-                      <div className="mt-5">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                          Supporting acts
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {concert.supportingBands.map((band, idx) => (
-                            <span
-                              key={idx}
-                              className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700"
-                            >
-                              {band}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )}
+                </div>
+              )}
 
               {/* Conference */}
-              {detailKind === 'conference' &&
-                (conference?.theme || conference?.speakers?.length > 0) && (
-                  <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm sm:p-7">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">
-                      Conference
-                    </p>
-                    {conference?.theme && (
-                      <h2 className="mt-1 text-xl font-bold text-slate-900">
-                        {conference.theme}
-                      </h2>
-                    )}
-                    {conference?.speakers?.length > 0 && (
-                      <div className="mt-5">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                          Speakers
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {conference.speakers.map((speaker, idx) => (
-                            <span
-                              key={idx}
-                              className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700"
-                            >
-                              {speaker}
-                            </span>
-                          ))}
+              {detailKind === 'conference' && (conference?.conferenceName || conference?.theme || conference?.speakers || conference?.keynoteSpeaker || conference?.sessionType || conference?.organizerName || conference?.registrationInfo) && (
+                <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm sm:p-7">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">
+                    Conference Details
+                  </p>
+                  
+                  {(conference?.conferenceName || conference?.theme) && (
+                    <h2 className="mt-1 text-xl font-bold text-slate-900">
+                      {conference.conferenceName || conference.theme}
+                    </h2>
+                  )}
+
+                  <div className="mt-5 grid grid-cols-2 gap-5 md:grid-cols-4">
+                    {[
+                      { label: 'Conference Name', value: conference?.conferenceName || conference?.theme },
+                      { label: 'Speaker(s)', value: Array.isArray(conference?.speakers) ? conference.speakers.join(', ') : conference?.speakers },
+                      { label: 'Keynote Speaker', value: conference?.keynoteSpeaker },
+                      { label: 'Session Type', value: conference?.sessionType },
+                      { label: 'Organizer', value: conference?.organizerName },
+                      { label: 'Registration Info', value: conference?.registrationInfo || conference?.scheduleUrl },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
+                        <div key={item.label}>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                            {item.label}
+                          </p>
+                          <p className="text-base font-semibold text-slate-900">{item.value}</p>
                         </div>
-                      </div>
-                    )}
-                    {conference?.scheduleUrl && (
-                      <a
-                        href={conference.scheduleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
-                      >
-                        View full schedule <ChevronRightIcon className="h-4 w-4" />
-                      </a>
-                    )}
+                      ))}
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Workshop */}
+              {detailKind === 'workshop' && (workshop?.instructor || workshop?.topic || workshop?.duration || workshop?.skillLevel || workshop?.materialsRequired) && (
+                <div className="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm sm:p-7">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-600">
+                    Workshop Details
+                  </p>
+                  
+                  {workshop?.topic && (
+                    <h2 className="mt-1 text-xl font-bold text-slate-900">
+                      {workshop.topic}
+                    </h2>
+                  )}
+
+                  <div className="mt-5 grid grid-cols-2 gap-5 md:grid-cols-4">
+                    {[
+                      { label: 'Instructor', value: workshop?.instructor },
+                      { label: 'Workshop Topic', value: workshop?.topic },
+                      { label: 'Duration', value: workshop?.duration },
+                      { label: 'Skill Level', value: workshop?.skillLevel },
+                      { label: 'Materials Required', value: workshop?.materialsRequired },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
+                        <div key={item.label}>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                            {item.label}
+                          </p>
+                          <p className="text-base font-semibold text-slate-900">{item.value}</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               {/* Ticket Categories — unchanged from your version */}
               {!isExpired && (

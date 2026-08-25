@@ -169,10 +169,10 @@ const BankTransferThankYouPage = () => {
               </p>
               <div className="mt-4 flex flex-wrap gap-4 text-sm">
                 <a
-                  href="mailto:support@entrynex.com"
+                  href="mailto:support@entrynex.lk"
                   className="font-bold text-brand-main transition hover:underline"
                 >
-                  support@entrynex.com
+                  support@entrynex.lk
                 </a>
                 <span className="text-slate-300">·</span>
                 <a

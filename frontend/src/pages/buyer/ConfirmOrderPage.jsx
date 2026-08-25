@@ -580,7 +580,7 @@ const ConfirmOrderPage = () => {
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <a
-              href="mailto:support@entrynex.com"
+              href="mailto:support@entrynex.lk"
               className="rounded-xl border border-blue-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-50"
             >
               Email Support

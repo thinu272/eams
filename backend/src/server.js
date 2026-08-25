@@ -234,7 +234,7 @@ mongoose
   .then(() => {
     console.log('MongoDB connected');
     // Initialize S3 cleanup scheduler after database connection
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    if (process.env.ASUZE_ACCESS_KEY_ID && process.env.ASUZE_SECRET_ACCESS_KEY) {
       initializeCleanupScheduler();
     }
     initializeBankTransferScheduler(io);
