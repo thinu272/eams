@@ -26,6 +26,9 @@ All notable changes to the **ENTRYNEX / EAMS** project documentation are listed 
 ### 2026-07-27
 - Initial repository import and base project setup.
 
+### 2026-08-31
+- Fixed undefined `conference` error in `EventDetailPage.jsx` by adding missing variable definitions for `match`, `concert`, `conference`, and `workshop` extracted from the event object.
+
 ### 2026-08-05
 - Updated error handling and logging documentation (see `14_ERROR_HANDLING_LOGGING.md`).
 
