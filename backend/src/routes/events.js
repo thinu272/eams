@@ -74,7 +74,7 @@ const parseMaybeJson = (value) => {
 const normalizeEventPayload = (body, file, files) => {
   const payload = { ...body };
 
-  ['venue', 'categories', 'zones', 'settings', 'matchDetails', 'concertDetails', 'conferenceDetails', 'customFields'].forEach((key) => {
+  ['venue', 'categories', 'zones', 'settings', 'customFields'].forEach((key) => {
     if (key in payload) {
       payload[key] = parseMaybeJson(payload[key]);
     }
@@ -132,6 +132,15 @@ const normalizeEventPayload = (body, file, files) => {
       payload.branding.bannerImage = path;
     }
   }
+
+  // Sync old structure to new eventDetails structure for consistency
+  // This ensures that when the form updates matchDetails, concertDetails, etc.,
+  // the corresponding eventDetails fields are also updated
+
+
+  // Also sync from new structure to old structure when eventDetails is provided
+  // This handles the case when the frontend sends eventDetails directly
+
 
   return payload;
 };
@@ -437,7 +446,10 @@ router.get('/:eventId/dashboard', protect, requireEventAccess, async (req, res, 
     const EntryLog = require('../models/EntryLog');
 
     const [event, attendeeStats, orderStats, recentLogs] = await Promise.all([
-      Event.findById(eventId).populate('mainOrganiser', 'name email').populate('subOrganisers', 'name email'),
+      Event.findById(eventId)
+        .select('name slug description venue startDate endDate eventType customEventType categories coverImage bannerImage branding settings currency')
+        .populate('mainOrganisers', 'name email')
+        .populate('subOrganisers', 'name email'),
       Attendee.aggregate([
         { $match: { event: new mongoose.Types.ObjectId(eventId) } },
         { $group: { _id: '$confirmationStatus', count: { $sum: 1 } } },
@@ -584,9 +596,15 @@ router.patch('/:eventId', protect, upload.fields([
       });
     }
 
+    console.log('[PATCH] Update data being saved:', JSON.stringify({
+      // event detail fields removed
+    }));
+
     const event = await Event.findByIdAndUpdate(eventId, updateData, {
       new: true, runValidators: true,
     });
+
+    console.log('[PATCH] Event saved successfully.');
 
     await logActivity({
       req,

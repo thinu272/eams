@@ -111,7 +111,7 @@ const LoginPage = () => {
                       autoComplete="email"
                       value={form.email}
                       onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                      placeholder="identity@stadium.entrynex.com"
+                      placeholder="identity@stadium.entrynex.lk"
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                     />
                   </div>
@@ -247,9 +247,9 @@ const LoginPage = () => {
             </Link>
           </div>
 
-          {/* Lab Access (dev credentials) */}
-          <div className="mt-6 border-t border-slate-100 pt-5">
-            <details className="group/details">
+         {/* Lab Access (dev credentials) */}
+         <div className="mt-6 border-t border-slate-100 pt-5">
+            {/*<details className="group/details">
               <summary className="flex items-center justify-center gap-2 cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-blue-600 transition-colors">
                 <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md text-[10px]">
                   Lab Access
@@ -278,7 +278,7 @@ const LoginPage = () => {
                   </div>
                 ))}
               </div>
-            </details>
+            </details>*/}
           </div>
         </div>
 

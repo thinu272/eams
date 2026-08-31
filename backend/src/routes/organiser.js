@@ -489,6 +489,7 @@ router.get('/workspace', requireEventAccess, requirePermission('canViewDashboard
           matchDetails: req.scopedEvent.matchDetails || {},
           concertDetails: req.scopedEvent.concertDetails || {},
           conferenceDetails: req.scopedEvent.conferenceDetails || {},
+          eventDetails: req.scopedEvent.eventDetails || {},
           sponsorPackages: req.scopedEvent.sponsorPackages || [],
           customEventType: req.scopedEvent.customEventType || '',
         },
@@ -700,7 +701,7 @@ router.post(
       const order = new Order({
         eventId,
         buyerName: fullName,
-        buyerEmail: email || 'manual@entrynex.com',
+        buyerEmail: email || 'manual@entrynex.lk',
         buyerPhone: phone || '',
         totalAmount: 0,
         status: 'CONFIRMED',
@@ -2203,7 +2204,44 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
     const matchDetails = parseJson(req.body.matchDetails);
     const concertDetails = parseJson(req.body.concertDetails);
     const conferenceDetails = parseJson(req.body.conferenceDetails);
+    const eventDetails = parseJson(req.body.eventDetails);
     const communicationChannels = parseJson(req.body.communicationChannels);
+
+    if (eventDetails) {
+      event.eventDetails = {
+        ...(event.eventDetails?.toObject ? event.eventDetails.toObject() : event.eventDetails || {}),
+        ...eventDetails
+      };
+      event.markModified('eventDetails');
+
+      // Sync to legacy fields to support existing code or un-restarted servers
+      if (eventDetails.match) {
+        event.matchDetails = {
+          teamA: eventDetails.match.teamA?.name || '',
+          teamB: eventDetails.match.teamB?.name || '',
+          matchType: eventDetails.match.matchType || '',
+          series: eventDetails.match.tournament || ''
+        };
+        event.markModified('matchDetails');
+      }
+      if (eventDetails.concert) {
+        event.concertDetails = {
+          mainArtist: eventDetails.concert.artistOrPerformer || '',
+          supportingBands: eventDetails.concert.supportingArtist ? eventDetails.concert.supportingArtist.split(',').map((s) => s.trim()).filter(Boolean) : [],
+          genre: eventDetails.concert.genre || '',
+          tourName: eventDetails.concert.performanceType || ''
+        };
+        event.markModified('concertDetails');
+      }
+      if (eventDetails.conference) {
+        event.conferenceDetails = {
+          theme: eventDetails.conference.conferenceName || '',
+          speakers: eventDetails.conference.speakers ? eventDetails.conference.speakers.split(',').map((s) => s.trim()).filter(Boolean) : [],
+          scheduleUrl: eventDetails.conference.registrationInfo || ''
+        };
+        event.markModified('conferenceDetails');
+      }
+    }
 
     if (matchDetails) {
       event.matchDetails = {
@@ -2211,14 +2249,35 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
         ...matchDetails
       };
       event.markModified('matchDetails');
+      
+      // Sync back to eventDetails
+      if (!event.eventDetails) event.eventDetails = {};
+      if (!event.eventDetails.match) event.eventDetails.match = {};
+      event.eventDetails.match.teamA = { name: matchDetails.teamA || '', shortName: matchDetails.teamAShort || '' };
+      event.eventDetails.match.teamB = { name: matchDetails.teamB || '', shortName: matchDetails.teamBShort || '' };
+      event.eventDetails.match.matchType = matchDetails.matchType || '';
+      event.eventDetails.match.tournament = matchDetails.series || '';
+      event.markModified('eventDetails');
     }
 
     if (concertDetails) {
+      console.log('[CONCERT_DETAILS] Updating concertDetails:', JSON.stringify(concertDetails));
       event.concertDetails = {
         ...(event.concertDetails?.toObject ? event.concertDetails.toObject() : event.concertDetails || {}),
         ...concertDetails
       };
       event.markModified('concertDetails');
+      console.log('[CONCERT_DETAILS] After update - event.concertDetails:', JSON.stringify(event.concertDetails));
+      
+      // Sync back to eventDetails
+      if (!event.eventDetails) event.eventDetails = {};
+      if (!event.eventDetails.concert) event.eventDetails.concert = {};
+      event.eventDetails.concert.artistOrPerformer = concertDetails.mainArtist || '';
+      event.eventDetails.concert.supportingArtist = Array.isArray(concertDetails.supportingBands) ? concertDetails.supportingBands.join(', ') : (concertDetails.supportingBands || '');
+      event.eventDetails.concert.genre = concertDetails.genre || '';
+      event.eventDetails.concert.performanceType = concertDetails.tourName || '';
+      event.markModified('eventDetails');
+      console.log('[CONCERT_DETAILS] After sync - event.eventDetails.concert:', JSON.stringify(event.eventDetails.concert));
     }
 
     if (conferenceDetails) {
@@ -2227,6 +2286,14 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
         ...conferenceDetails
       };
       event.markModified('conferenceDetails');
+      
+      // Sync back to eventDetails
+      if (!event.eventDetails) event.eventDetails = {};
+      if (!event.eventDetails.conference) event.eventDetails.conference = {};
+      event.eventDetails.conference.conferenceName = conferenceDetails.theme || '';
+      event.eventDetails.conference.speakers = Array.isArray(conferenceDetails.speakers) ? conferenceDetails.speakers.join(', ') : (conferenceDetails.speakers || '');
+      event.eventDetails.conference.registrationInfo = conferenceDetails.scheduleUrl || '';
+      event.markModified('eventDetails');
     }
 
     const role = normalizeRole(req.user.role);
@@ -2372,6 +2439,13 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       event.status = req.body.status;
     }
     
+    console.log('[BEFORE_SAVE] Final event state:', JSON.stringify({
+      hasConcertDetails: !!event.concertDetails,
+      concertDetails: event.concertDetails,
+      hasEventDetails: !!event.eventDetails,
+      eventDetailsConcert: event.eventDetails?.concert
+    }));
+    
     await event.save();
 
     await buildActivityNotification({
@@ -2388,7 +2462,6 @@ router.put('/event-customization', requireEventAccess, localUpload.fields([
       // Emit to all relevant rooms for event updates
       io.to(`event:${event._id}`).emit('event_update', { eventId: event._id });
       io.to(`dashboard:${event._id}`).emit('event_update', { eventId: event._id });
-      io.to(event._id.toString()).emit('event_update', { eventId: event._id }); // For event detail pages
       // Notify the public listing page so cover/banner/logo images update live
       io.to('listings').emit('events_updated', { eventId: event._id });
     }

@@ -140,7 +140,7 @@ const generateTicketPDF = async (attendee, event, ticket = null) => buildBuffer(
   // Right/Bottom Column: Brand details
   const orgName = event.organiser?.name || event.organiserName || 'Authorized Event Organizer';
   doc.fillColor(secondaryColor).fontSize(8).font('Helvetica').text(`Event Organizer: ${orgName}`, 50, footerY + 98);
-  doc.text('Support Contact: support@entrynex.com', 50, footerY + 110);
+  doc.text('Support Contact: support@entrynex.lk', 50, footerY + 110);
   
   doc.fillColor(accentColor).fontSize(8).font('Helvetica-Bold').text('Powered by ENTRYNEX', doc.page.width - 170, footerY + 98, { align: 'right', width: 120 });
 });
@@ -233,7 +233,7 @@ const generateOrderSummaryPDF = async (order, event) => buildBuffer(async (doc) 
   doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('ORDER INFORMATION & SUPPORT', 65, y + 15);
   doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
   doc.text(`Event Organizer: ${orgName}`, 65, y + 34);
-  doc.text('Support Contact: support@entrynex.com', 65, y + 48);
+  doc.text('Support Contact: support@entrynex.lk', 65, y + 48);
   doc.text('QR Validation Notice: Tickets in this order are secure and must be assigned to attendees for gate entry.', 65, y + 62, { width: 465 });
 
   if (['cash_on_entrance', 'cash_at_entrance'].includes(order.paymentMethod) && order.status === 'RESERVED') {
@@ -382,7 +382,7 @@ const generateReservationPDF = async (order, event) => buildBuffer(async (doc) =
   doc.fillColor(primaryColor).fontSize(9).font('Helvetica-Bold').text('CONTACT INFORMATION', 50, y);
   doc.fillColor(secondaryColor).font('Helvetica').fontSize(8);
   doc.text(`Event Organizer: ${orgName}`, 50, y + 18);
-  doc.text('Support Contact: support@entrynex.com', 50, y + 32);
+  doc.text('Support Contact: support@entrynex.lk', 50, y + 32);
   doc.text('Venue Address: ' + formatVenue(event.venue), 50, y + 46, { width: 470 });
 
   // Reservation Terms

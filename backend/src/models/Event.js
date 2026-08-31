@@ -116,29 +116,6 @@ const eventSchema = new mongoose.Schema({
     options: [{ type: String }],
   }],
 
-  // Team / match details for cricket
-  matchDetails: {
-    teamA: { type: String },
-    teamB: { type: String },
-    matchType: { type: String },
-    series: { type: String },
-  },
-
-  // Details for concert
-  concertDetails: {
-    mainArtist: { type: String },
-    supportingBands: [{ type: String }],
-    genre: { type: String },
-    tourName: { type: String },
-  },
-
-  // Details for conference
-  conferenceDetails: {
-    theme: { type: String },
-    speakers: [{ type: String }],
-    scheduleUrl: { type: String },
-  },
-
   // Assigned personnel
   company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company' },
   mainOrganisers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
@@ -156,6 +133,11 @@ const eventSchema = new mongoose.Schema({
     maxTicketsPerOrder: { type: Number, default: 10 },
     rfidEnabled: { type: Boolean, default: true },
     inviteLimitPerAttendee: { type: Number, default: 3 },
+    paymentMethods: {
+      card: { type: Boolean, default: false },
+      bank_transfer: { type: Boolean, default: false },
+      cash: { type: Boolean, default: false },
+    },
     emailTemplates: {
       invite: { type: String, default: '' },
       confirmation: { type: String, default: '' },

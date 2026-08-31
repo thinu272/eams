@@ -224,13 +224,32 @@ const normalizePaymentMethods = (source, fallbackAll = true) => {
 /** Map admin/custom labels → detail form kind */
 const resolveEventDetailKind = (eventType = '', customEventType = '') => {
   const raw = `${eventType || ''} ${customEventType || ''}`.toLowerCase().trim();
-  if (/cricket|match|sports?|football|soccer|rugby|tennis|hockey|basketball|game/.test(raw)) {
+  // Sports / Match
+  if (
+    /cricket|match|sports?|football|soccer|rugby|tennis|hockey|basketball|game|tournament|league|fixture/.test(
+      raw
+    )
+  ) {
     return 'match';
   }
-  if (/concert|music|musical|show|live|festival|gig|band|artist|performance/.test(raw)) {
+  // Concert / Music
+  if (
+    /concert|music|musical|show|live|festival|gig|band|artist|performance|dj|singer|orchestra/.test(
+      raw
+    )
+  ) {
     return 'concert';
   }
-  if (/conference|summit|seminar|meetup|workshop|talks?|expo/.test(raw)) {
+  // Workshop
+  if (/workshop|class|course|training|bootcamp/.test(raw)) {
+    return 'workshop';
+  }
+  // Conference / Business
+  if (
+    /conference|summit|seminar|meetup|talks?|expo|forum|convention|webinar|symposium/.test(
+      raw
+    )
+  ) {
     return 'conference';
   }
   return null;
@@ -328,11 +347,16 @@ const OrganiserDashboard = () => {
     const eventIds = events.map(getEventObjectId).filter(Boolean);
     const candidate = preferredId && preferredId !== 'undefined' ? preferredId : '';
     const current = eventId && eventId !== 'undefined' ? eventId : '';
-    const nextEventId = eventIds.includes(candidate)
+    const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(id);
+    const nextEventId = isValidObjectId(candidate)
       ? candidate
-      : eventIds.includes(current)
+      : isValidObjectId(current)
         ? current
-        : eventIds[0] || candidate || current;
+        : eventIds.includes(candidate)
+          ? candidate
+          : eventIds.includes(current)
+            ? current
+            : eventIds[0] || candidate || current;
 
     if (nextEventId && nextEventId !== eventId) {
       rememberSelectedEvent(nextEventId);
@@ -418,9 +442,6 @@ const OrganiserDashboard = () => {
           currency: nextData?.settings?.currency || nextData?.event?.settings?.currency || 'LKR',
         },
         // Ensure venue object exists even if nextData doesn't have it
-        matchDetails: nextData?.event?.matchDetails || { teamA: '', teamB: '', matchType: '', series: '' },
-        concertDetails: nextData?.event?.concertDetails || { mainArtist: '', supportingBands: [], genre: '', tourName: '' },
-        conferenceDetails: nextData?.event?.conferenceDetails || { theme: '', speakers: [], scheduleUrl: '' },
         branding: {
           themeColor: nextData?.event?.branding?.themeColor || '#2563EB',
           logoImage: nextData?.event?.branding?.logoImage || nextData?.event?.logoImage || '',
@@ -1027,6 +1048,7 @@ const OrganiserDashboard = () => {
 
   const saveCustomization = async () => {
     if (!customizationForm) return;
+
     const activeEventId = getValidEventId(getEventObjectId(workspace?.event));
     if (!activeEventId) {
       toast.error('Select an event before saving customization');
@@ -1036,62 +1058,146 @@ const OrganiserDashboard = () => {
     try {
       const formData = new FormData();
       formData.append('eventId', activeEventId);
+
+      // Basic info
       const basicInfoPayload = customizationForm.basicInfo || {};
-      
-      // Send all venue fields and currency - organizers can now update all event details
       formData.append('basicInfo', JSON.stringify(basicInfoPayload));
+
+      // Branding (files are sent separately)
       const brandingPayload = { ...customizationForm.branding };
       delete brandingPayload.logoImage;
       delete brandingPayload.coverImage;
       delete brandingPayload.bannerImage;
       formData.append('branding', JSON.stringify(brandingPayload));
+
+      // Payment methods
       const paymentMethodsPayload = {
         card: parseBool(customizationForm.paymentMethods?.card, false),
         bank_transfer: parseBool(customizationForm.paymentMethods?.bank_transfer, false),
         cash: parseBool(customizationForm.paymentMethods?.cash, false),
       };
       formData.append('paymentMethods', JSON.stringify(paymentMethodsPayload));
-      formData.append('accessRules', JSON.stringify({
-        whoCanEnter: customizationForm.accessRules.whoCanEnter.split(',').map((item) => item.trim()).filter(Boolean),
-        entryWindowStart: customizationForm.accessRules.entryWindowStart,
-        entryWindowEnd: customizationForm.accessRules.entryWindowEnd,
-        restrictedZones: customizationForm.accessRules.restrictedZones.split(',').map((item) => item.trim()).filter(Boolean),
-      }));
-      formData.append('status', customizationForm.status);
-      
-      const detailKind = resolveEventDetailKind(
-        customizationForm.basicInfo.eventType,
-        customizationForm.basicInfo.customEventType
+
+      // Access rules
+      formData.append(
+        'accessRules',
+        JSON.stringify({
+          whoCanEnter: (customizationForm.accessRules?.whoCanEnter || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          entryWindowStart: customizationForm.accessRules?.entryWindowStart || '',
+          entryWindowEnd: customizationForm.accessRules?.entryWindowEnd || '',
+          restrictedZones: (customizationForm.accessRules?.restrictedZones || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+        })
       );
-      if (detailKind === 'match') {
-        formData.append('matchDetails', JSON.stringify(customizationForm.matchDetails || {}));
-      } else if (detailKind === 'concert') {
-        formData.append('concertDetails', JSON.stringify({
-          mainArtist: customizationForm.concertDetails?.mainArtist || '',
-          supportingBands: customizationForm.concertDetails?.supportingBands || [],
-          genre: customizationForm.concertDetails?.genre || '',
-          tourName: customizationForm.concertDetails?.tourName || '',
-        }));
-      } else if (detailKind === 'conference') {
-        formData.append('conferenceDetails', JSON.stringify({
-          theme: customizationForm.conferenceDetails?.theme || '',
-          speakers: customizationForm.conferenceDetails?.speakers || [],
-          scheduleUrl: customizationForm.conferenceDetails?.scheduleUrl || '',
-        }));
+
+      formData.append('status', customizationForm.status || 'draft');
+
+      if (customizationForm.eventDetails) {
+        formData.append('eventDetails', JSON.stringify(customizationForm.eventDetails));
       }
 
+      // ─── Event-type specific details ───
+      const detailKind = resolveEventDetailKind(
+        customizationForm.basicInfo?.eventType,
+        customizationForm.basicInfo?.customEventType
+      );
+
+      if (detailKind === 'match') {
+        formData.append(
+          'matchDetails',
+          JSON.stringify({
+            teamA: customizationForm.eventDetails?.match?.teamA?.name || '',
+            teamB: customizationForm.eventDetails?.match?.teamB?.name || '',
+            matchType: customizationForm.eventDetails?.match?.matchType || '',
+            series: customizationForm.eventDetails?.match?.tournament || '',
+          })
+        );
+        formData.append(
+          'eventDetails',
+          JSON.stringify({
+            match: {
+              teamA: {
+                name: customizationForm.eventDetails?.match?.teamA?.name || '',
+                shortName: customizationForm.eventDetails?.match?.teamA?.shortName || ''
+              },
+              teamB: {
+                name: customizationForm.eventDetails?.match?.teamB?.name || '',
+                shortName: customizationForm.eventDetails?.match?.teamB?.shortName || ''
+              },
+              matchType: customizationForm.eventDetails?.match?.matchType || '',
+              tournament: customizationForm.eventDetails?.match?.tournament || '',
+              matchNumber: customizationForm.eventDetails?.match?.matchNumber || '',
+              venue: customizationForm.eventDetails?.match?.venue || '',
+              matchDate: customizationForm.eventDetails?.match?.matchDate || '',
+              matchTime: customizationForm.eventDetails?.match?.matchTime || ''
+            }
+          })
+        );
+      } else if (detailKind === 'concert') {
+        formData.append(
+          'concertDetails',
+          JSON.stringify({
+            mainArtist: customizationForm.eventDetails?.concert?.artistOrPerformer || '',
+            supportingBands: customizationForm.eventDetails?.concert?.supportingArtist ? customizationForm.eventDetails.concert.supportingArtist.split(',').map((s) => s.trim()).filter(Boolean) : [],
+            genre: customizationForm.eventDetails?.concert?.genre || '',
+            tourName: customizationForm.eventDetails?.concert?.performanceType || '',
+          })
+        );
+        formData.append(
+          'eventDetails',
+          JSON.stringify({
+            concert: {
+              artistOrPerformer: customizationForm.eventDetails?.concert?.artistOrPerformer || '',
+              supportingArtist: customizationForm.eventDetails?.concert?.supportingArtist || '',
+              genre: customizationForm.eventDetails?.concert?.genre || '',
+              performanceType: customizationForm.eventDetails?.concert?.performanceType || '',
+              ageRestriction: customizationForm.eventDetails?.concert?.ageRestriction || ''
+            }
+          })
+        );
+      } else if (detailKind === 'conference') {
+        formData.append(
+          'conferenceDetails',
+          JSON.stringify({
+            theme: customizationForm.eventDetails?.conference?.conferenceName || '',
+            speakers: customizationForm.eventDetails?.conference?.speakers ? customizationForm.eventDetails.conference.speakers.split(',').map((s) => s.trim()).filter(Boolean) : [],
+            scheduleUrl: customizationForm.eventDetails?.conference?.registrationInfo || '',
+          })
+        );
+        formData.append(
+          'eventDetails',
+          JSON.stringify({
+            conference: {
+              conferenceName: customizationForm.eventDetails?.conference?.conferenceName || '',
+              speakers: customizationForm.eventDetails?.conference?.speakers || '',
+              keynoteSpeaker: customizationForm.eventDetails?.conference?.keynoteSpeaker || '',
+              sessionType: customizationForm.eventDetails?.conference?.sessionType || '',
+              organizerName: customizationForm.eventDetails?.conference?.organizerName || '',
+              registrationInfo: customizationForm.eventDetails?.conference?.registrationInfo || ''
+            }
+          })
+        );
+      }
+
+      // Image files
       if (coverImageFile) formData.append('coverImage', coverImageFile);
       if (logoImageFile) formData.append('logoImage', logoImageFile);
       if (bannerImageFile) formData.append('bannerImage', bannerImageFile);
 
-      // Removal flags — only sent when no new file is chosen
+      // Removal flags
       if (removeCover && !coverImageFile) formData.append('removeCoverImage', 'true');
       if (removeLogo && !logoImageFile) formData.append('removeLogoImage', 'true');
       if (removeBanner && !bannerImageFile) formData.append('removeBannerImage', 'true');
 
+      // ─── Save ───
       const response = await updateOrganiserEventCustomization(formData);
-      console.log('Save response:', JSON.stringify(response.data, null, 2));
-      // Persist payment methods via settings API (customization endpoint may ignore them)
+
+      // Also push payment methods via settings endpoint
       try {
         await updateOrganiserSettings({
           eventId: activeEventId,
@@ -1104,42 +1210,18 @@ const OrganiserDashboard = () => {
         console.warn('Settings paymentMethods update failed:', settingsErr);
       }
 
-      setCustomizationForm((c) => ({
-        ...c,
-        paymentMethods: { ...paymentMethodsPayload },
-      }));
-
       toast.success('Event customization updated');
+
+      // Clear temporary file state
       setCoverImageFile(null);
       setLogoImageFile(null);
       setBannerImageFile(null);
       setRemoveCover(false);
       setRemoveLogo(false);
       setRemoveBanner(false);
-      
-      // Update customizationForm directly with saved payment methods from response
-      const savedEvent = response.data?.data?.event;
-      console.log('Full saved event:', JSON.stringify(savedEvent, null, 2));
-      // Try both settings locations - event.settings and event.settings.paymentMethods
-      const savedSettings = savedEvent?.settings || {};
-      const eventSettingsPaymentMethods = savedEvent?.settings?.paymentMethods;
-      const eventPaymentMethods = savedEvent?.paymentMethods;
-      
-      console.log('Saved settings:', JSON.stringify(savedSettings, null, 2));
-      console.log('event.settings.paymentMethods:', JSON.stringify(eventSettingsPaymentMethods, null, 2));
-      console.log('event.paymentMethods:', JSON.stringify(eventPaymentMethods, null, 2));
-      
-      setCustomizationForm((prev) => {
-        // Try multiple sources for paymentMethods
-        const pm = eventSettingsPaymentMethods || eventPaymentMethods || savedSettings.paymentMethods || {};
-        const newMethods = {
-          card: !!pm?.card,
-          bank_transfer: !!pm?.bank_transfer,
-          cash: !!pm?.cash,
-        };
-        console.log('Setting new payment methods:', JSON.stringify(newMethods, null, 2));
-        return { ...prev, paymentMethods: newMethods };
-      });
+
+      // ─── CRITICAL FIX: reload workspace so public listing and dashboard state reflect the change ───
+      await loadWorkspace(activeEventId, { soft: false });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
     }
@@ -1562,214 +1644,7 @@ const OrganiserDashboard = () => {
                     </Field>
                   )}
                 </div>
-                {/* Event type–specific details (organiser editable) */}
-                <div className="col-span-full">
-                  {(() => {
-                    const kind = resolveEventDetailKind(
-                      customizationForm.basicInfo.eventType,
-                      customizationForm.basicInfo.customEventType
-                    );
-                    if (!kind) return null;
-
-                    if (kind === 'match') {
-                      return (
-                        <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
-                          <h3 className="mb-1 text-sm font-bold uppercase tracking-wider text-blue-700">
-                            Match details
-                          </h3>
-                          <p className="mb-4 text-xs text-slate-500">
-                            Shown on the public event page for sports / match events.
-                          </p>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <Field label="Team A">
-                              <Input
-                                value={customizationForm.matchDetails?.teamA || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    matchDetails: { ...c.matchDetails, teamA: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Sri Lanka"
-                              />
-                            </Field>
-                            <Field label="Team B">
-                              <Input
-                                value={customizationForm.matchDetails?.teamB || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    matchDetails: { ...c.matchDetails, teamB: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. India"
-                              />
-                            </Field>
-                            <Field label="Match type">
-                              <Input
-                                value={customizationForm.matchDetails?.matchType || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    matchDetails: { ...c.matchDetails, matchType: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. T20, ODI, Final"
-                              />
-                            </Field>
-                            <Field label="Series / tournament">
-                              <Input
-                                value={customizationForm.matchDetails?.series || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    matchDetails: { ...c.matchDetails, series: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Asia Cup 2026"
-                              />
-                            </Field>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (kind === 'concert') {
-                      return (
-                        <div className="mt-6 rounded-2xl border border-violet-100 bg-violet-50/40 p-5">
-                          <h3 className="mb-1 text-sm font-bold uppercase tracking-wider text-violet-700">
-                            Artist &amp; band details
-                          </h3>
-                          <p className="mb-4 text-xs text-slate-500">
-                            Shown on the public event page for concerts / musical shows.
-                          </p>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <Field label="Main artist / headliner">
-                              <Input
-                                value={customizationForm.concertDetails?.mainArtist || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    concertDetails: { ...c.concertDetails, mainArtist: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Coldplay"
-                              />
-                            </Field>
-                            <Field label="Genre">
-                              <Input
-                                value={customizationForm.concertDetails?.genre || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    concertDetails: { ...c.concertDetails, genre: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Rock, Pop, Classical"
-                              />
-                            </Field>
-                            <Field label="Tour / show name">
-                              <Input
-                                value={customizationForm.concertDetails?.tourName || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    concertDetails: { ...c.concertDetails, tourName: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Music of the Spheres"
-                              />
-                            </Field>
-                            <Field label="Supporting bands / artists (comma separated)">
-                              <Input
-                                value={(customizationForm.concertDetails?.supportingBands || []).join(', ')}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    concertDetails: {
-                                      ...c.concertDetails,
-                                      supportingBands: e.target.value
-                                        .split(',')
-                                        .map((s) => s.trim())
-                                        .filter(Boolean),
-                                    },
-                                  }))
-                                }
-                                placeholder="e.g. Band A, Band B"
-                              />
-                            </Field>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (kind === 'conference') {
-                      return (
-                        <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-5">
-                          <h3 className="mb-1 text-sm font-bold uppercase tracking-wider text-emerald-700">
-                            Conference details
-                          </h3>
-                          <p className="mb-4 text-xs text-slate-500">
-                            Shown on the public event page.
-                          </p>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <Field label="Theme">
-                              <Input
-                                value={customizationForm.conferenceDetails?.theme || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    conferenceDetails: { ...c.conferenceDetails, theme: e.target.value },
-                                  }))
-                                }
-                                placeholder="e.g. Future of Technology"
-                              />
-                            </Field>
-                            <Field label="Schedule URL">
-                              <Input
-                                type="url"
-                                value={customizationForm.conferenceDetails?.scheduleUrl || ''}
-                                onChange={(e) =>
-                                  setCustomizationForm((c) => ({
-                                    ...c,
-                                    conferenceDetails: {
-                                      ...c.conferenceDetails,
-                                      scheduleUrl: e.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="https://..."
-                              />
-                            </Field>
-                            <div className="sm:col-span-2">
-                              <Field label="Speakers (comma separated)">
-                                <Input
-                                  value={(customizationForm.conferenceDetails?.speakers || []).join(', ')}
-                                  onChange={(e) =>
-                                    setCustomizationForm((c) => ({
-                                      ...c,
-                                      conferenceDetails: {
-                                        ...c.conferenceDetails,
-                                        speakers: e.target.value
-                                          .split(',')
-                                          .map((s) => s.trim())
-                                          .filter(Boolean),
-                                      },
-                                    }))
-                                  }
-                                  placeholder="e.g. Dr. Jane Smith, John Doe"
-                                />
-                              </Field>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })()}
                 </div>
-              </div>
             )}
 
             {/* ==================== BRANDING TAB ==================== */}

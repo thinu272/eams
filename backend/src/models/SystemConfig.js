@@ -9,7 +9,7 @@ const systemConfigSchema = new mongoose.Schema({
   },
   general: {
     platformName: { type: String, default: 'ENTRYNEX' },
-    supportEmail: { type: String, default: 'support@entrynex.com' },
+    supportEmail: { type: String, default: 'support@entrynex.lk' },
     systemStatus: { type: String, enum: ['Active', 'Maintenance'], default: 'Active' },
     defaultRoles: { type: [String], default: ['Attendee'] },
   },

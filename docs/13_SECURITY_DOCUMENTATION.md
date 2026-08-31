@@ -26,7 +26,7 @@ The EAMS platform implements a multi‑layered security model covering **authent
 ### 3. Data Protection
 - **Password Storage** – bcrypt hashing (`User.schema.pre('save')`).
 - **Sensitive Fields** – `User.password`, `User.mfaSecret`, `User.refreshToken` are excluded from queries (`select('-password')`).
- - **Environment Secrets** – All secrets (`JWT_SECRET`, DB URI, API keys) must be provided via environment variables or a secure secrets store (e.g., Azure Key Vault, AWS Secrets Manager). Example values are provided in `.env.example` for local development only. The codebase was audited and any embedded secret fallbacks were removed; the application now fails fast if critical secrets are missing.
+ - **Environment Secrets** – All secrets (`JWT_SECRET`, DB URI, API keys) must be provided via environment variables or a secure secrets store (e.g., Azure Key Vault, ASUZE Secrets Manager). Example values are provided in `.env.example` for local development only. The codebase was audited and any embedded secret fallbacks were removed; the application now fails fast if critical secrets are missing.
 
 ### 4. Auditing & Logging
 - **SystemLog** model captures high‑level actions (login, token refresh, device registration, zone scans).

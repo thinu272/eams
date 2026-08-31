@@ -124,7 +124,7 @@ const serializeUser = (user) => ({
 const serializeSettings = (config) => ({
   general: {
     platformName: config.general?.platformName || 'ENTRYNEX',
-    supportEmail: config.general?.supportEmail || 'support@entrynex.com',
+    supportEmail: config.general?.supportEmail || 'support@entrynex.lk',
     systemStatus: config.general?.systemStatus || 'Active',
     defaultRoles: config.general?.defaultRoles || ['Attendee'],
   },

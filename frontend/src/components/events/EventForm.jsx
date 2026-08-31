@@ -7,25 +7,12 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
   const [form, setForm] = useState({
     name: '',
     description: '',
-    eventType: 'cricket',
     venue: { name: '', city: '', country: 'Sri Lanka' },
     startDate: '',
     endDate: '',
     mainOrganiser: '',
     categories: [],
     zones: [],
-    matchDetails: { 
-      teamA: '', teamB: '', matchType: '', series: '',
-      ...(initialData.matchDetails || {})
-    },
-    concertDetails: { 
-      mainArtist: '', supportingBands: [], genre: '', tourName: '',
-      ...(initialData.concertDetails || {})
-    },
-    conferenceDetails: { 
-      theme: '', speakers: [], scheduleUrl: '',
-      ...(initialData.conferenceDetails || {})
-    },
     settings: {
       requirePhotoVerification: true,
       allowSelfConfirmation: true,
@@ -44,21 +31,10 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
     endDate: initialData.endDate ? format(new Date(initialData.endDate), "yyyy-MM-dd'T'HH:mm") : '',
   });
 
-  const getDynamicTab = () => {
-    switch (form.eventType) {
-      case 'cricket': return 'Match Details';
-      case 'concert': return 'Concert Details';
-      case 'conference': return 'Conference Details';
-      default: return null;
-    }
-  };
-  
-  const dynamicTab = getDynamicTab();
   const tabs = [
     'Basic Info', 
     'Categories', 
     'Zones', 
-    ...(dynamicTab ? [dynamicTab] : []), 
     'Branding', 
     'Payment', 
     'Settings'
@@ -69,10 +45,6 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     let val = type === 'checkbox' ? checked : value;
-
-    if (name === 'concertDetails.supportingBands' || name === 'conferenceDetails.speakers') {
-       val = value.split(',').map(s => s.trim());
-    }
 
     if (name.includes('.')) {
       const [p1, p2] = name.split('.');
@@ -87,7 +59,12 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(form);
+    // Ensure eventDetails is included in the submission
+    const submissionData = { ...form };
+    if (!submissionData.eventDetails) {
+      submissionData.eventDetails = {};
+    }
+    onSubmit(submissionData);
   };
 
   return (
@@ -116,23 +93,7 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event Name *</label>
                 <input name="name" value={form.name} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"/>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Event Type</label>
-                <div className="space-y-2">
-                  <select name="eventType" value={form.eventType} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                    {['cricket', 'concert', 'conference', 'other'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                  </select>
-                  {form.eventType === 'other' && (
-                    <input 
-                      name="customEventType" 
-                      value={form.customEventType || ''} 
-                      onChange={handleChange} 
-                      placeholder="Specify type (e.g. Festival)" 
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-                    />
-                  )}
-                </div>
-              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Venue Name *</label>
                 <input name="venue.name" value={form.venue.name} onChange={handleChange} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/>
@@ -236,32 +197,6 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
                 <button type="button" onClick={() => removeItem('zones', idx)} className="text-red-500 text-sm pb-1">Remove</button>
               </div>
             ))}
-          </div>
-        )}
-
-        {activeTab === 'Match Details' && form.eventType === 'cricket' && (
-          <div className="grid grid-cols-2 gap-4">
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Team A</label><input name="matchDetails.teamA" value={form.matchDetails?.teamA || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Team B</label><input name="matchDetails.teamB" value={form.matchDetails?.teamB || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label><input name="matchDetails.matchType" value={form.matchDetails?.matchType || ''} onChange={handleChange} placeholder="e.g. T20, ODI" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Series</label><input name="matchDetails.series" value={form.matchDetails?.series || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-          </div>
-        )}
-
-        {activeTab === 'Concert Details' && form.eventType === 'concert' && (
-          <div className="grid grid-cols-2 gap-4">
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Main Artist</label><input name="concertDetails.mainArtist" value={form.concertDetails?.mainArtist || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Supporting Bands (Comma separated)</label><input name="concertDetails.supportingBands" value={form.concertDetails?.supportingBands?.join(', ') || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Genre</label><input name="concertDetails.genre" value={form.concertDetails?.genre || ''} onChange={handleChange} placeholder="e.g. Rock, Pop" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div><label className="block text-sm font-medium text-gray-700 mb-1">Tour Name</label><input name="concertDetails.tourName" value={form.concertDetails?.tourName || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-          </div>
-        )}
-
-        {activeTab === 'Conference Details' && form.eventType === 'conference' && (
-          <div className="grid grid-cols-2 gap-4">
-             <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Conference Theme</label><input name="conferenceDetails.theme" value={form.conferenceDetails?.theme || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Speakers (Comma separated)</label><input name="conferenceDetails.speakers" value={form.conferenceDetails?.speakers?.join(', ') || ''} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
-             <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Schedule/Agenda URL</label><input name="conferenceDetails.scheduleUrl" value={form.conferenceDetails?.scheduleUrl || ''} onChange={handleChange} placeholder="https://..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"/></div>
           </div>
         )}
 
