@@ -189,6 +189,11 @@ const EventDetailPage = () => {
 
   const detailKind = resolveEventDetailKind(event.eventType, event.customEventType);
 
+  const match = event.match || {};
+  const concert = event.concert || {};
+  const conference = event.conference || {};
+  const workshop = event.workshop || {};
+
   // Helper to determine if an object contains any meaningful value
   const hasValues = (obj) =>
     obj &&

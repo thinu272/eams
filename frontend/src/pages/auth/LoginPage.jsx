@@ -247,9 +247,9 @@ const LoginPage = () => {
             </Link>
           </div>
 
-          {/* Lab Access (dev credentials) */}
-          <div className="mt-6 border-t border-slate-100 pt-5">
-            <details className="group/details">
+         {/* Lab Access (dev credentials) */}
+         <div className="mt-6 border-t border-slate-100 pt-5">
+            {/*<details className="group/details">
               <summary className="flex items-center justify-center gap-2 cursor-pointer list-none text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-blue-600 transition-colors">
                 <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md text-[10px]">
                   Lab Access
@@ -278,7 +278,7 @@ const LoginPage = () => {
                   </div>
                 ))}
               </div>
-            </details>
+            </details>*/}
           </div>
         </div>
 
