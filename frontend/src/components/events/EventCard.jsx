@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatTimezoneDisplay } from '../../utils/timezone';
 
 const EventCard = ({ event, onViewDetails }) => {
   const eventImage =
@@ -13,14 +14,17 @@ const EventCard = ({ event, onViewDetails }) => {
       : null;
 
   const currency = event.settings?.currency || 'LKR';
+  const timezoneDisplay = formatTimezoneDisplay(event.timezone);
 
   const formatDate = (date) => {
     if (!date) return 'Date TBA';
-    return new Date(date).toLocaleDateString('en-US', {
+    const formatted = new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: event.timezone || 'Asia/Colombo',
     });
+    return `${formatted} (${timezoneDisplay})`;
   };
 
   const handleClick = () => {

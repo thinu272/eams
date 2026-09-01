@@ -1,10 +1,21 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { formatTimezoneDisplay } from '../../utils/timezone';
 
 const EventHeader = ({ event }) => {
   const eventImage = event.coverImage || event.bannerImage || event.branding?.bannerImage || '/placeholder-event.jpg';
+  const timezoneDisplay = formatTimezoneDisplay(event.timezone);
+
   const formatDate = (date) => {
-    return format(new Date(date), 'EEEE, MMMM d, yyyy \'at\' h:mm a');
+    const formatted = new Date(date).toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: event.timezone || 'Asia/Colombo',
+    });
+    return `${formatted} (${timezoneDisplay})`;
   };
 
   return (

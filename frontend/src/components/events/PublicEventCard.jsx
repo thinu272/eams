@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { formatTimezoneDisplay } from '../../utils/timezone';
 import { CalendarDaysIcon, MapPinIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { getAssetUrl } from '../../utils/backend';
 
@@ -10,6 +11,7 @@ const PublicEventCard = ({ event }) => {
   const prices = categories.map((c) => Number(c.price) || 0);
   const minPrice = prices.length > 0 ? Math.min(...prices) : null;
   const hasFree = prices.some((p) => p === 0);
+  const timezoneDisplay = formatTimezoneDisplay(event.timezone);
   const isSoldOut =
     categories.length > 0 && categories.every((c) => (c.sold || 0) >= (c.capacity || 0));
 
@@ -34,19 +36,17 @@ const PublicEventCard = ({ event }) => {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
+        timeZone: event.timezone || 'Asia/Colombo',
       };
 
-      // prefer explicit event timezone, then event settings (no universal fallback here)
-      const tz = event.timezone || event.settings?.timezone || null;
-      if (tz) options.timeZone = tz;
-
       const formatted = new Date(event.startDate).toLocaleDateString('en-US', options);
-      return tz ? `${formatted} (${tz})` : formatted;
+      return `${formatted} (${timezoneDisplay})`;
     } catch {
       return new Date(event.startDate).toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
+        timeZone: event.timezone || 'Asia/Colombo',
       });
     }
   };
