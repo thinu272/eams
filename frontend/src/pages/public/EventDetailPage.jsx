@@ -15,6 +15,7 @@ import PublicLayout from '../../components/layout/PublicLayout';
 import { getEvent, validateEventAccessCode } from '../../api/events';
 import { io } from 'socket.io-client';
 import { getSocketUrl, getAssetUrl } from '../../utils/backend';
+import { formatTimezoneDisplay } from '../../utils/timezone';
 
 const getCategoryId = (category) => category?.id || category?._id || category?.name;
 const getZoneId = (zone) => zone?.id || zone?._id || zone?.name;
@@ -194,6 +195,8 @@ const EventDetailPage = () => {
   const conference = event.conference || {};
   const workshop = event.workshop || {};
 
+  const timezoneDisplay = formatTimezoneDisplay(event.timezone);
+
   // Helper to determine if an object contains any meaningful value
   const hasValues = (obj) =>
     obj &&
@@ -223,8 +226,8 @@ const EventDetailPage = () => {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
+        timeZone: event.timezone || 'Asia/Colombo',
       };
-      if (event.timezone) options.timeZone = event.timezone;
       eventDate = new Date(event.startDate).toLocaleDateString('en-US', options);
     }
   } catch {
@@ -234,6 +237,7 @@ const EventDetailPage = () => {
           month: 'long',
           day: 'numeric',
           year: 'numeric',
+          timeZone: event.timezone || 'Asia/Colombo',
         })
       : 'TBD';
   }
@@ -241,8 +245,7 @@ const EventDetailPage = () => {
   let eventTime = 'TBD';
   try {
     if (event.startDate) {
-      const options = { hour: '2-digit', minute: '2-digit' };
-      if (event.timezone) options.timeZone = event.timezone;
+      const options = { hour: '2-digit', minute: '2-digit', timeZone: event.timezone || 'Asia/Colombo' };
       eventTime = new Date(event.startDate).toLocaleTimeString('en-US', options);
     }
   } catch {
@@ -250,6 +253,7 @@ const EventDetailPage = () => {
       ? new Date(event.startDate).toLocaleTimeString('en-US', {
           hour: '2-digit',
           minute: '2-digit',
+          timeZone: event.timezone || 'Asia/Colombo',
         })
       : 'TBD';
   }
@@ -329,7 +333,7 @@ const EventDetailPage = () => {
                   <p className="text-sm font-medium text-white">
                     {eventDate}{' '}
                     <span className="text-xs text-slate-300">
-                      ({event.timezone || 'Asia/Colombo'})
+                      ({timezoneDisplay})
                     </span>
                   </p>
                 </div>
@@ -341,7 +345,7 @@ const EventDetailPage = () => {
                   <p className="text-sm font-medium text-white">
                     {eventTime}{' '}
                     <span className="text-xs text-slate-400">
-                      ({event.timezone || 'Asia/Colombo'})
+                      ({timezoneDisplay})
                     </span>
                   </p>
                 </div>
@@ -778,7 +782,7 @@ const EventDetailPage = () => {
                     <span>
                       {eventDate}{' '}
                       <span className="text-xs text-slate-400">
-                        ({event.timezone || 'Asia/Colombo'})
+                        ({timezoneDisplay})
                       </span>
                     </span>
                   </div>
@@ -787,7 +791,7 @@ const EventDetailPage = () => {
                     <span>
                       {eventTime}{' '}
                       <span className="text-xs text-slate-400">
-                        ({event.timezone || 'Asia/Colombo'})
+                        ({timezoneDisplay})
                       </span>
                     </span>
                   </div>

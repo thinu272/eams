@@ -2055,16 +2055,16 @@ const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, org
               </Field>
               <Field label="Event Timezone *">
                 <Select value={form.timezone || 'Asia/Colombo'} onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))} required>
-                  <option value="Asia/Colombo">Asia/Colombo (Sri Lanka Time)</option>
-                  <option value="Asia/Kolkata">Asia/Kolkata (India Standard Time)</option>
-                  <option value="Asia/Singapore">Asia/Singapore (Singapore Time)</option>
-                  <option value="Europe/London">Europe/London (GMT/BST)</option>
-                  <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
-                  <option value="Asia/Dubai">Asia/Dubai (GST)</option>
-                  <option value="America/New_York">America/New_York (US Eastern)</option>
-                  <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
-                  <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
-                  <option value="UTC">UTC (Coordinated Universal Time)</option>
+                  <option value="Asia/Colombo">Asia/Colombo (UTC+5:30)</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata (UTC+5:30)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (UTC+8:00)</option>
+                  <option value="Asia/Dubai">Asia/Dubai (UTC+4:00)</option>
+                  <option value="Europe/London">Europe/London (UTC+0:00)</option>
+                  <option value="Europe/Paris">Europe/Paris (UTC+1:00)</option>
+                  <option value="America/New_York">America/New_York (UTC-5:00)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (UTC-8:00)</option>
+                  <option value="Australia/Sydney">Australia/Sydney (UTC+10:00)</option>
+                  <option value="UTC">UTC (UTC+0:00)</option>
                 </Select>
               </Field>
 

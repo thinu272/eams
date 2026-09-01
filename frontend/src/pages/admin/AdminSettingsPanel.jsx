@@ -838,11 +838,16 @@ const AdminSettingsPanel = () => {
                     value={settings.regional?.timezone || 'Asia/Colombo'}
                     onChange={(e) => updateSetting('regional', 'timezone', e.target.value)}
                   >
-                    <option value="Asia/Colombo">Asia/Colombo (LKT)</option>
-                    <option value="UTC">UTC</option>
-                    <option value="America/New_York">America/New_York (EST)</option>
-                    <option value="Europe/London">Europe/London (GMT)</option>
-                    <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                    <option value="Asia/Colombo">Asia/Colombo (UTC+5:30)</option>
+                    <option value="Asia/Kolkata">Asia/Kolkata (UTC+5:30)</option>
+                    <option value="Asia/Singapore">Asia/Singapore (UTC+8:00)</option>
+                    <option value="Asia/Dubai">Asia/Dubai (UTC+4:00)</option>
+                    <option value="Europe/London">Europe/London (UTC+0:00)</option>
+                    <option value="Europe/Paris">Europe/Paris (UTC+1:00)</option>
+                    <option value="America/New_York">America/New_York (UTC-5:00)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (UTC-8:00)</option>
+                    <option value="Australia/Sydney">Australia/Sydney (UTC+10:00)</option>
+                    <option value="UTC">UTC (UTC+0:00)</option>
                   </Select>
                 </Field>
                 <Field label="Date Format">

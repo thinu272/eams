@@ -1,17 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
-import { getConfirmInfo } from '../../api/attendees';
-import { getUserTicket } from '../../api/userPortal';
+import { CalendarDaysIcon, MapPinIcon, TicketIcon, ArrowLeftIcon, PrinterIcon, QrCodeIcon } from '@heroicons/react/24/outline';
 import PublicLayout from '../../components/layout/PublicLayout';
+import { getBuyerTickets } from '../../api/buyer';
+import { formatTimezoneDisplay } from '../../utils/timezone';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import {
-  TicketIcon,
-  MapPinIcon,
-  CalendarDaysIcon,
-  PrinterIcon,
-  QrCodeIcon,
-} from '@heroicons/react/24/outline';
 
 const TicketWalletPage = () => {
   const { token } = useParams();
@@ -62,6 +57,8 @@ const TicketWalletPage = () => {
   }
 
   const zones = ticket?.allowedZones || ticket?.attendee?.allowedZones || [];
+  const timezoneDisplay = formatTimezoneDisplay(ticket.event?.timezone);
+
   // Safer date formatting with event timezone support
   const formatEventDate = () => {
     const start = ticket?.event?.startDate;
@@ -75,14 +72,11 @@ const TicketWalletPage = () => {
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: ticket.event?.timezone || 'Asia/Colombo',
       };
 
-      if (ticket.event?.timezone) {
-        options.timeZone = ticket.event.timezone;
-      }
-
       const formatted = new Date(start).toLocaleString('en-US', options);
-      return ticket.event?.timezone ? `${formatted} (${ticket.event.timezone})` : formatted;
+      return `${formatted} (${timezoneDisplay})`;
     } catch {
       return new Date(start).toLocaleString('en-US', {
         weekday: 'short',
@@ -91,6 +85,7 @@ const TicketWalletPage = () => {
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: ticket.event?.timezone || 'Asia/Colombo',
       });
     }
   };
