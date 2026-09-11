@@ -120,5 +120,7 @@ const attendeeSchema = new mongoose.Schema({
 
 attendeeSchema.index({ event: 1, email: 1 });
 attendeeSchema.index({ confirmationToken: 1 });
+// RFID identifiers are reusable across different events, but unique within one event.
+attendeeSchema.index({ event: 1, rfidTag: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Attendee', attendeeSchema);

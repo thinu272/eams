@@ -215,6 +215,7 @@ const CheckoutPage = () => {
     setIsProcessing(true);
     try {
       const tickets = selectedCategories.map((category) => ({
+        categoryId: getCategoryId(category),
         categoryName: category.name,
         quantity: selectedTickets[getCategoryId(category)],
         price: category.price,

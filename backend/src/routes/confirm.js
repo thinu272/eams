@@ -8,6 +8,7 @@ const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/no
 const { upload, handleS3Upload } = require('../middleware/s3Upload');
 const { resolveConfirmedTicketStatus, requiresPhotoVerification } = require('../services/ticketDeliveryService');
 const { validatePhoto } = require('../services/photoValidationService');
+const { allocateRfid } = require('../services/rfidService');
 
 const getInviteExpiryDate = (ticket) => {
   if (ticket.inviteExpiresAt) return new Date(ticket.inviteExpiresAt);
@@ -179,6 +180,15 @@ router.post(
       }
       if (Array.isArray(incomingDescriptor) && incomingDescriptor.every((v) => typeof v === 'number')) {
         attendee.faceDescriptor = incomingDescriptor;
+      }
+
+      if (!attendee.rfidTag) {
+        attendee.rfidTag = await allocateRfid({
+          eventId: ticket.event?._id || ticket.event,
+          categoryId: ticket.categoryId,
+          attendeeId: attendee._id,
+          ticketId: ticket._id,
+        });
       }
 
       await attendee.save();

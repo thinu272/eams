@@ -4,6 +4,8 @@ export const exportAttendees = (params) => api.get('/attendees/export', { params
 export const getAttendee = (id) => api.get(`/attendees/${id}`);
 export const createAttendee = (data) => api.post('/attendees', data);
 export const updateAttendee = (id, data) => api.patch(`/attendees/${id}`, data);
+export const assignRfid = (id, rfidTag) => api.post(`/attendees/${id}/rfid`, { rfidTag });
+export const clearRfid = (id) => api.delete(`/attendees/${id}/rfid`);
 export const inviteAttendee = (id) => api.post(`/attendees/${id}/invite`);
 export const inviteAttendeeByTicket = (ticketId, email) => api.post(`/attendees/invite-by-ticket/${ticketId}`, { email });
 export const verifyPhoto = (id, data) => api.patch(`/attendees/${id}/verify-photo`, data);

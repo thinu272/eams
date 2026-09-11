@@ -15,7 +15,8 @@ import {
   BoltIcon,
   Cog6ToothIcon,
   CameraIcon,
-  DeviceTabletIcon
+  DeviceTabletIcon,
+  IdentificationIcon
 } from '@heroicons/react/24/solid';
 
 /* ─── helpers ─────────────────────────────────────────────────── */
@@ -157,6 +158,9 @@ const ResultOverlay = ({ result, gateId, onDismiss, onIssueWristband, issuingWri
               <p className="mt-3 text-sm opacity-60 flex items-center justify-center">
                 <TagIcon className="h-4 w-4 mr-1" /> Wristband: {attendee.wristbandId}
               </p>
+            )}
+            {result?.scannedRfid && (
+              <p className="mt-3 text-sm font-mono opacity-80">RFID: {result.scannedRfid}</p>
             )}
           </div>
 
@@ -339,16 +343,21 @@ const EntryScannerPage = () => {
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
-  // Focus text input when in text mode
-  useEffect(() => { if (mode === 'text' && inputRef.current) inputRef.current.focus(); }, [mode]);
+  // Keep the HID keyboard-wedge target ready whenever RFID mode is active.
+  useEffect(() => {
+    if ((mode === 'text' || mode === 'rfid') && inputRef.current) inputRef.current.focus();
+  }, [mode]);
 
   const handleScanToken = useCallback(async (rawToken, method = 'qr') => {
     const token = parseScannedValue(rawToken);
     if (!token || !selectedEvent || !gateId || scanning) return;
     setScanning(true);
     try {
-      const { data } = await scanEntry({ qrToken: token, gateId, gateName: gateId, action: 'check_in', method });
-      setResult(data.data);
+      const payload = { gateId, gateName: gateId, eventId: selectedEvent, action: 'check_in', method };
+      if (method === 'rfid') payload.rfidId = token;
+      else payload.qrToken = token;
+      const { data } = await scanEntry(payload);
+      setResult({ ...data.data, scannedRfid: method === 'rfid' ? token : undefined });
       playBeep(data.data.accessGranted);
       setScanInput('');
       loadStats();
@@ -357,6 +366,7 @@ const EntryScannerPage = () => {
         accessGranted: false,
         denialReason: err.response?.data?.message || 'Scan failed',
         attendee: err.response?.data?.data?.attendee || null,
+        scannedRfid: method === 'rfid' ? token : undefined,
       };
       setResult(fallback);
       playBeep(false);
@@ -417,7 +427,7 @@ const EntryScannerPage = () => {
 
   const dismissResult = useCallback(() => {
     setResult(null);
-    if (mode === 'text' && inputRef.current) setTimeout(() => inputRef.current?.focus(), 50);
+    if ((mode === 'text' || mode === 'rfid') && inputRef.current) setTimeout(() => inputRef.current?.focus(), 50);
   }, [mode]);
 
   const selectedEventData = events.find((e) => e._id === selectedEvent);
@@ -507,6 +517,7 @@ const EntryScannerPage = () => {
           <div className="flex items-center rounded-2xl border border-gray-800 bg-gray-900 p-1 gap-1">
             {[
               { key: 'camera', label: 'Camera', icon: CameraIcon },
+              { key: 'rfid', label: 'RFID Reader', icon: IdentificationIcon },
               { key: 'text',   label: 'Text',   icon: DeviceTabletIcon },
               { key: 'lookup', label: 'Lookup', icon: MagnifyingGlassIcon },
             ].map(({ key, label, icon: Icon }) => (
@@ -577,6 +588,38 @@ const EntryScannerPage = () => {
                     >
                       {scanning ? '⏳ Processing...' : <><CheckCircleIcon className="h-6 w-6 inline mr-2" /> Process Scan</>}
                     </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {mode === 'rfid' && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+                <div className="w-full max-w-lg text-center">
+                  <p className="flex items-center justify-center gap-2 text-3xl font-black text-gray-100 mb-2">
+                    <IdentificationIcon className="h-8 w-8" /> RFID Reader
+                  </p>
+                  <p className="text-gray-500 mb-8">Tap a 125 kHz card on the USB reader. It will submit automatically.</p>
+                  <form onSubmit={(e) => { e.preventDefault(); handleScanToken(scanInput, 'rfid'); }} className="flex flex-col gap-4">
+                    <input
+                      ref={inputRef}
+                      value={scanInput}
+                      onChange={(e) => setScanInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleScanToken(scanInput, 'rfid');
+                        }
+                      }}
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="Waiting for RFID card..."
+                      className="w-full rounded-2xl border-2 border-blue-500/60 bg-gray-800 px-6 py-5 text-center text-2xl font-mono tracking-[0.3em] text-white placeholder-gray-600 focus:outline-none focus:ring-4 focus:ring-blue-500/30"
+                      autoFocus
+                    />
+                    <div className="flex items-center justify-center gap-2 text-sm text-blue-300">
+                      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-blue-400" /> Reader focused and ready
+                    </div>
                   </form>
                 </div>
               </div>

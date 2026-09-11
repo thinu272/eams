@@ -12,6 +12,7 @@ const { generatePayHereData, createPaymentSession, getActiveGateways } = require
 const { sendBuyerOrderCreatedEmail } = require('../services/ticketDeliveryService');
 const SystemConfig = require('../models/SystemConfig');
 const { optionalProtect } = require('../middleware/auth'); // I'll assume optionalProtect might be useful or I'll just use req.user if present
+const { allocateRfid } = require('../services/rfidService');
 
 // POST /api/orders - Create new order
 router.post('/', [
@@ -21,6 +22,7 @@ router.post('/', [
   body('buyerPhone').optional({ checkFalsy: true }).matches(/^\+?[1-9]\d{1,14}$/).withMessage('Phone number is invalid'),
   body('notificationChannel').optional().isIn(['email', 'sms', 'both']).withMessage('Invalid notification channel'),
   body('tickets').isArray({ min: 1 }).withMessage('At least one ticket is required'),
+  body('tickets.*.categoryId').optional().isString().withMessage('Category ID must be a string'),
   body('tickets.*.categoryName').notEmpty().withMessage('Category name is required'),
   body('tickets.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
   body('tickets.*.price').isNumeric().withMessage('Price must be a number'),
@@ -88,7 +90,8 @@ router.post('/', [
 
     for (const ticket of tickets) {
       // Find matching category in event
-      const category = event.categories.find(cat => cat.name === ticket.categoryName);
+      const category = event.categories.find((cat) => String(cat.id) === String(ticket.categoryId))
+        || event.categories.find((cat) => cat.name === ticket.categoryName);
       if (!category) {
         return res.status(400).json({
           success: false,
@@ -110,7 +113,8 @@ router.post('/', [
       totalAmount += backendPrice * ticket.quantity;
 
       validatedTickets.push({
-        categoryName: ticket.categoryName,
+        categoryId: category.id,
+        categoryName: category.name,
         quantity: ticket.quantity,
         price: backendPrice
       });
@@ -161,7 +165,8 @@ router.post('/', [
     let slotIndex = 1;
     for (const ticketSummary of validatedTickets) {
       // Find the category to get its ID
-      const category = event.categories.find(cat => cat.name === ticketSummary.categoryName);
+      const category = event.categories.find((cat) => String(cat.id) === String(ticketSummary.categoryId))
+        || event.categories.find((cat) => cat.name === ticketSummary.categoryName);
       
       for (let i = 0; i < ticketSummary.quantity; i++) {
         const ticket = new Ticket({
@@ -184,7 +189,8 @@ router.post('/', [
 
     // Update sold counts and usage counts for each category using MongoDB $inc
     for (const ticket of validatedTickets) {
-      const category = event.categories.find(c => c.name === ticket.categoryName);
+      const category = event.categories.find((c) => String(c.id) === String(ticket.categoryId))
+        || event.categories.find((c) => c.name === ticket.categoryName);
       const updateData = { 'categories.$.sold': ticket.quantity };
       
       if (category.isPrivate) {
@@ -192,7 +198,7 @@ router.post('/', [
       }
 
       await Event.updateOne(
-        { _id: eventId, 'categories.name': ticket.categoryName },
+        { _id: eventId, 'categories.id': category.id },
         { $inc: updateData }
       );
     }
@@ -318,6 +324,14 @@ router.post('/finalize/:orderId', async (req, res) => {
         attendee.allowedZones = Array.isArray(attendee.allowedZones) && attendee.allowedZones.length
           ? attendee.allowedZones
           : (ticket.allowedZones || []);
+        if (!attendee.rfidTag) {
+          attendee.rfidTag = await allocateRfid({
+            eventId: event._id,
+            categoryId: ticket.categoryId,
+            attendeeId: attendee._id,
+            ticketId: ticket._id,
+          });
+        }
         await attendee.save();
 
         finalizedAttendees.push(attendee);
@@ -401,7 +415,7 @@ const getOrderByTokenHandler = async (req, res) => {
     if (isReservedOrder && isCashAtEntrance) {
       // Get tickets for this order
       const tickets = await Ticket.find({ order: order._id })
-        .populate('attendee', 'fullName email confirmationToken')
+        .populate('attendee', 'fullName email confirmationToken qrToken rfidTag')
         .sort({ slotIndex: 1 });
       
       const response = {
@@ -431,7 +445,7 @@ const getOrderByTokenHandler = async (req, res) => {
 
     // Get individual tickets for this order
     const tickets = await Ticket.find({ order: order._id })
-      .populate('attendee', 'fullName email confirmationToken')
+      .populate('attendee', 'fullName email confirmationToken qrToken rfidTag')
       .sort({ slotIndex: 1 });
 
     const config = await SystemConfig.findOne({ key: 'global' });

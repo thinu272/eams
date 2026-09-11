@@ -18,23 +18,35 @@ Zone access control determines whether an attendee may **enter** or **exit** a p
 ## Access Evaluation Flow
 ```mermaid
 flowchart TD
-    A[Scan QR or RFID] --> B{Validate Ticket}
-    B -->|Valid| C{Check Allowed Zones}
-    C -->|Allowed| D[Grant Access]
-    C -->|Not Allowed| E[Deny Access]
-    D --> F[Create EntryLog]
-    E --> G[Create ZoneLog - denied]
-    D --> H[Notify Staff via Socketio]
-    E --> I[Notify Staff via Notification Service]
+    A[Scan QR or RFID] --> B{Resolve attendee by qrToken or rfidTag}
+    B -->|Found| C{Validate ticket status and event}
+    C -->|Valid| D{Check Allowed Zones}
+    D -->|Allowed| E[Grant Access]
+    D -->|Not Allowed| F[Deny Access]
+    E --> G[Create EntryLog / ZoneLog]
+    F --> H[Create ZoneLog with denial reason]
+    E --> I[Notify staff via Socket.io]
+    F --> J[Notify staff via Notification Service]
 ```
-1. **Validate Ticket** – `Ticket` is fetched and must be in a status that permits entry (`CONFIRMED`, `SOLD`).
-2. **Check Allowed Zones** – The ticket’s `allowedZones` array is compared with the scanned `zoneName`.
-3. **Grant/Deny** – If allowed, an `EntryLog` is created and the gate opens; otherwise a `ZoneLog` with `accessGranted: false` and a `denialReason` (`NOT_ALLOWED`, `INVALID_TICKET`, `DUPLICATE_SCAN`) is stored.
-4. **Notification** – Staff receive a real‑time notification via the `notifyStatusChange` function in `notificationService.js`.
+1. **Resolve attendee** – The backend checks `qrToken` first or, if the input is a 10-digit RFID, matches `rfidTag` within the selected event.
+2. **Validate ticket** – `Ticket` is fetched and must be in a status that permits entry (`CONFIRMED`, `SOLD`, or equivalent allowed states).
+3. **Check allowed zones** – The ticket’s `allowedZones` array is compared with the scanned `zoneName`.
+4. **Grant/Deny** – If allowed, an `EntryLog` or zone event is created and the gate opens; otherwise a `ZoneLog` with `accessGranted: false` and a `denialReason` (`NOT_ALLOWED`, `INVALID_TICKET`, `DUPLICATE_SCAN`, etc.) is stored.
+5. **Notification** – Staff receive real-time updates via the `notifyStatusChange` function and Socket.IO events.
+
+## RFID as a first-class access method
+RFID is intentionally treated the same as QR for event access. The difference is only in the input channel:
+
+- QR flow: scan generated QR code, resolve attendee via `qrToken`.
+- RFID flow: present card to reader, normalize the 10-digit value, resolve attendee via `rfidTag`.
+- The same response path is used in entry scanning and zone access, with `method` stored as `rfid` for auditing.
+
+This means staff can operate either scanner mode without changing the actual event rules or denial logic.
 
 ## Configuration
 - Global toggles for **SMS** and **WhatsApp** alerts are stored in `SystemConfig` under `communicationChannels.zoneAccess`.
-- Per‑event overrides can be set in `Event.settings.communicationChannels.zoneAccess`.
+- Per-event overrides can be set in `Event.settings.communicationChannels.zoneAccess`.
+- RFID inventory and event/category assignment are controlled through the admin RFID inventory module and the category ticket assignment flow.
 
 ---
-*All details derived from `ZoneLog.js`, `EntryLog.js`, and the notification service.*
+*All details derived from `ZoneLog.js`, `EntryLog.js`, `backend/src/routes/entry.js`, `backend/src/routes/zone.js`, `backend/src/services/rfidService.js`, and the staff scanner flows.*

@@ -196,6 +196,7 @@ app.use('/api/events', require('./routes/events'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/confirm', require('./routes/confirm'));
 app.use('/api/attendees', require('./routes/attendees'));
+app.use('/api/rfid', require('./routes/rfid'));
 app.use('/api/verification', require('./routes/verification'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/invite', require('./routes/invite'));
@@ -248,8 +249,8 @@ mongoose
 const PORT = process.env.PORT || 5000;
 app.use(require('./middleware/errorHandler').notFound);
 app.use(require('./middleware/errorHandler').errorHandler);
-// Bind to localhost only for local-only development.
-const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+// Bind all interfaces in local development so localhost can resolve via IPv4 or IPv6.
+const HOST = process.env.HOST || '0.0.0.0';
 server.listen(PORT, HOST, () => console.log(`Server running on ${HOST}:${PORT}`));
 
 // Runtime environment presence check (prints which critical env vars are present without revealing values)

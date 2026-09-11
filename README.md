@@ -3,19 +3,66 @@
 **Event Access Management System**
 
 ## Overview
-The ENTRYNEX/EAMS project is a full‑stack application for managing events, ticketing, access control, and payments. It provides separate front‑end (React) and back‑end (Node.js/Express) components, uses MongoDB for data storage, and integrates with email, SMS, and QR code services.
+The ENTRYNEX/EAMS project is a full‑stack application for managing events, ticketing, access control, payments, and staff operations. It includes a React frontend, an Express/Mongoose backend, a MongoDB data layer, and real-time access logging for QR and RFID event scanning.
+
+## Core Identity & Access Model
+The system supports both QR and RFID access as interchangeable check-in methods.
+
+- Each attendee record can hold both a `qrToken` and an `rfidTag`.
+- The same attendee can be validated by either the QR code or a 10-digit RFID value emitted by a USB keyboard-wedge reader.
+- The scan result is logged with a `method` field as either `qr` or `rfid`.
+- Ticket purchase flow creates or links an attendee to the purchased ticket, generates a QR code, and optionally allocates an RFID from the event/category inventory.
+
+### Ticket to attendee relationship
+```mermaid
+flowchart LR
+    A[Order] --> B[Ticket]
+    B --> C[Attendee]
+    C --> D[qrToken]
+    C --> E[rfidTag]
+    D --> F[Entry / Zone Scan]
+    E --> F
+```
+
+For event access, the system does not treat QR and RFID as separate user identities. They are two ways to resolve the same attendee record.
 
 ## Features
-- Event creation & management with support for multiple event types (matches, concerts, conferences, workshops)
+- Event creation & management with support for multiple event types
 - Ticket ordering, assignment, and QR code generation
-- Multiple payment methods (card, bank transfer, cash at entrance)
-- Role‑based access control (admin, organiser, staff, auditor, attendee, sponsor, etc.)
-- Real‑time updates via Socket.io
-- Notification system (email, SMS, WhatsApp)
-- Zone based access control and logging
+- RFID inventory management per event and category
+- Event category-based RFID allocation from admin inventory
+- Entry and zone scanning by QR code or RFID reader
+- Multiple payment methods, including cash-at-entry and online gateways
+- Role-based access control (admin, organiser, staff, auditor, attendee, sponsor, etc.)
+- Real-time updates via Socket.io
+- Notifications through email, SMS, and WhatsApp
+- Zone-based access control and logging
 - Sponsor package management
 - Photo verification for attendees
-- Short link generation for event pages
+- Short-link and event-page generation
+
+## RFID Reader Support
+The system supports a USB EM4100/TK4100 keyboard-wedge reader. It emits a 10-digit RFID value followed by Enter, so no external RFID SDK is required.
+
+### Reader behavior
+- Reader mode is available in entry and zone scanner flows.
+- The value is normalized to a 10-digit string and matched against the attendee `rfidTag` field.
+- A scan can resolve the same attendee as a QR scan, preserving the same access logic and audit trail.
+- The backend logs scans as `method: "rfid"` so staff and admins can distinguish the source without changing the validation rules.
+
+### Admin RFID inventory workflow
+Admins can now add RFID codes to the system in two ways:
+1. One-by-one via the RFID inventory screen.
+2. Bulk import through Excel upload containing RFID codes for a selected event and category.
+
+The inventory is stored as event-scoped tags with category association, and the next available tag is assigned when a ticket is linked to an attendee.
+
+### API support
+- `POST /api/attendees/:id/rfid` – assign a specific RFID tag to an attendee
+- `DELETE /api/attendees/:id/rfid` – clear an attendee RFID tag
+- `GET /api/rfid/events/:eventId` – list RFID inventory for an event
+- `POST /api/rfid/events/:eventId/tags` – add one or many tags to the inventory
+- `POST /api/rfid/events/:eventId/upload` – import RFID codes from Excel
 
 ## Technology Stack
 - **Frontend:** React, Tailwind CSS, Heroicons
@@ -30,7 +77,7 @@ The ENTRYNEX/EAMS project is a full‑stack application for managing events, tic
 - Node.js 18+
 - npm
 - MongoDB instance (local or remote)
-- Environment variables (see `docs/15_ENVIRONMENT_CONFIGURATION.md` for Azure Storage and Face API settings)
+- Environment variables (see [docs/15_ENVIRONMENT_CONFIGURATION.md](docs/15_ENVIRONMENT_CONFIGURATION.md))
 
 ## Installation
 ```bash
@@ -74,12 +121,13 @@ npm start   # runs on http://localhost:3000
 - [20_SECRET_ROTATION_AND_REMOVAL.md](docs/20_SECRET_ROTATION_AND_REMOVAL.md) - Secret management
 
 ## Running Tests
-No automated test suites are included in this repository. The previous testing guide has been archived in `docs/17_TESTING_GUIDE.md`.
+No automated test suites are included in this repository. The previous testing guide has been archived in [docs/17_TESTING_GUIDE.md](docs/17_TESTING_GUIDE.md).
 
 ## Deploying
-See [16_DEPLOYMENT_GUIDE.md](docs/16_DEPLOYMENT_GUIDE.md).
+See [docs/16_DEPLOYMENT_GUIDE.md](docs/16_DEPLOYMENT_GUIDE.md).
 
 ## Recent Updates
+- **2026-09-10**: Added event/category RFID inventory, automatic RFID allocation, and QR + RFID attendee linkage for purchased tickets.
 - **2026-08-31**: Fixed undefined `conference` error in EventDetailPage by adding proper variable extraction from event object
 - **2026-08-05**: Updated error handling and logging documentation
 - **2026-07-30**: Added comprehensive documentation files covering security, deployment, operations, and troubleshooting

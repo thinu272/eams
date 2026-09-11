@@ -652,7 +652,9 @@ router.post('/scan-entry', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'qrToken or rfidId is required.' });
     }
 
-    const attendee = await Attendee.findOne(qrToken ? { qrToken } : { wristbandId: rfidId }).populate('event');
+    const attendee = await Attendee.findOne(
+      qrToken ? { qrToken } : { $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
+    ).populate('event');
     if (!attendee || attendee.event?._id?.toString() !== event._id.toString()) {
       return res.status(404).json({ success: false, message: 'Attendee not found in your assigned event.' });
     }
@@ -747,7 +749,9 @@ router.post('/scan-zone', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'qrToken or rfidId is required.' });
     }
 
-    const attendee = await Attendee.findOne(qrToken ? { qrToken } : { wristbandId: rfidId }).populate('event');
+    const attendee = await Attendee.findOne(
+      qrToken ? { qrToken } : { $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
+    ).populate('event');
     if (!attendee || attendee.event?._id?.toString() !== event._id.toString()) {
       return res.status(404).json({ success: false, message: 'Attendee not found in your assigned event.' });
     }

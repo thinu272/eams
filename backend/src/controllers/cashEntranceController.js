@@ -8,6 +8,7 @@ const { sendCashReservationEmail, sendCashReservationSMS, sendCashPaymentConfirm
 const { logActivity } = require('../utils/logger');
 const { emitDashboardEvent } = require('../utils/socket');
 const SystemConfig = require('../models/SystemConfig');
+const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 
 // Helper to compute reservation expiry hours from config
 async function getReservationExpiry() {
@@ -180,6 +181,9 @@ exports.confirmCashPayment = async (req, res) => {
       ticket.qrCode = await QRCode.toDataURL(ticket.ticketNumber);
       await ticket.save();
     }
+
+    await processOrderFinalConfirmation({ orderId: order._id })
+      .catch((error) => console.error('Cash QR/RFID assignment error:', error));
 
     // Notifications
     try { await sendCashPaymentConfirmedEmail({ email: order.buyerEmail, name: order.buyerName }, order); } catch (e) { console.error('Cash payment confirmed email error', e); }

@@ -180,7 +180,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     const requestedZone = normalizeZoneName(req.body.zone);
     const requestedEventId = String(req.body.eventId || '').trim();
     const qrToken = req.body.qrToken?.trim();
-    const rfidId = req.body.rfidId?.trim();
+    const rfidId = (req.body.rfidId || req.body.rfidTag)?.trim();
 
     if (!requestedZone) {
       return res.status(400).json({ success: false, reason: 'ZONE_REQUIRED', message: 'Zone is required.' });
@@ -191,7 +191,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     }
 
     const attendee = await Attendee.findOne(
-      qrToken ? { qrToken } : { wristbandId: rfidId }
+      qrToken ? { qrToken } : { event: requestedEventId, $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
     ).populate('event', 'name createdBy zones');
 
     if (!attendee) {
@@ -374,6 +374,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         accessGranted: true,
         action,
         zoneName,
+        scannedRfid: !qrToken ? rfidId : undefined,
         attendee: {
           _id: attendee._id,
           fullName: attendee.fullName,

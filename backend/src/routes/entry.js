@@ -12,8 +12,11 @@ const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const { sendOrderConfirmation, sendCashPaymentConfirmationEmail } = require('../utils/email');
 const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
+const { allocateRfid } = require('../services/rfidService');
 
 const normalizeGate = (value) => (value || '').trim();
+const normalizeRfidTag = (value) => String(value || '').trim();
+const isRfidTag = (value) => /^\d{10}$/.test(value);
 const parseScannedToken = (value) => {
   const raw = (value || '').trim();
   if (!raw) return '';
@@ -96,22 +99,20 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       zoneId,
       zoneName,
       action = 'check_in',
-      method = 'qr',
+      method,
       deviceId,
     } = req.body;
     const io = req.app.get('io');
 
     let attendee;
-    if (qrToken) {
-      attendee = await Attendee.findOne({ qrToken: parseScannedToken(qrToken) }).populate('event');
-    } else if (rfidId) {
-      // Check both wristbandId (assigned during check-in) and rfidTag (pre-assigned)
-      attendee = await Attendee.findOne({ 
-        $or: [
-          { rfidTag: rfidId.trim() },
-          { wristbandId: rfidId.trim() }
-        ]
-      }).populate('event');
+    const rawScan = qrToken || rfidId;
+    const parsedScan = parseScannedToken(rawScan);
+    const scanMethod = method === 'rfid' || isRfidTag(parsedScan) ? 'rfid' : 'qr';
+    const eventFilter = req.body.eventId ? { event: req.body.eventId } : {};
+    if (scanMethod === 'rfid') {
+      attendee = await Attendee.findOne({ ...eventFilter, rfidTag: normalizeRfidTag(parsedScan) }).populate('event');
+    } else if (parsedScan) {
+      attendee = await Attendee.findOne({ ...eventFilter, qrToken: parsedScan }).populate('event');
     }
 
     if (!attendee) {
@@ -141,7 +142,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         zoneId,
         zoneName,
         action: 'denied',
-        method,
+        method: scanMethod,
         deviceId,
         accessGranted: false,
         denialReason,
@@ -192,7 +193,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         zoneId,
         zoneName,
         action: 'denied',
-        method,
+        method: scanMethod,
         deviceId,
         accessGranted: false,
         denialReason: 'Identity not confirmed',
@@ -218,7 +219,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         zoneId,
         zoneName,
         action: 'denied',
-        method,
+        method: scanMethod,
         deviceId,
         accessGranted: false,
         denialReason: 'Already checked in',
@@ -244,7 +245,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         zoneId,
         zoneName,
         action: 'denied',
-        method,
+        method: scanMethod,
         deviceId,
         accessGranted: false,
         denialReason: 'Not currently checked in',
@@ -295,7 +296,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       zoneId,
       zoneName,
       action: accessGranted ? action : 'denied',
-      method,
+      method: scanMethod,
       deviceId,
       accessGranted,
       denialReason,
@@ -328,6 +329,8 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           categoryName: attendee.categoryName,
           allowedZones: attendee.allowedZones,
           wristbandId: attendee.wristbandId,
+          rfidTag: attendee.rfidTag,
+          scanMethod,
           photoVerificationStatus: attendee.photoVerificationStatus,
         },
         event: { name: attendee.event.name, zones: attendee.event.zones },
@@ -788,8 +791,17 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
         attendee.confirmedAt = new Date();
         attendee.confirmedBy = req.user._id;
         attendee.isActive = true;
-        await attendee.save();
       }
+
+      if (!attendee.rfidTag) {
+        attendee.rfidTag = await allocateRfid({
+          eventId: ticket.event || order.eventId._id,
+          categoryId: ticket.categoryId,
+          attendeeId: attendee._id,
+          ticketId: ticket._id,
+        });
+      }
+      await attendee.save();
       
       // Update ticket with attendee reference
       ticket.attendee = attendee._id;
@@ -867,6 +879,7 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
           _id: a._id,
           fullName: a.fullName,
           qrCode: a.qrCode,
+          rfidTag: a.rfidTag,
           categoryName: a.categoryName,
         })),
         log: logEntry,

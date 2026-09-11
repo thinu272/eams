@@ -89,7 +89,7 @@ const ZoneScannerPage = () => {
   }, [availableZones, selectedZone]);
 
   useEffect(() => {
-    if (inputRef.current) {
+    if (inputRef.current && scanMode === 'rfid') {
       inputRef.current.focus();
     }
   }, [showCamera, scanMode, result]);
@@ -285,10 +285,20 @@ const ZoneScannerPage = () => {
                   <input
                     ref={inputRef}
                     value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
+                    onChange={(e) => setScanInput(scanMode === 'rfid' ? e.target.value.replace(/\D/g, '').slice(0, 10) : e.target.value)}
+                    onKeyDown={(e) => {
+                      if (scanMode === 'rfid' && e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSubmit(e);
+                      }
+                    }}
+                    inputMode={scanMode === 'rfid' ? 'numeric' : undefined}
+                    maxLength={scanMode === 'rfid' ? 10 : undefined}
                     placeholder={scanMode === 'rfid' ? 'Tap or enter RFID / wristband ID' : 'Scan or paste QR token'}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                    className={`w-full rounded-2xl border px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-400 ${scanMode === 'rfid' ? 'border-blue-300 bg-blue-50 font-mono text-center tracking-widest' : 'border-slate-200'}`}
                   />
+                  {scanMode === 'rfid' && <p className="text-center text-xs text-blue-700">Reader focused and waiting for a card.</p>}
+                  {result?.scannedRfid && <p className="text-center font-mono text-xs text-blue-700">RFID: {result.scannedRfid}</p>}
                   <button
                     type="submit"
                     disabled={submitting || !activeZone}

@@ -61,6 +61,7 @@ const mapTicket = (ticket) => {
       phone: attendee.phone,
       qrCode: attendee.qrCode,
       qrToken: attendee.qrToken,
+      rfidTag: attendee.rfidTag,
       confirmationToken: attendee.confirmationToken,
       confirmationStatus: attendee.confirmationStatus,
       isConfirmed: attendee.isConfirmed,
@@ -101,7 +102,7 @@ const getUserScopedTickets = async (user) => {
 
   return Ticket.find(query)
     .populate('event', 'name slug description coverImage startDate endDate venue zones categories settings')
-    .populate('attendee', 'fullName email phone qrCode qrToken confirmationStatus isConfirmed checkedIn allowedZones photo photoVerificationStatus photoRejectionReason resubmitToken')
+    .populate('attendee', 'fullName email phone qrCode qrToken rfidTag confirmationStatus isConfirmed checkedIn allowedZones photo photoVerificationStatus photoRejectionReason resubmitToken')
     .populate('order', 'orderNumber buyerName buyerEmail buyerPhone totalAmount status createdAt paymentMethod paymentStatus')
     .sort({ createdAt: -1 });
 };

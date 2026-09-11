@@ -15,6 +15,7 @@ import {
   BuildingOffice2Icon,
   StarIcon,
   BanknotesIcon,
+  IdentificationIcon,
 } from '@heroicons/react/24/solid';
 import { getCanonicalRole } from '../utils/rbac';
 
@@ -27,6 +28,7 @@ export const ROLE_NAVIGATION = {
           { to: '/admin/dashboard', label: 'Overview', icon: HomeIcon },
           { to: '/admin/live', label: 'Live Stream', icon: SignalIcon },
           { to: '/admin/dashboard?section=events', label: 'Events', icon: TicketIcon },
+          { to: '/admin/dashboard?section=rfid', label: 'RFID Inventory', icon: IdentificationIcon },
           { to: '/admin/dashboard?section=organisations', label: 'Organizations', icon: BuildingOffice2Icon },
           { to: '/admin/dashboard?section=organisers', label: 'Organisers', icon: UserGroupIcon },
           { to: '/admin/dashboard?section=users', label: 'Users', icon: UsersIcon },

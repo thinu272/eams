@@ -35,6 +35,7 @@ import toast from 'react-hot-toast';
 import { duplicateAdminEvent } from '../../api/events';
 import { getSystemLogs } from '../../api/audit';
 import AdminPaymentManagement from './AdminPaymentManagement';
+import AdminRfidInventoryPage from './AdminRfidInventoryPage';
 import {
   createSuperAdminEvent,
   createSuperAdminOrganiser,
@@ -63,6 +64,7 @@ import {
 const SECTION_LABELS = {
   overview: 'Overview',
   events: 'Events',
+  rfid: 'RFID Inventory',
   organisations: 'Organizations',
   organisers: 'Organisers',
   users: 'Users',
@@ -2602,7 +2604,9 @@ const AdminDashboard = () => {
           )}
         </Card>
 
-        {section === 'bank-accounts' ? (
+        {section === 'rfid' ? (
+          <AdminRfidInventoryPage embedded />
+        ) : section === 'bank-accounts' ? (
           <BankAccountsSection />
         ) : section === 'payments' ? (
           <AdminPaymentManagement />

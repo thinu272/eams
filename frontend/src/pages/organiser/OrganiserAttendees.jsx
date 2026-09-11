@@ -6,7 +6,7 @@ import Badge from '../../components/ui/Badge';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import Modal from '../../components/ui/Modal';
-import { getAttendee } from '../../api/attendees';
+import { assignRfid, clearRfid, getAttendee } from '../../api/attendees';
 import { getOrganiserEntryLogs } from '../../api/organiser';
 
 const OrganiserAttendees = () => {
@@ -16,6 +16,9 @@ const OrganiserAttendees = () => {
   const [detail, setDetail] = useState(null);
   const [logs, setLogs] = useState([]);
   const [searchValue, setSearchValue] = useState('');
+  const [rfidInput, setRfidInput] = useState('');
+  const [rfidListening, setRfidListening] = useState(false);
+  const [rfidSaving, setRfidSaving] = useState(false);
 
   const load = () => {
     getOrganiserAttendeesScoped({
@@ -54,8 +57,45 @@ const OrganiserAttendees = () => {
     setSelected(attendee);
     const res = await getAttendee(attendee._id);
     setDetail(res.data?.data?.attendee || null);
+    setRfidInput(res.data?.data?.attendee?.rfidTag || '');
     const logsRes = await getOrganiserEntryLogs({ attendeeId: attendee._id, limit: 20 });
     setLogs(logsRes.data?.data?.logs || []);
+  };
+
+  const saveRfid = async (event) => {
+    event?.preventDefault();
+    if (!detail || !/^\d{10}$/.test(rfidInput.trim())) {
+      toast.error('RFID tag must be exactly 10 digits');
+      return;
+    }
+    setRfidSaving(true);
+    try {
+      const response = await assignRfid(detail._id, rfidInput.trim());
+      setDetail(response.data?.data?.attendee || detail);
+      setRfidListening(false);
+      toast.success('RFID tag assigned');
+      load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to assign RFID tag');
+    } finally {
+      setRfidSaving(false);
+    }
+  };
+
+  const removeRfid = async () => {
+    if (!detail) return;
+    setRfidSaving(true);
+    try {
+      const response = await clearRfid(detail._id);
+      setDetail(response.data?.data?.attendee || { ...detail, rfidTag: '' });
+      setRfidInput('');
+      toast.success('RFID tag cleared');
+      load();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to clear RFID tag');
+    } finally {
+      setRfidSaving(false);
+    }
   };
 
   return (
@@ -156,6 +196,29 @@ const OrganiserAttendees = () => {
               <div>Phone: {detail.phone || '-'}</div>
               <div>Confirmation: {detail.confirmationStatus}</div>
             </div>
+            <form onSubmit={saveRfid} className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="attendee-rfid" className="text-sm font-semibold text-slate-900">RFID tag</label>
+                {detail.rfidTag && <span className="font-mono text-sm text-blue-700">{detail.rfidTag}</span>}
+              </div>
+              <input
+                id="attendee-rfid"
+                value={rfidInput}
+                onChange={(event) => setRfidInput(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                onFocus={() => setRfidListening(true)}
+                onKeyDown={(event) => { if (event.key === 'Enter') saveRfid(event); }}
+                inputMode="numeric"
+                maxLength={10}
+                placeholder={rfidListening ? 'Tap card now...' : 'Enter 10-digit RFID'}
+                className="mt-2 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <div className="mt-2 flex gap-2">
+                <button type="submit" disabled={rfidSaving || rfidInput.length !== 10} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Save RFID</button>
+                <button type="button" onClick={() => { setRfidListening(true); document.getElementById('attendee-rfid')?.focus(); }} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Scan RFID to assign</button>
+                {detail.rfidTag && <button type="button" onClick={removeRfid} disabled={rfidSaving} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50">Clear</button>}
+              </div>
+              {rfidListening && <p className="mt-2 text-xs text-blue-700">Reader focused and waiting for a card.</p>}
+            </form>
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Entry Logs</h4>
               <div className="mt-2 space-y-2">

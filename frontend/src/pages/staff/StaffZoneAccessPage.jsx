@@ -11,6 +11,7 @@ import {
   ChartBarIcon,
   ListBulletIcon,
   DevicePhoneMobileIcon,
+  IdentificationIcon,
 } from '@heroicons/react/24/outline';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import QRScannerComponent from '../../components/events/QRScannerComponent';
@@ -47,6 +48,8 @@ const StaffZoneAccessPage = () => {
   const [logs, setLogs] = useState([]);
   const [logsPage, setLogsPage] = useState(1);
   const [zoneInput, setZoneInput] = useState('');
+  const [readerMode, setReaderMode] = useState('qr');
+  const rfidInputRef = React.useRef(null);
 
   const [activeTab, setActiveTab] = useState('scan');
   const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
@@ -111,10 +114,11 @@ const StaffZoneAccessPage = () => {
         for (const scan of queueToProcess) {
           try {
             await scanStaffZone({
-              qrToken: scan.qrToken,
+              ...(scan.method === 'rfid' ? { rfidId: scan.rfidId } : { qrToken: scan.qrToken }),
               zone: scan.zone,
               eventId: scan.eventId,
               action: scan.action,
+              method: scan.method || 'qr',
             });
             successfulSyncCount++;
           } catch (err) {
@@ -172,6 +176,10 @@ const StaffZoneAccessPage = () => {
       setZoneInput('VIP Zone');
     }
   }, [assignedZones]);
+
+  useEffect(() => {
+    if (readerMode === 'rfid' && activeTab === 'scan') rfidInputRef.current?.focus();
+  }, [readerMode, activeTab]);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
@@ -314,7 +322,8 @@ const StaffZoneAccessPage = () => {
         setOfflineQueue((prev) => [
           ...prev,
           {
-            qrToken,
+            ...(readerMode === 'rfid' ? { rfidId: qrToken } : { qrToken }),
+            method: readerMode === 'rfid' ? 'rfid' : 'qr',
             zone: zoneName,
             eventId: selectedEventId,
             action: scanMode,
@@ -343,10 +352,11 @@ const StaffZoneAccessPage = () => {
       setSubmitting(true);
       try {
         const response = await scanStaffZone({
-          qrToken,
+          ...(readerMode === 'rfid' ? { rfidId: qrToken } : { qrToken }),
           zone: zoneName,
           eventId: selectedEventId,
           action: scanMode,
+          method: readerMode === 'rfid' ? 'rfid' : 'qr',
         });
 
         const payload = response.data?.data || {};
@@ -419,6 +429,7 @@ const StaffZoneAccessPage = () => {
       selectedEventId,
       submitting,
       scanMode,
+      readerMode,
       isOnline,
       user,
       fetchStats,
@@ -606,7 +617,11 @@ const StaffZoneAccessPage = () => {
               </div>
 
               {/* Camera */}
-              <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
+              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
+                <button type="button" onClick={() => setReaderMode('qr')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'qr' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>QR Camera</button>
+                <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>
+              </div>
+              {readerMode === 'qr' ? <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
                 <div className="aspect-[4/3] w-full sm:aspect-video">
                   <QRScannerComponent
                     onScanSuccess={handleScan}
@@ -615,7 +630,13 @@ const StaffZoneAccessPage = () => {
                     qrbox={260}
                   />
                 </div>
-              </div>
+              </div> : <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-8 text-center">
+                <IdentificationIcon className="mx-auto h-12 w-12 text-blue-600" />
+                <p className="mt-3 text-lg font-bold text-slate-900">RFID Reader Ready</p>
+                <p className="mt-1 text-sm text-slate-600">Tap a card to submit zone access automatically.</p>
+                <input ref={rfidInputRef} value={manualToken} onChange={(e) => setManualToken(e.target.value.replace(/\D/g, '').slice(0, 10))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(manualToken); } }} autoFocus maxLength={10} inputMode="numeric" placeholder="Waiting for card..." className="mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="mt-3 text-xs font-semibold text-blue-700">Reader focused and waiting for a card</p>
+              </div>}
 
               {result.state !== 'idle' && (
                 <ResultCard

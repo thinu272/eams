@@ -58,6 +58,7 @@ import ResubmitPage from './pages/buyer/ResubmitPage';
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPaymentManagement from './pages/admin/AdminPaymentManagement';
+import AdminRfidInventoryPage from './pages/admin/AdminRfidInventoryPage';
 
 // Organiser
 import OrganiserDashboard from './pages/organiser/OrganiserDashboard';
@@ -175,6 +176,7 @@ const AppRoutes = () => (
     <Route path="/admin/events" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=events" replace /></Protected>} />
     <Route path="/admin/events/new" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=events" replace /></Protected>} />
     <Route path="/admin/events/:id/edit" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=events" replace /></Protected>} />
+    <Route path="/admin/rfid" element={<Protected roles={['MainAdmin','MainOrganiser']}><AdminRfidInventoryPage /></Protected>} />
     <Route path="/admin/users" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=users" replace /></Protected>} />
     <Route path="/admin/settings" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=settings" replace /></Protected>} />
     <Route path="/admin/reports" element={<Protected roles={['MainAdmin']} redirectTo="/dashboard"><Navigate to="/admin/dashboard?section=reports" replace /></Protected>} />
