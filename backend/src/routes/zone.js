@@ -16,6 +16,10 @@ const { normalizeRole, ROLES } = require('../utils/rbac');
  * 3. Ticket must not be expired (event end time)
  */
 const isTicketValid = (ticket, event) => {
+  if (!ticket) {
+    return { valid: false, reason: 'INVALID_TICKET', message: 'Attendee is not linked to a ticket' };
+  }
+
   // Check if ticket is cancelled
   if (ticket.status === 'CANCELLED' || ticket.status === 'EXPIRED') {
     return { valid: false, reason: 'TICKET_CANCELLED', message: 'Ticket has been cancelled' };
@@ -192,7 +196,9 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
 
     const attendee = await Attendee.findOne(
       qrToken ? { qrToken } : { event: requestedEventId, $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
-    ).populate('event', 'name createdBy zones');
+    )
+      .populate('event', 'name createdBy zones')
+      .populate('ticket', 'status categoryId categoryName allowedZones');
 
     if (!attendee) {
       return res.status(404).json({
@@ -268,7 +274,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     const fullEvent = await Event.findById(event._id).select('endDateTime zones');
     
     // Validate ticket status against event end time
-    const ticketValidation = isTicketValid(attendee, fullEvent);
+    const ticketValidation = isTicketValid(attendee.ticket, fullEvent);
     if (!ticketValidation.valid) {
       const denied = await buildDeniedResponse({
         attendee,
