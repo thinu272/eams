@@ -14,7 +14,7 @@ const companySchema = new mongoose.Schema({
       'State Company',
       'NGO', 
       'Cooperative Society', 
-      'Government Department', 
+      'Government Department',
       'Association'
     ]
   },

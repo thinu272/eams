@@ -5,6 +5,7 @@ const Order = require('../models/Order');
 const Event = require('../models/Event');
 const { getPayHereHash, createPaymentSession, getActiveGateways } = require('../services/paymentService');
 const { notifyOrderConfirmation } = require('../services/notificationService');
+const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 const { emitDashboardEvent, emitBuyerEvent } = require('../utils/socket');
 
 /**
@@ -173,6 +174,8 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         // Send confirmation notification
         const eventDoc = await Event.findById(eventId);
         if (eventDoc) {
+          await processOrderFinalConfirmation({ orderId: order._id })
+            .catch((error) => console.error('Stripe QR/RFID assignment error:', error));
           await notifyOrderConfirmation({
             order,
             event: eventDoc,
@@ -289,6 +292,8 @@ router.post('/notify', async (req, res) => {
 
         const event = await Event.findById(eventId);
         if (event) {
+          await processOrderFinalConfirmation({ orderId: order._id })
+            .catch((error) => console.error('PayHere QR/RFID assignment error:', error));
           await notifyOrderConfirmation({
             order,
             event,

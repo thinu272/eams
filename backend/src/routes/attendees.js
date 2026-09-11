@@ -256,7 +256,7 @@ router.get('/export', protect, async (req, res, next) => {
 
     const attendees = await Attendee.find(filter).sort('-createdAt');
     const rows = [
-      ['Full Name', 'Email', 'Phone', 'Category', 'Status', 'Photo Status', 'QR Token', 'Checked In'],
+      ['Full Name', 'Email', 'Phone', 'Category', 'Status', 'Photo Status', 'QR Token', 'RFID Tag', 'Checked In'],
       ...attendees.map((attendee) => [
         attendee.fullName || '',
         attendee.email || '',
@@ -265,6 +265,7 @@ router.get('/export', protect, async (req, res, next) => {
         attendee.confirmationStatus || '',
         attendee.photoVerificationStatus || '',
         attendee.qrToken || '',
+        attendee.rfidTag || '',
         attendee.checkedIn ? 'Yes' : 'No',
       ]),
     ];
@@ -406,6 +407,11 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
           results.errors.push({ row: i + 2, message: 'Phone is required for this event.' });
           continue;
         }
+        const rfidTag = row['RFID Tag'] ? String(row['RFID Tag']).trim() : undefined;
+        if (rfidTag && !/^\d{10}$/.test(rfidTag)) {
+          results.errors.push({ row: i + 2, message: 'RFID Tag must be exactly 10 digits.' });
+          continue;
+        }
         const attendee = await Attendee.create({
           fullName: row['Full Name'],
           email: row['Email'],
@@ -413,6 +419,7 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
           nationalId: row['National ID'] || '',
           dateOfBirth: row['Date of Birth'] ? new Date(row['Date of Birth']) : undefined,
           nationality: row['Nationality'] || '',
+          rfidTag,
           event: eventId,
           categoryId: categoryId,
           categoryName: category?.name,
@@ -454,7 +461,7 @@ router.post('/bulk-upload', protect, excelUpload.single('file'), async (req, res
 router.get('/template', protect, async (req, res, next) => {
   try {
     const wb = XLSX.utils.book_new();
-    const headers = [['Full Name', 'Email', 'Phone', 'National ID', 'Passport Number', 'Date of Birth', 'Nationality', 'Notes']];
+    const headers = [['Full Name', 'Email', 'Phone', 'National ID', 'Passport Number', 'Date of Birth', 'Nationality', 'RFID Tag', 'Notes']];
     const ws = XLSX.utils.aoa_to_sheet(headers);
     ws['!cols'] = headers[0].map(() => ({ wch: 20 }));
     XLSX.utils.book_append_sheet(wb, ws, 'Attendees');
@@ -869,6 +876,42 @@ router.get('/:id', protect, async (req, res, next) => {
     if (!(await hasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
+    res.json({ success: true, data: { attendee } });
+  } catch (err) { next(err); }
+});
+
+// POST /api/attendees/:id/rfid - assign an event-scoped RFID tag
+router.post('/:id/rfid', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff'), async (req, res, next) => {
+  try {
+    const rfidTag = String(req.body.rfidTag || '').trim();
+    if (!/^\d{10}$/.test(rfidTag)) {
+      return res.status(400).json({ success: false, message: 'rfidTag must be exactly 10 digits.' });
+    }
+
+    const existingAttendee = await Attendee.findById(req.params.id).select('event');
+    if (!existingAttendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, existingAttendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+
+    const duplicate = await Attendee.findOne({ event: existingAttendee.event, rfidTag, _id: { $ne: req.params.id } }).select('_id');
+    if (duplicate) return res.status(409).json({ success: false, message: 'This RFID tag is already assigned in this event.' });
+
+    const attendee = await Attendee.findByIdAndUpdate(req.params.id, { rfidTag }, { new: true, runValidators: true }).populate('event');
+    res.json({ success: true, data: { attendee } });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/attendees/:id/rfid - clear an event-scoped RFID tag
+router.delete('/:id/rfid', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff'), async (req, res, next) => {
+  try {
+    const attendee = await Attendee.findById(req.params.id).populate('event');
+    if (!attendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    if (!(await hasEventAccess(req.user, attendee.event?._id || attendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+    attendee.rfidTag = undefined;
+    await attendee.save();
     res.json({ success: true, data: { attendee } });
   } catch (err) { next(err); }
 });

@@ -35,13 +35,41 @@ Gateway information is retrieved via `paymentService.getActiveGateways()` which 
 | `SOLD` | Payment confirmed and all tickets finalized. | `finalConfirmationService` after successful payment or cash‑at‑entrance verification |
 | `CANCELLED` | Order or ticket cancelled by user or admin. | `/buyer/cancel` or admin endpoint |
 
+### QR + RFID Linkage in the Ticket Lifecycle
+The system explicitly connects the purchased ticket and the attendee identity to both access tokens:
+
+1. Buyer creates or finalises the order for a sold ticket.
+2. When the ticket is assigned to an attendee, the backend creates or updates an `Attendee` record.
+3. The attendee receives a `qrToken` and a generated QR image.
+4. If the event category has RFID inventory configured, the backend allocates the next available tag from `RfidTag` collection and stores it on the attendee as `rfidTag`.
+5. Later, the same attendee can be validated by either QR token or RFID tag during entry or zone access.
+
+```mermaid
+flowchart TD
+    A[Order] --> B[Ticket]
+    B --> C[Attendee]
+    C --> D[qrToken]
+    C --> E[rfidTag]
+    D --> F[Entry / Zone Validation]
+    E --> F
+```
+
+### Event Category RFID Allocation
+RFID inventory is not random or global. It is event-scoped and category-scoped:
+
+- `RfidTag` records hold: `event`, `categoryId`, `rfidTag`, `status`, `attendee`, `ticket`, `sequence`.
+- Each tag is unique within an event.
+- When a new attendee is assigned to a category ticket, the system picks the next available tag in sequence for that event/category.
+- The assigned RFID is persisted on the attendee and remains tied to that attendee until cleared manually or re-imported.
+
 ### Key Service Functions
 - `paymentService.createPaymentSession(order, event, gateway)` – Dispatcher for Stripe/PayHere.
 - `paymentService.getPayHereHash(orderId, amount, currency)` – Generates MD5 hash required by PayHere.
 - `paymentService.createStripeSession(order, event)` – Builds Stripe Checkout session.
+- `rfidService.allocateRfid({ eventId, categoryId, attendeeId, ticketId })` – Allocates the next available RFID tag for the ticket category.
 - `notificationService.notifyOrderConfirmation` – Sends order confirmation via configured channels.
 - `notificationService.sendCashReservationEmail/SMS` – Handles *Cash at Entrance* pending state.
 - `notificationService.sendCashPaymentConfirmedEmail` – Finalises cash payment flow.
 
 ---
-*All information extracted from `backend/src/services/paymentService.js`, `backend/src/models/Order.js`, and related notification service functions.*
+*All information extracted from `backend/src/services/paymentService.js`, `backend/src/services/rfidService.js`, `backend/src/models/Order.js`, `backend/src/models/Attendee.js`, and related notification service functions.*

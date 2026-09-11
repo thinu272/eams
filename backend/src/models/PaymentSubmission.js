@@ -78,10 +78,10 @@ const paymentSubmissionSchema = new mongoose.Schema({
     ref: 'Order',
     required: true,
   },
-  payerName: {
-    type: String,
+  payerName: { 
+    type: String, 
     required: true,
-    trim: true,
+    trim: true, 
   },
   payerEmail: {
     type: String,

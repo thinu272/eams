@@ -11,6 +11,7 @@ const { emitDashboardEvent, emitBuyerEvent } = require('../utils/socket');
 const { sendBankTransferPaymentApproved, sendBankTransferPaymentRejected, sendBankTransferMoreInfoRequired } = require('../utils/email');
 const { sendBuyerPurchaseSummaryEmail } = require('../services/ticketDeliveryService');
 const { sendSMS } = require('../services/smsService');
+const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
 
 const normalizeReceiptFileUrl = (filePath) => {
   if (!filePath || typeof filePath !== 'string') return null;
@@ -545,6 +546,9 @@ const approvePayment = async (req, res, next) => {
         await ticket.save();
       }
     }
+
+    await processOrderFinalConfirmation({ orderId: order._id })
+      .catch((error) => console.error('Payment approval QR/RFID assignment error:', error));
     
     // Send notifications
     try {

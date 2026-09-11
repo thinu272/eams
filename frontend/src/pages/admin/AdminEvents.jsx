@@ -209,6 +209,7 @@ const AdminEvents = () => {
                     <div className="flex flex-wrap gap-2 text-xs font-semibold">
                       <Link to={`/events/${event.slug || event._id}`} className="text-slate-600 hover:text-slate-900">View</Link>
                       <Link to={`/admin/events/${event._id}/edit`} className="text-blue-600 hover:text-blue-700">Edit</Link>
+                      <Link to={`/admin/rfid?eventId=${event._id}`} className="text-emerald-600 hover:text-emerald-700">RFID Inventory</Link>
                       <button onClick={() => handlePublishToggle(event)} className="text-blue-600 hover:text-blue-700">
                         {event.status === 'published' ? 'Unpublish' : 'Publish'}
                       </button>

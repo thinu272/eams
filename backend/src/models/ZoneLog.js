@@ -27,7 +27,14 @@ const zoneLogSchema = new mongoose.Schema({
   },
   denialReason: {
     type: String,
-    enum: ['NOT_ALLOWED', 'INVALID_TICKET', 'DUPLICATE_SCAN'],
+    enum: [
+      'NOT_ALLOWED',
+      'INVALID_TICKET',
+      'DUPLICATE_SCAN',
+      'TICKET_NOT_CONFIRMED',
+      'TICKET_DISABLED',
+      'EVENT_ENDED',
+    ],
   },
   scanMethod: {
     type: String,

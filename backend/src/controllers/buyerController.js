@@ -10,8 +10,27 @@ const PaymentSubmission = require('../models/PaymentSubmission');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
+const { allocateRfid, linkReservedRfidToAttendee } = require('../services/rfidService');
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const ensureAttendeeRfidTag = async ({ attendee, eventId, categoryId, ticketId, order }) => {
+  if (!attendee || attendee.rfidTag) return attendee;
+  const isPaid = ['paid', 'success'].includes(String(order?.paymentStatus || '').toLowerCase())
+    || order?.status === 'CONFIRMED';
+  if (!isPaid) return attendee;
+  const nextTag = await allocateRfid({
+    eventId,
+    categoryId,
+    attendeeId: attendee._id,
+    ticketId,
+  });
+  if (nextTag) {
+    attendee.rfidTag = nextTag;
+    await attendee.save();
+  }
+  return attendee;
+};
 
 const buildTicketSummary = (ticket) => ({
   _id: ticket._id,
@@ -37,6 +56,7 @@ const buildTicketSummary = (ticket) => ({
     phone: ticket.attendee.phone,
     qrCode: ticket.attendee.qrCode,
     qrToken: ticket.attendee.qrToken,
+    rfidTag: ticket.attendee.rfidTag,
     confirmationStatus: ticket.attendee.confirmationStatus,
     isConfirmed: ticket.attendee.isConfirmed,
     confirmedAt: ticket.attendee.confirmedAt,
@@ -189,7 +209,7 @@ const getBuyerOrderDetails = async (req, res, next) => {
     }
 
     const tickets = await Ticket.find({ order: order._id })
-      .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken photoVerificationStatus photoRejectionReason resubmitToken')
+      .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken rfidTag photoVerificationStatus photoRejectionReason resubmitToken')
       .populate('categoryId', 'name')
       .sort({ slotIndex: 1 });
 
@@ -321,6 +341,17 @@ const assignSelfToTicket = async (req, res, next) => {
     attendee.confirmedBy = 'self';
 
     await attendee.save();
+    if (!attendee.rfidTag) {
+      attendee.rfidTag = await linkReservedRfidToAttendee({ ticketId: ticket._id, attendeeId: attendee._id });
+      if (attendee.rfidTag) await attendee.save();
+    }
+    await ensureAttendeeRfidTag({
+      attendee,
+      eventId: ticket.event?._id || ticket.event,
+      categoryId: ticket.categoryId || attendee.categoryId,
+      ticketId: ticket._id,
+      order: ticket.order,
+    });
     ticket.attendee = attendee._id;
     const nextTicketStatus = resolveConfirmedTicketStatus({ attendee, event: ticket.event });
     ticket.status = needsPhotoApproval ? 'PENDING_VERIFICATION' : nextTicketStatus;
@@ -397,6 +428,13 @@ const inviteForTicket = async (req, res, next) => {
       addedVia: 'invite',
     });
     await attendee.save();
+    await ensureAttendeeRfidTag({
+      attendee,
+      eventId: ticket.event?._id || ticket.event,
+      categoryId: ticket.categoryId || attendee.categoryId,
+      ticketId: ticket._id,
+      order: ticket.order,
+    });
 
     ticket.attendee = attendee._id;
     ticket.inviteEmail = email;
@@ -447,7 +485,7 @@ module.exports = {
 
       const orderIds = orders.map((o) => o._id);
       const tickets = await Ticket.find({ order: { $in: orderIds } })
-        .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken')
+        .populate('attendee', 'fullName email phone confirmationStatus isConfirmed photo qrCode qrToken rfidTag')
         .populate('event', 'name startDate endDate venue coverImage settings instructions status')
         .sort({ createdAt: -1 });
 
@@ -593,6 +631,13 @@ module.exports = {
         addedVia: 'invite',
       });
       await attendee.save();
+      await ensureAttendeeRfidTag({
+        attendee,
+        eventId: ticket.event?._id || ticket.event,
+        categoryId: ticket.categoryId || attendee.categoryId,
+        ticketId: ticket._id,
+        order: ticket.order,
+      });
 
       ticket.attendee = attendee._id;
       ticket.inviteEmail = attendee.email;
@@ -787,6 +832,13 @@ module.exports = {
           addedVia: 'invite',
         });
         await attendee.save();
+        await ensureAttendeeRfidTag({
+          attendee,
+          eventId: ticket.event?._id || ticket.event,
+          categoryId: ticket.categoryId || attendee.categoryId,
+          ticketId: ticket._id,
+          order,
+        });
 
         ticket.attendee = attendee._id;
         ticket.inviteEmail = attendee.email;

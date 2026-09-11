@@ -13,6 +13,7 @@ const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { generateTicketPDF } = require('../services/pdfService');
 const { protect } = require('../middleware/auth');
+const { allocateRfid } = require('../services/rfidService');
 
 // POST /api/tickets/assign - Assign attendee to ticket (self-assignment)
 router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos'), [
@@ -119,6 +120,13 @@ router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos')
       const qrData = attendee.qrToken;
       attendee.qrCode = await QRCode.toDataURL(qrData);
     }
+
+    attendee.rfidTag = await allocateRfid({
+      eventId: ticket.event._id,
+      categoryId: ticket.categoryId,
+      attendeeId: attendee._id,
+      ticketId: ticket._id,
+    });
 
     await attendee.save();
 
