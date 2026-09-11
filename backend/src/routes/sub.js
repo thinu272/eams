@@ -46,6 +46,13 @@ const hasScanPermission = (user) => {
   );
 };
 
+const isPaidTicket = (ticket) => {
+  if (!ticket) return false;
+  const order = ticket.order || {};
+  return ['CONFIRMED', 'SOLD', 'ACTIVE'].includes(ticket.status)
+    && (['paid', 'success'].includes(String(order.paymentStatus || '').toLowerCase()) || order.status === 'CONFIRMED');
+};
+
 const hasVerificationPermission = (user) => {
   const role = normalizeRole(user?.role);
   if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) return true;
@@ -654,7 +661,13 @@ router.post('/scan-entry', async (req, res, next) => {
 
     const attendee = await Attendee.findOne(
       qrToken ? { qrToken } : { $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
-    ).populate('event');
+    )
+      .populate('event')
+      .populate({
+        path: 'ticket',
+        select: 'status categoryId categoryName order',
+        populate: { path: 'order', select: 'status paymentStatus' },
+      });
     if (!attendee || attendee.event?._id?.toString() !== event._id.toString()) {
       return res.status(404).json({ success: false, message: 'Attendee not found in your assigned event.' });
     }
@@ -665,7 +678,7 @@ router.post('/scan-entry', async (req, res, next) => {
     if (!attendee.isActive || attendee.isDisabled) {
       accessGranted = false;
       denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Attendee is inactive';
-    } else if (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
+    } else if (!isPaidTicket(attendee.ticket) && (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed')) {
       accessGranted = false;
       denialReason = 'Attendee is not confirmed';
     } else if (!ENTRY_LIKE_ZONE.test(activeZone.name) && !isAttendeeAllowedInZone(attendee, activeZone)) {
@@ -751,7 +764,13 @@ router.post('/scan-zone', async (req, res, next) => {
 
     const attendee = await Attendee.findOne(
       qrToken ? { qrToken } : { $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
-    ).populate('event');
+    )
+      .populate('event')
+      .populate({
+        path: 'ticket',
+        select: 'status categoryId categoryName order',
+        populate: { path: 'order', select: 'status paymentStatus' },
+      });
     if (!attendee || attendee.event?._id?.toString() !== event._id.toString()) {
       return res.status(404).json({ success: false, message: 'Attendee not found in your assigned event.' });
     }
@@ -759,7 +778,7 @@ router.post('/scan-zone', async (req, res, next) => {
     let accessGranted = true;
     let denialReason = '';
 
-    if (!attendee.isActive || attendee.isDisabled || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
+    if (!attendee.isActive || attendee.isDisabled || (!isPaidTicket(attendee.ticket) && (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed'))) {
       accessGranted = false;
       denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Ticket is not confirmed for venue access';
     } else if (!isAttendeeAllowedInZone(attendee, activeZone)) {
