@@ -2113,8 +2113,22 @@ const EntityModal = ({ modal, closeModal, form, setForm, saving, saveEntity, org
 
               <div className="col-span-2 flex flex-wrap gap-x-8 gap-y-4 pt-2 pb-4">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={false} disabled className="rounded text-blue-600 focus:ring-blue-500" />
-                  <span className="text-sm font-medium text-slate-700">RFID Support (Under Development)</span>
+                  <input
+                    type="checkbox"
+                    checked={form.rfidEnabled === true}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        rfidEnabled: e.target.checked,
+                        settings: {
+                          ...prev.settings,
+                          rfidEnabled: e.target.checked,
+                        },
+                      }))
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Enable RFID Access Control</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -2368,7 +2382,7 @@ const AdminDashboard = () => {
         eventType: item?.eventType || 'cricket',
         requirePhotoVerification: item?.settings?.requirePhotoVerification ?? true,
         allowSelfConfirmation: item?.settings?.allowSelfConfirmation ?? true,
-        rfidEnabled: item?.settings?.rfidEnabled ?? true,
+        rfidEnabled: item?.settings?.rfidEnabled ?? false,
         currency: item?.settings?.currency || 'LKR',
         settings: item?.settings || {},
         paymentCard: item?.settings?.paymentMethods?.card ?? true,
@@ -2417,6 +2431,7 @@ const AdminDashboard = () => {
         const eventPayload = {
           ...form,
           companyId: form.companyId ? form.companyId : null,
+          rfidEnabled: form.rfidEnabled ?? false,
           communicationEmail: form.communicationEmail ?? form.settings?.communicationChannels?.email ?? true,
           communicationSms: form.communicationSms ?? form.settings?.communicationChannels?.sms ?? false,
         };

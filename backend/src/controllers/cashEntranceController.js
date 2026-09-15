@@ -292,13 +292,38 @@ exports.getCashOrders = async (req, res) => {
           query['tickets.categoryName'] = { $in: allowedCategoryNames };
         } else {
           // If no allowed categories, return empty result
-          return res.json({ success: true, data: [] });
+          return res.json({ success: true, data: [], info: 'No categories match your assigned zones' });
         }
       }
     }
 
-    orders = await Order.find(query).sort({ createdAt: -1 });
+    // Debug: log query
+    console.log('Cash orders query:', JSON.stringify(query, null, 2));
+
+    orders = await Order.find(query).sort({ createdAt: -1 }).lean();
     
+    // Debug: log count
+    console.log('Found', orders.length, 'cash orders for event', eventId);
+
+    // Enrich orders with zone information from event categories
+    const event = await Event.findById(eventId).lean();
+    if (event && event.categories) {
+      const categoryZoneMap = {};
+      event.categories.forEach(cat => {
+        if (cat.allowedZones) {
+          categoryZoneMap[cat.name] = cat.allowedZones;
+        }
+      });
+
+      orders = orders.map(order => ({
+        ...order,
+        zones: [...new Set(
+          (order.tickets || [])
+            .flatMap(t => categoryZoneMap[t.categoryName] || [])
+        )]
+      }));
+    }
+
     res.json({ success: true, data: orders });
   } catch (err) {
     console.error('getCashOrders error:', err);

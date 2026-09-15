@@ -12,7 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 const { sendOrderConfirmation, sendCashPaymentConfirmationEmail } = require('../utils/email');
 const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
-const { allocateRfid } = require('../services/rfidService');
+const { allocateRfid, assignRfidToAttendee } = require('../services/rfidService');
 
 const normalizeGate = (value) => (value || '').trim();
 const normalizeRfidTag = (value) => String(value || '').trim();
@@ -121,6 +121,38 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
 
     if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, reason: 'EVENT_ACCESS_DENIED', message: 'You do not have access to this event.' });
+    }
+
+    // Enforce RFID feature toggle per event
+    if (scanMethod === 'rfid' && !attendee.event?.settings?.rfidEnabled) {
+      const log = await EntryLog.create(buildLogPayload({
+        attendee,
+        gateId: gateId || 'RFID Scanner',
+        gateName: gateName || 'RFID Scanner',
+        zoneId,
+        zoneName,
+        action: 'denied',
+        method: scanMethod,
+        deviceId,
+        accessGranted: false,
+        denialReason: 'RFID disabled for event',
+        processedBy: req.user._id,
+      }));
+      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+        source: 'entry',
+        eventId: attendee.event._id,
+        name: attendee.fullName,
+        action: 'DENIED ENTRY',
+        zoneName: zoneName || 'RFID Scanner',
+        timestamp: log.timestamp,
+        accessGranted: false,
+      });
+      return res.status(400).json({
+        success: false,
+        reason: 'RFID_DISABLED',
+        message: 'RFID functionality is disabled for this event.',
+        data: { log },
+      });
     }
 
     const resolvedGate = normalizeGate(gateName || gateId);
@@ -887,6 +919,208 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
     });
   } catch (err) {
     console.error('Payment collection error:', err);
+    next(err);
+  }
+});
+
+// POST /api/entry/rfid-assign - Assign RFID tag to attendee after QR scan (QR-first assignment flow)
+// This is the primary method for RFID assignment during event operations
+router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { qrToken, rfidTag, eventId } = req.body;
+    const io = req.app.get('io');
+
+    if (!qrToken || !rfidTag) {
+      return res.status(400).json({ success: false, message: 'qrToken and rfidTag are required.' });
+    }
+
+    // Find attendee by QR token
+    const attendee = await Attendee.findOne({ qrToken: String(qrToken).trim() })
+      .populate('event', 'name settings')
+      .populate('ticket', 'ticketNumber categoryId categoryName');
+
+    if (!attendee) {
+      return res.status(404).json({ success: false, message: 'Attendee not found. Invalid QR code.' });
+    }
+
+    // Check event access
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    // Check if RFID is enabled for this event
+    if (!attendee.event?.settings?.rfidEnabled) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'RFID access is disabled for this event.',
+        rfidEnabled: false 
+      });
+    }
+
+    // Check if attendee already has an RFID assigned
+    if (attendee.rfidTag) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'This attendee already has an RFID tag assigned.',
+        existingRfid: attendee.rfidTag 
+      });
+    }
+
+    // Assign RFID to attendee using the existing service
+    const result = await assignRfidToAttendee({
+      rfidTag,
+      attendeeId: attendee._id,
+      ticketId: attendee.ticket?._id || attendee.ticket,
+      operatorId: req.user._id,
+    });
+
+    // Emit dashboard event for real-time updates
+    emitDashboardEvent(io, 'rfid_assigned', attendee.event._id.toString(), {
+      source: 'rfid_assignment',
+      eventId: attendee.event._id,
+      attendeeId: attendee._id,
+      attendeeName: attendee.fullName,
+      rfidTag,
+      ticketNumber: attendee.ticket?.ticketNumber,
+      categoryName: attendee.categoryName,
+      assignedBy: req.user.name || req.user.email,
+      timestamp: new Date(),
+    });
+
+    res.json({
+      success: true,
+      message: 'RFID assigned successfully. Attendee can now use both QR and RFID.',
+      data: {
+        attendee: {
+          _id: attendee._id,
+          fullName: attendee.fullName,
+          categoryName: attendee.categoryName,
+          qrToken: attendee.qrToken,
+          rfidTag: result.attendee.rfidTag,
+        },
+        tag: {
+          rfidTag: result.tag.rfidTag,
+          status: result.tag.status,
+          event: result.tag.event,
+        },
+      },
+    });
+  } catch (err) {
+    if (err.message.includes('RFID tag is not registered') || err.message.includes('not available')) {
+      return res.status(404).json({ success: false, message: err.message });
+    }
+    if (err.message.includes('not available') || err.message.includes('already assigned')) {
+      return res.status(409).json({ success: false, message: err.message });
+    }
+    next(err);
+  }
+});
+
+// GET /api/entry/attendee-by-qr/:qrToken - Look up attendee by QR token for RFID assignment screen
+router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
+  try {
+    const { qrToken } = req.params;
+    const { eventId } = req.query;
+
+    if (!qrToken) {
+      return res.status(400).json({ success: false, message: 'qrToken is required.' });
+    }
+
+    // Build query - allow eventId filter if provided
+    const query = { qrToken: String(qrToken).trim() };
+    if (eventId) {
+      if (!mongoose.Types.ObjectId.isValid(eventId)) {
+        return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+      }
+      query.event = eventId;
+    }
+
+    // Find attendee
+    const attendee = await Attendee.findOne(query)
+      .populate('event', 'name venue startDate endDate settings.rfidEnabled zones categories')
+      .populate('ticket', 'ticketNumber categoryId categoryName')
+      .select('fullName email phone categoryName categoryId photo rfidTag qrToken checkedIn wristbandId allowedZones confirmationStatus photoVerificationStatus');
+
+    if (!attendee) {
+      return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    }
+
+    // Check event access
+    if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    // Check if RFID is enabled for this event
+    const rfidEnabled = attendee.event?.settings?.rfidEnabled === true;
+
+    res.json({
+      success: true,
+      data: {
+        attendee: {
+          _id: attendee._id,
+          fullName: attendee.fullName,
+          email: attendee.email,
+          phone: attendee.phone,
+          categoryName: attendee.categoryName,
+          categoryId: attendee.categoryId,
+          photo: attendee.photo,
+          qrToken: attendee.qrToken,
+          rfidTag: attendee.rfidTag,
+          checkedIn: attendee.checkedIn,
+          wristbandId: attendee.wristbandId,
+          allowedZones: attendee.allowedZones,
+          confirmationStatus: attendee.confirmationStatus,
+          photoVerificationStatus: attendee.photoVerificationStatus,
+        },
+        event: {
+          _id: attendee.event._id,
+          name: attendee.event.name,
+          venue: attendee.event.venue,
+          startDate: attendee.event.startDate,
+          endDate: attendee.event.endDate,
+          rfidEnabled,
+          zones: attendee.event.zones,
+          categories: attendee.event.categories,
+        },
+        ticket: attendee.ticket ? {
+          ticketNumber: attendee.ticket.ticketNumber,
+          categoryId: attendee.ticket.categoryId,
+          categoryName: attendee.ticket.categoryName,
+        } : null,
+        canAssignRfid: !attendee.rfidTag && rfidEnabled,
+        hasRfid: !!attendee.rfidTag,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/entry/event-rfid-status/:eventId - Get RFID status for an event (for frontend conditional rendering)
+router.get('/event-rfid-status/:eventId', protect, async (req, res, next) => {
+  try {
+    const { eventId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+    }
+
+    // Check event access
+    if (!(await userHasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const event = await Event.findById(eventId).select('settings.rfidEnabled name').lean();
+
+    res.json({
+      success: true,
+      data: {
+        eventId,
+        eventName: event?.name,
+        rfidEnabled: event?.settings?.rfidEnabled === true,
+      },
+    });
+  } catch (err) {
     next(err);
   }
 });

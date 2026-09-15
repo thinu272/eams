@@ -65,7 +65,7 @@ app.use(cookieParser());
 // Global rate limiter to protect non-auth endpoints from abuse/scraping
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // limit each IP to 300 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs (increased from 300)
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },

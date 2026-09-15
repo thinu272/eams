@@ -54,6 +54,9 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
         ) {
           return (
             user?.permissions?.canEntryAccess === true ||
+            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+              getCanonicalRole(user?.role)
+            ) ||
             (user?.assignedGates?.length > 0)
           );
         }
@@ -65,7 +68,12 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
             'Zone Manual Search',
           ].includes(item.label)
         ) {
-          return user?.assignedZones?.length > 0;
+          return (
+            user?.assignedZones?.length > 0 ||
+            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+              getCanonicalRole(user?.role)
+            )
+          );
         }
         if (['Bulk Upload'].includes(item.label)) {
           return (

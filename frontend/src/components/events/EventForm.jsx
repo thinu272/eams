@@ -16,7 +16,7 @@ const EventForm = ({ initialData = {}, onSubmit, onCancel, loading, organisers =
     settings: {
       requirePhotoVerification: true,
       allowSelfConfirmation: true,
-      rfidEnabled: true,
+      rfidEnabled: false,
       maxTicketsPerOrder: 10,
       ...(initialData.settings || {}),
       mfaEnforced: initialData?.settings?.mfaEnforced ?? false,

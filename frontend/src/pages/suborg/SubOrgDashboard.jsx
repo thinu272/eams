@@ -31,6 +31,8 @@ import {
   QrCodeIcon,
   ArrowPathIcon,
   TrashIcon,
+  MagnifyingGlassIcon,
+  ArrowLeftOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 
 /* ───────────────────── Helpers ───────────────────── */
@@ -584,6 +586,30 @@ const SubOrgDashboard = () => {
               tone="rose"
               enabledTitle="Gate scan access enabled"
               enabledDesc="You can scan tickets at entry points"
+            />
+
+            <CapabilityCard
+              permission="canEntryAccess"
+              title="Entry Scanner"
+              description="Scan attendees at entry gates"
+              linkTo="/suborg/entry"
+              linkLabel="Open scanner"
+              icon={ArrowLeftOnRectangleIcon}
+              tone="emerald"
+              enabledTitle="Entry access enabled"
+              enabledDesc="You can perform entry scans at gates"
+            />
+
+            <CapabilityCard
+              permission="true"
+              title="Manual Search"
+              description="Search attendees and manual check-in/out"
+              linkTo="/suborg/manual-search"
+              linkLabel="Search registry"
+              icon={MagnifyingGlassIcon}
+              tone="blue"
+              enabledTitle="Manual operations available"
+              enabledDesc="Search by name, phone, or email"
             />
           </div>
 

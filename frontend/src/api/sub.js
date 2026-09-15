@@ -18,3 +18,5 @@ export const createSubTicket = (payload) => api.post('/sub/tickets', payload);
 export const updateSubTicket = (categoryId, payload) => api.patch(`/sub/tickets/${categoryId}`, payload);
 export const deleteSubTicket = (categoryId, params) => api.delete(`/sub/tickets/${categoryId}`, { params });
 export const regenerateTicketCode = (categoryId, payload) => api.patch(`/sub/tickets/${categoryId}/regenerate`, payload);
+// Sub-Organiser Search
+export const searchSubOrgAttendees = (params) => api.get('/sub/attendees', { params });

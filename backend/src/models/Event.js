@@ -131,7 +131,7 @@ const eventSchema = new mongoose.Schema({
     allowSelfConfirmation: { type: Boolean, default: true },
     confirmationDeadlineHours: { type: Number, default: 48 },
     maxTicketsPerOrder: { type: Number, default: 10 },
-    rfidEnabled: { type: Boolean, default: true },
+    rfidEnabled: { type: Boolean, default: false },
     inviteLimitPerAttendee: { type: Number, default: 3 },
     paymentMethods: {
       card: { type: Boolean, default: false },

@@ -271,7 +271,23 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     }
 
     // Fetch the event with endDateTime for expiration check
-    const fullEvent = await Event.findById(event._id).select('endDateTime zones');
+    const fullEvent = await Event.findById(event._id).select('endDateTime zones settings');
+
+    // Enforce RFID toggle: if RFID is disabled for the event, reject RFID scans
+    if (rfidId && !(fullEvent.settings?.rfidEnabled)) {
+      const denied = await buildDeniedResponse({
+        attendee,
+        zoneName,
+        action: 'ENTRY',
+        scanMethod: 'RFID',
+        userId: req.user._id,
+        io,
+        denialReason: 'RFID_DISABLED',
+        httpStatus: 403,
+        message: 'RFID functionality is disabled for this event.',
+      });
+      return res.status(denied.status).json(denied.body);
+    }
     
     // Validate ticket status against event end time
     const ticketValidation = isTicketValid(attendee.ticket, fullEvent);

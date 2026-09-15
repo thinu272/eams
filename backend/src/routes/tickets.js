@@ -121,12 +121,8 @@ router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos')
       attendee.qrCode = await QRCode.toDataURL(qrData);
     }
 
-    attendee.rfidTag = await allocateRfid({
-      eventId: ticket.event._id,
-      categoryId: ticket.categoryId,
-      attendeeId: attendee._id,
-      ticketId: ticket._id,
-    });
+    // RFID allocation is now handled after QR scan in a separate flow.
+      attendee.rfidTag = null;
 
     await attendee.save();
 

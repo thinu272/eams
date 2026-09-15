@@ -55,6 +55,12 @@ const StaffZoneAccessPage = () => {
   const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
   const [lastScan, setLastScan] = useState(null);
 
+  const currentEvent = useMemo(
+    () => events.find((e) => e._id === selectedEventId),
+    [events, selectedEventId]
+  );
+  const rfidEnabled = currentEvent?.settings?.rfidEnabled === true;
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState(() => {
     try {
@@ -63,11 +69,6 @@ const StaffZoneAccessPage = () => {
       return [];
     }
   });
-
-  const currentEvent = useMemo(
-    () => events.find((e) => e._id === selectedEventId),
-    [events, selectedEventId]
-  );
 
   const getZoneDisplayName = useCallback(
     (zone) => {
@@ -291,6 +292,10 @@ const StaffZoneAccessPage = () => {
     async (rawToken) => {
       const qrToken = parseScannedValue(rawToken);
       if (!qrToken || !selectedEventId || !zoneName || submitting) return;
+      if (readerMode === 'rfid' && !rfidEnabled) {
+        toast.error('RFID access is disabled for this event.');
+        return;
+      }
 
       if (!isOnline) {
         playFeedbackTone(true);
@@ -435,6 +440,7 @@ const StaffZoneAccessPage = () => {
       fetchStats,
       refreshLogs,
       getZoneDisplayName,
+      rfidEnabled,
     ]
   );
 
@@ -619,7 +625,7 @@ const StaffZoneAccessPage = () => {
               {/* Camera */}
               <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
                 <button type="button" onClick={() => setReaderMode('qr')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'qr' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>QR Camera</button>
-                <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>
+                {rfidEnabled && <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>}
               </div>
               {readerMode === 'qr' ? <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
                 <div className="aspect-[4/3] w-full sm:aspect-video">

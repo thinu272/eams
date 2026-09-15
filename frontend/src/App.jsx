@@ -77,6 +77,8 @@ import SubOrgTickets from './pages/suborg/SubOrgTickets';
 import BulkUploadPage from './pages/suborg/BulkUploadPage';
 import SubOrgZoneManualSearchPage from './pages/suborg/SubOrgZoneManualSearchPage';
 import SubOrgPayments from './pages/suborg/SubOrgPayments';
+import SubOrgRfidAssignmentPage from './pages/suborg/SubOrgRfidAssignmentPage';
+import SubOrgManualSearchPage from './pages/suborg/SubOrgManualSearchPage';
 import EventEditPage from './pages/shared/EventEditPage';
 
 // Entry
@@ -89,6 +91,7 @@ import StaffZoneManualSearchPage from './pages/staff/StaffZoneManualSearchPage';
 import StaffActivityLogPage from './pages/staff/StaffActivityLogPage';
 import StaffDashboardPage from './pages/staff/StaffDashboardPage';
 import StaffCashCollectionPage from './pages/staff/StaffCashCollectionPage';
+import RfidAssignmentPage from './pages/staff/RfidAssignmentPage';
 
 // Auditor
 import AuditorDashboard from './pages/auditor/AuditorDashboard';
@@ -208,6 +211,8 @@ const AppRoutes = () => (
     <Route path="/suborg/team" element={<Protected roles={['SubOrganiser']}><SubOrgTeam /></Protected>} />
     <Route path="/suborg/tickets" element={<Protected roles={['SubOrganiser']}><SubOrgTickets /></Protected>} />
     <Route path="/suborg/payments" element={<Protected roles={['SubOrganiser']}><SubOrgPayments /></Protected>} />
+    <Route path="/suborg/rfid-assign" element={<Protected roles={['SubOrganiser']}><SubOrgRfidAssignmentPage /></Protected>} />
+    <Route path="/suborg/manual-search" element={<Protected roles={['SubOrganiser']}><SubOrgManualSearchPage /></Protected>} />
     <Route path="/suborg/upload" element={<Protected roles={['SubOrganiser']}><BulkUploadPage /></Protected>} />
     <Route path="/suborg/verify" element={<Protected roles={['SubOrganiser']}><Navigate to="/suborg/verification" replace /></Protected>} />
     <Route path="/suborganiser/verify-photos" element={<Protected roles={['SubOrganiser','MainOrganiser','MainAdmin']}><SubOrgVerificationPage /></Protected>} />
@@ -222,6 +227,7 @@ const AppRoutes = () => (
     <Route path="/staff/verification" element={<Protected roles={['Staff', 'Volunteer']}><SubOrgVerificationPage /></Protected>} />
     <Route path="/staff/upload" element={<Protected roles={['Staff', 'Volunteer']}><BulkUploadPage /></Protected>} />
     <Route path="/staff/cash-collection" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><StaffCashCollectionPage /></Protected>} />
+    <Route path="/staff/rfid-assign" element={<Protected roles={['Staff', 'Volunteer']}><RfidAssignmentPage /></Protected>} />
     <Route path="/entry" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/entry-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><EntryScannerPage /></Protected>} />
     <Route path="/zone-scan" element={<Protected roles={['MainAdmin','MainOrganiser','SubOrganiser','Staff','Volunteer']}><ZoneScannerPage /></Protected>} />
