@@ -47,8 +47,10 @@ import {
   createSponsor,
   deleteSponsor,
 } from '../../api/organiser';
+import { getEventRfidStatus } from '../../api/entry';
 import PaymentsDashboard from './PaymentsDashboard';
-import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon, UsersIcon, MapPinIcon, TrashIcon, ChartBarIcon, ClockIcon, UserGroupIcon, CurrencyDollarIcon, ChartPieIcon, DocumentIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+import RfidAssignmentView from '../../components/organiser/RfidAssignmentView';
+import { TicketIcon, FireIcon, BanknotesIcon, CheckBadgeIcon, UsersIcon, MapPinIcon, TrashIcon, ChartBarIcon, ClockIcon, UserGroupIcon, CurrencyDollarIcon, ChartPieIcon, DocumentIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, IdentificationIcon, QrCodeIcon } from '@heroicons/react/24/outline';
 
 const statusColor = {
   pending: 'amber', confirmed: 'green', rejected: 'red', invited: 'blue',
@@ -295,6 +297,7 @@ const OrganiserDashboard = () => {
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [eventRfidStatus, setEventRfidStatus] = useState(null);
 
   useEffect(() => {
     if (!logoImageFile) {
@@ -532,6 +535,21 @@ const OrganiserDashboard = () => {
     }
     loadWorkspace(eventId);
   }, [eventId, params.toString()]);
+
+  // Fetch RFID status for current event
+  useEffect(() => {
+    if (!eventId) {
+      setEventRfidStatus(null);
+      return;
+    }
+    getEventRfidStatus(eventId)
+      .then((response) => {
+        setEventRfidStatus(response.data?.data || { rfidEnabled: false });
+      })
+      .catch(() => {
+        setEventRfidStatus({ rfidEnabled: false });
+      });
+  }, [eventId]);
 
   useEffect(() => {
     const onSearch = (event) => {
@@ -1465,6 +1483,113 @@ const OrganiserDashboard = () => {
                   </div>
                 </Card>
               ))}
+            </section>
+
+            {/* RFID Operations Section - Only show for RFID-enabled events */}
+            {eventRfidStatus?.rfidEnabled && (permissions?.canManageRfid || permissions?.canAssignRfid || permissions?.canAccessRfidScanner) && (
+              <section className="grid gap-4 xl:grid-cols-3">
+                <Card className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-white shadow-sm">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                          <IdentificationIcon className="h-5 w-5" />
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+                          RFID Enabled
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-base font-bold text-slate-900">RFID Operations</h3>
+                      <p className="mt-1 text-xs text-slate-500">Manage RFID assignments and scanning</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {permissions?.canAssignRfid && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => window.location.href = '/staff/rfid-assign'}
+                      >
+                        <QrCodeIcon className="mr-2 h-4 w-4" />
+                        QR-to-RFID Assignment
+                      </Button>
+                    )}
+                    {permissions?.canAccessRfidScanner && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => setQuery('section', 'entry-logs')}
+                        >
+                          <ClockIcon className="mr-2 h-4 w-4" />
+                          Entry Logs
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => window.location.href = '/staff/scan'}
+                        >
+                          <IdentificationIcon className="mr-2 h-4 w-4" />
+                          RFID Scanner
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </Card>
+
+                <Card className="rounded-2xl border border-blue-200/80 bg-white shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <UsersIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">RFID Inventory</h3>
+                      <p className="text-xs text-slate-500">Tags available and assigned</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">Available</p>
+                      <p className="mt-1 text-xl font-bold text-slate-900">
+                        {workspace?.rfidStats?.availableTags || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Assigned</p>
+                      <p className="mt-1 text-xl font-bold text-slate-900">
+                        {workspace?.rfidStats?.assignedTags || 0}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="rounded-2xl border border-amber-200/80 bg-white shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                      <ClockIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Today's RFID Activity</h3>
+                      <p className="text-xs text-slate-500">Check-ins via RFID</p>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-2xl font-bold text-amber-600">
+                      {workspace?.rfidStats?.todayRfidCheckins || 0}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">RFID-based entries today</p>
+                  </div>
+                </Card>
+              </section>
+            )}
+
+            {/* RFID Assignment Registry - View Only for Organisers */}
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-600 mb-4">RFID Operations</p>
+              <RfidAssignmentView embedded />
             </section>
 
             {/* Charts */}
@@ -3007,6 +3132,12 @@ const OrganiserDashboard = () => {
             </div>
             <Pagination {...activityFeedPage} updateQuery={setQuery} />
           </Card>
+        )}
+
+        {activeSection === 'rfid-assignments' && (
+          <div className="space-y-5">
+            <RfidAssignmentView embedded />
+          </div>
         )}
 
         {activeSection === 'zones' && (

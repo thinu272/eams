@@ -65,6 +65,7 @@ export const ROLE_NAVIGATION = {
           { to: '/organiser/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
           { to: '/organiser/dashboard?section=verification', label: 'Verification', icon: CheckBadgeIcon },
           { to: '/organiser/dashboard?section=logs', label: 'Access Logs', icon: ClipboardDocumentListIcon },
+          { to: '/organiser/dashboard?section=rfid-assignments', label: 'RFID Assignments', icon: IdentificationIcon },
           { to: '/organiser/dashboard?section=system-logs', label: 'Activity Logs', icon: ClipboardDocumentListIcon },
           { to: '/organiser/dashboard?section=reports', label: 'Reports', icon: ChartBarIcon },
           { to: '/organiser/dashboard?section=notifications', label: 'Notifications', icon: GlobeAltIcon },
@@ -92,6 +93,8 @@ export const ROLE_NAVIGATION = {
         items: [
           { to: '/suborg/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
           { to: '/suborg/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
+          { to: '/suborg/rfid-assign', label: 'RFID Assignment', icon: IdentificationIcon },
+          { to: '/suborg/manual-search', label: 'Manual Search', icon: UserGroupIcon },
           { to: '/suborg/zone-search', label: 'Zone Manual Search', icon: UserGroupIcon },
           { to: '/suborg/upload', label: 'Bulk Upload', icon: ArrowUpTrayIcon },
           { to: '/suborg/logs', label: 'Activity Logs', icon: ClipboardDocumentListIcon },
@@ -106,6 +109,7 @@ export const ROLE_NAVIGATION = {
         items: [
           { to: '/staff/dashboard', label: 'Overview', icon: HomeIcon },
           { to: '/staff/scan', label: 'Scan Entry', icon: MagnifyingGlassIcon },
+          { to: '/staff/rfid-assign', label: 'RFID Assignment', icon: IdentificationIcon },
           { to: '/staff/search', label: 'Manual Search', icon: UserGroupIcon },
           { to: '/staff/zone-access', label: 'Zone Access', icon: ShieldCheckIcon },
           { to: '/staff/zone-search', label: 'Zone Manual Search', icon: UserGroupIcon },

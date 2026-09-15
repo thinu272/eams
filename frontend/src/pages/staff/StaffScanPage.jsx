@@ -21,6 +21,7 @@ import SearchBar from '../../components/staff/SearchBar';
 import { checkInAttendee, getEntryLogs, getEntryStats } from '../../api/entry';
 import { getMyEvents } from '../../api/events';
 import { scanStaffEntry } from '../../api/staff';
+import { assignRfidToAttendee } from '../../api/rfid';
 import { useAuth } from '../../context/AuthContext';
 import { playFeedbackTone, triggerHaptic, parseScannedValue } from './staffUtils';
 import toast from 'react-hot-toast';
@@ -67,6 +68,11 @@ const StaffScanPage = () => {
   const [activeTab, setActiveTab] = useState('scan');
   const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
   const [lastScan, setLastScan] = useState(null);
+  const [lastQrToken, setLastQrToken] = useState('');
+  const [assignmentTag, setAssignmentTag] = useState('');
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const currentEvent = useMemo(() => events.find((event) => event._id === selectedEventId), [events, selectedEventId]);
+  const rfidEnabled = currentEvent?.settings?.rfidEnabled === true;
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState(() => {
@@ -286,6 +292,11 @@ const StaffScanPage = () => {
     async (rawToken, method = 'qr') => {
       const qrToken = parseScannedValue(rawToken);
       if (!qrToken || !selectedEventId || !gateName || scanning) return;
+      if (method === 'rfid' && !rfidEnabled) {
+        toast.error('RFID access is disabled for this event.');
+        return;
+      }
+      if (method === 'qr') setLastQrToken(qrToken);
 
       if (!isOnline) {
         playFeedbackTone(true);
@@ -417,8 +428,22 @@ const StaffScanPage = () => {
         setScanning(false);
       }
     },
-    [selectedEventId, gateName, scanMode, scanning, refreshLogs, fetchStats, isOnline, user]
+    [selectedEventId, gateName, scanMode, scanning, refreshLogs, fetchStats, isOnline, user, rfidEnabled]
   );
+
+  const assignScannedRfid = async (event) => {
+    event.preventDefault();
+    if (!lastQrToken || !/^\d{10}$/.test(assignmentTag)) return;
+    setAssignmentSaving(true);
+    try {
+      const response = await assignRfidToAttendee(lastQrToken, assignmentTag);
+      setResult((current) => ({ ...current, attendee: { ...current.attendee, rfidTag: response.data?.data?.tag?.rfidTag || assignmentTag }, message: 'RFID Assigned Successfully', detail: 'This attendee can now use QR or RFID for access.' }));
+      setAssignmentTag('');
+      toast.success('RFID assigned successfully');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'RFID assignment failed');
+    } finally { setAssignmentSaving(false); }
+  };
 
   const handleManualCheckIn = useCallback(async () => {
     if (!result?.attendee?._id || result.state !== 'error') return;
@@ -631,7 +656,7 @@ const StaffScanPage = () => {
               {/* Camera */}
               <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
                 <button type="button" onClick={() => setReaderMode('qr')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'qr' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>QR Camera</button>
-                <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>
+                {rfidEnabled && <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>}
               </div>
               {readerMode === 'qr' ? <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
                 <div className="aspect-[4/3] w-full sm:aspect-video">
@@ -659,7 +684,13 @@ const StaffScanPage = () => {
                   detail={result.detail}
                   meta={result.meta}
                   actions={
-                    result.state === 'error' && result.attendee ? (
+                    result.state === 'success' && rfidEnabled && result.attendee && !result.attendee.rfidTag && lastQrToken ? (
+                      <form onSubmit={assignScannedRfid} className="space-y-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-left">
+                        <p className="text-xs font-semibold text-blue-800">This attendee has no RFID tag. Scan an available tag to assign it.</p>
+                        <input value={assignmentTag} onChange={(event) => setAssignmentTag(event.target.value.replace(/\D/g, '').slice(0, 10))} onKeyDown={(event) => { if (event.key === 'Enter') assignScannedRfid(event); }} maxLength={10} inputMode="numeric" placeholder="Waiting for RFID scan..." className="w-full rounded-lg border border-blue-200 px-3 py-2 font-mono text-sm" />
+                        <button type="submit" disabled={assignmentSaving || assignmentTag.length !== 10} className="w-full rounded-lg bg-blue-600 py-2 text-xs font-semibold text-white disabled:opacity-50">{assignmentSaving ? 'Assigning...' : 'Assign RFID'}</button>
+                      </form>
+                    ) : result.state === 'error' && result.attendee ? (
                       <button
                         type="button"
                         onClick={handleManualCheckIn}

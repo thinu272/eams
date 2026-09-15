@@ -1,17 +1,17 @@
 const mongoose = require('mongoose');
 
 const rfidTagSchema = new mongoose.Schema({
-  event: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true },
-  categoryId: { type: String, required: true },
+  event: { type: mongoose.Schema.Types.ObjectId, ref: 'Event' },
+  categoryId: { type: String },
   rfidTag: { type: String, required: true, trim: true },
-  sequence: { type: Number, required: true },
-  status: { type: String, enum: ['available', 'assigned'], default: 'available' },
+  status: { type: String, enum: ['AVAILABLE', 'ASSIGNED', 'DISABLED'], default: 'AVAILABLE' },
   attendee: { type: mongoose.Schema.Types.ObjectId, ref: 'Attendee' },
   ticket: { type: mongoose.Schema.Types.ObjectId, ref: 'Ticket' },
+  assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   assignedAt: { type: Date },
 }, { timestamps: true });
 
-rfidTagSchema.index({ event: 1, rfidTag: 1 }, { unique: true });
-rfidTagSchema.index({ event: 1, categoryId: 1, status: 1, sequence: 1 });
+rfidTagSchema.index({ rfidTag: 1 }, { unique: true });
+rfidTagSchema.index({ status: 1, event: 1, categoryId: 1 });
 
 module.exports = mongoose.model('RfidTag', rfidTagSchema);

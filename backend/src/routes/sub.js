@@ -658,6 +658,9 @@ router.post('/scan-entry', async (req, res, next) => {
     if (!qrToken && !rfidId) {
       return res.status(400).json({ success: false, message: 'qrToken or rfidId is required.' });
     }
+    if (rfidId && !event.settings?.rfidEnabled) {
+      return res.status(403).json({ success: false, reason: 'RFID_DISABLED', message: 'RFID access is disabled for this event.' });
+    }
 
     const attendee = await Attendee.findOne(
       qrToken ? { qrToken } : { $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
@@ -760,6 +763,9 @@ router.post('/scan-zone', async (req, res, next) => {
     const rfidId = String(req.body.rfidId || '').trim();
     if (!qrToken && !rfidId) {
       return res.status(400).json({ success: false, message: 'qrToken or rfidId is required.' });
+    }
+    if (rfidId && !event.settings?.rfidEnabled) {
+      return res.status(403).json({ success: false, reason: 'RFID_DISABLED', message: 'RFID access is disabled for this event.' });
     }
 
     const attendee = await Attendee.findOne(

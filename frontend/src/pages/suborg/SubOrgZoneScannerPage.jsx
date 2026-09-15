@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import Card from '../../components/ui/Card';
 import ScannerComponent from '../../components/suborg/ScannerComponent';
 import { getSubZones, scanSubZone } from '../../api/sub';
+import { getMyEvents } from '../../api/events';
 import toast from 'react-hot-toast';
 import { ArrowLeftIcon, QrCodeIcon, MapPinIcon } from '@heroicons/react/24/outline';
 
@@ -16,6 +17,7 @@ const SubOrgZoneScannerPage = () => {
   const [currentEventId, setCurrentEventId] = useState(
     localStorage.getItem('lastSelectedEventId') || ''
   );
+  const [rfidEnabled, setRfidEnabled] = useState(false);
 
   const loadZones = (eventId = currentEventId) => {
     setLoading(true);
@@ -44,11 +46,19 @@ const SubOrgZoneScannerPage = () => {
 
   useEffect(() => {
     loadZones(currentEventId);
+    getMyEvents().then((response) => {
+      const event = (response.data?.data?.events || []).find((item) => item._id === currentEventId);
+      setRfidEnabled(event?.settings?.rfidEnabled === true);
+    }).catch(() => setRfidEnabled(false));
 
     const handleEventSelect = (event) => {
       const nextId = event.detail ? String(event.detail) : '';
       if (!nextId || nextId === 'undefined') return;
       setCurrentEventId(nextId);
+      getMyEvents().then((response) => {
+        const event = (response.data?.data?.events || []).find((item) => item._id === nextId);
+        setRfidEnabled(event?.settings?.rfidEnabled === true);
+      }).catch(() => setRfidEnabled(false));
       localStorage.setItem('lastSelectedEventId', nextId);
       setResult(null);
       loadZones(nextId);
@@ -152,6 +162,7 @@ const SubOrgZoneScannerPage = () => {
             onSubmit={handleSubmit}
             submitting={submitting}
             result={result}
+            rfidEnabled={rfidEnabled}
           />
         )}
       </div>

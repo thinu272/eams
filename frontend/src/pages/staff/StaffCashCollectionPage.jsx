@@ -11,6 +11,7 @@ import {
   TicketIcon,
   UserIcon,
   ArrowLeftIcon,
+  MapPinIcon,
 } from '@heroicons/react/24/outline';
 import { getMyEvents } from '../../api/events';
 import { useNavigate } from 'react-router-dom';
@@ -69,8 +70,38 @@ const StaffCashCollectionPage = () => {
     setLoading(true);
     api
       .get(`/payment/cash-orders?eventId=${selectedEventId}&status=${statusFilter}`)
-      .then((res) => setOrders(res.data?.data || []))
-      .catch(() => toast.error('Failed to load cash orders'))
+      .then((res) => {
+        setOrders(res.data?.data || []);
+        if (res.data?.data?.length === 0) {
+          // Don't show toast for empty results, it's normal
+        }
+      })
+      .catch((err) => {
+        console.error('Cash orders error:', err);
+        const errorMsg = err.response?.data?.message || err.message || 'Failed to load cash orders';
+        toast.error(errorMsg);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const fetchAllOrders = () => {
+    if (!selectedEventId) return;
+    setLoading(true);
+    api
+      .get(`/payment/cash-orders?eventId=${selectedEventId}`)
+      .then((res) => {
+        const allOrders = res.data?.data || [];
+        setOrders(allOrders);
+        if (allOrders.length === 0) {
+          toast('No cash orders found for this event', { icon: 'ℹ️' });
+        } else {
+          const methods = [...new Set(allOrders.map(o => o.paymentMethod))];
+          toast.success(`Found ${allOrders.length} orders (payment methods: ${methods.join(', ')})`, { icon: '💰' });
+        }
+      })
+      .catch((err) => {
+        toast.error(err.response?.data?.message || 'Failed to load orders');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -195,6 +226,13 @@ const StaffCashCollectionPage = () => {
               >
                 Paid / Confirmed
               </button>
+              <button
+                onClick={fetchAllOrders}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                title="View all cash orders regardless of status"
+              >
+                View All
+              </button>
             </div>
           </div>
         </div>
@@ -206,8 +244,21 @@ const StaffCashCollectionPage = () => {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
             </div>
           ) : filteredOrders.length === 0 ? (
-            <div className="py-16 text-center text-sm font-medium text-slate-500">
-              No orders found matching the filter criteria.
+            <div className="py-16 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <BanknotesIcon className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-medium text-slate-500">
+                {selectedEventId ? 'No orders found for this filter' : 'Select an event to view orders'}
+              </p>
+              {selectedEventId && (
+                <button
+                  onClick={fetchAllOrders}
+                  className="mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  View all cash orders
+                </button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -255,6 +306,11 @@ const StaffCashCollectionPage = () => {
                         {order.tickets
                           ?.map((t) => `${t.categoryName} × ${t.quantity}`)
                           .join(', ')}
+                        {order.zones?.length > 0 && (
+                          <p className="mt-1 text-xs text-blue-600">
+                            Zones: {order.zones.join(', ')}
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-4 font-bold text-slate-900">
                         {formatCurrency(order.totalAmount)}
@@ -344,16 +400,37 @@ const StaffCashCollectionPage = () => {
                       key={idx}
                       className="flex justify-between py-2 text-sm"
                     >
-                      <span className="font-medium text-slate-700">
-                        {t.categoryName}
-                      </span>
-                      <span className="font-semibold text-slate-900">
-                        ×{t.quantity}
-                      </span>
+                      <div>
+                        <span className="font-medium text-slate-700">
+                          {t.categoryName}
+                        </span>
+                        <span className="ml-2 text-xs text-slate-500">
+                          ×{t.quantity}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
+
+              {confirmingOrder.zones?.length > 0 && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600">
+                    <MapPinIcon className="h-3.5 w-3.5" />
+                    Access Zones
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {confirmingOrder.zones.map((zone, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700"
+                      >
+                        {zone}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 p-4">
                 <div>

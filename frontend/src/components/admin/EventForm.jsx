@@ -50,7 +50,7 @@ const EventForm = ({ initialData, onSubmit, loading, companyOptions = [], organi
     allowSelfConfirmation: initialData?.settings?.allowSelfConfirmation ?? true,
     confirmationDeadlineHours: initialData?.settings?.confirmationDeadlineHours ?? 48,
     maxTicketsPerOrder: initialData?.settings?.maxTicketsPerOrder ?? 10,
-    rfidEnabled: initialData?.settings?.rfidEnabled ?? true,
+    rfidEnabled: initialData?.settings?.rfidEnabled ?? false,
     paymentMethods: initialData?.settings?.paymentMethods || {
       card: true,
       bank_transfer: true,
@@ -263,11 +263,18 @@ const EventForm = ({ initialData, onSubmit, loading, companyOptions = [], organi
           </div>
 
           <div>
-            {/* RFID Support - Under Development */}
             <label className="flex items-center gap-3">
-              <input type="checkbox" checked={false} disabled />
-              <span className="text-sm">Enable RFID Support (Under Development)</span>
+              <input
+                type="checkbox"
+                checked={settings.rfidEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, rfidEnabled: e.target.checked }))}
+                className="rounded text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm">Enable RFID Access Control</span>
             </label>
+            <p className="mt-1.5 text-[11px] text-slate-500 ml-6">
+              Allow RFID-based entry scanning alongside QR codes. Requires RFID inventory setup.
+            </p>
           </div>
 
           <div>

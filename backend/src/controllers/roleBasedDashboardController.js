@@ -174,7 +174,8 @@ const getOrganiserDashboardData = async (user) => {
     activeEvents,
     pendingVerifications,
     todayCheckIns,
-    pendingPaymentSubmissions
+    pendingPaymentSubmissions,
+    assignedEventsData
   ] = await Promise.all([
     Event.countDocuments({ _id: { $in: assignedEvents } }),
     Attendee.countDocuments({ event: { $in: assignedEvents } }),
@@ -198,7 +199,13 @@ const getOrganiserDashboardData = async (user) => {
       action: 'check_in',
       accessGranted: true 
     }),
-    PaymentSubmission.countDocuments({ verificationStatus: 'pending' })
+    PaymentSubmission.countDocuments({ verificationStatus: 'pending' }),
+    assignedEvents.length > 0 
+      ? Event.find({ _id: { $in: assignedEvents } })
+          .select('name startDate endDate status settings.rfidEnabled')
+          .sort('startDate')
+          .lean()
+      : []
   ]);
 
   // Recent activity for assigned events
@@ -222,6 +229,16 @@ const getOrganiserDashboardData = async (user) => {
       .limit(10)
     : [];
 
+  // Add RFID enabled status to each event
+  const eventsWithRfid = assignedEventsData.map(event => ({
+    _id: event._id,
+    name: event.name,
+    startDate: event.startDate,
+    endDate: event.endDate,
+    status: event.status,
+    rfidEnabled: event.settings?.rfidEnabled === true
+  }));
+
   return {
     overview: {
       totalEvents,
@@ -233,6 +250,7 @@ const getOrganiserDashboardData = async (user) => {
       pendingPaymentSubmissions
     },
     events: eventsWithStats,
+    eventsWithRfid,
     recentActivity,
     recentPaymentSubmissions: recentPaymentSubmissions.map(sub => ({
       _id: sub._id,
@@ -258,7 +276,10 @@ const getOrganiserDashboardData = async (user) => {
       canManageEvents: true,
       canManageAttendees: true,
       canViewReports: true,
-      canSendNotifications: true
+      canSendNotifications: true,
+      canManageRfid: true,
+      canAssignRfid: true,
+      canAccessRfidScanner: true
     }
   };
 };
@@ -328,7 +349,8 @@ const getStaffDashboardData = async (user) => {
     todayScans,
     todayDenials,
     recentScans,
-    zoneStatus
+    zoneStatus,
+    assignedEventsData
   ] = await Promise.all([
     EntryLog.countDocuments({ 
       processedBy: user._id,
@@ -344,8 +366,24 @@ const getStaffDashboardData = async (user) => {
       .limit(10)
       .populate('attendee', 'fullName')
       .populate('event', 'name'),
-    getZoneStatus(assignedEvents, assignedZones)
+    getZoneStatus(assignedEvents, assignedZones),
+    assignedEvents.length > 0 
+      ? Event.find({ _id: { $in: assignedEvents } })
+          .select('name startDate endDate status settings.rfidEnabled')
+          .sort('startDate')
+          .lean()
+      : []
   ]);
+
+  // Add RFID enabled status to each event
+  const eventsWithRfid = assignedEventsData.map(event => ({
+    _id: event._id,
+    name: event.name,
+    startDate: event.startDate,
+    endDate: event.endDate,
+    status: event.status,
+    rfidEnabled: event.settings?.rfidEnabled === true
+  }));
 
   return {
     overview: {
@@ -355,10 +393,13 @@ const getStaffDashboardData = async (user) => {
     },
     recentScans,
     zones: zoneStatus,
+    events: eventsWithRfid,
     permissions: {
       canScanEntry: true,
       canScanZones: true,
-      canManualSearch: true
+      canManualSearch: true,
+      canAssignRfid: true, // Staff can assign RFID for RFID-enabled events
+      canAccessRfidScanner: true
     }
   };
 };

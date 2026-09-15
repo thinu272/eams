@@ -11,6 +11,7 @@ import {
   SignalIcon,
   SignalSlashIcon,
   BanknotesIcon,
+  IdentificationIcon,
 } from '@heroicons/react/24/outline';
 import { getAssignedGateLabel, getAssignedZoneLabel } from './staffUtils';
 import { getMyEvents } from '../../api/events';
@@ -106,6 +107,14 @@ const StaffDashboardPage = () => {
       active:
         user?.permissions?.canEntryAccess === true ||
         (user?.assignedGates?.length > 0),
+    },
+    {
+      title: 'RFID Assignment',
+      desc: 'Scan attendee QR and assign RFID wristbands/tags.',
+      icon: IdentificationIcon,
+      path: '/staff/rfid-assign',
+      badge: 'QR → RFID',
+      active: true,
     },
     {
       title: 'Restricted Zones',

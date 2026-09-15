@@ -28,6 +28,7 @@ const ScannerComponent = ({
   onSubmit,
   submitting,
   result,
+  rfidEnabled = false,
 }) => {
   const [scanMode, setScanMode] = useState('qr');
   const [action, setAction] = useState('ENTRY');
@@ -90,7 +91,7 @@ const ScannerComponent = ({
               Scan action
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <button
+              {rfidEnabled && <button
                 type="button"
                 onClick={() => setAction('ENTRY')}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
@@ -101,7 +102,7 @@ const ScannerComponent = ({
               >
                 <ArrowRightOnRectangleIcon className="h-4 w-4" />
                 Entry
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => setAction('EXIT')}
