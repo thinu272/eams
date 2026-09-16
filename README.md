@@ -32,6 +32,9 @@ For event access, the system does not treat QR and RFID as separate user identit
 - RFID inventory management per event and category
 - Event category-based RFID allocation from admin inventory
 - Entry and zone scanning by QR code or RFID reader
+- RFID Assignment workflow for staff with QR-first approach
+- Organizer RFID Assignment Registry (view-only for all assigned tags per event)
+- SubOrganizer access to RFID Assignment, Entry Scanner, Zone Scanner, and Manual Search
 - Multiple payment methods, including cash-at-entry and online gateways
 - Role-based access control (admin, organiser, staff, auditor, attendee, sponsor, etc.)
 - Real-time updates via Socket.io
@@ -57,7 +60,22 @@ Admins can now add RFID codes to the system in two ways:
 
 The inventory is stored as event-scoped tags with category association, and the next available tag is assigned when a ticket is linked to an attendee.
 
+### Organizer RFID Assignment Registry
+Organizers can view a read-only registry of all RFID tags assigned to attendees for their events. This view shows:
+- RFID tag number
+- Attendee details (name, contact, national ID)
+- Category (resolved from Ticket model for accuracy)
+- Assignment timestamp
+
+### Staff RFID Assignment workflow
+Staff can assign RFID tags to attendees using a QR-first approach:
+1. Staff scans the attendee's QR code or searches manually
+2. Staff selects an available RFID tag from the event inventory
+3. RFID is assigned to the attendee
+4. Category is automatically resolved from the attendee's ticket
+
 ### API support
+- `GET /api/rfid/inventory?eventId=<id>` – list RFID inventory for an event (filtered by eventId)
 - `POST /api/attendees/:id/rfid` – assign a specific RFID tag to an attendee
 - `DELETE /api/attendees/:id/rfid` – clear an attendee RFID tag
 - `GET /api/rfid/events/:eventId` – list RFID inventory for an event

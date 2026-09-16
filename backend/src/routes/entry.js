@@ -243,74 +243,124 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, reason: 'NOT_CONFIRMED', message: 'Identity not confirmed.', data: { log } });
     }
 
-    if (action === 'check_in' && attendee.checkedIn) {
-      const log = await EntryLog.create(buildLogPayload({
-        attendee,
-        gateId: resolvedGate,
-        gateName: resolvedGate,
-        zoneId,
-        zoneName,
-        action: 'denied',
-        method: scanMethod,
-        deviceId,
-        accessGranted: false,
-        denialReason: 'Already checked in',
-        processedBy: req.user._id,
-      }));
-      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
-        source: 'entry',
-        eventId: attendee.event._id,
-        name: attendee.fullName,
-        action: 'DENIED ENTRY',
-        zoneName: zoneName || resolvedGate || 'Main Entry',
-        timestamp: log.timestamp,
-        accessGranted: false,
-      });
-      return res.status(409).json({ success: false, reason: 'ALREADY_CHECKED_IN', message: 'Attendee has already checked in.', data: { log, attendee } });
+    // === CREDENTIAL DEDUPLICATION & STATE VALIDATION ===
+    // Allow QR check-in followed by RFID check-out (and vice versa)
+    // But prevent same method re-entry without check-out
+    const isRfidScan = scanMethod === 'rfid';
+    
+    if (action === 'check_in') {
+      // Prevent duplicate entry if already checked in
+      if (attendee.checkedIn) {
+        // Check if this is a different credential type trying to check in again
+        // If so, suggest check-out instead
+        const log = await EntryLog.create(buildLogPayload({
+          attendee,
+          gateId: resolvedGate,
+          gateName: resolvedGate,
+          zoneId,
+          zoneName,
+          action: 'denied',
+          method: scanMethod,
+          deviceId,
+          accessGranted: false,
+          denialReason: 'Already checked in - please use exit mode',
+          processedBy: req.user._id,
+        }));
+        emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+          source: 'entry',
+          eventId: attendee.event._id,
+          name: attendee.fullName,
+          action: 'DENIED RE-ENTRY',
+          zoneName: zoneName || resolvedGate || 'Main Entry',
+          timestamp: log.timestamp,
+          accessGranted: false,
+        });
+        return res.status(409).json({ 
+          success: false, 
+          reason: 'ALREADY_CHECKED_IN', 
+          message: 'Attendee has already checked in. Please use Exit/Check-Out mode.',
+          data: { log, attendee, suggestCheckOut: true }
+        });
+      }
     }
 
-    if (action === 'check_out' && !attendee.checkedIn) {
-      const log = await EntryLog.create(buildLogPayload({
-        attendee,
-        gateId: resolvedGate,
-        gateName: resolvedGate,
-        zoneId,
-        zoneName,
-        action: 'denied',
-        method: scanMethod,
-        deviceId,
-        accessGranted: false,
-        denialReason: 'Not currently checked in',
-        processedBy: req.user._id,
-      }));
-      emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
-        source: 'entry',
-        eventId: attendee.event._id,
-        name: attendee.fullName,
-        action: 'DENIED EXIT',
-        zoneName: zoneName || resolvedGate || 'Main Entry',
-        timestamp: log.timestamp,
-        accessGranted: false,
-      });
-      return res.status(409).json({ success: false, reason: 'NOT_CHECKED_IN', message: 'Attendee is not currently checked in.', data: { log, attendee } });
+    if (action === 'check_out') {
+      // Allow check-out only if currently checked in
+      if (!attendee.checkedIn) {
+        const log = await EntryLog.create(buildLogPayload({
+          attendee,
+          gateId: resolvedGate,
+          gateName: resolvedGate,
+          zoneId,
+          zoneName,
+          action: 'denied',
+          method: scanMethod,
+          deviceId,
+          accessGranted: false,
+          denialReason: 'Not currently checked in',
+          processedBy: req.user._id,
+        }));
+        emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
+          source: 'entry',
+          eventId: attendee.event._id,
+          name: attendee.fullName,
+          action: 'DENIED EXIT',
+          zoneName: zoneName || resolvedGate || 'Main Entry',
+          timestamp: log.timestamp,
+          accessGranted: false,
+        });
+        return res.status(409).json({ 
+          success: false, 
+          reason: 'NOT_CHECKED_IN', 
+          message: 'Attendee is not currently checked in.',
+          data: { log, attendee }
+        });
+      }
     }
 
     let accessGranted = true;
     let denialReason = null;
-    if (zoneId && action !== 'check_in') {
+
+    // Zone access validation for zone_entry/zone_exit
+    if ((action === 'zone_entry' || action === 'zone_exit') && zoneId) {
       if (!(attendee.allowedZones || []).includes(zoneId)) {
         accessGranted = false;
         denialReason = `No access to zone: ${zoneName || zoneId}`;
       }
+      
+      // Zone entry only allowed after main entry check-in
+      if (action === 'zone_entry' && !attendee.checkedIn) {
+        accessGranted = false;
+        denialReason = 'Must check in at main entry first';
+      }
+      
+      // Zone exit only allowed if currently in that zone
+      if (action === 'zone_exit' && attendee.currentZone !== zoneId) {
+        accessGranted = false;
+        denialReason = 'Not currently in this zone';
+      }
     }
 
+    // Update attendee state
     if (action === 'check_in' && accessGranted) {
       attendee.checkedIn = true;
       attendee.checkedInAt = new Date();
+      attendee.lastEntryMethod = scanMethod;
     }
 
     if (action === 'check_out' && accessGranted) {
       attendee.checkedIn = false;
+      attendee.checkedInAt = null;
+      attendee.currentZone = null;
+      attendee.lastExitMethod = scanMethod;
+    }
+
+    // Zone tracking
+    if (action === 'zone_entry' && accessGranted) {
+      attendee.currentZone = zoneId;
+    }
+    if (action === 'zone_exit' && accessGranted) {
+      attendee.currentZone = null;
     }
 
     if (action === 'check_in' && accessGranted && !attendee.wristbandId) {

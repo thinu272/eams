@@ -43,6 +43,7 @@ const normalizeEntryError = (error) => {
     attendee: data.data?.attendee || null,
     detail: messageMap[reason] || data.message || 'Entry validation failed',
     reason: reason || 'DENIED',
+    suggestCheckOut: data.data?.suggestCheckOut || false,
   };
 };
 
@@ -409,6 +410,23 @@ const StaffScanPage = () => {
         fetchStats();
       } catch (error) {
         const denied = normalizeEntryError(error);
+        
+        // Auto-switch to check-out mode if already checked in
+        if (denied.reason === 'ALREADY_CHECKED_IN' && denied.suggestCheckOut) {
+          setScanMode('check_out');
+          toast((t) => (
+            <span className="flex items-center gap-2">
+              <span className="text-amber-600">Already checked in</span>
+              <button 
+                onClick={() => toast.dismiss(t.id)}
+                className="text-xs text-blue-600 underline"
+              >
+                Switched to Exit mode
+              </button>
+            </span>
+          ));
+        }
+        
         setResult({
           state: 'error',
           attendee: denied.attendee,
@@ -419,6 +437,7 @@ const StaffScanPage = () => {
             { label: 'Mode', value: scanMode === 'check_out' ? 'Exit' : 'Entry' },
             { label: 'Reason', value: denied.detail },
           ],
+          suggestCheckOut: denied.suggestCheckOut,
         });
         playFeedbackTone(false);
         triggerHaptic(false);
@@ -773,14 +792,30 @@ const StaffScanPage = () => {
                     meta={result.meta}
                     actions={
                       result.state === 'error' && result.attendee ? (
-                        <button
-                          type="button"
-                          onClick={handleManualCheckIn}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-slate-800"
-                        >
-                          <CheckCircleIcon className="h-5 w-5" />
-                          Override Manual Entry
-                        </button>
+                        <div className="space-y-2">
+                          {result.suggestCheckOut ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setScanMode('check_out');
+                                setResult((prev) => ({ ...prev, state: 'idle' }));
+                              }}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700"
+                            >
+                              <ArrowLeftIcon className="h-5 w-5" />
+                              Switch to Exit Mode
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleManualCheckIn}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-slate-800"
+                            >
+                              <CheckCircleIcon className="h-5 w-5" />
+                              Override Manual Entry
+                            </button>
+                          )}
+                        </div>
                       ) : null
                     }
                   />

@@ -154,15 +154,19 @@ const SubOrgZoneScannerPage = () => {
           </div>
         ) : (
           <ScannerComponent
-            title="Zone scanner"
-            description="Validate zone access and toggle entry or exit while keeping the decision visible from a distance."
+            title="Zone Scanner"
+            description="Validate zone access. Toggle entry/exit for attendees moving between zones."
             zones={zones}
             activeZone={activeZone}
-            onZoneChange={setActiveZone}
+            onZoneChange={(zoneId) => {
+              setActiveZone(zoneId);
+              setResult(null);
+            }}
             onSubmit={handleSubmit}
             submitting={submitting}
             result={result}
             rfidEnabled={rfidEnabled}
+            scannerType="zone"
           />
         )}
       </div>
