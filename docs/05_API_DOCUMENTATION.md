@@ -82,7 +82,28 @@ Generated API reference from backend route files.
 | GET | /api/attendees/resubmit/:token |
 | POST | /api/attendees/resubmit/photo |
 | GET | /api/attendees/:id |
+| POST | /api/attendees/:id/rfid |
+| DELETE | /api/attendees/:id/rfid |
 | PATCH | /api/attendees/:id |
+
+## /api/rfid  (from \backend/src/routes/rfid.js)
+
+| Method | Path |
+|--------|------|
+| GET | /api/rfid/inventory |
+| POST | /api/rfid/inventory |
+| POST | /api/rfid/inventory/bulk |
+| POST | /api/rfid/assign |
+| GET | /api/rfid/events/:eventId |
+| POST | /api/rfid/events/:eventId/tags |
+| POST | /api/rfid/events/:eventId/upload |
+| DELETE | /api/rfid/events/:eventId/tags/:tagId |
+| GET | /api/rfid/validate/:rfidTag |
+| DELETE | /api/rfid/unassign/:rfidTag |
+| GET | /api/rfid/assignment/:attendeeId |
+| PATCH | /api/rfid/inventory/:rfidTag/disable |
+| PATCH | /api/rfid/inventory/:rfidTag/enable |
+| DELETE | /api/rfid/inventory/:rfidTag |
 
 ## /api/verification  (from \backend/src/routes/verification.js)
 
@@ -135,6 +156,9 @@ Generated API reference from backend route files.
 | POST | /api/entry/checkin |
 | POST | /api/entry/checkout |
 | POST | /api/entry/receive-payment |
+| POST | /api/entry/rfid-assign |
+| GET | /api/entry/attendee-by-qr/:qrToken |
+| GET | /api/entry/event-rfid-status/:eventId |
 
 ## /api/zone  (from \backend/src/routes/zone.js)
 

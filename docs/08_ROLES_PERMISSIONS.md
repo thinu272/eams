@@ -4,13 +4,23 @@
 | Role | Description | Primary Permissions |
 |------|-------------|----------------------|
 | **MainAdmin** | Full system administrator. Can manage users, companies, events, and system configuration. | `*` (all) |
-| **MainOrganiser** | Owner of a company (organisation) and can create/manage events, zones, sponsors, and staff under that company. | Create/Update/Delete Events, Zones, Sponsors, Staff; View all tickets for their events |
-| **SubOrganiser** | Organiser with limited rights, typically assigned to a specific event. | Manage assigned event(s) – edit event details, zones, tickets; view attendees |
-| **Staff** | Works for an organiser; handles day‑to‑day operations such as checking tickets, managing zones, and handling enquiries. | Access zone logs, entry logs, update ticket status (e.g., `CONFIRMED`, `CANCELLED`), send notifications |
+| **MainOrganiser** | Owner of a company (organisation) and can create/manage events, zones, sponsors, and staff under that company. | Create/Update/Delete Events, Zones, Sponsors, Staff; View all tickets for their events; View RFID Assignment Registry (view-only) |
+| **SubOrganiser** | Organiser with limited rights, typically assigned to a specific event. | Manage assigned event(s) – edit event details, zones, tickets; view attendees; RFID Assignment; Entry Scanner; Manual Search; Zone Scanner; View payments |
+| **Staff** | Works for an organiser; handles day‑to‑day operations such as checking tickets, managing zones, and handling enquiries. | Access zone logs, entry logs, update ticket status (e.g., `CONFIRMED`, `CANCELLED`), send notifications; RFID Assignment; Entry Scanner; Zone Scanner; Manual Search; Bulk Upload; Activity Logs |
 | **Volunteer** | Assists staff on‑site; limited to scanning tickets and viewing basic event info. | Read‑only access to ticket validation endpoints; cannot modify data |
 | **Auditor** | Audits system activity; read‑only across the platform. | View audit logs, request logs, system logs; cannot modify any data |
 | **Sponsor** | Company sponsoring an event; can view their own sponsorship details & promotional materials. | Read access to `sponsor` resources, upload assets |
 | **Attendee** | End‑user purchasing tickets. | Create orders, assign tickets, view personal tickets, receive notifications |
+
+## SubOrganiser Permissions Detail
+SubOrganisers have scoped access to assigned events with the following capabilities:
+- **RFID Assignment** - Assign RFID tags to attendees via QR-first flow or manual search
+- **Entry Scanner** - Scan QR codes or RFID at event entrance
+- **Zone Scanner** - Scan QR codes or RFID at zone entry points
+- **Manual Search** - Search for attendees by name, email, phone, or ticket number
+- **Bulk Upload** - Upload RFID tags in bulk via Excel
+- **Activity Logs** - View entry and zone scan activity logs
+- **Payments** - View payment submissions for assigned events
 
 ## Permission Implementation
 Permissions are enforced in controller functions via role checks, e.g.:

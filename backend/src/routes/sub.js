@@ -303,7 +303,13 @@ router.get('/dashboard', async (req, res, next) => {
     const permittedCategoryIds = permittedCategories.map(cat => String(cat.id));
     const attendeeFilter = buildScopedAttendeeFilter(event._id, scopeZoneKeys, permittedCategoryIds);
 
-    const [totalAttendees, checkedInCount, pendingVerifications, entryLogs, zoneLogs] = await Promise.all([
+    // Get today's date range
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const [totalAttendees, checkedInCount, pendingVerifications, entryLogs, zoneLogs, entryStats, zoneStats] = await Promise.all([
       Attendee.countDocuments(attendeeFilter),
       Attendee.countDocuments({ ...attendeeFilter, checkedIn: true }),
       hasVerificationPermission(req.user)
@@ -321,7 +327,60 @@ router.get('/dashboard', async (req, res, next) => {
         .sort({ timestamp: -1 })
         .limit(5)
         .lean(),
+      // Today's entry statistics
+      EntryLog.aggregate([
+        {
+          $match: {
+            event: event._id,
+            zoneId: { $in: scopeZoneKeys },
+            timestamp: { $gte: today, $lt: tomorrow },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            entryIn: { $sum: { $cond: [{ $eq: ['$action', 'check_in'] }, 1, 0] } },
+            entryOut: { $sum: { $cond: [{ $eq: ['$action', 'check_out'] }, 1, 0] } },
+            qrScans: { $sum: { $cond: [{ $eq: ['$method', 'qr'] }, 1, 0] } },
+            rfidScans: { $sum: { $cond: [{ $eq: ['$method', 'rfid'] }, 1, 0] } },
+            denied: { $sum: { $cond: [{ $eq: ['$accessGranted', false] }, 1, 0] } },
+          },
+        },
+      ]),
+      // Today's zone statistics
+      ZoneLog.aggregate([
+        {
+          $match: {
+            eventId: event._id,
+            zoneName: { $in: scopeZoneKeys },
+            timestamp: { $gte: today, $lt: tomorrow },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            zoneIn: { $sum: { $cond: [{ $eq: ['$action', 'ENTRY'] }, 1, 0] } },
+            zoneOut: { $sum: { $cond: [{ $eq: ['$action', 'EXIT'] }, 1, 0] } },
+            qrScans: { $sum: { $cond: [{ $eq: ['$scanMethod', 'QR'] }, 1, 0] } },
+            rfidScans: { $sum: { $cond: [{ $eq: ['$scanMethod', 'RFID'] }, 1, 0] } },
+            denied: { $sum: { $cond: [{ $eq: ['$accessGranted', false] }, 1, 0] } },
+          },
+        },
+      ]),
     ]);
+
+    const entryData = entryStats[0] || { entryIn: 0, entryOut: 0, qrScans: 0, rfidScans: 0, denied: 0 };
+    const zoneData = zoneStats[0] || { zoneIn: 0, zoneOut: 0, qrScans: 0, rfidScans: 0, denied: 0 };
+
+    const operations = {
+      entryIn: entryData.entryIn,
+      entryOut: entryData.entryOut,
+      zoneIn: zoneData.zoneIn,
+      zoneOut: zoneData.zoneOut,
+      qrScans: (entryData.qrScans || 0) + (zoneData.qrScans || 0),
+      rfidScans: (entryData.rfidScans || 0) + (zoneData.rfidScans || 0),
+      denied: (entryData.denied || 0) + (zoneData.denied || 0),
+    };
 
     const activity = mapActivity(
       entryLogs.map((item) => ({ ...item, kind: 'entry' })),
@@ -351,6 +410,7 @@ router.get('/dashboard', async (req, res, next) => {
           pendingVerifications,
           zoneCount: scopedZones.length,
         },
+        operations,
         zones: scopedZones,
         categories: getPermittedCategories(req.user, event),
         activity,
@@ -675,26 +735,52 @@ router.post('/scan-entry', async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Attendee not found in your assigned event.' });
     }
 
+    const scanAction = req.body.action === 'CHECK_OUT' ? 'check_out' : 'check_in';
+    
+    // === STATE VALIDATION ===
+    // Allow check-out if attendee is currently checked in
+    // Allow check-in if attendee is NOT currently checked in
+    if (scanAction === 'check_in' && attendee.checkedIn) {
+      return res.status(409).json({ 
+        success: false, 
+        reason: 'ALREADY_CHECKED_IN',
+        message: 'Attendee has already checked in. Please use Exit/Check-Out mode.',
+        data: { suggestCheckOut: true, attendee }
+      });
+    }
+    
+    if (scanAction === 'check_out' && !attendee.checkedIn) {
+      return res.status(409).json({ 
+        success: false, 
+        reason: 'NOT_CHECKED_IN',
+        message: 'Attendee is not currently checked in.',
+        data: { attendee }
+      });
+    }
+
+    const isEntryGate = ENTRY_LIKE_ZONE.test(activeZone.name);
     let accessGranted = true;
     let denialReason = '';
 
+    // Basic validation - attendee must be active
     if (!attendee.isActive || attendee.isDisabled) {
       accessGranted = false;
       denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Attendee is inactive';
-    } else if (!isPaidTicket(attendee.ticket) && (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed')) {
+    } 
+    // Ticket must be paid/confirmed
+    else if (!isPaidTicket(attendee.ticket) && (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed')) {
       accessGranted = false;
       denialReason = 'Attendee is not confirmed';
-    } else if (!ENTRY_LIKE_ZONE.test(activeZone.name) && !isAttendeeAllowedInZone(attendee, activeZone)) {
+    }
+    // Zone access validation (non-entry gates only)
+    else if (!isEntryGate && !isAttendeeAllowedInZone(attendee, activeZone)) {
       accessGranted = false;
       denialReason = 'Ticket is not allowed in this zone';
-    } else if (attendee.checkedIn) {
-      accessGranted = false;
-      denialReason = 'Attendee already checked in';
     }
 
     if (accessGranted) {
-      attendee.checkedIn = true;
-      attendee.checkedInAt = new Date();
+      attendee.checkedIn = scanAction === 'check_in';
+      attendee.checkedInAt = scanAction === 'check_in' ? new Date() : attendee.checkedInAt;
       await attendee.save();
     }
 
@@ -705,7 +791,7 @@ router.post('/scan-entry', async (req, res, next) => {
       gateName: activeZone.name,
       zoneId: activeZone.id,
       zoneName: activeZone.name,
-      action: accessGranted ? 'check_in' : 'denied',
+      action: accessGranted ? scanAction : 'denied',
       method: rfidId ? 'rfid' : 'qr',
       accessGranted,
       denialReason: denialReason || undefined,
@@ -722,19 +808,24 @@ router.post('/scan-entry', async (req, res, next) => {
 
     res.status(accessGranted ? 200 : 403).json({
       success: accessGranted,
-      message: accessGranted ? 'Entry allowed' : 'Entry denied',
+      message: accessGranted
+        ? (scanAction === 'check_in' ? 'Entry allowed - Checked In' : 'Exit allowed - Checked Out')
+        : 'Entry denied',
       data: {
         accessGranted,
         denialReason,
+        action: scanAction,
         zone: activeZone,
         attendee: {
           _id: attendee._id,
           fullName: attendee.fullName,
+          rfidTag: attendee.rfidTag,
           categoryName: attendee.categoryName,
           confirmationStatus: attendee.confirmationStatus,
           checkedIn: attendee.checkedIn,
           allowedZones: attendee.allowedZones || [],
           photo: attendee.photo,
+          photoVerificationStatus: attendee.photoVerificationStatus,
         },
         log,
       },
@@ -784,14 +875,20 @@ router.post('/scan-zone', async (req, res, next) => {
     let accessGranted = true;
     let denialReason = '';
 
+    // Basic validation - attendee must be active
     if (!attendee.isActive || attendee.isDisabled || (!isPaidTicket(attendee.ticket) && (!attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed'))) {
       accessGranted = false;
       denialReason = attendee.isDisabled ? 'Ticket is disabled' : 'Ticket is not confirmed for venue access';
     } else if (!isAttendeeAllowedInZone(attendee, activeZone)) {
       accessGranted = false;
       denialReason = 'Zone not included in ticket';
+    } else if (!attendee.checkedIn) {
+      // Zone entry only allowed after main entry check-in
+      accessGranted = false;
+      denialReason = 'Must check in at main entry first';
     }
 
+    // Auto-determine action (ENTRY vs EXIT) based on current zone state
     let action = 'ENTRY';
     if (accessGranted) {
       const lastLog = await ZoneLog.findOne({
@@ -800,6 +897,8 @@ router.post('/scan-zone', async (req, res, next) => {
         zoneName: activeZone.name,
         accessGranted: true,
       }).sort({ timestamp: -1 });
+      
+      // If last action was ENTRY, now do EXIT. If EXIT or no log, do ENTRY.
       action = lastLog?.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
     }
 
@@ -1071,6 +1170,86 @@ router.delete('/tickets/:categoryId', async (req, res, next) => {
     await event.save();
 
     res.json({ success: true, message: 'Ticket category deleted.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Sub-Organiser RFID Assignment during entry scan flow
+router.post('/attendees/:attendeeId/rfid', async (req, res, next) => {
+  try {
+    if (!hasScanPermission(req.user)) {
+      return res.status(403).json({ success: false, message: 'RFID assignment is not enabled for your assignment.' });
+    }
+
+    const { attendeeId } = req.params;
+    const { rfidTag, eventId } = req.body;
+
+    if (!attendeeId || !mongoose.Types.ObjectId.isValid(attendeeId)) {
+      return res.status(400).json({ success: false, message: 'Valid attendeeId is required.' });
+    }
+
+    if (!rfidTag || !/^\d{10}$/.test(String(rfidTag).trim())) {
+      return res.status(400).json({ success: false, message: 'RFID tag must be a 10-digit number.' });
+    }
+
+    const { event, error } = await resolveScopedEvent(req.user, eventId);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    // Verify RFID is in inventory and available
+    const RfidTag = require('../models/RfidTag');
+    const normalizedRfid = String(rfidTag).trim();
+    const rfidInventory = await RfidTag.findOne({ rfidTag: normalizedRfid });
+
+    if (!rfidInventory) {
+      return res.status(404).json({ success: false, message: 'RFID tag is not registered in inventory.' });
+    }
+
+    if (rfidInventory.status !== 'AVAILABLE') {
+      return res.status(400).json({ success: false, message: `RFID tag is not available (current status: ${rfidInventory.status}).` });
+    }
+
+    // Find attendee
+    const attendee = await Attendee.findById(attendeeId).populate('event');
+    if (!attendee) {
+      return res.status(404).json({ success: false, message: 'Attendee not found.' });
+    }
+
+    // Verify attendee is in the scoped event
+    if (attendee.event?._id?.toString() !== event._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Attendee is not in your assigned event.' });
+    }
+
+    // Verify attendee doesn't already have an RFID
+    if (attendee.rfidTag) {
+      return res.status(400).json({ success: false, message: 'Attendee already has an RFID tag assigned.' });
+    }
+
+    // Assign RFID
+    attendee.rfidTag = normalizedRfid;
+    await attendee.save();
+
+    // Update inventory
+    rfidInventory.status = 'ASSIGNED';
+    rfidInventory.attendee = attendee._id;
+    rfidInventory.event = event._id;
+    await rfidInventory.save();
+
+    res.json({
+      success: true,
+      message: 'RFID tag assigned successfully.',
+      data: {
+        attendee: {
+          _id: attendee._id,
+          fullName: attendee.fullName,
+          rfidTag: attendee.rfidTag,
+        },
+        rfid: {
+          tag: rfidInventory.rfidTag,
+          status: rfidInventory.status,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

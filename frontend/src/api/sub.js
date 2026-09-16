@@ -7,6 +7,7 @@ export const getSubLogs = (params) => api.get('/sub/logs', { params });
 export const verifySubAttendee = (payload) => api.post('/sub/verify', payload);
 export const scanSubEntry = (payload) => api.post('/sub/scan-entry', payload);
 export const scanSubZone = (payload) => api.post('/sub/scan-zone', payload);
+export const assignSubRfid = (attendeeId, payload) => api.post(`/sub/attendees/${attendeeId}/rfid`, payload);
 
 // Team Management for Sub-Organisers (Scoping handled by backend)
 export const getSubOrgTeam = (params) => api.get('/organiser/sub-organisers', { params });

@@ -46,6 +46,9 @@ EAMS (Event Access Management System) is a full-stack event operations platform.
 - Import RFID tags from Excel or add them individually to event/category inventory.
 - Allocate the next available event/category RFID tag during ticket assignment.
 - Record the scan method, result, operator, event, zone, and timestamp in access logs.
+- Organisers can view assigned RFID tags with attendee details (view-only registry).
+- RFID inventory endpoints support event filtering to show only relevant tags.
+- Category information is resolved from the Ticket model for accurate assignment records.
 
 ### Payments and ticket delivery
 
