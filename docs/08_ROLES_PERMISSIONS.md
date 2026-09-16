@@ -14,13 +14,22 @@
 
 ## SubOrganiser Permissions Detail
 SubOrganisers have scoped access to assigned events with the following capabilities:
-- **RFID Assignment** - Assign RFID tags to attendees via QR-first flow or manual search
-- **Entry Scanner** - Scan QR codes or RFID at event entrance
-- **Zone Scanner** - Scan QR codes or RFID at zone entry points
+- **RFID Assignment** - Assign RFID tags to attendees via QR-first flow or manual search (requires `event.settings.rfidEnabled`)
+- **Entry Scanner** - Check-in/out attendees at assigned gates with QR/RFID support and real-time statistics
+- **Zone Scanner** - Validate and record zone entry/exit for assigned zones with auto-toggle ENTRY/EXIT
 - **Manual Search** - Search for attendees by name, email, phone, or ticket number
 - **Bulk Upload** - Upload RFID tags in bulk via Excel
 - **Activity Logs** - View entry and zone scan activity logs
 - **Payments** - View payment submissions for assigned events
+
+### Scanning Permissions
+| Permission | Purpose |
+|------------|---------|
+| `canEntryAccess` / `canScanEntry` | Access to Entry Scanner for check-in/check-out operations |
+| `canScanZone` / `canGateScanAccess` | Access to Zone Scanner for zone entry/exit operations |
+| `canManualSearch` | Access to Manual Search for finding attendees |
+
+These permissions are automatically granted if the SubOrganiser has assigned zones or gates.
 
 ## Permission Implementation
 Permissions are enforced in controller functions via role checks, e.g.:

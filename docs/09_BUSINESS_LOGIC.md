@@ -30,5 +30,38 @@ The core business logic of EAMS lives in the **service layer** (`backend/src/ser
 5. Organizers can view all assigned RFID tags with attendee details through the RfidAssignmentView component (view-only registry).
 6. Category information is resolved from the `Ticket.categoryName` field for accurate assignment records.
 
+**Check-In/Check-Out Logic**:
+The system supports both QR and RFID for entry/exit operations with proper state management:
+
+1. **Entry Scanner (Main Entry)**:
+   - `CHECK_IN`: Sets `attendee.checkedIn = true`, records `checkedInAt` timestamp
+   - `CHECK_OUT`: Sets `attendee.checkedIn = false`, clears `checkedInAt`
+   - **Credential Deduplication**: If attendee is already checked in, subsequent check-in attempts are denied with a suggestion to switch to exit mode
+   - **Cross-Credential Support**: QR check-in → RFID check-out (and vice versa) is allowed for the same attendee
+
+2. **Zone Scanner (Inner Zones)**:
+   - Requires main entry check-in before allowing zone entry
+   - Auto-toggles between ENTRY and EXIT based on current zone state
+   - Logs each zone access attempt in `ZoneLog` with `ENTRY` or `EXIT` action
+   - Zone exit is only allowed if attendee is currently in that zone
+
+3. **State Validation**:
+   - `ALREADY_CHECKED_IN`: Returned when attempting check-in for already checked-in attendee
+   - `NOT_CHECKED_IN`: Returned when attempting check-out for not checked-in attendee
+   - `suggestCheckOut` flag in response for UI to show "Switch to Exit Mode" button
+
+4. **RFID Assignment Flow**:
+   - Only available when `event.settings.rfidEnabled === true`
+   - "RFID Not Assigned" prompt appears after successful scan for attendees without RFID
+   - Backend rejects RFID assignment attempts for disabled events with 403 `RFID_DISABLED`
+
+**SubOrganizer Dashboard Operations**:
+Sub-organizers with appropriate permissions have access to:
+- **Entry Scanner**: Check-in/out at assigned gates with QR/RFID support and RFID assignment
+- **Zone Scanner**: Validate and record zone entry/exit for assigned zones
+- **Manual Search**: Find attendees by name, phone, or email for manual operations
+- **Real-time Statistics**: Today's operational metrics (Entry In/Out, Zone In/Out, QR Scans, RFID Scans, Denied)
+- **Recent Scans Activity**: Live feed of all entry and zone scan events with attendee details
+
 ---
 *All details extracted from the service files in `backend/src/services`.*
