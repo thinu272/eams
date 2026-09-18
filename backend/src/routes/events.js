@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const { logActivity } = require('../utils/logger');
+const { uploadBuffer } = require('../services/azureStorage/azureBlobService');
 
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -30,16 +31,8 @@ const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
 };
 
-// Multer config for event images
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'event-' + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// Use memory storage for event images (files will be uploaded to Azure Blob Storage)
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
@@ -105,33 +98,18 @@ const normalizeEventPayload = (body, file, files) => {
       .slice(0, 2);
   }
 
-  if (file) {
-    // Single file legacy support
-    payload.coverImage = `/uploads/${file.filename}`;
-  }
+  // Image handling is performed in the route using Azure Blob Storage.
 
-  if (files) {
-    // Ensure branding exists
-    payload.branding = payload.branding || {};
 
-    if (files.coverImage) {
-      const path = `/uploads/${files.coverImage[0].filename}`;
-      payload.coverImage = path;
-      payload.branding.coverImage = path;
-    }
+
+
+
+
     
-    if (files.logoImage) {
-      const path = `/uploads/${files.logoImage[0].filename}`;
-      payload.logoImage = path;
-      payload.branding.logoImage = path;
-    }
 
-    if (files.bannerImage) {
-      const path = `/uploads/${files.bannerImage[0].filename}`;
-      payload.bannerImage = path;
-      payload.branding.bannerImage = path;
-    }
-  }
+
+
+
 
   // Sync old structure to new eventDetails structure for consistency
   // This ensures that when the form updates matchDetails, concertDetails, etc.,
