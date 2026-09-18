@@ -145,7 +145,72 @@ No automated test suites are included in this repository. The previous testing g
 See [docs/16_DEPLOYMENT_GUIDE.md](docs/16_DEPLOYMENT_GUIDE.md).
 
 ## Recent Updates
+- **2026-09-16**: Enhanced entry/zone scanning with proper check-in/check-out state management, credential deduplication, and RFID assignment workflow. Added SubOrganizer dashboard with operational sections (Entry Scanning, Zone Scanning, RFID Operations) and real-time operation statistics.
 - **2026-09-10**: Added event/category RFID inventory, automatic RFID allocation, and QR + RFID attendee linkage for purchased tickets.
 - **2026-08-31**: Fixed undefined `conference` error in EventDetailPage by adding proper variable extraction from event object
 - **2026-08-05**: Updated error handling and logging documentation
 - **2026-07-30**: Added comprehensive documentation files covering security, deployment, operations, and troubleshooting
+
+## Entry and Zone Scanning
+The system supports two scanning modes for managing attendee access:
+
+### Entry Scanner (Main Entry)
+- **Check-In Mode**: Scan QR or RFID to check in attendees at main gates
+- **Check-Out Mode**: Scan to check out attendees before they leave
+- **Credential Deduplication**: Prevents duplicate check-ins using different credentials (QR→RFID, RFID→QR)
+- **Smart Switch**: When an already checked-in attendee tries to check in again, the system suggests switching to Exit mode
+- **RFID Assignment**: After successful scan, attendees without RFID can be assigned one directly (if RFID enabled for event)
+
+### Zone Scanner (Inner Zones)
+- **Zone Entry**: Allows attendees into specific zones (requires main entry check-in first)
+- **Zone Exit**: Records when attendees leave a zone
+- **Auto-Toggle**: Automatically switches between Entry/Exit based on current zone state
+- **Access Validation**: Validates attendee has access to the specific zone
+
+### Staff Scan Page
+Staff can perform entry scans with:
+- QR code scanning or manual token entry
+- RFID scanning via USB keyboard-wedge reader
+- Check-in/Check-out mode toggle
+- RFID assignment for non-RFID attendees after successful scan
+- Manual override option for staff
+
+### SubOrganizer Dashboard
+Sub-organizers have access to:
+- **Entry Scanner**: Check-in/out attendees at assigned entry gates
+- **Zone Scanner**: Validate zone access for attendees
+- **Manual Search**: Find and manage attendees manually
+- **Real-time Statistics**: Today's operations (Entry In/Out, Zone In/Out, QR/RFID scans, Denied)
+- **Recent Scans**: Activity feed of all entry and zone scans
+
+## RFID Assignment Workflow
+RFID assignment follows a QR-first approach:
+
+1. **Staff/SubOrganizer scans attendee QR** or searches manually
+2. **If scan successful and attendee has no RFID** (and RFID is enabled for event):
+   - "RFID Not Assigned" prompt appears with "Assign RFID" button
+3. **Staff scans or enters available RFID tag**
+4. **RFID is assigned to the attendee** and updated in real-time
+5. **Attendee can now use either QR or RFID** for future check-ins
+
+### RFID Feature Toggle
+RFID assignment is only available when the event has RFID enabled (`event.settings.rfidEnabled === true`):
+- If disabled: RFID assignment prompts are hidden
+- Backend rejects RFID assignment attempts with 403 RFID_DISABLED
+- RFID scanning is disabled for the event
+
+## Check-In/Check-Out Flow
+### Valid Credential Sequences
+| Action | Credential | Result |
+|--------|-----------|--------|
+| Check-In | QR | ✅ Allowed - Attendee checked in |
+| Check-In | RFID | ✅ Allowed - Attendee checked in |
+| Check-Out | QR | ✅ Allowed - Attendee checked out |
+| Check-Out | RFID | ✅ Allowed - Attendee checked out |
+| Check-In (already in) | QR/RFID | ❌ Denied - Suggests Switch to Exit |
+| Check-Out (not in) | QR/RFID | ❌ Denied - Must check in first |
+
+### Zone Access Rules
+- Zone Entry requires: Main entry check-in + zone access in ticket
+- Zone Exit requires: Currently in that zone
+- Zone scanning auto-determines Entry vs Exit based on current state
