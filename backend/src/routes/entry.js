@@ -13,6 +13,7 @@ const QRCode = require('qrcode');
 const { sendOrderConfirmation, sendCashPaymentConfirmationEmail } = require('../utils/email');
 const { notifyFinalTicket, notifyBuyerFinalSummary } = require('../services/notificationService');
 const { allocateRfid, assignRfidToAttendee } = require('../services/rfidService');
+const { resolveAttendee, getScanMethod, enforceRfidToggle, validateTicket, validateCheckInOut } = require('../services/credentialService');
 
 const normalizeGate = (value) => (value || '').trim();
 const normalizeRfidTag = (value) => String(value || '').trim();
@@ -104,16 +105,10 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     } = req.body;
     const io = req.app.get('io');
 
-    let attendee;
     const rawScan = qrToken || rfidId;
     const parsedScan = parseScannedToken(rawScan);
-    const scanMethod = method === 'rfid' || isRfidTag(parsedScan) ? 'rfid' : 'qr';
-    const eventFilter = req.body.eventId ? { event: req.body.eventId } : {};
-    if (scanMethod === 'rfid') {
-      attendee = await Attendee.findOne({ ...eventFilter, rfidTag: normalizeRfidTag(parsedScan) }).populate('event');
-    } else if (parsedScan) {
-      attendee = await Attendee.findOne({ ...eventFilter, qrToken: parsedScan }).populate('event');
-    }
+    const scanMethod = getScanMethod({ qrToken, rfidId, parsedScan });
+    const attendee = await resolveAttendee({ qrToken, rfidId, eventId: req.body.eventId });
 
     if (!attendee) {
       return res.status(404).json({ success: false, reason: 'NOT_FOUND', message: 'Attendee not found. Invalid QR or RFID.' });
@@ -124,7 +119,8 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     }
 
     // Enforce RFID feature toggle per event
-    if (scanMethod === 'rfid' && !attendee.event?.settings?.rfidEnabled) {
+    const rfidToggle = await enforceRfidToggle({ attendee, rfidId, fullEvent: attendee.event });
+    if (!rfidToggle.allowed) {
       const log = await EntryLog.create(buildLogPayload({
         attendee,
         gateId: gateId || 'RFID Scanner',
@@ -135,7 +131,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         method: scanMethod,
         deviceId,
         accessGranted: false,
-        denialReason: 'RFID disabled for event',
+        denialReason: rfidToggle.message,
         processedBy: req.user._id,
       }));
       emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
@@ -149,8 +145,8 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       });
       return res.status(400).json({
         success: false,
-        reason: 'RFID_DISABLED',
-        message: 'RFID functionality is disabled for this event.',
+        reason: rfidToggle.reason,
+        message: rfidToggle.message,
         data: { log },
       });
     }
@@ -195,25 +191,26 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     // --- DATE VALIDATION ---
     const now = new Date();
     const eventStart = new Date(attendee.event.startDate);
-    const eventEnd = attendee.event.endDate ? new Date(attendee.event.endDate) : new Date(eventStart.getTime() + (24 * 60 * 60 * 1000));
-    
-    // Buffer: Allow check-in 2 hours early
-    const earlyBuffer = 2 * 60 * 60 * 1000;
-    const lateBuffer = 1 * 60 * 60 * 1000; // Allow checkout 1 hour late
+    const eventEnd = attendee.event.endDate
+      ? new Date(attendee.event.endDate)
+      : new Date(eventStart.getTime() + (24 * 60 * 60 * 1000));
+
+    const earlyBuffer = 2 * 60 * 60 * 1000; // 2 hours early
+    const lateBuffer = 1 * 60 * 60 * 1000;  // 1 hour late
 
     if (now < (eventStart.getTime() - earlyBuffer)) {
-      return res.status(403).json({ 
-        success: false, 
-        reason: 'EVENT_NOT_STARTED', 
-        message: `Event has not started yet. Starts at ${eventStart.toLocaleString()}.` 
+      return res.status(403).json({
+        success: false,
+        reason: 'EVENT_NOT_STARTED',
+        message: `Event has not started yet. Starts at ${eventStart.toLocaleString()}.`,
       });
     }
 
     if (now > (eventEnd.getTime() + lateBuffer)) {
-      return res.status(403).json({ 
-        success: false, 
-        reason: 'EVENT_EXPIRED', 
-        message: `Event has ended. Closed at ${eventEnd.toLocaleString()}.` 
+      return res.status(403).json({
+        success: false,
+        reason: 'EVENT_EXPIRED',
+        message: `Event has ended. Closed at ${eventEnd.toLocaleString()}.`,
       });
     }
 
@@ -243,16 +240,17 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, reason: 'NOT_CONFIRMED', message: 'Identity not confirmed.', data: { log } });
     }
 
-    // === CREDENTIAL DEDUPLICATION & STATE VALIDATION ===
-    // Allow QR check-in followed by RFID check-out (and vice versa)
-    // But prevent same method re-entry without check-out
-    const isRfidScan = scanMethod === 'rfid';
-    
+    // =====================================================
+    // CREDENTIAL & STATE VALIDATION (QR ↔ RFID rules)
+    // =====================================================
+    // Rules:
+    // 1. Either QR or RFID can be used for the first check-in.
+    // 2. Once checked-in → cannot check-in again with ANY method until check-out.
+    // 3. Check-out can be done with either method (QR or RFID).
+    // 4. Zone entry requires main-entry check-in first.
+
     if (action === 'check_in') {
-      // Prevent duplicate entry if already checked in
       if (attendee.checkedIn) {
-        // Check if this is a different credential type trying to check in again
-        // If so, suggest check-out instead
         const log = await EntryLog.create(buildLogPayload({
           attendee,
           gateId: resolvedGate,
@@ -275,17 +273,16 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           timestamp: log.timestamp,
           accessGranted: false,
         });
-        return res.status(409).json({ 
-          success: false, 
-          reason: 'ALREADY_CHECKED_IN', 
-          message: 'Attendee has already checked in. Please use Exit/Check-Out mode.',
-          data: { log, attendee, suggestCheckOut: true }
+        return res.status(409).json({
+          success: false,
+          reason: 'ALREADY_CHECKED_IN',
+          message: 'Attendee has already checked in. Please use Exit/Check-Out mode first.',
+          data: { log, attendee, suggestCheckOut: true },
         });
       }
     }
 
     if (action === 'check_out') {
-      // Allow check-out only if currently checked in
       if (!attendee.checkedIn) {
         const log = await EntryLog.create(buildLogPayload({
           attendee,
@@ -309,11 +306,11 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           timestamp: log.timestamp,
           accessGranted: false,
         });
-        return res.status(409).json({ 
-          success: false, 
-          reason: 'NOT_CHECKED_IN', 
+        return res.status(409).json({
+          success: false,
+          reason: 'NOT_CHECKED_IN',
           message: 'Attendee is not currently checked in.',
-          data: { log, attendee }
+          data: { log, attendee },
         });
       }
     }
@@ -321,19 +318,19 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     let accessGranted = true;
     let denialReason = null;
 
-    // Zone access validation for zone_entry/zone_exit
+    // Zone access validation
     if ((action === 'zone_entry' || action === 'zone_exit') && zoneId) {
       if (!(attendee.allowedZones || []).includes(zoneId)) {
         accessGranted = false;
         denialReason = `No access to zone: ${zoneName || zoneId}`;
       }
-      
+
       // Zone entry only allowed after main entry check-in
       if (action === 'zone_entry' && !attendee.checkedIn) {
         accessGranted = false;
         denialReason = 'Must check in at main entry first';
       }
-      
+
       // Zone exit only allowed if currently in that zone
       if (action === 'zone_exit' && attendee.currentZone !== zoneId) {
         accessGranted = false;
@@ -345,7 +342,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     if (action === 'check_in' && accessGranted) {
       attendee.checkedIn = true;
       attendee.checkedInAt = new Date();
-      attendee.lastEntryMethod = scanMethod;
+      attendee.lastEntryMethod = scanMethod; // 'qr' or 'rfid'
     }
 
     if (action === 'check_out' && accessGranted) {
@@ -389,12 +386,15 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       source: 'entry',
       eventId: attendee.event._id,
       name: attendee.fullName,
-      action: accessGranted ? (action === 'check_in' ? 'CHECK-IN' : action === 'check_out' ? 'CHECK-OUT' : action.toUpperCase()) : 'DENIED ENTRY',
+      action: accessGranted
+        ? (action === 'check_in' ? 'CHECK-IN' : action === 'check_out' ? 'CHECK-OUT' : action.toUpperCase())
+        : 'DENIED ENTRY',
       zoneName: zoneName || resolvedGate || 'Main Entry',
       timestamp: logEntry.timestamp,
       accessGranted,
       categoryName: attendee.categoryName,
       processedByName: req.user.name || req.user.email,
+      scanMethod,
     });
 
     res.json({
@@ -414,12 +414,16 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           rfidTag: attendee.rfidTag,
           scanMethod,
           photoVerificationStatus: attendee.photoVerificationStatus,
+          checkedIn: attendee.checkedIn,
+          lastEntryMethod: attendee.lastEntryMethod,
         },
         event: { name: attendee.event.name, zones: attendee.event.zones },
         log: logEntry,
       },
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/entry/logs - get entry logs for event
@@ -461,7 +465,9 @@ router.get('/logs', protect, async (req, res, next) => {
       EntryLog.countDocuments(filter),
     ]);
     res.json({ success: true, data: { logs, total } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/entry/stats - live stats for event
@@ -549,7 +555,9 @@ router.get('/stats', protect, async (req, res, next) => {
         today: todaySummary[0] || { totalScanned: 0, successfulEntries: 0, deniedEntries: 0 },
       },
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/entry/search - staff lookup by attendee name or phone
@@ -581,7 +589,9 @@ router.get('/search', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
       .limit(Math.min(parseInt(limit, 10) || 10, 20));
 
     res.json({ success: true, data: { attendees } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/entry/attendee/:qrToken - look up attendee by QR (entry screen)
@@ -594,10 +604,12 @@ router.get('/attendee/:qrToken', protect, async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
     }
     res.json({ success: true, data: { attendee } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
-// GET /api/entry/lookup?q= - manual attendee lookup (alias for /search with looser params)
+// GET /api/entry/lookup?q= - manual attendee lookup
 router.get('/lookup', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
   try {
     const { eventId, q, limit = 10 } = req.query;
@@ -625,7 +637,9 @@ router.get('/lookup', protect, restrictTo('main_admin', 'main_organiser', 'sub_o
       .sort({ checkedIn: 1, fullName: 1 })
       .limit(Math.min(parseInt(limit, 10) || 10, 20));
     res.json({ success: true, data: { attendees } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/entry/checkin - explicit check-in with optional wristband issuance
@@ -644,13 +658,11 @@ router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub
 
     const resolvedGate = normalizeGate(gateName || gateId || 'Main Gate');
 
-    // Issue wristband if requested and not already issued
     if (wristbandId && !attendee.wristbandId) {
       attendee.wristbandId = wristbandId;
       attendee.wristbandIssuedAt = new Date();
       attendee.wristbandIssuedBy = req.user._id;
     } else if (!attendee.wristbandId) {
-      // Auto-generate wristband ID
       attendee.wristbandId = `WB-${Date.now()}`;
       attendee.wristbandIssuedAt = new Date();
       attendee.wristbandIssuedBy = req.user._id;
@@ -659,6 +671,7 @@ router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub
     if (!attendee.checkedIn) {
       attendee.checkedIn = true;
       attendee.checkedInAt = new Date();
+      attendee.lastEntryMethod = method;
     }
     await attendee.save();
 
@@ -698,7 +711,9 @@ router.post('/checkin', protect, restrictTo('main_admin', 'main_organiser', 'sub
         log: logEntry,
       },
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/entry/checkout - explicit manual checkout
@@ -725,6 +740,9 @@ router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'su
     }
 
     attendee.checkedIn = false;
+    attendee.checkedInAt = null;
+    attendee.currentZone = null;
+    attendee.lastExitMethod = method;
     await attendee.save();
 
     const logEntry = await EntryLog.create(buildLogPayload({
@@ -761,7 +779,9 @@ router.post('/checkout', protect, restrictTo('main_admin', 'main_organiser', 'su
         log: logEntry,
       },
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/entry/receive-payment - Receive cash payment for reservation
@@ -774,7 +794,6 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
       return res.status(400).json({ success: false, message: 'confirmationToken or orderNumber required.' });
     }
 
-    // Find the order
     let order;
     if (confirmationToken) {
       order = await Order.findOne({ confirmationToken }).populate('eventId');
@@ -786,30 +805,25 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
       return res.status(404).json({ success: false, message: 'Reservation not found.' });
     }
 
-    // Check if this is a cash reservation
     if (!['cash_at_entrance', 'cash_on_entrance'].includes(order.paymentMethod)) {
       return res.status(400).json({ success: false, message: 'This order is not a cash at entrance reservation.' });
     }
 
-    // Check if already paid
     if (order.paymentStatus === 'paid' || order.status === 'CONFIRMED') {
       return res.status(400).json({ success: false, message: 'Payment has already been received for this reservation.' });
     }
 
-    // Check event access
     if (!(await userHasEventAccess(req.user, order.eventId?._id || order.eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
-    // Verify amount matches
     if (amountReceived && Number(amountReceived) < order.totalAmount) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Insufficient payment. Required: ${order.totalAmount}, Received: ${amountReceived}` 
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient payment. Required: ${order.totalAmount}, Received: ${amountReceived}`,
       });
     }
 
-    // Update order status
     order.status = 'CONFIRMED';
     order.paymentStatus = 'paid';
     order.paidAt = new Date();
@@ -824,24 +838,20 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
     };
     await order.save();
 
-    // Update ticket statuses to SOLD
     const tickets = await Ticket.find({ order: order._id });
     for (const ticket of tickets) {
       ticket.status = 'SOLD';
       await ticket.save();
     }
 
-    // Generate QR codes and create attendees if they don't exist
     const attendees = [];
     for (const ticket of tickets) {
-      // Check if attendee already exists for this ticket
       let attendee = await Attendee.findOne({ ticket: ticket._id });
-      
+
       if (!attendee) {
-        // Create placeholder attendee for ticket issuance
         const qrToken = uuidv4();
         const qrCode = await QRCode.toDataURL(qrToken);
-        
+
         attendee = new Attendee({
           event: order.eventId._id,
           ticket: ticket._id,
@@ -863,7 +873,6 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
         });
         await attendee.save();
       } else {
-        // Update existing attendee
         if (!attendee.qrToken) {
           attendee.qrToken = uuidv4();
         }
@@ -884,20 +893,16 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
         });
       }
       await attendee.save();
-      
-      // Update ticket with attendee reference
+
       ticket.attendee = attendee._id;
       await ticket.save();
-      
+
       attendees.push(attendee);
     }
 
-    // Send post-payment notifications
     try {
-      // Send payment confirmation email
       await sendCashPaymentConfirmationEmail(order, order.eventId, attendees);
-      
-      // Send final ticket notifications to attendees
+
       for (const attendee of attendees) {
         await notifyFinalTicket({
           attendee,
@@ -906,8 +911,7 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
           notificationChannel: 'both',
         });
       }
-      
-      // Send buyer summary
+
       await notifyBuyerFinalSummary({
         order,
         event: order.eventId,
@@ -915,10 +919,8 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
       });
     } catch (notificationError) {
       console.error('Notification error:', notificationError);
-      // Continue even if notifications fail
     }
 
-    // Log the payment collection
     const resolvedGate = normalizeGate(gateName || gateId || 'Payment Counter');
     const logEntry = await EntryLog.create({
       event: order.eventId._id,
@@ -939,7 +941,6 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
       },
     });
 
-    // Emit dashboard event
     emitDashboardEvent(io, 'payment_received', order.eventId._id.toString(), {
       orderId: order._id,
       orderNumber: order.orderNumber,
@@ -957,7 +958,7 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
         paymentStatus: order.paymentStatus,
         orderStatus: order.status,
         ticketsIssued: tickets.length,
-        attendees: attendees.map(a => ({
+        attendees: attendees.map((a) => ({
           _id: a._id,
           fullName: a.fullName,
           qrCode: a.qrCode,
@@ -973,8 +974,7 @@ router.post('/receive-payment', protect, restrictTo('main_admin', 'main_organise
   }
 });
 
-// POST /api/entry/rfid-assign - Assign RFID tag to attendee after QR scan (QR-first assignment flow)
-// This is the primary method for RFID assignment during event operations
+// POST /api/entry/rfid-assign - Assign RFID tag to attendee after QR scan
 router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
   try {
     const { qrToken, rfidTag, eventId } = req.body;
@@ -984,7 +984,6 @@ router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 
       return res.status(400).json({ success: false, message: 'qrToken and rfidTag are required.' });
     }
 
-    // Find attendee by QR token
     const attendee = await Attendee.findOne({ qrToken: String(qrToken).trim() })
       .populate('event', 'name settings')
       .populate('ticket', 'ticketNumber categoryId categoryName');
@@ -993,30 +992,26 @@ router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 
       return res.status(404).json({ success: false, message: 'Attendee not found. Invalid QR code.' });
     }
 
-    // Check event access
     if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
-    // Check if RFID is enabled for this event
     if (!attendee.event?.settings?.rfidEnabled) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'RFID access is disabled for this event.',
-        rfidEnabled: false 
+        rfidEnabled: false,
       });
     }
 
-    // Check if attendee already has an RFID assigned
     if (attendee.rfidTag) {
-      return res.status(409).json({ 
-        success: false, 
+      return res.status(409).json({
+        success: false,
         message: 'This attendee already has an RFID tag assigned.',
-        existingRfid: attendee.rfidTag 
+        existingRfid: attendee.rfidTag,
       });
     }
 
-    // Assign RFID to attendee using the existing service
     const result = await assignRfidToAttendee({
       rfidTag,
       attendeeId: attendee._id,
@@ -1024,7 +1019,6 @@ router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 
       operatorId: req.user._id,
     });
 
-    // Emit dashboard event for real-time updates
     emitDashboardEvent(io, 'rfid_assigned', attendee.event._id.toString(), {
       source: 'rfid_assignment',
       eventId: attendee.event._id,
@@ -1066,7 +1060,7 @@ router.post('/rfid-assign', protect, restrictTo('main_admin', 'main_organiser', 
   }
 });
 
-// GET /api/entry/attendee-by-qr/:qrToken - Look up attendee by QR token for RFID assignment screen
+// GET /api/entry/attendee-by-qr/:qrToken
 router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
   try {
     const { qrToken } = req.params;
@@ -1076,7 +1070,6 @@ router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_o
       return res.status(400).json({ success: false, message: 'qrToken is required.' });
     }
 
-    // Build query - allow eventId filter if provided
     const query = { qrToken: String(qrToken).trim() };
     if (eventId) {
       if (!mongoose.Types.ObjectId.isValid(eventId)) {
@@ -1085,7 +1078,6 @@ router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_o
       query.event = eventId;
     }
 
-    // Find attendee
     const attendee = await Attendee.findOne(query)
       .populate('event', 'name venue startDate endDate settings.rfidEnabled zones categories')
       .populate('ticket', 'ticketNumber categoryId categoryName')
@@ -1095,12 +1087,10 @@ router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_o
       return res.status(404).json({ success: false, message: 'Attendee not found.' });
     }
 
-    // Check event access
     if (!(await userHasEventAccess(req.user, attendee.event?._id || attendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }
 
-    // Check if RFID is enabled for this event
     const rfidEnabled = attendee.event?.settings?.rfidEnabled === true;
 
     res.json({
@@ -1132,11 +1122,13 @@ router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_o
           zones: attendee.event.zones,
           categories: attendee.event.categories,
         },
-        ticket: attendee.ticket ? {
-          ticketNumber: attendee.ticket.ticketNumber,
-          categoryId: attendee.ticket.categoryId,
-          categoryName: attendee.ticket.categoryName,
-        } : null,
+        ticket: attendee.ticket
+          ? {
+              ticketNumber: attendee.ticket.ticketNumber,
+              categoryId: attendee.ticket.categoryId,
+              categoryName: attendee.ticket.categoryName,
+            }
+          : null,
         canAssignRfid: !attendee.rfidTag && rfidEnabled,
         hasRfid: !!attendee.rfidTag,
       },
@@ -1146,7 +1138,7 @@ router.get('/attendee-by-qr/:qrToken', protect, restrictTo('main_admin', 'main_o
   }
 });
 
-// GET /api/entry/event-rfid-status/:eventId - Get RFID status for an event (for frontend conditional rendering)
+// GET /api/entry/event-rfid-status/:eventId
 router.get('/event-rfid-status/:eventId', protect, async (req, res, next) => {
   try {
     const { eventId } = req.params;
@@ -1155,7 +1147,6 @@ router.get('/event-rfid-status/:eventId', protect, async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid event ID.' });
     }
 
-    // Check event access
     if (!(await userHasEventAccess(req.user, eventId))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
     }

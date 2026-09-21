@@ -7,6 +7,7 @@ const ZoneLog = require('../models/ZoneLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
 const { normalizeRole, ROLES } = require('../utils/rbac');
+const { enforceRfidToggle } = require('../services/credentialService');
 
 /**
  * Check if a ticket is valid for entry.
@@ -64,6 +65,9 @@ const isReservationValid = (ticket, event) => {
 
 const DUPLICATE_SCAN_WINDOW_MS = 5000;
 
+// Change this to the exact name (or id) of your main entry zone
+const MAIN_ENTRY_ZONE = 'Main Entry';
+
 const normalizeZoneName = (value) => (value || '').trim();
 
 const resolveZone = (event, requestedZone) => {
@@ -118,6 +122,17 @@ const getUserAssignedZones = (user) => Array.from(new Set([
   ...((user?.responsibilities?.zoneIds || []).map(String)),
 ])).filter(Boolean);
 
+const getExpectedAction = async (attendeeId, zoneName) => {
+  const lastGranted = await ZoneLog.findOne({
+    attendeeId,
+    zoneName,
+    accessGranted: true,
+  }).sort({ timestamp: -1 });
+
+  if (!lastGranted) return 'ENTRY';
+  return lastGranted.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
+};
+
 const buildDeniedResponse = async ({
   attendee,
   zoneName,
@@ -149,7 +164,7 @@ const buildDeniedResponse = async ({
     emitDashboardEvent(io, 'zone_scan', attendee.event.toString(), {
       source: 'zone',
       eventId: attendee.event,
-      attendeeName: attendee.fullName, // Use attendeeName for frontend compatibility
+      attendeeName: attendee.fullName,
       action: denialReason === 'DUPLICATE_SCAN' ? 'DUPLICATE' : 'DENIED',
       zoneName,
       timestamp: deniedLog.timestamp,
@@ -226,6 +241,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         },
       });
     }
+
     const hasEventAccess = await userHasEventAccess(req.user, event);
     if (!hasEventAccess) {
       return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
@@ -237,18 +253,34 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(403).json({ success: false, message: `You are not assigned to scan ${zoneName}.` });
     }
 
+    // -------------------------------------------------
+    // 1. Determine expected action (strict)
+    // -------------------------------------------------
+    const expectedAction = await getExpectedAction(attendee._id, zoneName);
     let action = req.body.action;
-    
-    if (!action) {
-      const lastGrantedLog = await ZoneLog.findOne({
-        attendeeId: attendee._id,
-        zoneName,
-        accessGranted: true,
-      }).sort({ timestamp: -1 });
 
-      action = lastGrantedLog?.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
+    if (!action) {
+      action = expectedAction;
+    } else if (action !== expectedAction) {
+      const denied = await buildDeniedResponse({
+        attendee,
+        zoneName,
+        action,
+        scanMethod: qrToken ? 'QR' : 'RFID',
+        userId: req.user._id,
+        io,
+        denialReason: action === 'ENTRY' ? 'ALREADY_INSIDE' : 'ALREADY_OUTSIDE',
+        httpStatus: 409,
+        message: action === 'ENTRY'
+          ? 'Attendee is already inside this zone. Please scan for EXIT first.'
+          : 'Attendee is already outside this zone. Please scan for ENTRY first.',
+      });
+      return res.status(denied.status).json(denied.body);
     }
 
+    // -------------------------------------------------
+    // 2. Duplicate-scan window
+    // -------------------------------------------------
     const recentLog = await ZoneLog.findOne({
       attendeeId: attendee._id,
       zoneName,
@@ -266,15 +298,16 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         httpStatus: 429,
         message: 'Please wait before scanning this attendee again.',
       });
-
       return res.status(denied.status).json(denied.body);
     }
 
-    // Fetch the event with endDateTime for expiration check
+    // -------------------------------------------------
+    // 3. Fetch full event + RFID toggle
+    // -------------------------------------------------
     const fullEvent = await Event.findById(event._id).select('endDateTime zones settings');
 
-    // Enforce RFID toggle: if RFID is disabled for the event, reject RFID scans
-    if (rfidId && !(fullEvent.settings?.rfidEnabled)) {
+    const rfidToggle = await enforceRfidToggle({ attendee, rfidId, fullEvent });
+    if (!rfidToggle.allowed) {
       const denied = await buildDeniedResponse({
         attendee,
         zoneName,
@@ -282,14 +315,16 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         scanMethod: 'RFID',
         userId: req.user._id,
         io,
-        denialReason: 'RFID_DISABLED',
+        denialReason: rfidToggle.reason,
         httpStatus: 403,
-        message: 'RFID functionality is disabled for this event.',
+        message: rfidToggle.message,
       });
       return res.status(denied.status).json(denied.body);
     }
-    
-    // Validate ticket status against event end time
+
+    // -------------------------------------------------
+    // 4. Ticket validity + event ended
+    // -------------------------------------------------
     const ticketValidation = isTicketValid(attendee.ticket, fullEvent);
     if (!ticketValidation.valid) {
       const denied = await buildDeniedResponse({
@@ -303,30 +338,27 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         httpStatus: 403,
         message: ticketValidation.message,
       });
-
       return res.status(denied.status).json(denied.body);
     }
 
-    // Check if event has ended (for any ticket status)
-    if (fullEvent?.endDateTime) {
-      const eventEndTime = new Date(fullEvent.endDateTime);
-      if (eventEndTime < new Date()) {
-        const denied = await buildDeniedResponse({
-          attendee,
-          zoneName,
-          action,
-          scanMethod: qrToken ? 'QR' : 'RFID',
-          userId: req.user._id,
-          io,
-          denialReason: 'EVENT_ENDED',
-          httpStatus: 403,
-          message: 'Event has ended. No further entries allowed.',
-        });
-
-        return res.status(denied.status).json(denied.body);
-      }
+    if (fullEvent?.endDateTime && new Date(fullEvent.endDateTime) < new Date()) {
+      const denied = await buildDeniedResponse({
+        attendee,
+        zoneName,
+        action,
+        scanMethod: qrToken ? 'QR' : 'RFID',
+        userId: req.user._id,
+        io,
+        denialReason: 'EVENT_ENDED',
+        httpStatus: 403,
+        message: 'Event has ended. No further entries allowed.',
+      });
+      return res.status(denied.status).json(denied.body);
     }
 
+    // -------------------------------------------------
+    // 5. Attendee status
+    // -------------------------------------------------
     if (!attendee.isActive || attendee.isDisabled || !attendee.isConfirmed || attendee.confirmationStatus !== 'confirmed') {
       const denialReason = attendee.isDisabled ? 'TICKET_DISABLED' : 'INVALID_TICKET';
       const message = attendee.isDisabled ? 'Ticket has been disabled' : 'Invalid ticket';
@@ -341,10 +373,32 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         httpStatus: 403,
         message,
       });
-
       return res.status(denied.status).json(denied.body);
     }
 
+    // -------------------------------------------------
+    // 6. Main-entry gate (ONLY for non-main zones)
+    // -------------------------------------------------
+    const isMainEntryZone = zoneName === MAIN_ENTRY_ZONE || zoneId === MAIN_ENTRY_ZONE;
+
+    if (!isMainEntryZone && action === 'ENTRY' && !attendee.checkedIn) {
+      const denied = await buildDeniedResponse({
+        attendee,
+        zoneName,
+        action,
+        scanMethod: qrToken ? 'QR' : 'RFID',
+        userId: req.user._id,
+        io,
+        denialReason: 'MAIN_ENTRY_REQUIRED',
+        httpStatus: 403,
+        message: 'Attendee must check in at the Main Entry before accessing any other zone.',
+      });
+      return res.status(denied.status).json(denied.body);
+    }
+
+    // -------------------------------------------------
+    // 7. Zone permission
+    // -------------------------------------------------
     const allowedZones = attendee.allowedZones || [];
     if (!allowedZones.includes(zoneName) && !allowedZones.includes(zoneId)) {
       const denied = await buildDeniedResponse({
@@ -358,10 +412,12 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         httpStatus: 403,
         message: 'Zone not included in ticket',
       });
-
       return res.status(denied.status).json(denied.body);
     }
 
+    // -------------------------------------------------
+    // 8. Create the log + update checkedIn flag
+    // -------------------------------------------------
     const zoneLog = await ZoneLog.create({
       attendeeId: attendee._id,
       eventId: event._id,
@@ -377,16 +433,34 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       },
     });
 
+    // Update main-entry status
+    if (isMainEntryZone) {
+      if (action === 'ENTRY') {
+        attendee.checkedIn = true;
+        attendee.checkedInAt = new Date();
+        attendee.checkedInMethod = qrToken ? 'QR' : 'RFID';
+      } else if (action === 'EXIT') {
+        attendee.checkedIn = false;
+        attendee.checkedInAt = null;
+        attendee.checkedInMethod = null;
+      }
+      await attendee.save();
+    }
+
+    // -------------------------------------------------
+    // 9. Emit + respond
+    // -------------------------------------------------
     emitDashboardEvent(io, 'zone_scan', event._id.toString(), {
       source: 'zone',
       eventId: event._id,
       attendeeName: attendee.fullName,
-      action: action, // 'ENTRY' or 'EXIT'
+      action,
       zoneName,
       timestamp: zoneLog.timestamp,
       accessGranted: true,
       categoryName: attendee.categoryName,
       processedByName: req.user.name || req.user.email,
+      scanMethod: qrToken ? 'QR' : 'RFID',
     });
 
     res.json({
@@ -403,6 +477,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
           categoryName: attendee.categoryName,
           allowedZones,
           photo: attendee.photo,
+          checkedIn: attendee.checkedIn,
         },
         event: {
           _id: event._id,
