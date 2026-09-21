@@ -8,21 +8,33 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const fs = require('fs');
 
 // Validate required env vars at load time
-const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-const containerName = process.env.AZURE_STORAGE_CONTAINER;
+const rawConnectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+const connectionString = rawConnectionString && !rawConnectionString.startsWith('Your_Azure') ? rawConnectionString : undefined;
+const rawContainerName = process.env.AZURE_STORAGE_CONTAINER;
+const containerName = rawContainerName && !rawContainerName.includes('your-container-name') ? rawContainerName : undefined;
+let isAzureConfigured = true;
 if (!connectionString) {
-  throw new Error('AZURE_STORAGE_CONNECTION_STRING environment variable is required');
+  console.warn('AZURE_STORAGE_CONNECTION_STRING not set or placeholder – Azure Blob Service disabled.');
+  isAzureConfigured = false;
 }
 if (!containerName) {
-  throw new Error('AZURE_STORAGE_CONTAINER environment variable is required');
+  console.warn('AZURE_STORAGE_CONTAINER not set or placeholder – Azure Blob Service disabled.');
+  isAzureConfigured = false;
 }
+// If Azure is not configured we will fall back to local storage; no throw here.
 
-const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+let blobServiceClient = null;
 let containerClient = null;
 
+if (isAzureConfigured) {
+  blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+}
+
 async function getContainerClient() {
+  if (!isAzureConfigured) return null;
   if (containerClient) return containerClient;
   containerClient = blobServiceClient.getContainerClient(containerName);
   const exists = await containerClient.exists();
@@ -41,10 +53,23 @@ async function getContainerClient() {
  */
 async function uploadBuffer(buffer, originalName, mimeType) {
   if (!buffer || !originalName) {
-    throw new Error('Invalid buffer or originalName for Azure upload');
+    throw new Error('Invalid buffer or originalName for upload');
   }
   const ext = path.extname(originalName).toLowerCase();
   const uniqueName = `${uuidv4()}${ext}`;
+
+  if (!isAzureConfigured) {
+    // Fallback: store locally in the uploads folder
+    const uploadDir = path.join(__dirname, '../../uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const localPath = path.join(uploadDir, uniqueName);
+    fs.writeFileSync(localPath, buffer);
+    // Return a pseudo‑URL that the frontend can still use (served statically by Express)
+    return `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${uniqueName}`;
+  }
+
   const client = await getContainerClient();
   const blockBlobClient = client.getBlockBlobClient(uniqueName);
   const uploadOptions = {
@@ -62,6 +87,19 @@ async function uploadBuffer(buffer, originalName, mimeType) {
  */
 async function deleteBlobByUrl(blobUrl) {
   if (!blobUrl) return;
+  if (!isAzureConfigured) {
+    // Local fallback: attempt to delete the file from the uploads folder
+    try {
+      const filename = path.basename(blobUrl);
+      const localPath = path.join(__dirname, '../../uploads', filename);
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+      }
+    } catch (err) {
+      console.error('Local deleteBlobByUrl error:', err.message);
+    }
+    return;
+  }
   try {
     const url = new URL(blobUrl);
     const blobName = url.pathname.split('/').pop();
