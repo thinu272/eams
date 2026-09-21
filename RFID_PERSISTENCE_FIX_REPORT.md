@@ -907,5 +907,3 @@ Modified `frontend/src/pages/admin/AdminDashboard.jsx`:
 - ✅ Allows operations when enabled (with permission)
 
 ---
-**Report Version:** 1.0  
-**Last Updated:** September 18, 2026
