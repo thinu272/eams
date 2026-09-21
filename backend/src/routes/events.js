@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const { logActivity } = require('../utils/logger');
-const { uploadBuffer } = require('../services/azureStorage/azureBlobService');
+const { uploadBuffer } = require('../../services/azureStorage/azureBlobService');
 
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -99,17 +99,6 @@ const normalizeEventPayload = (body, file, files) => {
   }
 
   // Image handling is performed in the route using Azure Blob Storage.
-
-
-
-
-
-
-    
-
-
-
-
 
   // Sync old structure to new eventDetails structure for consistency
   // This ensures that when the form updates matchDetails, concertDetails, etc.,
