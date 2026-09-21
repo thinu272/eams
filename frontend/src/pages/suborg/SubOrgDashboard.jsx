@@ -687,18 +687,6 @@ const SubOrgDashboard = () => {
             />
 
             <CapabilityCard
-              permission="canInviteAttendees"
-              title="Send Invitations"
-              description="Resend confirmation emails to attendees"
-              linkTo="/suborg/invites"
-              linkLabel="Manage invitations"
-              icon={EnvelopeIcon}
-              tone="cyan"
-              enabledTitle="Invitation management enabled"
-              enabledDesc="You can resend confirmation emails"
-            />
-
-            <CapabilityCard
               permission="canBulkUpload"
               title="Excel Bulk Imports"
               description="Upload spreadsheets for bulk registration"
