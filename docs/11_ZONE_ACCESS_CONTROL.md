@@ -19,7 +19,8 @@ The system distinguishes between two scanning contexts:
   - Attendee must be checked in (for check-out)
 - **Zones**: Uses `gateId`/`gateName` rather than zone IDs
 - **RFID Assignment**: After successful check-in, staff can assign RFID to non-RFID attendees
-### Zone Scanner (Inner Zones)
+
+### Zone Scanner (Inner Zones)
 - **Purpose**: Track and validate attendee movement into and out of designated venue areas
 - **Actions**: `ENTRY` (Zone Entry), `EXIT` (Zone Exit) - explicitly selected by the terminal operator (no automatic inverting)
 - **Validations**:
