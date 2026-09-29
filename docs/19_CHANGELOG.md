@@ -47,6 +47,26 @@ All notable changes to the **ENTRYNEX / EAMS** project documentation are listed 
   - Updated `09_BUSINESS_LOGIC.md` with check-in/check-out flow and SubOrganizer operations
   - Rewrote `11_ZONE_ACCESS_CONTROL.md` with comprehensive entry/zone scanning documentation
 
+### 2026-09-29
+- **QR Scanner `play()` AbortError Fix**:
+  - Added a global `HTMLMediaElement.prototype.play` wrapper in `frontend/src/index.js` to silently swallow `AbortError` exceptions caused by React 18 StrictMode double-mounting and component unmount race conditions with the HTML5-QRCode camera stream.
+  - Added a global `unhandledrejection` listener to prevent the same error from surfacing as an uncaught runtime error overlay in development.
+  - Hardened `QRScannerComponent.jsx` cleanup logic: the effect's return function now calls `.catch().finally()` on the `startPromise` so the camera is always gracefully stopped and cleared even when unmounting occurs during camera initialization.
+- **Sub-Organiser Zone Scanner — Synced with Staff Dashboard Logic**:
+  - Rewrote `SubOrgZoneScannerPage.jsx` to be functionally identical to `StaffZoneAccessPage.jsx`:
+    - Same 4-tab layout (Scanner, Manual, Stats, Logs).
+    - Offline mode with automatic re-sync queue (`entrynex:offline-zone-scans`).
+    - Socket.IO listeners for both `zone_update` and `zone_scan` events for real-time metric and log updates matching the staff dashboard.
+    - `availableZones` computed from the current event's zone list, with zone dropdown shown when not locked to assigned zones.
+    - `getZoneDisplayName` helper for human-readable zone labels.
+    - `lastScan` card, paginated log view, stats metrics, RFID reader mode toggle (shown only when `event.settings.rfidEnabled === true`).
+- **Removed RFID Assignment Widget from Zone Scanner**:
+  - Removed the "Assign RFID Tag" panel (10-digit entry field and Assign button) from `SubOrgZoneScannerPage.jsx`.
+  - Zone terminals are now exclusively high-throughput scan terminals; RFID pairing remains on the dedicated `/suborg/rfid-assignment` page.
+- **Documentation Updates**:
+  - Updated `11_ZONE_ACCESS_CONTROL.md` to accurately reflect that both Staff and Sub-Organiser zone terminals are now feature-identical (Scanner, Manual, Stats, Logs tabs) with no RFID assignment widget on the zone page.
+  - Updated `19_CHANGELOG.md` with this entry.
+
 ### 2026-08-31
 - Fixed undefined `conference` error in `EventDetailPage.jsx` by adding missing variable definitions for `match`, `concert`, `conference`, and `workshop` extracted from the event object.
 
