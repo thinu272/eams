@@ -18,12 +18,13 @@ const DashboardLayout = ({ children }) => {
 
       <Sidebar 
         isMobileOpen={isMobileMenuOpen} 
-        onClose={() => setIsMobileMenuOpen(false)} 
+        onClose={() => setIsMobileMenuOpen(false)}
+        onOpen={() => setIsMobileMenuOpen(true)}
       />
       
       <main className="flex-1 overflow-auto">
         <Header onMenuClick={() => setIsMobileMenuOpen(true)} />
-        <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 pb-24 lg:pb-6">{children}</div>
       </main>
     </div>
   );

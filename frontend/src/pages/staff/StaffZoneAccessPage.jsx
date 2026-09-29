@@ -493,7 +493,7 @@ const StaffZoneAccessPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 pb-24 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl space-y-4 px-3 pb-24 sm:space-y-5 sm:px-6">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
           <button
@@ -521,7 +521,7 @@ const StaffZoneAccessPage = () => {
         </div>
 
         {/* Header */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-4 shadow-sm sm:px-6 sm:py-5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
@@ -542,7 +542,7 @@ const StaffZoneAccessPage = () => {
 
         {/* Last Scan Card */}
         {lastScan ? (
-          <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between">
               <span
                 className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
@@ -562,7 +562,7 @@ const StaffZoneAccessPage = () => {
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Attendee
@@ -632,7 +632,7 @@ const StaffZoneAccessPage = () => {
         </nav>
 
         {/* ===================== TAB CONTENT ===================== */}
-        <div className="space-y-5">
+        <div className="space-y-4 sm:space-y-5">
           {/* SCANNER TAB */}
           {activeTab === 'scan' && (
             <div className="space-y-5">
@@ -698,7 +698,7 @@ const StaffZoneAccessPage = () => {
 
           {/* MANUAL TAB */}
           {activeTab === 'manual' && (
-            <div className="space-y-5 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
+            <div className="space-y-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
                   Manual Zone Permission
@@ -769,8 +769,8 @@ const StaffZoneAccessPage = () => {
 
           {/* STATS TAB */}
           {activeTab === 'stats' && (
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
+            <div className="space-y-4 sm:space-y-5">
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-6">
                 <h2 className="text-lg font-bold text-slate-900">
                   Active Zone Setup
                 </h2>
