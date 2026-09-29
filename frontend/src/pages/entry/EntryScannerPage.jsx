@@ -5,6 +5,8 @@ import { checkInAttendee, getEntryStats, lookupEntry, scanEntry } from '../../ap
 import QRScannerComponent from '../../components/events/QRScannerComponent';
 import toast from 'react-hot-toast';
 import { getAssetUrl } from '../../utils/backend';
+import { getAudioContext } from '../../pages/suborg/suborgUtils';
+
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -39,7 +41,8 @@ const buildAssetUrl = (photoPath) => {
 
 const playBeep = (granted) => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

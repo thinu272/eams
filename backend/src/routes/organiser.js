@@ -20,7 +20,7 @@ const Order = require('../models/Order');
 const PaymentSubmission = require('../models/PaymentSubmission');
 const { protect, checkRole, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyPhotoRejectionNotification, notifyStatusChange, notifySubOrganiserInvite, notifyUserCredentials } = require('../services/notificationService');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
 const { ROLES, ROLE_LEVELS, normalizeRole, hasRolePower } = require('../utils/rbac');
 const Sponsor = require('../models/Sponsor');
 const { logActivity } = require('../utils/logger');
@@ -648,7 +648,7 @@ router.post(
   '/attendees',
   requirePermission(['canAddAttendees', 'canEditAttendees']),
   upload.single('photo'),
-  handleS3Upload('attendee-photos'),
+  handleAzureUpload('attendee-photos'),
   [
     body('eventId').notEmpty().withMessage('eventId is required'),
     body('fullName').notEmpty().withMessage('Name is required'),

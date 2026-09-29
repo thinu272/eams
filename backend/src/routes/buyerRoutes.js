@@ -1,6 +1,6 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
 const {
   getBuyerOrders,
   getBuyerOrderDetails,
@@ -25,7 +25,7 @@ router.post('/orders/:orderId/refund', requestRefund);
 router.get('/tickets', getBuyerTickets);
 router.get('/invites', getBuyerInvites);
 router.post('/assign', assignAttendeeToTicket);
-router.post('/tickets/:ticketId/assign-self', upload.single('photo'), handleS3Upload('attendee-photos'), assignSelfToTicket);
+router.post('/tickets/:ticketId/assign-self', upload.single('photo'), handleAzureUpload('attendee-photos'), assignSelfToTicket);
 router.post('/tickets/:ticketId/invite', inviteForTicket);
 router.post('/tickets/:ticketId/resend-invite', resendInviteForTicket);
 

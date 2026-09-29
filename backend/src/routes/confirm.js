@@ -5,7 +5,7 @@ const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
 const { resolveConfirmedTicketStatus, requiresPhotoVerification } = require('../services/ticketDeliveryService');
 const { validatePhoto } = require('../services/photoValidationService');
 const { allocateRfid } = require('../services/rfidService');
@@ -82,7 +82,7 @@ router.get('/:inviteToken', async (req, res, next) => {
 router.post(
   '/:inviteToken',
   upload.single('photo'),
-  handleS3Upload('attendee-photos'),
+  handleAzureUpload('attendee-photos'),
   [
     body('fullName').notEmpty().withMessage('Full name is required'),
     body('idNumber').optional({ checkFalsy: true }),

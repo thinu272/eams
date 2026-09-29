@@ -10,7 +10,9 @@ const path = require('path');
 
 const hasAzureConfig = () => !!(
   process.env.AZURE_STORAGE_CONNECTION_STRING &&
-  process.env.AZURE_STORAGE_CONTAINER
+  process.env.AZURE_STORAGE_CONTAINER &&
+  process.env.AZURE_STORAGE_CONNECTION_STRING !== 'your-azure-storage-connection-string' &&
+  process.env.AZURE_STORAGE_CONTAINER !== 'your-container-name'
 );
 
 // Configure Azure Blob Service Client
@@ -54,13 +56,13 @@ const saveImageLocally = async (fileBuffer, filename, category = 'attendee-photo
 };
 
 /**
- * Upload and compress image to S3 or local disk fallback
+ * Upload and compress image to Azure Blob Storage or local disk fallback
  * @param {Buffer} fileBuffer - Image file buffer
  * @param {string} filename - Original filename
  * @param {string} category - Upload category (e.g., 'attendee-photos')
  * @returns {Promise<{key: String|null, url: String}>}
  */
-const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos') => {
+const uploadImageToAzure = async (fileBuffer, filename, category = 'attendee-photos') => {
   try {
     if (!hasAzureConfig()) {
       return saveImageLocally(fileBuffer, filename, category);
@@ -96,8 +98,8 @@ const uploadImageToS3 = async (fileBuffer, filename, category = 'attendee-photos
 };
 
 /**
- * Generate signed URL for private S3 object
- * @param {string} s3Key - S3 object key
+ * Generate signed URL for private Azure Blob
+ * @param {string} blobKey - Azure Blob object key
  * @param {number} expirySeconds - URL expiry time in seconds (default: 1 hour)
  * @returns {Promise<String>} Signed URL
  */
@@ -112,11 +114,11 @@ const getSignedUrl = async (blobKey, expirySeconds = SIGNED_URL_EXPIRY) => {
 };
 
 /**
- * Delete image from S3 or local disk
- * @param {string} s3Key - S3 object key
+ * Delete image from Azure Blob Storage or local disk
+ * @param {string} blobKey - Azure Blob object key
  * @returns {Promise<void>}
  */
-const deleteImageFromS3 = async (blobKey) => {
+const deleteImageFromAzure = async (blobKey) => {
   try {
     if (!blobKey) return;
 
@@ -136,12 +138,12 @@ const deleteImageFromS3 = async (blobKey) => {
   }
 };
 
-const deleteImagesFromS3 = async (blobKeys) => {
+const deleteImagesFromAzure = async (blobKeys) => {
   if (!blobKeys || blobKeys.length === 0) return;
 
   try {
     if (!hasAzureConfig()) {
-      await Promise.all(blobKeys.map((key) => deleteImageFromS3(key)));
+      await Promise.all(blobKeys.map((key) => deleteImageFromAzure(key)));
       return;
     }
 
@@ -158,7 +160,7 @@ const deleteImagesFromS3 = async (blobKeys) => {
   }
 };
 
-const getOldImagesInS3 = async (ageInDays = 30, prefix = 'attendee-photos/') => {
+const getOldImagesInAzure = async (ageInDays = 30, prefix = 'attendee-photos/') => {
   // Azure Blob storage listing implementation (simplified, returns empty as placeholder)
   if (!hasAzureConfig()) return [];
   // Implement listing if needed.
@@ -178,12 +180,55 @@ const getPublicUrl = (blobKey) => {
   return blobClient.url;
 };
 
+/**
+ * Upload a buffer to Azure Blob Storage.
+ * @param {Buffer} buffer - File data buffer.
+ * @param {string} originalName - Original file name (for extension detection).
+ * @param {string} mimeType - MIME type of the file.
+ * @returns {Promise<string>} - URL of uploaded blob.
+ */
+const uploadBuffer = async (buffer, originalName, mimeType) => {
+  if (!buffer || !originalName) {
+    throw new Error('Invalid buffer or originalName for upload');
+  }
+  const ext = path.extname(originalName).toLowerCase();
+  const uniqueName = `${uuidv4()}${ext}`;
+
+  if (!hasAzureConfig()) {
+    // Fallback: store locally in the uploads folder
+    const uploadDir = path.join(__dirname, '../../uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const localPath = path.join(uploadDir, uniqueName);
+    fs.writeFileSync(localPath, buffer);
+    // Return a pseudo‑URL that the frontend can still use (served statically by Express)
+    return `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${uniqueName}`;
+  }
+
+  const containerClient = blobServiceClient.getContainerClient(containerName);
+  const blockBlobClient = containerClient.getBlockBlobClient(uniqueName);
+  const uploadOptions = {
+    blobHTTPHeaders: {
+      blobContentType: mimeType || 'application/octet-stream',
+    },
+  };
+  await blockBlobClient.uploadData(buffer, uploadOptions);
+  return blockBlobClient.url;
+};
+
 module.exports = {
-  uploadImageToS3,
+  uploadImageToAzure,
   getSignedUrl,
-  deleteImageFromS3,
-  deleteImagesFromS3,
-  getOldImagesInS3,
+  deleteImageFromAzure,
+  deleteImagesFromAzure,
+  getOldImagesInAzure,
   cleanupOldImages,
   getPublicUrl,
+  uploadBuffer,
+  // Backward compatibility aliases
+  uploadImageToS3: uploadImageToAzure,
+  deleteImageFromS3: deleteImageFromAzure,
+  deleteImagesFromS3: deleteImagesFromAzure,
+  getOldImagesInS3: getOldImagesInAzure,
 };

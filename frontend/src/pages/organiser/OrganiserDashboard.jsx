@@ -1586,12 +1586,6 @@ const OrganiserDashboard = () => {
               </section>
             )}
 
-            {/* RFID Assignment Registry - View Only for Organisers */}
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-600 mb-4">RFID Operations</p>
-              <RfidAssignmentView embedded />
-            </section>
-
             {/* Charts */}
             <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
               <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">

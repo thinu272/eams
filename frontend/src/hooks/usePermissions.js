@@ -73,9 +73,10 @@ export const usePermissions = () => {
       canDeleteZones: hasPower('MainAdmin') || hasCustom('canDeleteZones'),
       
       // Scanning permissions
-      canScanEntry: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanEntry'),
-      canScanZones: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanZones'),
-      canManualSearch: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canManualSearch'),
+      canScanEntry: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanEntry') || hasCustom('canEntryAccess') || hasCustom('canGateScanAccess'),
+      canScanZones: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanZones') || hasCustom('canEntryAccess') || hasCustom('canGateScanAccess') || (user?.assignedZones?.length > 0) || (user?.responsibilities?.zoneIds?.length > 0),
+      canScanZone: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canScanZones') || hasCustom('canScanZone') || hasCustom('canEntryAccess') || hasCustom('canGateScanAccess') || (user?.assignedZones?.length > 0) || (user?.responsibilities?.zoneIds?.length > 0),
+      canManualSearch: hasPower('Staff') || canonicalRole === 'Volunteer' || hasCustom('canManualSearch') || hasCustom('canEntryAccess'),
       
       // Reports permissions
       canViewReports: hasPower('Auditor') || hasCustom('canViewReports'),
@@ -124,7 +125,7 @@ export const usePermissions = () => {
       canSendEmails: hasPower('MainOrganiser') || hasCustom('canSendEmails'),
       canSendSMS: hasPower('MainOrganiser') || hasCustom('canSendSMS'),
     };
-  }, [user?.role, user?.permissions, canonicalRole]);
+  }, [user?.role, user?.permissions, user?.assignedZones, user?.assignedGates, user?.responsibilities, canonicalRole]);
 
   const hasPermission = (permission) => {
     return permissions[permission] || false;

@@ -36,6 +36,8 @@ import {
   ArrowRightOnRectangleIcon,
   SignalIcon,
   DocumentTextIcon,
+  IdentificationIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 /* ───────────────────── Helpers ───────────────────── */
@@ -147,6 +149,7 @@ const SubOrgDashboard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const { user } = useAuth();
   const { permissions } = usePermissions();
+  const isSubOrganiser = user?.role === 'SubOrganiser';
 
   const load = (eventId) => {
     if (!eventId) {
@@ -405,61 +408,91 @@ const SubOrgDashboard = () => {
               <p className="text-sm text-slate-500">Live scan statistics for your assigned zones</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Entry In</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryIn ?? 0}</p>
+            { !isSubOrganiser && (
+              <>
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Entry In</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryIn ?? 0}</p>
+                </div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Entry Out</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryOut ?? 0}</p>
+                </div>
+              </>
+            )}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+              <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600">Zone In</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneIn ?? 0}</p>
+              </div>
+              <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Zone Out</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneOut ?? 0}</p>
+              </div>
+              <div className="rounded-xl bg-rose-50 border border-rose-100 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-600">Denied</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.denied ?? 0}</p>
+              </div>
+              { !isSubOrganiser && (
+                <>
+                  <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">QR Scans</p>
+                    <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.qrScans ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">RFID Scans</p>
+                    <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.rfidScans ?? 0}</p>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Entry Out</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryOut ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600">Zone In</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneIn ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Zone Out</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneOut ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-rose-50 border border-rose-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-600">Denied</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.denied ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">QR Scans</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.qrScans ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">RFID Scans</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.rfidScans ?? 0}</p>
-            </div>
-          </div>
         </Card>
 
         {/* Main Operation Cards */}
         <section className="grid gap-4 xl:grid-cols-4">
-          <PermissionGuard permission="canEntryAccess">
-            <Link to="/suborg/entry">
+          { !isSubOrganiser && (
+            <PermissionGuard permission="canEntryAccess">
+              <Link to="/suborg/entry">
+                <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                      <ArrowRightOnRectangleIcon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-bold text-slate-900">Entry Scanning</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">QR check-in / check-out at main gates</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                    <p className="text-xs font-semibold text-emerald-700">QR + RFID Support</p>
+                    <p className="text-[11px] text-emerald-600 mt-0.5">Assign RFID during entry scan</p>
+                  </div>
+                </Card>
+              </Link>
+            </PermissionGuard>
+          )}
+
+          <PermissionGuard permission="canAssignRfid">
+            <Link to="/suborg/rfid-assign">
               <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                    <ArrowRightOnRectangleIcon className="h-5 w-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+                    <IdentificationIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Entry Scanning</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Check-in/out at main gates</p>
+                    <h3 className="text-sm font-bold text-slate-900">RFID Assignment</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Scan attendee QR and assign RFID</p>
                   </div>
                 </div>
-                <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-emerald-700">QR + RFID Support</p>
-                  <p className="text-[11px] text-emerald-600 mt-0.5">Assign RFID during entry scan</p>
+                <div className="mt-4 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2">
+                  <p className="text-xs font-semibold text-purple-700">QR → RFID</p>
+                  <p className="text-[11px] text-purple-600 mt-0.5">Assign RFID wristbands/tags</p>
                 </div>
               </Card>
             </Link>
           </PermissionGuard>
 
-          <PermissionGuard permission="canScanZone">
+          <PermissionGuard permission="canScanZones">
             <Link to="/suborg/zone-scanner">
               <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
                 <div className="flex items-start gap-3">
@@ -468,7 +501,7 @@ const SubOrgDashboard = () => {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-bold text-slate-900">Zone Scanning</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Validate zone access</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Validate access for VIP, backstage, and internal zones</p>
                   </div>
                 </div>
                 <div className="mt-4 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
@@ -479,41 +512,41 @@ const SubOrgDashboard = () => {
             </Link>
           </PermissionGuard>
 
-          <PermissionGuard permission="canGateScanAccess">
-            <Link to="/suborg/zone-scan">
+          <PermissionGuard permission="true">
+            <Link to="/suborg/manual-search">
               <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                    <QrCodeIcon className="h-5 w-5" />
+                    <MagnifyingGlassIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Zone Scan</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">General ticket scanning</p>
+                    <h3 className="text-sm font-bold text-slate-900">Manual Search</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Manual lookup by name, phone, NIC, or passport</p>
                   </div>
                 </div>
                 <div className="mt-4 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-amber-700">QR Scanner</p>
-                  <p className="text-[11px] text-amber-600 mt-0.5">Fast gate processing</p>
+                  <p className="text-xs font-semibold text-amber-700">Manual lookup</p>
+                  <p className="text-[11px] text-amber-600 mt-0.5">By Name, Email, Phone</p>
                 </div>
               </Card>
             </Link>
           </PermissionGuard>
 
           <PermissionGuard permission="true">
-            <Link to="/suborg/manual-search">
+            <Link to="/suborg/activity-logs">
               <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
-                    <MagnifyingGlassIcon className="h-5 w-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
+                    <ClockIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Manual Search</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Find attendees manually</p>
+                    <h3 className="text-sm font-bold text-slate-900">Activity Logs</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Entry audits and recent gate activity</p>
                   </div>
                 </div>
-                <div className="mt-4 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-purple-700">By Name, Email, Phone</p>
-                  <p className="text-[11px] text-purple-600 mt-0.5">Manual check-in/out</p>
+                <div className="mt-4 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                  <p className="text-xs font-semibold text-slate-700">Audit log</p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">View recent scans</p>
                 </div>
               </Card>
             </Link>

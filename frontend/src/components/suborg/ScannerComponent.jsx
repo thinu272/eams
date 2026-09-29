@@ -1,8 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import QRScannerComponent from '../events/QRScannerComponent';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
-import toast from 'react-hot-toast';
+
 import {
   QrCodeIcon,
   SignalIcon,
@@ -25,6 +26,19 @@ const parseScannedValue = (value) => {
   }
 };
 
+const formatActionLabel = (action, scannerType) => {
+  if (scannerType === 'zone') {
+    if (action === 'ENTRY') return 'Zone Entry';
+    if (action === 'EXIT') return 'Zone Exit';
+    return action;
+  }
+  // entry scanner
+  const a = String(action || '').toUpperCase();
+  if (a === 'CHECK_IN' || a === 'CHECK-IN' || a === 'CHECKIN') return 'Check-In';
+  if (a === 'CHECK_OUT' || a === 'CHECK-OUT' || a === 'CHECKOUT' || a === 'EXIT') return 'Check-Out';
+  return action;
+};
+
 const ScannerComponent = ({
   title,
   description,
@@ -36,11 +50,14 @@ const ScannerComponent = ({
   submitting,
   result,
   rfidEnabled = false,
-  scannerType = 'entry', // 'entry' or 'zone'
+  scannerType = 'entry', // 'entry' | 'zone'
   onSwitchToCheckOut,
+  onSwitchToCheckIn,
+  action: controlledAction, // optional controlled action from parent
 }) => {
+  const defaultAction = scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN';
   const [scanMode, setScanMode] = useState('qr');
-  const [action, setAction] = useState(scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN');
+  const [internalAction, setInternalAction] = useState(defaultAction);
   const [manualValue, setManualValue] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [assignRfidMode, setAssignRfidMode] = useState(false);
@@ -48,29 +65,88 @@ const ScannerComponent = ({
   const [assignRfidSubmitting, setAssignRfidSubmitting] = useState(false);
   const inputRef = useRef(null);
 
-  // Auto-reset after successful result
+  // Support controlled or uncontrolled action
+  const action = controlledAction ?? internalAction;
+  const setAction = (next) => {
+    setInternalAction(next);
+  };
+
+  // Auto-switch when backend says already checked in
   useEffect(() => {
-    if (result && result.accessGranted !== undefined) {
-      const timer = setTimeout(() => {
-        // Keep result visible for a moment, then allow new scan
-      }, 3000);
-      return () => clearTimeout(timer);
+    if (!result) return;
+
+    if (result.suggestCheckOut || result.reason === 'ALREADY_CHECKED_IN') {
+      const next = scannerType === 'zone' ? 'EXIT' : 'CHECK_OUT';
+      setAction(next);
+      onSwitchToCheckOut?.();
+      toast.error('Already checked in. Switched to Exit mode.');
     }
-  }, [result]);
+
+    if (result.reason === 'NOT_CHECKED_IN') {
+      const next = scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN';
+      setAction(next);
+      onSwitchToCheckIn?.();
+      toast.error('Not checked in. Switched to Entry mode.');
+    }
+
+    if (
+      result.reason === 'ALREADY_INSIDE' ||
+      (result.denialReason && String(result.denialReason).toLowerCase().includes('already inside'))
+    ) {
+      setAction('EXIT');
+      toast.error('Already inside this zone. Switched to Exit mode.');
+    }
+
+    if (
+      result.reason === 'ALREADY_OUTSIDE' ||
+      (result.denialReason && String(result.denialReason).toLowerCase().includes('already outside'))
+    ) {
+      setAction('ENTRY');
+      toast.error('Already outside this zone. Switched to Entry mode.');
+    }
+
+    if (
+      result.reason === 'MAIN_ENTRY_REQUIRED' ||
+      (result.denialReason && String(result.denialReason).toLowerCase().includes('main entry'))
+    ) {
+      toast.error('Must check in at Main Entry first.');
+    }
+  }, [result, scannerType]);
+
+  // Focus RFID input when mode changes
+  useEffect(() => {
+    if (scanMode === 'rfid' && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [scanMode, result]);
 
   const clearResult = () => {
-    result && onSubmit({ value: '', mode: scanMode, zoneId: activeZone, action: 'CLEAR' });
+    onSubmit?.({
+      value: '',
+      mode: scanMode,
+      zoneId: activeZone,
+      action: 'CLEAR',
+    });
   };
 
   const submitValue = async (value) => {
     const nextValue = parseScannedValue(value);
     if (!nextValue) return;
+
+    // Map UI action to backend-friendly action
+    let payloadAction = action;
+    if (scannerType === 'entry') {
+      if (action === 'CHECK_IN') payloadAction = 'check_in';
+      if (action === 'CHECK_OUT') payloadAction = 'check_out';
+    }
+
     await onSubmit({
       value: nextValue,
       mode: scanMode,
       zoneId: activeZone,
-      action,
+      action: payloadAction,
     });
+
     setManualValue('');
     inputRef.current?.focus();
   };
@@ -79,29 +155,35 @@ const ScannerComponent = ({
     if (!assignRfidValue.trim() || !onAssignRfid) return;
     setAssignRfidSubmitting(true);
     try {
-      await onAssignRfid(assignRfidValue);
+      await onAssignRfid(assignRfidValue.trim());
       setAssignRfidMode(false);
       setAssignRfidValue('');
-      toast?.success?.('RFID assigned successfully');
+      toast.success('RFID assigned successfully. Attendee can use QR or RFID.');
     } catch (error) {
-      toast?.error?.(error.response?.data?.message || 'Failed to assign RFID');
+      toast.error(error.response?.data?.message || 'Failed to assign RFID');
     } finally {
       setAssignRfidSubmitting(false);
     }
   };
 
-  const actionLabel = scannerType === 'zone'
-    ? (action === 'ENTRY' ? 'Zone Entry' : 'Zone Exit')
-    : (action === 'CHECK_IN' ? 'Check-In' : 'Check-Out');
+  const actionLabel = formatActionLabel(action, scannerType);
+  const zoneLabel =
+    zones.find((z) => String(z.id || z.name) === String(activeZone))?.name ||
+    activeZone ||
+    '—';
 
   return (
     <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-      {/* Controls panel */}
+      {/* Controls */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            scannerType === 'zone' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
-          }`}>
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              scannerType === 'zone'
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-emerald-50 text-emerald-600'
+            }`}
+          >
             {scannerType === 'zone' ? (
               <QrCodeIcon className="h-5 w-5" />
             ) : (
@@ -115,14 +197,19 @@ const ScannerComponent = ({
         </div>
 
         <div className="mt-6 space-y-5">
-          {/* Main Entry - for Entry Scanner */}
+          {/* Zone / Entry point */}
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-              {scannerType === 'zone' ? 'Select Zone' : 'Main Entry'}
+              {scannerType === 'zone' ? 'Select Zone' : 'Entry Point'}
             </label>
             <select
-              value={activeZone}
-              onChange={(e) => onZoneChange(e.target.value)}
+              value={activeZone || ''}
+              onChange={(e) => {
+                onZoneChange?.(e.target.value);
+                // Reset to entry action when zone changes
+                setAction(scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN');
+                clearResult();
+              }}
               className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             >
               {scannerType !== 'zone' && (
@@ -136,7 +223,7 @@ const ScannerComponent = ({
             </select>
           </div>
 
-          {/* Action Toggle - Check-In/Check-Out or Zone Entry/Exit */}
+          {/* Action toggle */}
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
               Mode
@@ -144,7 +231,10 @@ const ScannerComponent = ({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setAction(scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN')}
+                onClick={() => {
+                  setAction(scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN');
+                  clearResult();
+                }}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                   action === (scannerType === 'zone' ? 'ENTRY' : 'CHECK_IN')
                     ? 'bg-emerald-600 text-white shadow-sm'
@@ -156,7 +246,10 @@ const ScannerComponent = ({
               </button>
               <button
                 type="button"
-                onClick={() => setAction(scannerType === 'zone' ? 'EXIT' : 'CHECK_OUT')}
+                onClick={() => {
+                  setAction(scannerType === 'zone' ? 'EXIT' : 'CHECK_OUT');
+                  clearResult();
+                }}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                   action === (scannerType === 'zone' ? 'EXIT' : 'CHECK_OUT')
                     ? 'bg-amber-600 text-white shadow-sm'
@@ -169,7 +262,7 @@ const ScannerComponent = ({
             </div>
           </div>
 
-          {/* Mode - QR/RFID */}
+          {/* Credential mode */}
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
               Credential
@@ -195,8 +288,8 @@ const ScannerComponent = ({
                   !rfidEnabled
                     ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400'
                     : scanMode === 'rfid'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
                 }`}
               >
                 <SignalIcon className="h-4 w-4" />
@@ -208,7 +301,7 @@ const ScannerComponent = ({
             )}
           </div>
 
-          {/* Manual input */}
+          {/* Manual / wedge input */}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -219,16 +312,41 @@ const ScannerComponent = ({
             <input
               ref={inputRef}
               value={manualValue}
-              onChange={(e) => setManualValue(e.target.value)}
-              placeholder={
-                scanMode === 'qr' ? 'Paste or scan QR token' : 'Enter RFID id'
+              onChange={(e) =>
+                setManualValue(
+                  scanMode === 'rfid'
+                    ? e.target.value.replace(/\D/g, '').slice(0, 10)
+                    : e.target.value
+                )
               }
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              onKeyDown={(e) => {
+                if (scanMode === 'rfid' && e.key === 'Enter') {
+                  e.preventDefault();
+                  submitValue(manualValue);
+                }
+              }}
+              inputMode={scanMode === 'rfid' ? 'numeric' : undefined}
+              maxLength={scanMode === 'rfid' ? 10 : undefined}
+              placeholder={
+                scanMode === 'qr' ? 'Paste or scan QR token' : 'Tap RFID card / enter 10-digit ID'
+              }
+              className={`w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:ring-2 ${
+                scanMode === 'rfid'
+                  ? 'border-amber-300 bg-amber-50 font-mono tracking-widest text-center focus:border-amber-500 focus:ring-amber-500/20'
+                  : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500/20'
+              }`}
             />
+            {scanMode === 'rfid' && (
+              <p className="text-center text-xs text-amber-700">Reader focused — waiting for card</p>
+            )}
             <Button
               type="submit"
               disabled={submitting || !activeZone}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 disabled:opacity-60"
+              className={`w-full py-2.5 text-white disabled:opacity-60 ${
+                action === 'ENTRY' || action === 'CHECK_IN'
+                  ? 'bg-emerald-600 hover:bg-emerald-500'
+                  : 'bg-amber-600 hover:bg-amber-500'
+              }`}
             >
               {submitting ? 'Processing…' : `Submit ${actionLabel}`}
             </Button>
@@ -238,7 +356,7 @@ const ScannerComponent = ({
             type="button"
             onClick={() => setShowCamera((v) => !v)}
             disabled={scanMode !== 'qr'}
-            className="w-full rounded-xl border border-blue-200 px-3.5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-xl border border-blue-200 px-3.5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {showCamera ? 'Hide camera' : 'Open camera scanner'}
           </button>
@@ -265,21 +383,20 @@ const ScannerComponent = ({
           </div>
         )}
 
-        {/* Result panel — keep high contrast for distance visibility */}
         <div
-          className={`rounded-2xl p-6 shadow-sm relative ${
+          className={`relative rounded-2xl p-6 shadow-sm ${
             result?.accessGranted
               ? 'bg-emerald-600 text-white'
               : result
-              ? 'bg-rose-600 text-white'
-              : 'border border-dashed border-slate-200 bg-slate-50 text-slate-500'
+                ? 'bg-rose-600 text-white'
+                : 'border border-dashed border-slate-200 bg-slate-50 text-slate-500'
           }`}
         >
           {result && (
             <button
               type="button"
               onClick={clearResult}
-              className="absolute top-4 right-4 p-1 rounded-full hover:bg-white/20 transition"
+              className="absolute right-4 top-4 rounded-full p-1 transition hover:bg-white/20"
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
@@ -287,22 +404,22 @@ const ScannerComponent = ({
 
           {!result ? (
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider">
-                Ready to Scan
-              </p>
+              <p className="text-[11px] font-bold uppercase tracking-wider">Ready to Scan</p>
               <p className="mt-2 text-base font-medium">
                 Scan attendee {actionLabel.toLowerCase()} credential
               </p>
               {activeZone && (
                 <p className="mt-3 text-sm opacity-80">
                   {scannerType === 'zone' ? 'Zone: ' : 'Entry: '}
-                  <span className="font-semibold">
-                    {zones.find(z => (z.id || z.name) === activeZone)?.name || activeZone}
-                  </span>
+                  <span className="font-semibold">{zoneLabel}</span>
                   <span className="mx-2">·</span>
                   <span className="font-semibold">{actionLabel}</span>
                 </p>
               )}
+              <p className="mt-4 text-xs opacity-70">
+                QR and RFID share the same check-in state. Once checked in, use Exit before
+                checking in again.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -310,46 +427,49 @@ const ScannerComponent = ({
                 <p className="text-[11px] font-bold uppercase tracking-wider">
                   {result.accessGranted ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
                 </p>
-                {result.accessGranted && (
-                  <CheckBadgeIcon className="h-5 w-5" />
-                )}
+                {result.accessGranted && <CheckBadgeIcon className="h-5 w-5" />}
               </div>
+
               <h3 className="text-2xl font-bold">
                 {result.attendee?.fullName || 'Unknown attendee'}
               </h3>
+
               {result.action && (
                 <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1">
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   <span className="text-sm font-medium">
-                    {result.action === 'check_in' ? 'CHECK-IN' : 'CHECK-OUT'}
+                    {formatActionLabel(result.action, scannerType)}
                   </span>
                 </div>
               )}
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-sm opacity-80">Ticket Category</p>
-                  <p className="font-semibold text-lg">
+                  <p className="text-lg font-semibold">
                     {result.attendee?.categoryName || '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm opacity-80">{scannerType === 'zone' ? 'Zone' : 'Entry Point'}</p>
-                  <p className="font-semibold text-lg">{result.zone?.name || '—'}</p>
+                  <p className="text-sm opacity-80">
+                    {scannerType === 'zone' ? 'Zone' : 'Entry Point'}
+                  </p>
+                  <p className="text-lg font-semibold">
+                    {result.zone?.name || result.zoneName || zoneLabel}
+                  </p>
                 </div>
               </div>
 
-              {/* Photo and Verification Status */}
-              <div className="flex items-center gap-4 pt-2 border-t border-white/20">
+              {/* Photo + status */}
+              <div className="flex items-center gap-4 border-t border-white/20 pt-2">
                 {result.attendee?.photo ? (
-                  <div className="flex-shrink-0">
-                    <img
-                      src={result.attendee.photo}
-                      alt="Attendee"
-                      className="h-16 w-16 rounded-xl object-cover border-2 border-white/30"
-                    />
-                  </div>
+                  <img
+                    src={result.attendee.photo}
+                    alt="Attendee"
+                    className="h-16 w-16 flex-shrink-0 rounded-xl border-2 border-white/30 object-cover"
+                  />
                 ) : (
-                  <div className="h-16 w-16 rounded-xl bg-slate-700 flex items-center justify-center">
+                  <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-slate-700">
                     <span className="text-2xl font-bold text-white">
                       {(result.attendee?.fullName || 'U')[0].toUpperCase()}
                     </span>
@@ -357,34 +477,34 @@ const ScannerComponent = ({
                 )}
                 <div className="flex-1">
                   <p className="text-xs opacity-80">Photo Status</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="mt-1 flex items-center gap-2">
                     {result.attendee?.photoVerificationStatus === 'verified' ? (
                       <>
-                        <CheckBadgeIcon className="h-5 w-5 text-emerald-400" />
-                        <span className="font-semibold text-emerald-300">Photo Verified</span>
+                        <CheckBadgeIcon className="h-5 w-5 text-emerald-300" />
+                        <span className="font-semibold text-emerald-200">Photo Verified</span>
                       </>
                     ) : result.attendee?.photoVerificationStatus === 'pending' ? (
                       <>
-                        <ClockIcon className="h-5 w-5 text-amber-400" />
-                        <span className="font-semibold text-amber-300">Pending Review</span>
+                        <ClockIcon className="h-5 w-5 text-amber-300" />
+                        <span className="font-semibold text-amber-200">Pending Review</span>
                       </>
                     ) : result.attendee?.photoVerificationStatus === 'rejected' ? (
                       <>
-                        <XMarkIcon className="h-5 w-5 text-rose-400" />
-                        <span className="font-semibold text-rose-300">Photo Rejected</span>
+                        <XMarkIcon className="h-5 w-5 text-rose-300" />
+                        <span className="font-semibold text-rose-200">Photo Rejected</span>
                       </>
                     ) : (
-                      <span className="font-semibold text-slate-300">Not Submitted</span>
+                      <span className="font-semibold text-slate-200">Not Submitted</span>
                     )}
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs opacity-80">Status</p>
-                  <p className="font-semibold text-lg">
+                  <p className="text-xs opacity-80">Main Entry</p>
+                  <p className="text-lg font-semibold">
                     {result.attendee?.checkedIn ? (
-                      <span className="text-emerald-300">Checked In</span>
+                      <span className="text-emerald-200">Checked In</span>
                     ) : (
-                      <span className="text-slate-300">Not Checked In</span>
+                      <span className="text-slate-200">Not Checked In</span>
                     )}
                   </p>
                 </div>
@@ -395,41 +515,65 @@ const ScannerComponent = ({
                   <SignalIcon className="h-4 w-4" />
                   <span className="text-sm font-medium">RFID: {result.attendee.rfidTag}</span>
                 </div>
-              ) : result.accessGranted && !result.attendee?.rfidTag && rfidEnabled && onAssignRfid ? (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-                  <p className="text-sm font-medium text-amber-800">RFID Not Assigned</p>
-                  <p className="text-xs text-amber-600 mt-1">Assign RFID for faster future check-ins</p>
+              ) : result.accessGranted &&
+                !result.attendee?.rfidTag &&
+                rfidEnabled &&
+                onAssignRfid ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                  <p className="text-sm font-medium">RFID Not Assigned</p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Assign RFID so this attendee can use either QR or RFID next time.
+                  </p>
                   <Button
                     size="sm"
-                    className="mt-3 bg-amber-600 hover:bg-amber-500 text-white"
+                    className="mt-3 bg-amber-600 text-white hover:bg-amber-500"
                     onClick={() => setAssignRfidMode(true)}
                   >
                     Assign RFID
                   </Button>
                 </div>
               ) : null}
-              
-              {/* Error actions - Switch to Exit Mode */}
-              {!result.accessGranted && result.suggestCheckOut && scannerType === 'entry' && (
-                <div className="pt-3 border-t border-white/20">
-                  <Button
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white"
-                    onClick={() => {
-                      clearResult();
-                      if (onSwitchToCheckOut) {
-                        onSwitchToCheckOut();
-                      } else {
+
+              {/* Switch mode helpers */}
+              {!result.accessGranted &&
+                (result.suggestCheckOut || result.reason === 'ALREADY_CHECKED_IN') &&
+                scannerType === 'entry' && (
+                  <div className="border-t border-white/20 pt-3">
+                    <Button
+                      className="w-full bg-blue-600 text-white hover:bg-blue-500"
+                      onClick={() => {
+                        clearResult();
                         setAction('CHECK_OUT');
-                      }
-                    }}
-                  >
-                    <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                    Switch to Exit Mode
-                  </Button>
-                </div>
-              )}
-              
-              <p className="text-sm font-medium pt-2 border-t border-white/20">
+                        onSwitchToCheckOut?.();
+                      }}
+                    >
+                      <ArrowLeftIcon className="mr-2 h-4 w-4" />
+                      Switch to Exit Mode
+                    </Button>
+                  </div>
+                )}
+
+              {!result.accessGranted &&
+                scannerType === 'zone' &&
+                (result.reason === 'ALREADY_INSIDE' ||
+                  String(result.denialReason || '')
+                    .toLowerCase()
+                    .includes('already')) && (
+                  <div className="border-t border-white/20 pt-3">
+                    <Button
+                      className="w-full bg-amber-600 text-white hover:bg-amber-500"
+                      onClick={() => {
+                        clearResult();
+                        setAction('EXIT');
+                      }}
+                    >
+                      <ArrowLeftIcon className="mr-2 h-4 w-4" />
+                      Switch to Exit Mode
+                    </Button>
+                  </div>
+                )}
+
+              <p className="border-t border-white/20 pt-2 text-sm font-medium">
                 {result.denialReason || result.message}
               </p>
             </div>
@@ -437,7 +581,7 @@ const ScannerComponent = ({
         </div>
       </div>
 
-      {/* RFID Assignment Modal */}
+      {/* RFID assign modal */}
       <Modal
         open={assignRfidMode}
         onClose={() => {
@@ -448,19 +592,20 @@ const ScannerComponent = ({
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Scan or enter an available RFID tag to assign to this attendee.
+            Scan or enter an available 10-digit RFID tag for this attendee.
           </p>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              RFID Tag
-            </label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">RFID Tag</label>
             <input
               type="text"
               value={assignRfidValue}
-              onChange={(e) => setAssignRfidValue(e.target.value)}
+              onChange={(e) =>
+                setAssignRfidValue(e.target.value.replace(/\D/g, '').slice(0, 10))
+              }
               placeholder="Scan RFID tag..."
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 font-mono text-sm tracking-widest text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
               autoFocus
+              maxLength={10}
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -477,7 +622,7 @@ const ScannerComponent = ({
             <Button
               onClick={handleAssignRfid}
               disabled={!assignRfidValue.trim() || assignRfidSubmitting}
-              className="bg-amber-600 hover:bg-amber-500 text-white"
+              className="bg-amber-600 text-white hover:bg-amber-500"
             >
               {assignRfidSubmitting ? 'Assigning...' : 'Assign RFID'}
             </Button>

@@ -1,12 +1,12 @@
 /**
- * Multer middleware for S3 uploads
- * Handles file validation before sending to S3
+ * Multer middleware for Azure Blob Storage uploads
+ * Handles file validation before sending to Azure Blob Storage
  */
 
 const multer = require('multer');
-const { uploadImageToS3 } = require('../services/s3Service');
+const { uploadImageToAzure } = require('../services/azureBlobService');
 
-// Memory storage for S3 upload (don't save to disk)
+// Memory storage for Azure Blob upload (don't save to disk)
 const storage = multer.memoryStorage();
 
 // File filter
@@ -59,10 +59,10 @@ const excelUpload = multer({
 });
 
 /**
- * Middleware to handle S3 upload after multer processing
+ * Middleware to handle Azure Blob upload after multer processing
  * Attaches s3Data to req for use in route handlers
  */
-const handleS3Upload = (category = 'attendee-photos') => {
+const handleAzureUpload = (category = 'attendee-photos') => {
   return async (req, res, next) => {
     try {
       if (!req.file) {
@@ -78,22 +78,22 @@ const handleS3Upload = (category = 'attendee-photos') => {
         });
       }
 
-      // Upload to S3
-      const s3Data = await uploadImageToS3(
+      // Upload to Azure Blob Storage
+      const azureData = await uploadImageToAzure(
         req.file.buffer,
         req.file.originalname,
         category,
       );
 
-      // Attach S3 data to request
-      req.s3Data = s3Data;
+      // Attach Azure data to request
+      req.s3Data = azureData;
 
       next();
     } catch (err) {
-      console.error('S3 upload middleware error:', err);
+      console.error('Azure Blob upload middleware error:', err);
       return res.status(500).json({
         success: false,
-        message: 'Failed to upload image to S3',
+        message: 'Failed to upload image to Azure Blob Storage',
         error: err.message,
       });
     }
@@ -103,5 +103,7 @@ const handleS3Upload = (category = 'attendee-photos') => {
 module.exports = {
   upload,
   excelUpload,
-  handleS3Upload,
+  handleAzureUpload,
+  // Backward compatibility alias
+  handleS3Upload: handleAzureUpload,
 };

@@ -107,6 +107,16 @@ const RfidAssignmentPage = () => {
       const data = response.data?.data;
 
       if (data && data.attendee) {
+        // Check if attendee already has RFID assigned (constraint enforcement)
+        if (data.attendee.rfidTag) {
+          playFeedbackTone(false);
+          triggerHaptic(false);
+          toast.error('This attendee already has an RFID tag assigned. Cannot assign another.');
+          setQrToken('');
+          setIsProcessing(false);
+          return;
+        }
+        
         setAttendee(data.attendee);
         playFeedbackTone(true);
         triggerHaptic(true);
