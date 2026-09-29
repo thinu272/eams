@@ -11,7 +11,7 @@ The EAMS system stores data in MongoDB using Mongoose. Relationships are defined
 | **Zone** | `event` → Event (zone belongs to an event) |
 | **Order** | `buyer` → User (buyer role)\n`event` → Event\n`tickets` → Ticket (array of ticket IDs) |
 | **Ticket** | `event` → Event\n`order` → Order\n`attendee` → Attendee (optional)\n`inviteEmail`/`invitePhone` related to **Notification** via invite token |
-| **Attendee** | `ticket` → Ticket (one‑to‑one) |
+| **Attendee** | `ticket` → Ticket (one‑to‑one); `currentZone` → Zone (optional); `lastEntryMethod` (enum: ['qr','rfid']); `lastExitMethod` (enum: ['qr','rfid']) |
 | **PaymentSubmission** | `order` → Order\n`paymentMethod` (enum) |
 | **ZoneLog** | `zone` → Zone\n`ticket` → Ticket\n`entryLog` → EntryLog (optional) |
 | **EntryLog** | `event` → Event\n`ticket` → Ticket |
@@ -36,5 +36,14 @@ await Ticket.findById(id)
 ```
 All populate calls are defined in the respective controller/service files.
 
+---
+
+### Attendee QR/RFID State Fields
+
+- `currentZone` (ObjectId → Zone, nullable) – tracks the zone the attendee is currently inside.
+- `lastEntryMethod` (String, enum: ['qr','rfid']) – credential used for the most recent check‑in.
+- `lastExitMethod` (String, enum: ['qr','rfid']) – credential used for the most recent check‑out.
+
+These fields enable unified QR/RFID state management and zone‑access enforcement.
 ---
 *All relationships are derived from the schema definitions in `backend/src/models/*.js`. No additional hidden links exist.*

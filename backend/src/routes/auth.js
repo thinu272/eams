@@ -45,10 +45,10 @@ const validateNewPassword = async (newPassword, userObject = null) => {
 };
 
 const signAccessToken = (id, ttlHours = 24) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: `${ttlHours}h` });
+  jwt.sign({ id }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: `${ttlHours}h` });
 
 const signRefreshToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  jwt.sign({ id }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
 
 const sendTokens = async (user, statusCode, res) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
@@ -435,7 +435,8 @@ router.post('/logout', protect, async (req, res, next) => {
 // GET /api/auth/me
 router.get('/me', protect, async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).populate('assignedEvents', 'name status startDate');
+    const user = await User.findById(req.user.id)
+      .populate('assignedEvents', 'name status startDate');
     res.json({ success: true, data: { user } });
   } catch (err) { next(err); }
 });

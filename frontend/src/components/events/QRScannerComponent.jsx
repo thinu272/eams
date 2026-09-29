@@ -33,12 +33,14 @@ const QRScannerComponent = ({
 
   useEffect(() => {
     let mounted = true;
+    let scannerInstance = null;
 
     const startScanner = async () => {
-      const scanner = new Html5Qrcode(elementIdRef.current);
-      scannerRef.current = scanner;
-
       try {
+        const scanner = new Html5Qrcode(elementIdRef.current);
+        scannerRef.current = scanner;
+        scannerInstance = scanner;
+
         const cameraList = await Html5Qrcode.getCameras();
         if (!mounted) return;
 
@@ -58,6 +60,9 @@ const QRScannerComponent = ({
         setCurrentCameraId(selectedId);
 
         setStatus('Point the camera at the attendee QR code.');
+
+        if (!mounted) return;
+
         await scanner.start(
           selectedId,
           {
@@ -79,6 +84,17 @@ const QRScannerComponent = ({
           () => {}
         );
 
+        if (!mounted) {
+          // If unmounted while start was awaiting, cleanly stop and clear
+          try {
+            if (scanner.isScanning) {
+              await scanner.stop().catch(() => {});
+            }
+            scanner.clear();
+          } catch {}
+          return;
+        }
+
         isRunningRef.current = true;
 
         // Detect torch support
@@ -94,6 +110,12 @@ const QRScannerComponent = ({
       } catch (error) {
         if (!mounted) return;
         const message = `${error?.message || error || 'Unable to open camera.'}`;
+        if (
+          error?.name === 'AbortError' ||
+          message.includes('interrupted because the media was removed')
+        ) {
+          return;
+        }
         setStatus(message);
         isRunningRef.current = false;
         if (
@@ -106,42 +128,27 @@ const QRScannerComponent = ({
       }
     };
 
-    startScanner();
+    const startPromise = startScanner();
 
     return () => {
       mounted = false;
-      const currentScanner = scannerRef.current;
+      isRunningRef.current = false;
+      const scanner = scannerInstance || scannerRef.current;
       scannerRef.current = null;
 
-      if (currentScanner) {
-        const safelyHandleAsyncResult = (result, callback) => {
-          if (result?.then) {
-            result.then(callback).catch(() => {});
-            return;
-          }
-          callback();
-        };
-
-        const finalize = () => {
-          try {
-            const clearResult = currentScanner.clear();
-            safelyHandleAsyncResult(clearResult, () => {});
-          } catch (error) {
-            // Ignore cleanup errors during React dev remounts
-          }
-        };
-
-        if (isRunningRef.current) {
-          isRunningRef.current = false;
-          try {
-            const stopResult = currentScanner.stop();
-            safelyHandleAsyncResult(stopResult, finalize);
-          } catch (error) {
-            finalize();
-          }
-        } else {
-          finalize();
-        }
+      if (scanner) {
+        startPromise
+          .catch(() => {})
+          .finally(async () => {
+            try {
+              if (scanner.isScanning) {
+                await scanner.stop().catch(() => {});
+              }
+              scanner.clear();
+            } catch {
+              // Ignore cleanup errors during React dev remounts
+            }
+          });
       }
     };
   }, [aspectRatio, fps, qrbox, scanCooldownMs]);
@@ -174,8 +181,8 @@ const QRScannerComponent = ({
       setIsTorchOn(false);
       setHasTorch(false);
 
-      if (isRunningRef.current) {
-        await scanner.stop();
+      if (scanner.isScanning) {
+        await scanner.stop().catch(() => {});
         isRunningRef.current = false;
       }
 
@@ -215,6 +222,12 @@ const QRScannerComponent = ({
         console.warn('Unable to query torch capabilities', err);
       }
     } catch (error) {
+      if (
+        error?.name === 'AbortError' ||
+        error?.message?.includes('interrupted because the media was removed')
+      ) {
+        return;
+      }
       setStatus(`Switching camera failed: ${error.message || error}`);
     }
   };

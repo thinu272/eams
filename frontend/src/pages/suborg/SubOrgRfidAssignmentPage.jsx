@@ -14,7 +14,7 @@ import { getMyEvents } from '../../api/events';
 import { getAttendeeByQr, getEventRfidStatus, assignRfidToAttendee } from '../../api/entry';
 import { validateRfidTag, unassignRfidTag } from '../../api/rfid';
 import { useAuth } from '../../context/AuthContext';
-import { playFeedbackTone, triggerHaptic } from '../staff/staffUtils';
+import { playFeedbackTone, triggerHaptic } from './suborgUtils';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -107,6 +107,15 @@ const SubOrgRfidAssignmentPage = () => {
       const data = response.data?.data;
 
       if (data && data.attendee) {
+        // Check if attendee already has RFID assigned (constraint enforcement)
+        if (data.attendee.rfidTag) {
+          playFeedbackTone(false);
+          triggerHaptic(false);
+          toast.error('This attendee already has an RFID tag assigned. Cannot assign another.');
+          setQrToken('');
+          return;
+        }
+        
         setAttendee(data.attendee);
         playFeedbackTone(true);
         triggerHaptic(true);

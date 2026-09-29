@@ -7,7 +7,7 @@ const Order = require('../models/Order');
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
 const QRCode = require('qrcode');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
 const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
@@ -16,7 +16,7 @@ const { protect } = require('../middleware/auth');
 const { allocateRfid } = require('../services/rfidService');
 
 // POST /api/tickets/assign - Assign attendee to ticket (self-assignment)
-router.post('/assign', upload.single('photo'), handleS3Upload('attendee-photos'), [
+router.post('/assign', upload.single('photo'), handleAzureUpload('attendee-photos'), [
   body('ticketId').notEmpty().withMessage('Ticket ID is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('email').isEmail().withMessage('Valid email is required'),

@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
-const { deleteImageFromS3 } = require('../services/s3Service');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
+const { deleteImageFromAzure } = require('../services/azureBlobService');
 const User = require('../models/User');
 const Attendee = require('../models/Attendee');
 const path = require('path');
@@ -12,7 +12,7 @@ const fs = require('fs');
  * POST /api/upload/profile-photo
  * Uploads and sets the profile photo for the authenticated user.
  */
-router.post('/profile-photo', protect, upload.single('photo'), handleS3Upload('profile-photos'), async (req, res) => {
+router.post('/profile-photo', protect, upload.single('photo'), handleAzureUpload('profile-photos'), async (req, res) => {
   try {
     if (!req.s3Data) {
       return res.status(400).json({ success: false, message: 'Photo is required' });
@@ -20,9 +20,9 @@ router.post('/profile-photo', protect, upload.single('photo'), handleS3Upload('p
 
     const user = await User.findById(req.user._id);
     
-    // Delete old photo from S3 if exists
+    // Delete old photo from Azure Blob if exists
     if (user.profilePhotoS3Key) {
-      await deleteImageFromS3(user.profilePhotoS3Key).catch(err => {
+      await deleteImageFromAzure(user.profilePhotoS3Key).catch(err => {
         console.error('Failed to delete old profile photo:', err);
       });
     }
@@ -50,7 +50,7 @@ router.post('/profile-photo', protect, upload.single('photo'), handleS3Upload('p
  * POST /api/upload/attendee-photo/:token
  * Public endpoint for attendees to upload their face photo during confirmation.
  */
-router.post('/attendee-photo/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res) => {
+router.post('/attendee-photo/:token', upload.single('photo'), handleAzureUpload('attendee-photos'), async (req, res) => {
   try {
     if (!req.s3Data) {
       return res.status(400).json({ success: false, message: 'Photo is required' });
@@ -59,13 +59,13 @@ router.post('/attendee-photo/:token', upload.single('photo'), handleS3Upload('at
     const attendee = await Attendee.findOne({ confirmationToken: req.params.token });
     if (!attendee) {
       // Cleanup the uploaded photo if attendee not found
-      await deleteImageFromS3(req.s3Data.key).catch(console.error);
+      await deleteImageFromAzure(req.s3Data.key).catch(console.error);
       return res.status(404).json({ success: false, message: 'Invalid confirmation token' });
     }
 
-    // Delete old photo from S3 if exists
+    // Delete old photo from Azure Blob if exists
     if (attendee.photoS3Key) {
-      await deleteImageFromS3(attendee.photoS3Key).catch(console.error);
+      await deleteImageFromAzure(attendee.photoS3Key).catch(console.error);
     }
 
     // Update attendee with new photo data
@@ -92,7 +92,7 @@ router.post('/attendee-photo/:token', upload.single('photo'), handleS3Upload('at
  * POST /api/upload/system-asset
  * Endpoint for super admins to upload logos, favicons, etc.
  */
-router.post('/system-asset', protect, upload.single('photo'), handleS3Upload('system-assets'), async (req, res) => {
+router.post('/system-asset', protect, upload.single('photo'), handleAzureUpload('system-assets'), async (req, res) => {
   try {
     if (!req.s3Data) {
       return res.status(400).json({ success: false, message: 'File is required' });

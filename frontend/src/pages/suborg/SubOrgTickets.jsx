@@ -185,7 +185,7 @@ const SubOrgTickets = () => {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <Link
-                    to="/suborg"
+                    to="/suborg/dashboard"
                     className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
                   >
                     <ArrowLeftIcon className="h-3.5 w-3.5" />

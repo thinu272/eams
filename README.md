@@ -110,7 +110,7 @@ npm install
 npm run dev   # starts server on port 5000
 
 # Frontend
-cd ../frontend
+cd frontend
 cp .env.example .env   # set REACT_APP_API_URL, etc.
 npm install
 npm start   # runs on http://localhost:3000

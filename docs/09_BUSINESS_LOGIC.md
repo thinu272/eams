@@ -65,3 +65,11 @@ Sub-organizers with appropriate permissions have access to:
 
 ---
 *All details extracted from the service files in `backend/src/services`.*
+### QR/RFID Credential Synchronization
+
+- **Unified State**: QR and RFID credentials are two representations of the same attendee. The system maintains a single `checkedIn` flag and timestamps regardless of which credential is used.
+- **Cross‑Credential Support**: A check‑in performed with a QR code can be followed by a check‑out using the RFID tag (and vice‑versa). The backend validates that the attendee is not already in the target state and returns `ALREADY_CHECKED_IN` or `NOT_CHECKED_IN` as appropriate.
+- **Deduplication Rule**: Once an attendee is checked in, any additional check‑in attempt—whether via QR or RFID—is denied with a suggestion to switch to exit mode.
+- **Error Codes**: New error responses (`ALREADY_CHECKED_IN`, `NOT_CHECKED_IN`) are documented in the error handling guide.
+
+---

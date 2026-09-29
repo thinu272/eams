@@ -54,10 +54,10 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
         ) {
           return (
             user?.permissions?.canEntryAccess === true ||
-            ['MainAdmin', 'MainOrganiser', 'SubOrganiser'].includes(
+            ['MainAdmin', 'MainOrganiser'].includes(
               getCanonicalRole(user?.role)
             ) ||
-            (user?.assignedGates?.length > 0)
+            (user?.assignedGates?.length > 0 && getCanonicalRole(user?.role) !== 'SubOrganiser')
           );
         }
         if (

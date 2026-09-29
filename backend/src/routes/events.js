@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const { logActivity } = require('../utils/logger');
-const { uploadBuffer } = require('../../services/azureStorage/azureBlobService');
+const { uploadBuffer } = require('../services/azureBlobService');
 
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {

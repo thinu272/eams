@@ -11,8 +11,8 @@ const Event = require('../models/Event');
 const { protect, restrictTo, requireEventAccess, requirePermission } = require('../middleware/auth');
 const { notifyInvite, notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
 const { sendAttendeeVerificationConfirmation } = require('../utils/email');
-const { upload, excelUpload, handleS3Upload } = require('../middleware/s3Upload');
-const { deleteImageFromS3, getSignedUrl } = require('../services/s3Service');
+const { upload, excelUpload, handleAzureUpload } = require('../middleware/azureUpload');
+const { deleteImageFromAzure, getSignedUrl } = require('../services/azureBlobService');
 const { validatePhoto } = require('../services/photoValidationService');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus, finalizePhotoApproval, finalizePhotoRejection, handleMaxResubmissionsReached, MAX_RESUBMIT_COUNT } = require('../services/ticketDeliveryService');
 const { processOrderFinalConfirmation } = require('../services/finalConfirmationService');
@@ -70,11 +70,11 @@ const clampThreshold = (value) => {
   return Math.max(0.4, Math.min(0.6, threshold));
 };
 
-// Multer configured in s3Upload middleware
-// Using memory storage with S3 upload handler
+// Multer configured in azureUpload middleware
+// Using memory storage with Azure Blob upload handler
 
 // POST /api/attendees/confirm/:token - attendee self-confirms identity (public)
-router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+router.post('/confirm/:token', upload.single('photo'), handleAzureUpload('attendee-photos'), async (req, res, next) => {
   try {
     const attendee = await Attendee.findOne({ confirmationToken: req.params.token }).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
@@ -727,7 +727,7 @@ router.get('/resubmit/:token', async (req, res, next) => {
 });
 
 // POST /api/attendees/resubmit/photo - resubmit photo
-router.post('/resubmit/photo', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+router.post('/resubmit/photo', upload.single('photo'), handleAzureUpload('attendee-photos'), async (req, res, next) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ success: false, message: 'Token is required.' });
@@ -884,14 +884,21 @@ router.get('/:id', protect, async (req, res, next) => {
 router.post('/:id/rfid', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff'), async (req, res, next) => {
   try {
     const rfidTag = String(req.body.rfidTag || '').trim();
+    const replaceExisting = req.body.replaceExisting === true;
+    
     if (!/^\d{10}$/.test(rfidTag)) {
       return res.status(400).json({ success: false, message: 'rfidTag must be exactly 10 digits.' });
     }
 
-    const existingAttendee = await Attendee.findById(req.params.id).select('event');
+    const existingAttendee = await Attendee.findById(req.params.id).select('event rfidTag');
     if (!existingAttendee) return res.status(404).json({ success: false, message: 'Attendee not found.' });
     if (!(await hasEventAccess(req.user, existingAttendee.event))) {
       return res.status(403).json({ success: false, message: 'You do not have access to this attendee.' });
+    }
+
+    // Enforce constraint: User cannot have multiple RFIDs unless explicitly replacing
+    if (existingAttendee.rfidTag && !replaceExisting) {
+      return res.status(409).json({ success: false, message: 'This attendee already has an RFID tag assigned.' });
     }
 
     const duplicate = await Attendee.findOne({ event: existingAttendee.event, rfidTag, _id: { $ne: req.params.id } }).select('_id');

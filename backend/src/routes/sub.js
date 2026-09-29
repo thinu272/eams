@@ -11,6 +11,7 @@ const { withUploadedPhoto, finalizePhotoRejection } = require('../services/ticke
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { emitDashboardEvent } = require('../utils/socket');
 
 const router = express.Router();
 
@@ -29,21 +30,37 @@ const parseToken = (value) => {
   }
 };
 
+const toZoneIdList = (values) =>
+  (values || [])
+    .map((item) => {
+      if (!item) return '';
+      if (typeof item === 'string' || typeof item === 'number') return String(item);
+      return String(item.id || item.name || item._id || '');
+    })
+    .filter(Boolean);
+
 const hasScanPermission = (user) => {
   const role = normalizeRole(user?.role);
   if ([ROLES.MAIN_ADMIN, ROLES.MAIN_ORGANISER].includes(role)) return true;
 
-  return !!(
+  const hasAssignedCheckpoints =
+    toZoneIdList(user?.assignedZones).length > 0 ||
+    toZoneIdList(user?.assignedGates).length > 0 ||
+    toZoneIdList(user?.responsibilities?.zoneIds).length > 0;
+
+  const hasExplicitScanPermission = !!(
     user?.permissions?.canEntryAccess ||
     user?.permissions?.canScanEntry ||
+    user?.permissions?.canScanZones ||
+    user?.permissions?.canGateScanAccess ||
     user?.responsibilities?.entryAccess ||
     user?.canGateScanAccess ||
     user?.canEntryAccess ||
     user?.canScanEntry ||
-    // Auto-grant scan access if user has assigned zones or gates
-    (user?.assignedZones?.length > 0) ||
-    (user?.assignedGates?.length > 0)
+    user?.canScanTickets
   );
+
+  return hasExplicitScanPermission || hasAssignedCheckpoints;
 };
 
 const isPaidTicket = (ticket) => {
@@ -69,7 +86,9 @@ const getAssignedZoneIds = (user, event) => {
     return (event?.zones || []).map((zone) => zone.id || zone.name).filter(Boolean);
   }
 
-  const fromResponsibilities = (user?.responsibilities?.zoneIds || []).map(String);
+  const fromResponsibilities = toZoneIdList(user?.responsibilities?.zoneIds);
+  const fromAssignedZones = toZoneIdList(user?.assignedZones);
+  const fromAssignedGates = toZoneIdList(user?.assignedGates);
   const fromEventAssignment = (event?.zones || [])
     .filter((zone) => zone.assignedSubOrganiser && zone.assignedSubOrganiser.toString() === user._id.toString())
     .map((zone) => zone.id || zone.name)
@@ -89,7 +108,13 @@ const getAssignedZoneIds = (user, event) => {
     });
   }
 
-  return Array.from(new Set([...fromResponsibilities, ...fromEventAssignment, ...fromCategoryAssignment]));
+  return Array.from(new Set([
+    ...fromResponsibilities,
+    ...fromAssignedZones,
+    ...fromAssignedGates,
+    ...fromEventAssignment,
+    ...fromCategoryAssignment,
+  ]));
 };
 
 const getPermittedCategories = (user, event) => {
@@ -156,10 +181,11 @@ const getScopedZoneObjects = (event, assignedZoneIds) => {
   const zones = event?.zones || [];
   if (!assignedZoneIds.length) return [];
 
+  const assigned = new Set(assignedZoneIds.map((id) => String(id).toLowerCase()));
   return zones.filter((zone) => {
-    const zoneId = String(zone.id || '');
-    const zoneName = String(zone.name || '');
-    return assignedZoneIds.includes(zoneId) || assignedZoneIds.includes(zoneName);
+    const zoneId = String(zone.id || '').toLowerCase();
+    const zoneName = String(zone.name || '').toLowerCase();
+    return assigned.has(zoneId) || assigned.has(zoneName);
   });
 };
 
@@ -806,6 +832,23 @@ router.post('/scan-entry', async (req, res, next) => {
       timestamp: new Date(),
     });
 
+    const io = req.app.get('io');
+    if (io) {
+      emitDashboardEvent(io, 'entry_update', event._id.toString(), {
+        eventId: event._id,
+        name: attendee.fullName,
+        categoryName: attendee.categoryName,
+        zoneName: activeZone.name,
+        gateName: activeZone.name,
+        zoneId: activeZone.id,
+        action: scanAction,
+        accessGranted,
+        timestamp: log.timestamp,
+        processedByName: req.user.name || 'Sub-Organiser',
+        method: rfidId ? 'rfid' : 'qr'
+      });
+    }
+
     res.status(accessGranted ? 200 : 403).json({
       success: accessGranted,
       message: accessGranted
@@ -888,18 +931,24 @@ router.post('/scan-zone', async (req, res, next) => {
       denialReason = 'Must check in at main entry first';
     }
 
-    // Auto-determine action (ENTRY vs EXIT) based on current zone state
-    let action = 'ENTRY';
-    if (accessGranted) {
-      const lastLog = await ZoneLog.findOne({
-        attendeeId: attendee._id,
-        eventId: event._id,
-        zoneName: activeZone.name,
-        accessGranted: true,
-      }).sort({ timestamp: -1 });
-      
-      // If last action was ENTRY, now do EXIT. If EXIT or no log, do ENTRY.
-      action = lastLog?.action === 'ENTRY' ? 'EXIT' : 'ENTRY';
+    // Determine action (ENTRY vs EXIT)
+    const lastLog = await ZoneLog.findOne({
+      attendeeId: attendee._id,
+      eventId: event._id,
+      zoneName: activeZone.name,
+      accessGranted: true,
+    }).sort({ timestamp: -1 });
+
+    const expectedAction = (!lastLog || lastLog.action === 'EXIT') ? 'ENTRY' : 'EXIT';
+    let action = String(req.body.action || '').trim().toUpperCase();
+
+    if (!action || !['ENTRY', 'EXIT'].includes(action)) {
+      action = expectedAction;
+    } else if (action !== expectedAction) {
+      accessGranted = false;
+      denialReason = action === 'ENTRY'
+        ? 'Attendee is already inside this zone. Please scan for EXIT first.'
+        : 'Attendee is already outside this zone. Please scan for ENTRY first.';
     }
 
     const log = await ZoneLog.create({
@@ -908,7 +957,7 @@ router.post('/scan-zone', async (req, res, next) => {
       zoneName: activeZone.name,
       action,
       accessGranted,
-      denialReason: accessGranted ? undefined : 'NOT_ALLOWED',
+      denialReason: accessGranted ? undefined : denialReason,
       scanMethod: rfidId ? 'RFID' : 'QR',
       scannedBy: req.user._id,
       attendeeSnapshot: {
@@ -918,6 +967,22 @@ router.post('/scan-zone', async (req, res, next) => {
       },
       timestamp: new Date(),
     });
+
+    const io = req.app.get('io');
+    if (io) {
+      emitDashboardEvent(io, 'zone_update', event._id.toString(), {
+        eventId: event._id,
+        name: attendee.fullName,
+        categoryName: attendee.categoryName,
+        zoneName: activeZone.name,
+        zoneId: activeZone.id,
+        action,
+        accessGranted,
+        timestamp: log.timestamp,
+        processedByName: req.user.name || 'Sub-Organiser',
+        method: rfidId ? 'RFID' : 'QR'
+      });
+    }
 
     res.status(accessGranted ? 200 : 403).json({
       success: accessGranted,

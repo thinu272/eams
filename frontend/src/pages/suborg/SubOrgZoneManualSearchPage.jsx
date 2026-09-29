@@ -17,6 +17,7 @@ import { getSubZones, scanSubZone } from '../../api/sub';
 import { searchStaffAttendees } from '../../api/staff';
 import { useAuth } from '../../context/AuthContext';
 import { buildAssetUrl } from '../staff/staffUtils';
+import { filterZonesForUser } from './suborgUtils';
 import toast from 'react-hot-toast';
 import { getZoneLogs } from '../../api/zone';
 
@@ -36,7 +37,7 @@ const SubOrgZoneManualSearchPage = () => {
   const loadZones = (eventId = currentEventId) => {
     getSubZones(eventId ? { eventId } : undefined)
       .then((response) => {
-        const nextZones = response.data?.data?.zones || [];
+        const nextZones = filterZonesForUser(response.data?.data?.zones || [], user);
         setZones(nextZones);
         setZoneName((prev) => {
           const stillValid = nextZones.some(
@@ -68,7 +69,7 @@ const SubOrgZoneManualSearchPage = () => {
     window.addEventListener('entrynex:event-select', handleEventSelect);
     return () =>
       window.removeEventListener('entrynex:event-select', handleEventSelect);
-  }, []);
+  }, [user, currentEventId]);
 
   const refreshLogs = useCallback(async () => {
     if (!currentEventId || !zoneName) return;

@@ -1,6 +1,6 @@
 const { validatePhoto } = require('./photoValidationService');
 const { requiresPhotoVerification } = require('./ticketDeliveryService');
-const { deleteImageFromS3 } = require('./s3Service');
+const { deleteImageFromAzure } = require('./azureBlobService');
 
 const parseBoolean = (value) => value === true || value === 'true';
 
@@ -33,7 +33,7 @@ const applyValidatedPhotoUpload = async ({
     : parseBoolean(body.faceValidationPassed);
 
   if (!faceValidationPassed) {
-    if (s3Data.key) await deleteImageFromS3(s3Data.key).catch(console.error);
+    if (s3Data.key) await deleteImageFromAzure(s3Data.key).catch(console.error);
     return { ok: false, status: 400, message: 'Frontend face validation not passed.' };
   }
 
@@ -65,7 +65,7 @@ const applyValidatedPhotoUpload = async ({
     attendee.photoRejectionReason = `AI Auto-Reject: ${aiResults.reason}`;
 
     if (rejectOnAiFailure) {
-      if (s3Data.key) await deleteImageFromS3(s3Data.key).catch(console.error);
+      if (s3Data.key) await deleteImageFromAzure(s3Data.key).catch(console.error);
       attendee.photo = undefined;
       attendee.photoS3Key = undefined;
       attendee.photoUploadedAt = undefined;

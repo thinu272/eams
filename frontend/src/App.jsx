@@ -204,15 +204,15 @@ const AppRoutes = () => (
     <Route path="/suborg/zones" element={<Protected roles={['SubOrganiser']}><SubOrgZonesPage /></Protected>} />
     <Route path="/suborg/attendees" element={<Protected roles={['SubOrganiser']}><SubOrgAttendees /></Protected>} />
     <Route path="/suborg/verification" element={<Protected roles={['SubOrganiser']}><SubOrgVerificationPage /></Protected>} />
-    <Route path="/suborg/entry" element={<Protected roles={['SubOrganiser']}><SubOrgEntryScannerPage /></Protected>} />
-    <Route path="/suborg/zone-scan" element={<Protected roles={['SubOrganiser']}><SubOrgZoneScannerPage /></Protected>} />
-    <Route path="/suborg/zone-search" element={<Protected roles={['SubOrganiser']}><SubOrgZoneManualSearchPage /></Protected>} />
+    <Route path="/suborg/entry" element={<Protected roles={['SubOrganiser', 'Staff']}><SubOrgEntryScannerPage /></Protected>} />
+    <Route path="/suborg/zone-scan" element={<Protected roles={['SubOrganiser', 'Staff']}><SubOrgZoneScannerPage /></Protected>} />
+    <Route path="/suborg/zone-search" element={<Protected roles={['SubOrganiser', 'Staff']}><SubOrgZoneManualSearchPage /></Protected>} />
     <Route path="/suborg/logs" element={<Protected roles={['SubOrganiser']}><SubOrgActivityLogsPage /></Protected>} />
     <Route path="/suborg/team" element={<Protected roles={['SubOrganiser']}><SubOrgTeam /></Protected>} />
     <Route path="/suborg/tickets" element={<Protected roles={['SubOrganiser']}><SubOrgTickets /></Protected>} />
     <Route path="/suborg/payments" element={<Protected roles={['SubOrganiser']}><SubOrgPayments /></Protected>} />
     <Route path="/suborg/rfid-assign" element={<Protected roles={['SubOrganiser']}><SubOrgRfidAssignmentPage /></Protected>} />
-    <Route path="/suborg/manual-search" element={<Protected roles={['SubOrganiser']}><SubOrgManualSearchPage /></Protected>} />
+    <Route path="/suborg/manual-search" element={<Protected roles={['SubOrganiser', 'Staff']}><SubOrgManualSearchPage /></Protected>} />
     <Route path="/suborg/upload" element={<Protected roles={['SubOrganiser']}><BulkUploadPage /></Protected>} />
     <Route path="/suborg/verify" element={<Protected roles={['SubOrganiser']}><Navigate to="/suborg/verification" replace /></Protected>} />
     <Route path="/suborganiser/verify-photos" element={<Protected roles={['SubOrganiser','MainOrganiser','MainAdmin']}><SubOrgVerificationPage /></Protected>} />

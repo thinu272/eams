@@ -12,6 +12,7 @@ import {
   SignalSlashIcon,
   BanknotesIcon,
   IdentificationIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { getAssignedGateLabel, getAssignedZoneLabel } from './staffUtils';
 import { getMyEvents } from '../../api/events';
@@ -108,6 +109,7 @@ const StaffDashboardPage = () => {
         user?.permissions?.canEntryAccess === true ||
         (user?.assignedGates?.length > 0),
     },
+
     {
       title: 'RFID Assignment',
       desc: 'Scan attendee QR and assign RFID wristbands/tags.',
@@ -126,6 +128,7 @@ const StaffDashboardPage = () => {
         user?.assignedZones?.length > 0 ||
         user?.responsibilities?.zoneIds?.length > 0,
     },
+
     {
       title: 'Registry Override',
       desc: 'Manual lookup by name, phone, NIC, or passport.',
@@ -134,6 +137,7 @@ const StaffDashboardPage = () => {
       badge: 'Manual lookup',
       active: true,
     },
+
     {
       title: 'Validation Ledger',
       desc: 'Entry audits and recent gate activity.',

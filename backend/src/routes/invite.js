@@ -5,7 +5,7 @@ const Ticket = require('../models/Ticket');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Event = require('../models/Event');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
 const { applyValidatedPhotoUpload } = require('../services/photoUploadService');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
@@ -186,7 +186,7 @@ router.post('/respond', [
 });
 
 // POST /api/invite/confirm - accept invite and confirm identity
-router.post('/confirm', upload.single('photo'), handleS3Upload('attendee-photos'), [
+router.post('/confirm', upload.single('photo'), handleAzureUpload('attendee-photos'), [
   body('token').notEmpty().withMessage('Invite token is required'),
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('email').notEmpty().isEmail().withMessage('Valid email is required'),

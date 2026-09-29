@@ -35,7 +35,8 @@ const demoUsers = [
     phone: '+94 77 333 4444',
     status: 'Active',
     isVerified: true,
-    permissions: { canScanTickets: true, canViewLogs: true }
+    permissions: { canScanTickets: true, canViewLogs: true },
+    assignedZones: [],
   },
   {
     name: 'Gate Controller',

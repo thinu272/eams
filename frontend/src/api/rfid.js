@@ -27,3 +27,8 @@ export const getRfidAssignment = (attendeeId) => api.get(`/rfid/assignment/${att
 export const disableRfidTag = (rfidTag, reason) => api.patch(`/rfid/inventory/${rfidTag}/disable`, { reason });
 export const enableRfidTag = (rfidTag) => api.patch(`/rfid/inventory/${rfidTag}/enable`);
 export const deleteRfidFromInventory = (rfidTag) => api.delete(`/rfid/inventory/${rfidTag}`);
+
+// RFID assignment to attendee (used by sub-organizer and admin)
+export const assignInventoryRfid = (attendeeId, rfidTag, replaceExisting = false) => {
+  return api.post(`/attendees/${attendeeId}/rfid`, { rfidTag, replaceExisting });
+};

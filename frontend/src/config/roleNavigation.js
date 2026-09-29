@@ -91,7 +91,6 @@ export const ROLE_NAVIGATION = {
       {
         title: 'Operations',
         items: [
-          { to: '/suborg/entry', label: 'Entry Scanner', icon: MagnifyingGlassIcon },
           { to: '/suborg/zone-scan', label: 'Zone Scanner', icon: ShieldCheckIcon },
           { to: '/suborg/rfid-assign', label: 'RFID Assignment', icon: IdentificationIcon },
           { to: '/suborg/manual-search', label: 'Manual Search', icon: UserGroupIcon },

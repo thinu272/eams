@@ -5,8 +5,8 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Notification = require('../models/Notification');
 const { protect, checkRole } = require('../middleware/auth');
-const { upload, handleS3Upload } = require('../middleware/s3Upload');
-const { deleteImageFromS3 } = require('../services/s3Service');
+const { upload, handleAzureUpload } = require('../middleware/azureUpload');
+const { deleteImageFromAzure } = require('../services/azureBlobService');
 const QRCode = require('qrcode');
 const { requiresPhotoVerification, resolveConfirmedTicketStatus } = require('../services/ticketDeliveryService');
 const { notifyFinalTicket, notifyBuyerTicketProgress } = require('../services/notificationService');
@@ -400,7 +400,7 @@ router.get('/confirm/:token', async (req, res, next) => {
 });
 
 // POST /api/user/confirm/:token - submit confirmation (scoped)
-router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+router.post('/confirm/:token', upload.single('photo'), handleAzureUpload('attendee-photos'), async (req, res, next) => {
   try {
     const attendee = await Attendee.findOne({ confirmationToken: req.params.token }).populate('event');
     if (!attendee) return res.status(404).json({ success: false, message: 'Invalid confirmation link.' });
@@ -478,7 +478,7 @@ router.post('/confirm/:token', upload.single('photo'), handleS3Upload('attendee-
 });
 
 // POST /api/user/upload-photo - upload / re-upload photo for a ticket you own
-router.post('/upload-photo', upload.single('photo'), handleS3Upload('attendee-photos'), async (req, res, next) => {
+router.post('/upload-photo', upload.single('photo'), handleAzureUpload('attendee-photos'), async (req, res, next) => {
   try {
     const { ticketId } = req.body;
     if (!ticketId || !mongoose.Types.ObjectId.isValid(ticketId)) {

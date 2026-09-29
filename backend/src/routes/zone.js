@@ -91,6 +91,7 @@ const userHasEventAccess = async (user, event) => {
 
   if (event.createdBy?.toString() === user._id.toString()) return true;
   if (event.mainOrganiser?.toString() === user._id.toString()) return true;
+  if ((event.subOrganisers || []).some((id) => id?.toString() === user._id.toString())) return true;
   
   return false;
 };
@@ -106,10 +107,14 @@ const userHasZoneAccess = (user, zoneName, zoneId) => {
   const assignedZones = [
     ...(user.assignedZones || []).map(String),
     ...(user.responsibilities?.zoneIds || []).map(String),
+    ...(user.assignedGates || []).map(String),
   ].filter(Boolean);
 
   // Wildcard check for all zones
   if (assignedZones.includes('all') || assignedZones.includes('ALL_ZONES')) return true;
+
+  // Sub-Organisers without specific zone restrictions can access any zone in their event
+  if (role === ROLES.SUB_ORGANISER && !assignedZones.length) return true;
 
   // If the team member has no zones assigned, they cannot access any zone
   if (!assignedZones.length) return false;
@@ -120,6 +125,7 @@ const userHasZoneAccess = (user, zoneName, zoneId) => {
 const getUserAssignedZones = (user) => Array.from(new Set([
   ...((user?.assignedZones || []).map(String)),
   ...((user?.responsibilities?.zoneIds || []).map(String)),
+  ...((user?.assignedGates || []).map(String)),
 ])).filter(Boolean);
 
 const getExpectedAction = async (attendeeId, zoneName) => {
@@ -161,15 +167,19 @@ const buildDeniedResponse = async ({
       },
     });
 
-    emitDashboardEvent(io, 'zone_scan', attendee.event.toString(), {
+    const eventIdStr = attendee.event.toString();
+    const deniedPayload = {
       source: 'zone',
-      eventId: attendee.event,
+      eventId: eventIdStr,
       attendeeName: attendee.fullName,
+      name: attendee.fullName,
       action: denialReason === 'DUPLICATE_SCAN' ? 'DUPLICATE' : 'DENIED',
       zoneName,
       timestamp: deniedLog.timestamp,
       accessGranted: false,
-    });
+    };
+    emitDashboardEvent(io, 'zone_scan', eventIdStr, deniedPayload);
+    emitDashboardEvent(io, 'zone_update', eventIdStr, deniedPayload);
   }
 
   return {
@@ -196,7 +206,7 @@ const buildDeniedResponse = async ({
 router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff', 'volunteer'), async (req, res, next) => {
   try {
     const io = req.app.get('io');
-    const requestedZone = normalizeZoneName(req.body.zone);
+    const requestedZone = normalizeZoneName(req.body.zone || req.body.zoneId || req.body.zoneName);
     const requestedEventId = String(req.body.eventId || '').trim();
     const qrToken = req.body.qrToken?.trim();
     const rfidId = (req.body.rfidId || req.body.rfidTag)?.trim();
@@ -450,10 +460,12 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
     // -------------------------------------------------
     // 9. Emit + respond
     // -------------------------------------------------
-    emitDashboardEvent(io, 'zone_scan', event._id.toString(), {
+    const eventIdStr = event._id.toString();
+    const successPayload = {
       source: 'zone',
-      eventId: event._id,
+      eventId: eventIdStr,
       attendeeName: attendee.fullName,
+      name: attendee.fullName,
       action,
       zoneName,
       timestamp: zoneLog.timestamp,
@@ -461,7 +473,9 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       categoryName: attendee.categoryName,
       processedByName: req.user.name || req.user.email,
       scanMethod: qrToken ? 'QR' : 'RFID',
-    });
+    };
+    emitDashboardEvent(io, 'zone_scan', eventIdStr, successPayload);
+    emitDashboardEvent(io, 'zone_update', eventIdStr, successPayload);
 
     res.json({
       success: true,
@@ -537,13 +551,43 @@ router.get('/logs', protect, restrictTo('main_admin', 'main_organiser', 'sub_org
       }
     }
 
-    const logs = await ZoneLog.find(filter)
-      .populate('attendeeId', 'fullName categoryName allowedZones')
-      .populate('scannedBy', 'name role')
-      .sort({ timestamp: -1 })
-      .limit(Math.min(parseInt(limit, 10) || 10, 25));
+    const [logs, totalScanned, allowedCount] = await Promise.all([
+      ZoneLog.find(filter)
+        .populate('attendeeId', 'fullName categoryName allowedZones')
+        .populate('scannedBy', 'name role')
+        .sort({ timestamp: -1 })
+        .limit(Math.min(parseInt(limit, 10) || 10, 25)),
+      ZoneLog.countDocuments(filter),
+      ZoneLog.countDocuments({ ...filter, accessGranted: true }),
+    ]);
 
-    res.json({ success: true, data: { logs } });
+    const deniedCount = Math.max(0, totalScanned - allowedCount);
+
+    const formattedLogs = logs.map((l) => ({
+      _id: l._id,
+      attendee: l.attendeeId,
+      attendeeId: l.attendeeId,
+      snapshot: l.attendeeSnapshot,
+      zone: l.zoneName,
+      zoneName: l.zoneName,
+      action: l.action,
+      accessGranted: l.accessGranted,
+      denialReason: l.denialReason,
+      timestamp: l.timestamp,
+      scannedBy: l.scannedBy,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        logs: formattedLogs,
+        meta: {
+          totalScanned,
+          allowedCount,
+          deniedCount,
+        },
+      },
+    });
   } catch (err) {
     next(err);
   }
