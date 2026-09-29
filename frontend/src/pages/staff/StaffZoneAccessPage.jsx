@@ -84,6 +84,18 @@ const StaffZoneAccessPage = () => {
   const assignedZones = useMemo(() => getAssignedZones(user), [user]);
   const zoneLocked = assignedZones.length > 0;
 
+  // Zones available for the currently selected event, filtered to assigned zones when applicable
+  const availableZones = useMemo(() => {
+    const eventZones = currentEvent?.zones || [];
+    if (assignedZones.length > 0) {
+      const filtered = eventZones.filter((z) =>
+        assignedZones.some((az) => az === z.id || az === z.name)
+      );
+      if (filtered.length > 0) return filtered;
+    }
+    return eventZones;
+  }, [currentEvent, assignedZones]);
+
   // Network status
   useEffect(() => {
     const handleOnline = () => {
@@ -168,15 +180,43 @@ const StaffZoneAccessPage = () => {
       window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
+  // Set default active zone on first load
   useEffect(() => {
     if (assignedZones[0]) {
       setZoneName(assignedZones[0]);
       setZoneInput(assignedZones[0]);
+    } else if (availableZones[0]) {
+      const defaultName = availableZones[0].name || availableZones[0].id;
+      setZoneName(defaultName);
+      setZoneInput(defaultName);
     } else {
       setZoneName('VIP Zone');
       setZoneInput('VIP Zone');
     }
-  }, [assignedZones]);
+  }, [assignedZones, availableZones]);
+
+  // Reset zone selection whenever the active event changes so the
+  // zone dropdown only shows zones belonging to the selected event.
+  useEffect(() => {
+    if (!selectedEventId) return;
+    const nextEvent = events.find((e) => e._id === selectedEventId);
+    const nextEventZones = nextEvent?.zones || [];
+    if (assignedZones.length > 0) {
+      const matched = nextEventZones.find((z) =>
+        assignedZones.some((az) => az === z.id || az === z.name)
+      );
+      if (matched) {
+        setZoneName(matched.name || matched.id);
+        setZoneInput(matched.name || matched.id);
+        return;
+      }
+    }
+    if (nextEventZones.length > 0) {
+      const first = nextEventZones[0];
+      setZoneName(first.name || first.id);
+      setZoneInput(first.name || first.id);
+    }
+  }, [selectedEventId]); // intentionally omits `events` and `assignedZones` — runs only on event change
 
   useEffect(() => {
     if (readerMode === 'rfid' && activeTab === 'scan') rfidInputRef.current?.focus();
@@ -760,36 +800,56 @@ const StaffZoneAccessPage = () => {
                     <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Select Zone
                     </label>
-                    {zoneLocked ? (
-                      assignedZones.length > 1 ? (
+                    {availableZones.length > 1 ? (
+                        // Multiple zones available for this event — show a dropdown
                         <select
                           value={zoneName}
                           onChange={(e) => setZoneName(e.target.value)}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
                         >
-                          {assignedZones.map((zone) => (
-                            <option key={zone} value={zone}>
-                              {getZoneDisplayName(zone)}
+                          {availableZones.map((zone) => (
+                            <option
+                              key={zone.id || zone.name}
+                              value={zone.name || zone.id}
+                            >
+                              {zone.name || zone.id}
+                            </option>
+                          ))}
+                        </select>
+                      ) : availableZones.length === 1 && zoneLocked ? (
+                        // Exactly one assigned zone for this event — show as locked label
+                        <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                          {getZoneDisplayName(zoneName)}
+                        </div>
+                      ) : availableZones.length === 1 ? (
+                        // One zone on the event but not locked — still a dropdown for clarity
+                        <select
+                          value={zoneName}
+                          onChange={(e) => setZoneName(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+                        >
+                          {availableZones.map((zone) => (
+                            <option
+                              key={zone.id || zone.name}
+                              value={zone.name || zone.id}
+                            >
+                              {zone.name || zone.id}
                             </option>
                           ))}
                         </select>
                       ) : (
-                        <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                          {getZoneDisplayName(zoneName)}
-                        </div>
-                      )
-                    ) : (
-                      <input
-                        value={zoneInput}
-                        onChange={(e) => setZoneInput(e.target.value)}
-                        onBlur={() => setZoneName(zoneInput)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') setZoneName(zoneInput);
-                        }}
-                        placeholder="Zone name"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                      />
-                    )}
+                        // No event zones defined — allow free-text entry
+                        <input
+                          value={zoneInput}
+                          onChange={(e) => setZoneInput(e.target.value)}
+                          onBlur={() => setZoneName(zoneInput)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') setZoneName(zoneInput);
+                          }}
+                          placeholder="Zone name"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+                        />
+                      )}
                   </div>
                 </div>
               </div>
