@@ -1,0 +1,169 @@
+name: EAMS CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # JOB 1: Backend - Install and Lint
+  backend-ci:
+    name: Backend (Node.js)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint backend (ESLint - if configured)
+        working-directory: backend
+        run: |
+          if [ -f ".eslintrc" ] || [ -f "eslint.config.js" ]; then
+            npx eslint src/ --ext .js --max-warnings 0
+          else
+            echo "No ESLint config found - skipping lint step."
+          fi
+
+      - name: Verify server entry-point exists
+        working-directory: backend
+        run: |
+          if [ ! -f "src/server.js" ]; then
+            echo "src/server.js not found!"
+            exit 1
+          fi
+          echo "src/server.js found."
+
+      - name: Run backend tests (if present)
+        working-directory: backend
+        run: |
+          if grep -q '"test"' package.json; then
+            npm test --if-present
+          else
+            echo "No test script defined - skipping tests."
+          fi
+
+  # JOB 2: Frontend - Install, Lint and Build
+  frontend-ci:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend (ESLint - if configured)
+        working-directory: frontend
+        run: |
+          if [ -f ".eslintrc" ] || [ -f "eslint.config.js" ]; then
+            npx eslint src/ --ext .js,.jsx --max-warnings 0
+          else
+            echo "No ESLint config found - skipping lint step."
+          fi
+
+      - name: Build frontend (production)
+        working-directory: frontend
+        env:
+          CI: false
+          REACT_APP_API_URL: http://localhost:5000
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: frontend
+        run: |
+          if [ ! -d "build" ]; then
+            echo "Build directory not found!"
+            exit 1
+          fi
+          BUILD_SIZE=$(du -sh build | cut -f1)
+          echo "Build successful. Size: $BUILD_SIZE"
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-node${{ matrix.node-version }}
+          path: frontend/build/
+          retention-days: 7
+
+  # JOB 3: Security Audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Backend npm audit
+        working-directory: backend
+        run: npm audit --audit-level=high || echo "High-severity vulnerabilities found. Review manually."
+
+      - name: Frontend npm audit
+        working-directory: frontend
+        run: npm audit --audit-level=high || echo "High-severity vulnerabilities found. Review manually."
+
+  # JOB 4: CI Summary
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, security-audit]
+    if: always()
+
+    steps:
+      - name: Report CI Result
+        run: |
+          echo "=============================="
+          echo "  EAMS CI Pipeline Summary"
+          echo "=============================="
+          echo "Backend CI  : ${{ needs.backend-ci.result }}"
+          echo "Frontend CI : ${{ needs.frontend-ci.result }}"
+          echo "Security    : ${{ needs.security-audit.result }}"
+          echo "=============================="
+
+          if [[ "${{ needs.backend-ci.result }}" == "failure" || \
+                "${{ needs.frontend-ci.result }}" == "failure" ]]; then
+            echo "Pipeline FAILED"
+            exit 1
+          fi
+
+          echo "All critical checks passed!"
