@@ -4,6 +4,13 @@
 
 All notable changes to the **ENTRYNEX / EAMS** project documentation are listed in this file.
 
+### 2026-09-29
+- **V26: RFID implementation updates**:
+  - Implemented backend RFID tag schema (`RfidTag.js`) for dedicated tracking.
+  - Upgraded `Attendee` schema with a sparse compound unique index (`{ event: 1, rfidTag: 1 }`) for robust RFID deduplication.
+  - Modernized `docs/04_DATABASE_DOCUMENTATION.md` and `docs/06_DATABASE_RELATIONSHIPS.md` to document the new `rfidtags` collection and updated schema relationships.
+  - Corrected `docs/11_ZONE_ACCESS_CONTROL.md` to remove outdated static access fields like `currentZone`, accurately reflecting dynamic logging through `EntryLog` and `ZoneLog`.
+
 ### 2026-07-30
 - Added comprehensive documentation files covering the entire system:
   - `12_NOTIFICATION_SYSTEM.md`

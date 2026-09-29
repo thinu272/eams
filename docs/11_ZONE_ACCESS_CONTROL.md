@@ -38,7 +38,7 @@ The system distinguishes between two scanning contexts:
 |-------|------------|---------|
 | **ZoneLog** | `attendeeId`, `eventId`, `zoneName`, `action` (ENTRY/EXIT), `accessGranted`, `denialReason`, `scanMethod`, `scannedBy`, `attendeeSnapshot`, `timestamp` | Immutable audit of every zone scan attempt. |
 | **EntryLog** | `attendeeId`, `eventId`, `zoneId`, `zoneName`, `action` (check_in/check_out/zone_entry/zone_exit), `timestamp` | Stores successful entry/exit events for reporting. |
-| **Attendee** | `checkedIn` (boolean), `checkedInAt` (timestamp), `currentZone` (zone ID), `rfidTag` | Tracks current access state of attendee. |
+| **Attendee** | `checkedIn` (boolean), `checkedInAt` (timestamp), `rfidTag` | Tracks current access state of attendee. |
 | **Ticket** (referenced) | `allowedZones` (array of zone IDs) | Declares which zones a ticket holder may access. |
 
 ## Access Evaluation Flow
