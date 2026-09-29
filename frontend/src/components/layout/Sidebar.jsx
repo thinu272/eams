@@ -8,10 +8,11 @@ import {
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
 } from '@heroicons/react/24/solid';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 import { getRoleLabel, ROLE_NAVIGATION } from '../../config/roleNavigation';
 import { getCanonicalRole } from '../../utils/rbac';
 
-const Sidebar = ({ isMobileOpen, onClose }) => {
+const Sidebar = ({ isMobileOpen, onClose, onOpen }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -231,6 +232,39 @@ const Sidebar = ({ isMobileOpen, onClose }) => {
           </button>
         </div>
       </aside>
+
+      {/* Mobile Bottom Navigation (only visible on mobile) */}
+      <div className="fixed bottom-0 left-0 z-30 flex w-full justify-around border-t border-slate-200/80 bg-white px-2 py-2 pb-safe shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] lg:hidden">
+        {filteredSections
+          .flatMap((s) => s.items)
+          .filter((item) => !item.label.toLowerCase().includes('manual search'))
+          .slice(0, 4)
+          .map((item) => {
+            const Icon = item.icon;
+            const active = isItemActive(item.to);
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={onClose}
+                className={`flex flex-col items-center justify-center gap-1 rounded-xl p-2 transition min-w-[4rem] ${
+                  active ? 'text-blue-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Icon className={`h-6 w-6 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
+                <span className="text-[10px] font-semibold text-center leading-tight truncate w-full">{item.label}</span>
+              </NavLink>
+            );
+          })}
+
+        <button
+          onClick={onOpen}
+          className="flex flex-col items-center justify-center gap-1 rounded-xl p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 min-w-[4rem]"
+        >
+          <Bars3Icon className="h-6 w-6 text-slate-400" />
+          <span className="text-[10px] font-semibold text-center leading-tight">Menu</span>
+        </button>
+      </div>
     </>
   );
 };

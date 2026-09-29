@@ -26,15 +26,15 @@ const MetricCard = ({ title, value, subtitle, accent = 'blue' }) => {
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+    <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-4 shadow-sm sm:px-5 sm:py-5">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 sm:text-[11px]">
         {title}
       </p>
-      <p className={`mt-2 text-3xl font-bold tracking-tight ${valueColor[accent] || 'text-slate-900'}`}>
+      <p className={`mt-1 text-2xl font-bold tracking-tight sm:mt-2 sm:text-3xl ${valueColor[accent] || 'text-slate-900'}`}>
         {value}
       </p>
       {subtitle && (
-        <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+        <p className="mt-0.5 truncate text-[9px] text-slate-500 sm:mt-1 sm:text-xs">{subtitle}</p>
       )}
     </div>
   );
@@ -162,11 +162,11 @@ const StaffDashboardPage = () => {
   return (
     <DashboardLayout>
       {/* Wider container so it fills more of the screen */}
-      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 pb-20 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-6xl space-y-4 px-3 pb-24 sm:space-y-6 sm:px-6 lg:px-8">
         
         {/* ========== HEADER ========== */}
         <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-          <div className="px-5 py-6 sm:px-7 sm:py-7">
+          <div className="px-4 py-4 sm:px-7 sm:py-7">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
               <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
@@ -193,14 +193,14 @@ const StaffDashboardPage = () => {
               </span>
             </div>
 
-            <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl">
               Welcome,{' '}
               <span className="text-blue-600">
                 {user?.name || 'Operator'}
               </span>
             </h1>
 
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
+            <p className="mt-1.5 max-w-2xl text-xs text-slate-500 sm:mt-2 sm:text-sm">
               Manage entry streams, restricted zones, and validation logging from this terminal.
             </p>
 
@@ -224,7 +224,7 @@ const StaffDashboardPage = () => {
         </div>
 
         {/* ========== METRICS ========== */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <MetricCard
             title="Gate Actions"
             value={loading ? '—' : stats.total}
@@ -247,11 +247,11 @@ const StaffDashboardPage = () => {
 
         {/* ========== OPERATIONS ========== */}
         <div>
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:mb-3">
             Operations
           </p>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 sm:gap-4">
             {actions.map((act) => {
               const Icon = act.icon;
               return (
@@ -260,13 +260,13 @@ const StaffDashboardPage = () => {
                   type="button"
                   disabled={!act.active}
                   onClick={() => act.active && navigate(act.path)}
-                  className={`group flex items-start gap-4 rounded-2xl border border-slate-200/70 bg-white p-5 text-left shadow-sm transition ${
+                  className={`group flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white p-3.5 text-left shadow-sm transition sm:gap-4 sm:p-5 ${
                     act.active
                       ? 'hover:border-blue-200 hover:shadow-md cursor-pointer'
                       : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white sm:h-11 sm:w-11">
                     <Icon className="h-5 w-5" />
                   </div>
 
@@ -279,7 +279,7 @@ const StaffDashboardPage = () => {
                         {act.badge}
                       </span>
                     </div>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-500">
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm">
                       {act.desc}
                     </p>
                   </div>
