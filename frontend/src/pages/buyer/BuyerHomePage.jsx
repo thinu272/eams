@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import BuyerLayout from '../../components/layout/BuyerLayout';
 import { getBuyerTickets } from '../../api/buyer';
@@ -21,37 +21,36 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   UserCircleIcon,
+  ShoppingBagIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { io } from 'socket.io-client';
 import { getSocketUrl } from '../../utils/backend';
 
-/* ───────────────────── Metric Card ───────────────────── */
 const StatCard = ({ label, value, icon: Icon, tone = 'blue' }) => {
   const iconTones = {
     blue: 'bg-blue-50 text-blue-600',
     emerald: 'bg-emerald-50 text-emerald-600',
     amber: 'bg-amber-50 text-amber-600',
-    slate: 'bg-slate-50 text-slate-500',
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm active:scale-[0.98] transition-transform">
-      <div className="flex items-center gap-3 sm:items-start sm:justify-between sm:gap-3">
+    <div className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white px-2.5 py-2.5 sm:p-5 shadow-sm">
+      <div className="flex items-center gap-2 sm:gap-3">
         {Icon && (
           <div
-            className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl ${
+            className={`flex h-8 w-8 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-lg sm:rounded-xl ${
               iconTones[tone] || iconTones.blue
             }`}
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
         )}
-        <div className="min-w-0 flex-1 sm:text-right sm:flex-none">
-          <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <div className="min-w-0">
+          <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
             {label}
           </p>
-          <p className="mt-0.5 sm:mt-2 text-xl sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums">
+          <p className="mt-0.5 sm:mt-1.5 text-base sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums leading-none">
             {value}
           </p>
         </div>
@@ -89,7 +88,9 @@ const BuyerHomePage = () => {
     setLoading(true);
     Promise.all([
       getBuyerTickets().catch(() => ({ data: { data: { orders: [] } } })),
-      api.get('/user/tickets').catch(() => ({ data: { data: { tickets: [] } } })),
+      api
+        .get('/user/tickets')
+        .catch(() => ({ data: { data: { tickets: [] } } })),
     ])
       .then(([buyerRes, userRes]) => {
         setOrders(buyerRes.data?.data?.orders || []);
@@ -133,9 +134,18 @@ const BuyerHomePage = () => {
   }, [user]);
 
   const stats = useMemo(() => {
-    const totalTickets = orders.reduce((acc, o) => acc + (o.stats?.total || 0), 0);
-    const assigned = orders.reduce((acc, o) => acc + (o.stats?.assigned || 0), 0);
-    const pending = orders.reduce((acc, o) => acc + (o.stats?.pending || 0), 0);
+    const totalTickets = orders.reduce(
+      (acc, o) => acc + (o.stats?.total || 0),
+      0
+    );
+    const assigned = orders.reduce(
+      (acc, o) => acc + (o.stats?.assigned || 0),
+      0
+    );
+    const pending = orders.reduce(
+      (acc, o) => acc + (o.stats?.pending || 0),
+      0
+    );
     return { totalTickets, assigned, pending };
   }, [orders]);
 
@@ -280,229 +290,204 @@ const BuyerHomePage = () => {
 
   return (
     <BuyerLayout>
-      <div className="space-y-4 sm:space-y-6 pb-20 sm:pb-24 px-0">
-        {/* ── Header ── */}
+      <div className="space-y-3 sm:space-y-5 pb-16 sm:pb-20">
+        {/* ── Compact header ── */}
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-            <div className="flex flex-col gap-4">
+          <div className="px-4 py-3.5 sm:px-6 sm:py-5">
+            <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/15" />
-                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] sm:tracking-[0.22em] text-slate-400">
-                    Ticket Owner
-                  </p>
-                </div>
-                <h1 className="mt-1.5 sm:mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
-                  Manage your tickets
+                <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight truncate">
+                  Your tickets
                 </h1>
-                <p className="mt-1 text-sm text-slate-500 max-w-lg leading-snug">
-                  Assign attendees, track invites, and get ready for entry.
+                <p className="mt-0.5 text-xs sm:text-sm text-slate-500 truncate">
+                  Assign guests · track invites · entry ready
                 </p>
               </div>
-
-              {/* Full-width primary CTA on mobile */}
               <Link
                 to="/buyer/tickets"
-                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2.5 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
               >
-                Manage Orders
-                <ArrowRightIcon className="h-4 w-4" />
+                Orders
+                <ArrowRightIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Link>
             </div>
           </div>
         </div>
 
-        {/* ── Stats ── */}
-        <section>
-          <p className="mb-2.5 sm:mb-3 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-0.5">
-            Overview
-          </p>
-          {loading ? (
-            <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-20 sm:h-24 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-              <StatCard
-                label="Total"
-                value={stats.totalTickets}
-                icon={TicketIcon}
-                tone="blue"
+        {/* ── Stats — tight ── */}
+        {loading ? (
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-14 sm:h-24 rounded-xl sm:rounded-2xl bg-slate-100 animate-pulse"
               />
-              <StatCard
-                label="Assigned"
-                value={stats.assigned}
-                icon={UserGroupIcon}
-                tone="emerald"
-              />
-              <StatCard
-                label="Pending"
-                value={stats.pending}
-                icon={ClockIcon}
-                tone="amber"
-              />
-            </div>
-          )}
-        </section>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
+            <StatCard
+              label="Total"
+              value={stats.totalTickets}
+              icon={TicketIcon}
+              tone="blue"
+            />
+            <StatCard
+              label="Assigned"
+              value={stats.assigned}
+              icon={UserGroupIcon}
+              tone="emerald"
+            />
+            <StatCard
+              label="Pending"
+              value={stats.pending}
+              icon={ClockIcon}
+              tone="amber"
+            />
+          </div>
+        )}
 
-        {/* ── Widgets ── */}
-        <section className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Next Event */}
-          {!loading && nextOrder?.event ? (
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm flex flex-col min-h-[180px] sm:min-h-[220px]">
-              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Next event
-              </p>
-              <h3 className="mt-1.5 sm:mt-2 text-base font-bold text-slate-900 leading-snug line-clamp-2">
-                {nextOrder.event.name}
-              </h3>
-              <div className="mt-2.5 sm:mt-3 space-y-1.5 text-xs text-slate-500 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <CalendarIcon className="h-4 w-4 text-blue-500 shrink-0" />
-                  <span className="truncate">{formatDate(nextOrder.event.startDate)}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <MapPinIcon className="h-4 w-4 text-blue-500 shrink-0" />
-                  <span className="truncate">
-                    {nextOrder.event.venue?.name || 'Venue TBD'}
-                  </span>
+        {/* ── Next event + quick links (one compact block) ── */}
+        {!loading && (
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            {/* Next event row */}
+            {nextOrder?.event ? (
+              <div className="px-4 py-3.5 sm:px-5 sm:py-4 border-b border-slate-100">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Next event
+                    </p>
+                    <p className="mt-0.5 text-sm sm:text-base font-bold text-slate-900 leading-snug line-clamp-1">
+                      {nextOrder.event.name}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarIcon className="h-3.5 w-3.5 text-blue-500" />
+                        {formatDate(nextOrder.event.startDate)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 min-w-0">
+                        <MapPinIcon className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                        <span className="truncate">
+                          {nextOrder.event.venue?.name || 'Venue TBD'}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/buyer/assign/${nextOrder._id}`}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-[11px] sm:text-xs font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
+                  >
+                    Assign
+                    <ArrowRightIcon className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
               </div>
-              <Link
-                to={`/buyer/assign/${nextOrder._id}`}
-                className="mt-4 sm:mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2.5 text-sm sm:text-xs font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
-              >
-                Assign attendees
-                <ArrowRightIcon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-              </Link>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-5 sm:p-6 flex items-center justify-center min-h-[140px] sm:min-h-[220px]">
-              <p className="text-sm text-slate-500">No upcoming events</p>
-            </div>
-          )}
+            ) : null}
 
-          {/* Owner Tools */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm flex flex-col min-h-[160px] sm:min-h-[220px]">
-            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Owner tools
-            </p>
-            <p className="mt-1.5 sm:mt-2 text-sm text-slate-500">
-              Orders & invite tracking
-            </p>
-            <div className="mt-auto pt-4 sm:pt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
+            {/* Quick links — horizontal, no tall cards */}
+            <div className="grid grid-cols-3 divide-x divide-slate-100">
               <Link
                 to="/buyer/tickets"
-                className="flex flex-col justify-between rounded-xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5 transition active:bg-slate-100 hover:border-slate-200 hover:bg-slate-100/80 touch-manipulation min-h-[72px]"
+                className="flex flex-col items-center justify-center gap-1 px-2 py-3 sm:py-3.5 text-center active:bg-slate-50 hover:bg-slate-50/80 transition touch-manipulation"
               >
-                <span className="text-xs font-semibold text-slate-900 leading-snug">
-                  Manage Orders
-                </span>
-                <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-                  View <ArrowRightIcon className="h-3 w-3" />
+                <ShoppingBagIcon className="h-5 w-5 text-blue-600" />
+                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700">
+                  Orders
                 </span>
               </Link>
               <Link
                 to="/buyer/invites"
-                className="flex flex-col justify-between rounded-xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5 transition active:bg-slate-100 hover:border-slate-200 hover:bg-slate-100/80 touch-manipulation min-h-[72px]"
+                className="flex flex-col items-center justify-center gap-1 px-2 py-3 sm:py-3.5 text-center active:bg-slate-50 hover:bg-slate-50/80 transition touch-manipulation"
               >
-                <span className="text-xs font-semibold text-slate-900 leading-snug">
-                  Track Invites
+                <UserGroupIcon className="h-5 w-5 text-blue-600" />
+                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700">
+                  Invites
                 </span>
-                <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-                  Track <ArrowRightIcon className="h-3 w-3" />
+              </Link>
+              <Link
+                to="/buyer/profile"
+                className="flex flex-col items-center justify-center gap-1 px-2 py-3 sm:py-3.5 text-center active:bg-slate-50 hover:bg-slate-50/80 transition touch-manipulation"
+              >
+                <UserCircleIcon className="h-5 w-5 text-blue-600" />
+                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700">
+                  Profile
                 </span>
               </Link>
             </div>
           </div>
+        )}
 
-          {/* Security note */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm flex flex-col min-h-[160px] sm:min-h-[220px] md:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <ShieldCheckIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Security & Invites
-              </p>
-            </div>
-            <p className="mt-2.5 sm:mt-3 text-sm text-slate-600 leading-relaxed flex-1">
-              Assign tickets to guest emails before QR codes can be generated. Double-check details.
+        {/* ── Thin security tip (one line, not a tall card) ── */}
+        {!loading && (orders.length > 0 || passes.length > 0) && (
+          <div className="flex items-start gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 sm:px-4">
+            <ShieldCheckIcon className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+            <p className="text-[11px] sm:text-xs text-slate-600 leading-snug">
+              Assign each pass to a guest email before QR codes can be generated.
             </p>
-            <Link
-              to="/buyer/profile"
-              className="mt-4 sm:mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:py-2.5 text-sm sm:text-xs font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition touch-manipulation"
-            >
-              <UserCircleIcon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-              Manage Profile
-            </Link>
           </div>
-        </section>
+        )}
 
         {/* ── Purchased Orders ── */}
         {!loading && orders.length > 0 && (
-          <section className="space-y-2.5 sm:space-y-3">
-            <h2 className="text-base font-bold text-slate-900 px-0.5">
-              Your Purchased Orders
+          <section className="space-y-2 sm:space-y-3">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 px-0.5">
+              Purchased Orders
             </h2>
-            <OrderControls orders={orders} onDownloadOrder={handleDownloadOrder} />
+            <OrderControls
+              orders={orders}
+              onDownloadOrder={handleDownloadOrder}
+            />
           </section>
         )}
 
         {/* ── My Entry Passes ── */}
         {!loading && passes.length > 0 && (
-          <section className="space-y-3 sm:space-y-4">
-            {/* Section header + filters */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                  <QrCodeIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                </div>
-                <h2 className="text-base font-bold text-slate-900">
-                  My Entry Passes
-                </h2>
-              </div>
+          <section className="space-y-2.5 sm:space-y-3">
+            <div className="flex items-center gap-2 px-0.5">
+              <QrCodeIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+              <h2 className="text-sm sm:text-base font-bold text-slate-900">
+                Entry Passes
+              </h2>
+              <span className="text-[11px] font-medium text-slate-400 tabular-nums">
+                ({filteredPasses.length})
+              </span>
+            </div>
 
-              {/* Search + Filter – stacked on mobile for clarity */}
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-2">
-                <div className="relative flex-1">
-                  <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    inputMode="search"
-                    placeholder="Search event or ticket…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-3 sm:py-2.5 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
-                  />
-                </div>
-                <div className="relative sm:w-48 shrink-0">
-                  <FunnelIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-3 sm:py-2.5 pl-9 pr-8 text-sm font-medium text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer touch-manipulation"
-                  >
-                    <option value="all">All Passes</option>
-                    <option value="active">Active</option>
-                    <option value="verification">Awaiting Verification</option>
-                    <option value="rejected">Photo Rejected</option>
-                    <option value="invited">Invited</option>
-                    <option value="cancelled">Cancelled / Invalidated</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                </div>
+            {/* Compact search + filter */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+              <div className="relative flex-1">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  inputMode="search"
+                  placeholder="Search event or ticket…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 sm:py-2.5 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
+                />
+              </div>
+              <div className="relative sm:w-44 shrink-0">
+                <FunnelIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-sm font-medium text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer touch-manipulation"
+                >
+                  <option value="all">All Passes</option>
+                  <option value="active">Active</option>
+                  <option value="verification">Awaiting Verification</option>
+                  <option value="rejected">Photo Rejected</option>
+                  <option value="invited">Invited</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="pending">Pending</option>
+                </select>
               </div>
             </div>
 
             {filteredPasses.length > 0 ? (
-              <div className="space-y-4 sm:space-y-5">
-                <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 gap-2.5 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {paginatedPasses.map((pass) => (
                     <TicketCard
                       key={pass._id}
@@ -522,16 +507,15 @@ const BuyerHomePage = () => {
                 </div>
 
                 {passesTotalPages > 1 && (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
-                    <p className="text-center sm:text-left text-xs text-slate-500 order-2 sm:order-1">
-                      Showing {passesStartIndex + 1}–
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-center sm:text-left text-[11px] sm:text-xs text-slate-500 order-2 sm:order-1">
+                      {passesStartIndex + 1}–
                       {Math.min(
                         passesStartIndex + passesPerPage,
                         filteredPasses.length
                       )}{' '}
                       of {filteredPasses.length}
                     </p>
-
                     <div className="flex items-center justify-center gap-1.5 order-1 sm:order-2">
                       <button
                         type="button"
@@ -539,60 +523,21 @@ const BuyerHomePage = () => {
                           handlePassesPageChange(passesCurrentPage - 1)
                         }
                         disabled={passesCurrentPage === 1}
-                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white min-w-[44px] h-10 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
+                        className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 disabled:opacity-40 touch-manipulation active:bg-slate-50"
                       >
                         <ChevronLeftIcon className="h-4 w-4" />
-                        <span className="hidden xs:inline">Prev</span>
                       </button>
-
-                      <div className="flex items-center gap-1">
-                        {Array.from(
-                          { length: passesTotalPages },
-                          (_, i) => i + 1
-                        )
-                          .filter((page) => {
-                            if (passesTotalPages <= 5) return true;
-                            return (
-                              page === 1 ||
-                              page === passesTotalPages ||
-                              Math.abs(page - passesCurrentPage) <= 1
-                            );
-                          })
-                          .map((page, idx, arr) => {
-                            const prev = arr[idx - 1];
-                            const showEllipsis = prev && page - prev > 1;
-                            return (
-                              <React.Fragment key={page}>
-                                {showEllipsis && (
-                                  <span className="px-1 text-xs text-slate-400">
-                                    …
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handlePassesPageChange(page)}
-                                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition touch-manipulation ${
-                                    passesCurrentPage === page
-                                      ? 'bg-blue-600 text-white shadow-sm'
-                                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:bg-slate-100'
-                                  }`}
-                                >
-                                  {page}
-                                </button>
-                              </React.Fragment>
-                            );
-                          })}
-                      </div>
-
+                      <span className="px-2 text-xs font-semibold text-slate-600 tabular-nums">
+                        {passesCurrentPage}/{passesTotalPages}
+                      </span>
                       <button
                         type="button"
                         onClick={() =>
                           handlePassesPageChange(passesCurrentPage + 1)
                         }
                         disabled={passesCurrentPage === passesTotalPages}
-                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white min-w-[44px] h-10 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
+                        className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 disabled:opacity-40 touch-manipulation active:bg-slate-50"
                       >
-                        <span className="hidden xs:inline">Next</span>
                         <ChevronRightIcon className="h-4 w-4" />
                       </button>
                     </div>
@@ -600,16 +545,15 @@ const BuyerHomePage = () => {
                 )}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-5 py-10 sm:px-6 sm:py-12 text-center">
-                <p className="text-sm font-medium text-slate-500">
-                  No entry passes match your filters.
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-8 text-center">
+                <p className="text-sm text-slate-500">
+                  No passes match your filters.
                 </p>
               </div>
             )}
           </section>
         )}
 
-        {/* Empty state */}
         {!loading && passes.length === 0 && orders.length === 0 && (
           <EmptyState />
         )}
