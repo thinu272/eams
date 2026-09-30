@@ -68,7 +68,6 @@ const BuyerDashboardPage = () => {
     deps: [],
   });
 
-  // Socket for real-time updates
   useEffect(() => {
     if (!user?._id) return;
 
@@ -110,7 +109,9 @@ const BuyerDashboardPage = () => {
 
     socket.on('order_status_changed', handleStatusChange);
     socket.on('payment_approved', (data) => {
-      toast.success(`Payment for order #${data.orderNumber} has been approved!`);
+      toast.success(
+        `Payment for order #${data.orderNumber} has been approved!`
+      );
       fetchOrders();
     });
     socket.on('payment_submitted', (data) => {
@@ -165,7 +166,14 @@ const BuyerDashboardPage = () => {
     }
 
     return result;
-  }, [orders, filterMethod, filterStatus, filterEvent, filterDateFrom, filterDateTo]);
+  }, [
+    orders,
+    filterMethod,
+    filterStatus,
+    filterEvent,
+    filterDateFrom,
+    filterDateTo,
+  ]);
 
   const sortedOrders = useMemo(
     () =>
@@ -235,31 +243,31 @@ const BuyerDashboardPage = () => {
 
   return (
     <BuyerLayout>
-      <div className="space-y-5 sm:space-y-6 pb-16 sm:pb-20">
+      <div className="space-y-4 sm:space-y-6 pb-16 sm:pb-20">
         {/* ── Header ── */}
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/15" />
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                     Buyer Workspace
                   </p>
                 </div>
-                <h1 className="mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
-                  Ticket Progress & Payments
+                <h1 className="mt-1.5 sm:mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
+                  Ticket Progress
                 </h1>
-                <p className="mt-1.5 text-sm text-slate-500 max-w-lg">
-                  Track activation status and filter by the payment method you used.
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-lg leading-snug">
+                  Track activation and filter by payment method.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => setShowFilters((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition lg:hidden"
+                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 sm:py-2 text-sm font-medium text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 transition lg:hidden touch-manipulation"
                 >
                   <FunnelIcon className="h-4 w-4" />
                   Filters
@@ -270,7 +278,7 @@ const BuyerDashboardPage = () => {
 
                 <Link
                   to="/events"
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
                 >
                   Browse Events
                   <ArrowRightIcon className="h-4 w-4" />
@@ -286,26 +294,26 @@ const BuyerDashboardPage = () => {
             showFilters ? 'block' : 'hidden lg:block'
           }`}
         >
-          <div className="px-4 py-4 sm:px-6">
+          <div className="px-4 py-3.5 sm:px-6 sm:py-4">
             <div className="flex items-center justify-between mb-3 lg:hidden">
               <p className="text-sm font-semibold text-slate-800">Filters</p>
               <button
                 type="button"
                 onClick={() => setShowFilters(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
+                className="rounded-xl p-2 text-slate-400 active:bg-slate-100 hover:bg-slate-100 touch-manipulation"
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-6">
               <select
                 value={filterMethod}
                 onChange={(e) => {
                   setFilterMethod(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               >
                 {PaymentMethodOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -320,7 +328,7 @@ const BuyerDashboardPage = () => {
                   setFilterStatus(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               >
                 {StatusOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -330,14 +338,15 @@ const BuyerDashboardPage = () => {
               </select>
 
               <input
-                type="text"
+                type="search"
+                inputMode="search"
                 placeholder="Search events…"
                 value={filterEvent === 'all' ? '' : filterEvent}
                 onChange={(e) => {
                   setFilterEvent(e.target.value || 'all');
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation sm:col-span-2 lg:col-span-1"
               />
 
               <input
@@ -347,7 +356,7 @@ const BuyerDashboardPage = () => {
                   setFilterDateFrom(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               />
 
               <input
@@ -357,14 +366,14 @@ const BuyerDashboardPage = () => {
                   setFilterDateTo(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               />
 
               <button
                 type="button"
                 onClick={clearFilters}
                 disabled={!hasActiveFilters}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:py-2.5 text-sm font-medium text-slate-600 active:bg-slate-100 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
               >
                 Clear filters
               </button>
@@ -374,11 +383,11 @@ const BuyerDashboardPage = () => {
 
         {/* ── Loading ── */}
         {loading && (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="h-40 sm:h-44 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
+                className="h-36 sm:h-44 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
               />
             ))}
           </div>
@@ -386,31 +395,31 @@ const BuyerDashboardPage = () => {
 
         {/* ── Empty ── */}
         {!loading && paginatedOrders.length === 0 && (
-          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm px-6 py-14 sm:py-16 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <TicketIcon className="h-7 w-7" />
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm px-5 py-12 sm:px-6 sm:py-16 text-center">
+            <div className="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <TicketIcon className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-900">
               No orders found
             </h3>
-            <p className="mt-1.5 text-sm text-slate-500 max-w-sm mx-auto">
+            <p className="mt-1.5 text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
               {hasActiveFilters
                 ? 'No orders match the selected filters. Try adjusting or clearing them.'
                 : 'You haven’t purchased any tickets yet.'}
             </p>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <div className="mt-5 sm:mt-6 flex flex-col xs:flex-row flex-wrap items-stretch xs:items-center justify-center gap-2.5 sm:gap-3">
               {hasActiveFilters && (
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 active:bg-slate-50 hover:bg-slate-50 touch-manipulation"
                 >
                   Clear filters
                 </button>
               )}
               <Link
                 to="/events"
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2 text-sm font-semibold text-white hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
               >
                 Browse Events
               </Link>
@@ -420,7 +429,7 @@ const BuyerDashboardPage = () => {
 
         {/* ── Orders ── */}
         {!loading && paginatedOrders.length > 0 && (
-          <div className="space-y-4 sm:space-y-5">
+          <div className="space-y-3 sm:space-y-5">
             {paginatedOrders.map((order) => {
               const total = order.stats?.total || 0;
               const assigned = order.stats?.assigned || 0;
@@ -439,14 +448,14 @@ const BuyerDashboardPage = () => {
 
               const getAwaitingPaymentLabel = () => {
                 if (order.paymentMethod === 'bank_transfer') {
-                  return 'Payment Verification Pending';
+                  return 'Verification Pending';
                 }
                 if (
                   ['cash_on_entrance', 'cash_at_entrance'].includes(
                     order.paymentMethod
                   )
                 ) {
-                  return 'Reserved · Awaiting Payment';
+                  return 'Reserved';
                 }
                 return 'Awaiting Payment';
               };
@@ -458,65 +467,68 @@ const BuyerDashboardPage = () => {
               return (
                 <div
                   key={order._id}
-                  className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                  className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
                 >
                   <div className="p-4 sm:p-5 lg:p-6">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                      {/* Left – Event info */}
-                      <div className="min-w-0 flex-1 space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                            Order #{order.orderNumber}
+                    <div className="flex flex-col gap-4 sm:gap-5">
+                      {/* Event info */}
+                      <div className="min-w-0 space-y-2.5 sm:space-y-3">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                            #{order.orderNumber}
                           </span>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-[11px] sm:text-xs text-slate-400">
                             {new Date(order.createdAt).toLocaleDateString()}
                           </span>
                           {order.paymentMethod && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                              <CreditCardIcon className="h-3.5 w-3.5" />
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-blue-700">
+                              <CreditCardIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                               {paymentLabel}
                             </span>
                           )}
                           {isAwaitingPayment && (
-                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-amber-800">
                               {getAwaitingPaymentLabel()}
                             </span>
                           )}
                         </div>
 
-                        <h3 className="text-lg sm:text-xl font-bold text-slate-900 leading-snug truncate">
+                        <h3 className="text-base sm:text-xl font-bold text-slate-900 leading-snug">
                           {order.event?.name || order.eventName || 'Event'}
                         </h3>
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-slate-500">
-                          <span className="inline-flex items-center gap-1.5">
+                        <div className="flex flex-col xs:flex-row xs:flex-wrap gap-1 xs:gap-x-4 xs:gap-y-1.5 text-xs sm:text-sm text-slate-500">
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
                             <CalendarIcon className="h-4 w-4 text-blue-500 shrink-0" />
-                            {formatDate(order.event?.startDate)}
+                            <span className="truncate">
+                              {formatDate(order.event?.startDate)}
+                            </span>
                           </span>
-                          <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
                             <MapPinIcon className="h-4 w-4 text-blue-500 shrink-0" />
-                            <span className="truncate max-w-[200px] sm:max-w-none">
+                            <span className="truncate">
                               {order.event?.venue?.name || 'Venue TBD'}
                             </span>
                           </span>
                         </div>
 
                         {isAwaitingPayment && (
-                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3.5 py-2.5">
-                            <p className="text-xs font-medium text-amber-800">
-                              Ticket features become available after payment is
-                              verified.
+                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2.5">
+                            <p className="text-xs font-medium text-amber-800 leading-snug">
+                              Ticket features unlock after payment is verified.
                             </p>
                           </div>
                         )}
                       </div>
 
-                      {/* Right – Progress + Actions */}
-                      <div className="w-full lg:w-64 shrink-0 space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                            <span>Assignee Activation</span>
-                            <span className="tabular-nums">{progressPercent}%</span>
+                      {/* Progress + Actions */}
+                      <div className="space-y-3 sm:space-y-4 border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
+                        <div className="space-y-1.5 sm:space-y-2">
+                          <div className="flex items-center justify-between text-[11px] sm:text-xs font-semibold text-slate-700">
+                            <span>Activation</span>
+                            <span className="tabular-nums">
+                              {progressPercent}%
+                            </span>
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                             <div
@@ -528,23 +540,23 @@ const BuyerDashboardPage = () => {
                               style={{ width: `${progressPercent}%` }}
                             />
                           </div>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[10px] sm:text-[11px] text-slate-400">
                             {assigned} of {total} tickets activated
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => handleDownloadOrder(order._id)}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition sm:flex-none"
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2 text-xs font-semibold text-slate-700 active:bg-slate-50 hover:bg-slate-50 transition touch-manipulation"
                           >
                             <ArrowDownTrayIcon className="h-4 w-4" />
                             Summary
                           </button>
                           <Link
                             to={`/buyer/orders/${order._id}`}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition sm:flex-none"
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-3 sm:py-2 text-xs font-semibold text-white hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
                           >
                             View Tickets
                             <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -559,28 +571,27 @@ const BuyerDashboardPage = () => {
 
             {/* ── Pagination ── */}
             {totalPages > 1 && (
-              <div className="flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between pt-2">
-                <p className="text-center sm:text-left text-xs text-slate-500">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1 sm:pt-2">
+                <p className="text-center sm:text-left text-xs text-slate-500 order-2 sm:order-1">
                   Showing {startIndex + 1}–
                   {Math.min(startIndex + itemsPerPage, sortedOrders.length)} of{' '}
-                  {sortedOrders.length} orders
+                  {sortedOrders.length}
                 </p>
 
-                <div className="flex items-center justify-center gap-1.5">
+                <div className="flex items-center justify-center gap-1.5 order-1 sm:order-2">
                   <button
                     type="button"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    className="inline-flex min-h-[44px] items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                   >
                     <ChevronLeftIcon className="h-3.5 w-3.5" />
-                    <span className="hidden xs:inline">Previous</span>
+                    <span className="hidden xs:inline">Prev</span>
                   </button>
 
                   <div className="flex items-center gap-1">
                     {Array.from({ length: totalPages }, (_, i) => i + 1)
                       .filter((page) => {
-                        // Show first, last, current ±1
                         if (totalPages <= 5) return true;
                         return (
                           page === 1 ||
@@ -601,10 +612,10 @@ const BuyerDashboardPage = () => {
                             <button
                               type="button"
                               onClick={() => handlePageChange(page)}
-                              className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition ${
+                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition touch-manipulation ${
                                 currentPage === page
                                   ? 'bg-blue-600 text-white shadow-sm'
-                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                  : 'bg-white text-slate-700 border border-slate-200 active:bg-slate-50 hover:bg-slate-50'
                               }`}
                             >
                               {page}
@@ -618,7 +629,7 @@ const BuyerDashboardPage = () => {
                     type="button"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    className="inline-flex min-h-[44px] items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                   >
                     <span className="hidden xs:inline">Next</span>
                     <ChevronRightIcon className="h-3.5 w-3.5" />
