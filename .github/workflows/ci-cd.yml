@@ -1,0 +1,325 @@
+﻿name: EAMS CI/CD - Azure App Service
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─────────────────────────────────────────────────────────
+# REQUIRED GitHub Secrets (Settings → Secrets → Actions):
+#
+#   AZURE_BACKEND_PUBLISH_PROFILE
+#     → From Azure Portal: Backend App Service → Get publish profile
+#
+#   AZURE_FRONTEND_PUBLISH_PROFILE
+#     → From Azure Portal: Frontend App Service → Get publish profile
+#
+#   REACT_APP_API_URL
+#     → e.g. https://eams-backend.azurewebsites.net
+#
+# REQUIRED GitHub Variables (Settings → Variables → Actions):
+#   AZURE_BACKEND_APP_NAME   → e.g. eams-backend
+#   AZURE_FRONTEND_APP_NAME  → e.g. eams-frontend
+# ─────────────────────────────────────────────────────────
+
+env:
+  NODE_VERSION: "20.x"
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: Backend CI
+  # ─────────────────────────────────────────────
+  backend-ci:
+    name: Backend CI (Node.js)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint backend (ESLint - if configured)
+        working-directory: backend
+        run: |
+          if [ -f ".eslintrc" ] || [ -f "eslint.config.js" ]; then
+            npx eslint src/ --ext .js --max-warnings 0
+          else
+            echo "No ESLint config found - skipping lint step."
+          fi
+
+      - name: Verify server entry-point exists
+        working-directory: backend
+        run: |
+          if [ ! -f "src/server.js" ]; then
+            echo "src/server.js not found!"
+            exit 1
+          fi
+          echo "src/server.js found."
+
+      - name: Run backend tests (if present)
+        working-directory: backend
+        run: |
+          if grep -q '"test"' package.json; then
+            npm test --if-present
+          else
+            echo "No test script defined - skipping tests."
+          fi
+
+  # ─────────────────────────────────────────────
+  # JOB 2: Frontend CI (Build)
+  # ─────────────────────────────────────────────
+  frontend-ci:
+    name: Frontend CI (React Build)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend (ESLint - if configured)
+        working-directory: frontend
+        run: |
+          if [ -f ".eslintrc" ] || [ -f "eslint.config.js" ]; then
+            npx eslint src/ --ext .js,.jsx --max-warnings 0
+          else
+            echo "No ESLint config found - skipping lint step."
+          fi
+
+      - name: Build frontend (production)
+        working-directory: frontend
+        env:
+          CI: false
+          REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: frontend
+        run: |
+          if [ ! -d "build" ]; then
+            echo "Build directory not found!"
+            exit 1
+          fi
+          BUILD_SIZE=$(du -sh build | cut -f1)
+          echo "Build successful. Size: $BUILD_SIZE"
+
+      - name: Upload frontend build artifact (node ${{ matrix.node-version }})
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────
+  # JOB 3: Security Audit
+  # ─────────────────────────────────────────────
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Backend npm audit
+        working-directory: backend
+        run: npm audit --audit-level=high || echo "High-severity vulnerabilities found. Review manually."
+
+      - name: Frontend npm audit
+        working-directory: frontend
+        run: npm audit --audit-level=high || echo "High-severity vulnerabilities found. Review manually."
+
+  # ─────────────────────────────────────────────
+  # JOB 4: Deploy Backend → Azure App Service
+  # Runs only on push to main (not on PRs)
+  # ─────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend to Azure
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, security-audit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://${{ vars.AZURE_BACKEND_APP_NAME }}.azurewebsites.net
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies (production only)
+        working-directory: backend
+        run: npm ci --omit=dev
+
+      - name: Create backend deployment package
+        run: |
+          cd backend
+          zip -r ../backend-deploy.zip . \
+            --exclude "node_modules/.cache/*" \
+            --exclude ".env" \
+            --exclude "error.log" \
+            --exclude "uploads/*"
+
+      - name: Deploy Backend to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_BACKEND_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
+          package: backend-deploy.zip
+
+      - name: Health check – Backend
+        run: |
+          echo "Waiting 30s for app to warm up..."
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://${{ vars.AZURE_BACKEND_APP_NAME }}.azurewebsites.net/api/health || echo "000")
+          echo "Health check status: $STATUS"
+          if [[ "$STATUS" != "200" && "$STATUS" != "404" ]]; then
+            echo "Health check returned unexpected status: $STATUS"
+          fi
+
+  # ─────────────────────────────────────────────
+  # JOB 5: Deploy Frontend → Azure App Service
+  # Runs only on push to main (not on PRs)
+  # ─────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend to Azure
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, security-audit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://${{ vars.AZURE_FRONTEND_APP_NAME }}.azurewebsites.net
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
+
+      - name: Add web.config for Azure SPA routing
+        run: |
+          cat > frontend/build/web.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <rewrite>
+                <rules>
+                  <rule name="React SPA" stopProcessing="true">
+                    <match url=".*" />
+                    <conditions logicalGrouping="MatchAll">
+                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+                      <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+                    </conditions>
+                    <action type="Rewrite" url="/index.html" />
+                  </rule>
+                </rules>
+              </rewrite>
+              <staticContent>
+                <mimeMap fileExtension=".webmanifest" mimeType="application/manifest+json" />
+              </staticContent>
+            </system.webServer>
+          </configuration>
+          EOF
+
+      - name: Zip frontend build
+        run: |
+          cd frontend/build
+          zip -r ../../frontend-deploy.zip .
+
+      - name: Deploy Frontend to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_FRONTEND_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
+          package: frontend-deploy.zip
+
+  # ─────────────────────────────────────────────
+  # JOB 6: CI/CD Summary
+  # ─────────────────────────────────────────────
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, security-audit, deploy-backend, deploy-frontend]
+    if: always()
+
+    steps:
+      - name: Print pipeline summary
+        run: |
+          echo "============================================"
+          echo "        EAMS CI/CD Pipeline Summary"
+          echo "============================================"
+          echo "Backend CI    : ${{ needs.backend-ci.result }}"
+          echo "Frontend CI   : ${{ needs.frontend-ci.result }}"
+          echo "Security Audit: ${{ needs.security-audit.result }}"
+          echo "Deploy Backend: ${{ needs.deploy-backend.result }}"
+          echo "Deploy Frontend: ${{ needs.deploy-frontend.result }}"
+          echo "============================================"
+          echo "Triggered by  : ${{ github.event_name }}"
+          echo "Branch        : ${{ github.ref_name }}"
+          echo "Commit        : ${{ github.sha }}"
+          echo "============================================"
+
+          if [[ "${{ needs.backend-ci.result }}" == "failure" || \
+                "${{ needs.frontend-ci.result }}" == "failure" ]]; then
+            echo "PIPELINE FAILED - CI checks failed."
+            exit 1
+          fi
+
+          if [[ "${{ needs.deploy-backend.result }}" == "failure" || \
+                "${{ needs.deploy-frontend.result }}" == "failure" ]]; then
+            echo "PIPELINE FAILED - Deployment failed."
+            exit 1
+          fi
+
+          echo "All checks passed!"

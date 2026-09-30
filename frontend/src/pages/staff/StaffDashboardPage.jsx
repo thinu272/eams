@@ -12,7 +12,6 @@ import {
   SignalSlashIcon,
   BanknotesIcon,
   IdentificationIcon,
-  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { getAssignedGateLabel, getAssignedZoneLabel } from './staffUtils';
 import { getMyEvents } from '../../api/events';
@@ -26,15 +25,21 @@ const MetricCard = ({ title, value, subtitle, accent = 'blue' }) => {
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-4 shadow-sm sm:px-5 sm:py-5">
-      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 sm:text-[11px]">
+    <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-3.5 shadow-sm sm:px-5 sm:py-5 active:scale-[0.98] transition-transform">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 sm:text-[11px] leading-tight">
         {title}
       </p>
-      <p className={`mt-1 text-2xl font-bold tracking-tight sm:mt-2 sm:text-3xl ${valueColor[accent] || 'text-slate-900'}`}>
+      <p
+        className={`mt-1 text-xl font-bold tracking-tight sm:mt-2 sm:text-3xl tabular-nums ${
+          valueColor[accent] || 'text-slate-900'
+        }`}
+      >
         {value}
       </p>
       {subtitle && (
-        <p className="mt-0.5 truncate text-[9px] text-slate-500 sm:mt-1 sm:text-xs">{subtitle}</p>
+        <p className="mt-0.5 truncate text-[9px] text-slate-500 sm:mt-1 sm:text-xs">
+          {subtitle}
+        </p>
       )}
     </div>
   );
@@ -109,7 +114,6 @@ const StaffDashboardPage = () => {
         user?.permissions?.canEntryAccess === true ||
         (user?.assignedGates?.length > 0),
     },
-
     {
       title: 'RFID Assignment',
       desc: 'Scan attendee QR and assign RFID wristbands/tags.',
@@ -128,7 +132,6 @@ const StaffDashboardPage = () => {
         user?.assignedZones?.length > 0 ||
         user?.responsibilities?.zoneIds?.length > 0,
     },
-
     {
       title: 'Registry Override',
       desc: 'Manual lookup by name, phone, NIC, or passport.',
@@ -137,7 +140,6 @@ const StaffDashboardPage = () => {
       badge: 'Manual lookup',
       active: true,
     },
-
     {
       title: 'Validation Ledger',
       desc: 'Entry audits and recent gate activity.',
@@ -161,19 +163,18 @@ const StaffDashboardPage = () => {
 
   return (
     <DashboardLayout>
-      {/* Wider container so it fills more of the screen */}
       <div className="mx-auto w-full max-w-6xl space-y-4 px-3 pb-24 sm:space-y-6 sm:px-6 lg:px-8">
-        
         {/* ========== HEADER ========== */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+        <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 sm:px-7 sm:py-7">
-            <div className="flex flex-wrap items-center gap-2.5">
+            {/* Status row */}
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.25em] text-slate-400">
                 Staff Terminal
               </p>
               <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                   isOnline
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                     : 'animate-pulse border-rose-200 bg-rose-50 text-rose-700'
@@ -193,31 +194,36 @@ const StaffDashboardPage = () => {
               </span>
             </div>
 
-            <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            <h1 className="mt-2.5 sm:mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl leading-tight">
               Welcome,{' '}
               <span className="text-blue-600">
                 {user?.name || 'Operator'}
               </span>
             </h1>
 
-            <p className="mt-1.5 max-w-2xl text-xs text-slate-500 sm:mt-2 sm:text-sm">
-              Manage entry streams, restricted zones, and validation logging from this terminal.
+            <p className="mt-1 max-w-2xl text-xs text-slate-500 sm:mt-2 sm:text-sm leading-snug">
+              Manage entry, zones, and validation from this terminal.
             </p>
 
+            {/* Active event + station – stacked & clearer on mobile */}
             {activeEvent && (
-              <div className="mt-5 flex flex-col gap-1 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-slate-500">
-                  Active event:{' '}
-                  <span className="font-semibold text-slate-800">
+              <div className="mt-4 sm:mt-5 flex flex-col gap-2 border-t border-slate-100 pt-3.5 sm:pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="text-[10px] sm:text-xs text-slate-400 shrink-0 mt-0.5">
+                    Event
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-slate-800 truncate">
                     {activeEvent.name}
                   </span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  Station:{' '}
-                  <span className="font-semibold text-slate-800">
+                </div>
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="text-[10px] sm:text-xs text-slate-400 shrink-0 mt-0.5">
+                    Station
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-slate-800 truncate">
                     {getAssignedGateLabel(user)}
                   </span>
-                </p>
+                </div>
               </div>
             )}
           </div>
@@ -234,24 +240,24 @@ const StaffDashboardPage = () => {
           <MetricCard
             title="Valid"
             value={loading ? '—' : stats.success}
-            subtitle="Allowed entries"
+            subtitle="Allowed"
             accent="green"
           />
           <MetricCard
             title="Denied"
             value={loading ? '—' : stats.failed}
-            subtitle="Blocked attempts"
+            subtitle="Blocked"
             accent="rose"
           />
         </div>
 
         {/* ========== OPERATIONS ========== */}
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:mb-3">
+          <p className="mb-2.5 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:mb-3">
             Operations
           </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 sm:gap-4">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4">
             {actions.map((act) => {
               const Icon = act.icon;
               return (
@@ -260,26 +266,35 @@ const StaffDashboardPage = () => {
                   type="button"
                   disabled={!act.active}
                   onClick={() => act.active && navigate(act.path)}
-                  className={`group flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white p-3.5 text-left shadow-sm transition sm:gap-4 sm:p-5 ${
+                  className={`group flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-3.5 text-left shadow-sm transition touch-manipulation sm:items-start sm:gap-4 sm:p-5 ${
                     act.active
-                      ? 'hover:border-blue-200 hover:shadow-md cursor-pointer'
-                      : 'opacity-50 cursor-not-allowed'
+                      ? 'hover:border-blue-200 hover:shadow-md active:bg-slate-50 cursor-pointer'
+                      : 'opacity-45 cursor-not-allowed'
                   }`}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white sm:h-11 sm:w-11">
+                  {/* Icon – slightly larger hit area feel on mobile */}
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition sm:h-11 sm:w-11 ${
+                      act.active
+                        ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-[15px] font-semibold text-slate-900">
+                  <div className="min-w-0 flex-1 py-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <h3 className="text-sm sm:text-[15px] font-semibold text-slate-900 leading-snug">
                         {act.title}
                       </h3>
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                        {act.badge}
-                      </span>
+                      {act.badge && (
+                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium text-slate-500 truncate max-w-[120px] sm:max-w-none">
+                          {act.badge}
+                        </span>
+                      )}
                     </div>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm">
+                    <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-sm leading-snug text-slate-500 line-clamp-2">
                       {act.desc}
                     </p>
                   </div>
