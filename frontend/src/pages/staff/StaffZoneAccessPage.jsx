@@ -3,7 +3,6 @@ import { io } from 'socket.io-client';
 import { getSocketUrl } from '../../utils/backend';
 import {
   CameraIcon,
-  ShieldCheckIcon,
   SignalIcon,
   SignalSlashIcon,
   BoltIcon,
@@ -23,7 +22,6 @@ import { getMyEvents } from '../../api/events';
 import { scanStaffZone } from '../../api/staff';
 import { useAuth } from '../../context/AuthContext';
 import {
-  getAssignedZoneLabel,
   getAssignedZones,
   parseScannedValue,
   playFeedbackTone,
@@ -64,7 +62,9 @@ const StaffZoneAccessPage = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('entrynex:offline-zone-scans')) || [];
+      return (
+        JSON.parse(localStorage.getItem('entrynex:offline-zone-scans')) || []
+      );
     } catch {
       return [];
     }
@@ -84,7 +84,6 @@ const StaffZoneAccessPage = () => {
   const assignedZones = useMemo(() => getAssignedZones(user), [user]);
   const zoneLocked = assignedZones.length > 0;
 
-  // Zones available for the currently selected event, filtered to assigned zones when applicable
   const availableZones = useMemo(() => {
     const eventZones = currentEvent?.zones || [];
     if (assignedZones.length > 0) {
@@ -96,7 +95,6 @@ const StaffZoneAccessPage = () => {
     return eventZones;
   }, [currentEvent, assignedZones]);
 
-  // Network status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -115,7 +113,6 @@ const StaffZoneAccessPage = () => {
     };
   }, []);
 
-  // Offline sync
   useEffect(() => {
     if (isOnline && offlineQueue.length > 0) {
       const syncScans = async () => {
@@ -127,7 +124,9 @@ const StaffZoneAccessPage = () => {
         for (const scan of queueToProcess) {
           try {
             await scanStaffZone({
-              ...(scan.method === 'rfid' ? { rfidId: scan.rfidId } : { qrToken: scan.qrToken }),
+              ...(scan.method === 'rfid'
+                ? { rfidId: scan.rfidId }
+                : { qrToken: scan.qrToken }),
               zone: scan.zone,
               eventId: scan.eventId,
               action: scan.action,
@@ -180,7 +179,6 @@ const StaffZoneAccessPage = () => {
       window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
-  // Set default active zone on first load
   useEffect(() => {
     if (assignedZones[0]) {
       setZoneName(assignedZones[0]);
@@ -195,8 +193,6 @@ const StaffZoneAccessPage = () => {
     }
   }, [assignedZones, availableZones]);
 
-  // Reset zone selection whenever the active event changes so the
-  // zone dropdown only shows zones belonging to the selected event.
   useEffect(() => {
     if (!selectedEventId) return;
     const nextEvent = events.find((e) => e._id === selectedEventId);
@@ -216,10 +212,11 @@ const StaffZoneAccessPage = () => {
       setZoneName(first.name || first.id);
       setZoneInput(first.name || first.id);
     }
-  }, [selectedEventId]); // intentionally omits `events` and `assignedZones` — runs only on event change
+  }, [selectedEventId]);
 
   useEffect(() => {
-    if (readerMode === 'rfid' && activeTab === 'scan') rfidInputRef.current?.focus();
+    if (readerMode === 'rfid' && activeTab === 'scan')
+      rfidInputRef.current?.focus();
   }, [readerMode, activeTab]);
 
   const handleEventChange = (nextId) => {
@@ -281,7 +278,6 @@ const StaffZoneAccessPage = () => {
     fetchStats();
   }, [refreshLogs, fetchStats]);
 
-  // Socket.IO
   useEffect(() => {
     if (!selectedEventId) return;
 
@@ -425,7 +421,10 @@ const StaffZoneAccessPage = () => {
           meta: [
             { label: 'Zone', value: getZoneDisplayName(zoneName) },
             { label: 'Mode', value: scanMode },
-            { label: 'Ticket Category', value: payload.attendee?.categoryName },
+            {
+              label: 'Ticket Category',
+              value: payload.attendee?.categoryName,
+            },
           ],
         });
 
@@ -433,7 +432,8 @@ const StaffZoneAccessPage = () => {
           setLastScan({
             action: isExit ? 'ZONE EXIT' : 'ZONE ENTRY',
             name: payload.attendee?.fullName || 'Attendee',
-            categoryName: payload.attendee?.categoryName || 'Standard Ticket',
+            categoryName:
+              payload.attendee?.categoryName || 'Standard Ticket',
             zoneName: getZoneDisplayName(zoneName),
             timestamp: new Date(),
             processedByName: user?.name || 'Staff',
@@ -493,19 +493,20 @@ const StaffZoneAccessPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-3xl space-y-4 px-3 pb-24 sm:space-y-5 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl space-y-3 px-3 pb-24 sm:space-y-5 sm:px-6">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
           <button
+            type="button"
             onClick={() => navigate('/staff/dashboard')}
-            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-900"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:bg-slate-100 touch-manipulation"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            Exit Console
+            <span className="hidden xs:inline">Exit</span>
           </button>
 
           <div
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10px] font-semibold ${
               isOnline
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'animate-pulse border-rose-200 bg-rose-50 text-rose-700'
@@ -521,18 +522,18 @@ const StaffZoneAccessPage = () => {
         </div>
 
         {/* Header */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-4 shadow-sm sm:px-6 sm:py-5">
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 shadow-sm sm:px-6 sm:py-5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
               Zone Access
             </p>
           </div>
 
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-1.5 sm:mt-2 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl leading-tight">
             Zone Terminal
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500">
             Active zone:{' '}
             <span className="font-semibold text-slate-800">
               {getZoneDisplayName(zoneName)}
@@ -542,8 +543,8 @@ const StaffZoneAccessPage = () => {
 
         {/* Last Scan Card */}
         {lastScan ? (
-          <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex items-center justify-between">
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 shadow-sm sm:p-5">
+            <div className="flex items-center justify-between gap-2">
               <span
                 className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
                   lastScan.action === 'ZONE EXIT'
@@ -551,9 +552,10 @@ const StaffZoneAccessPage = () => {
                     : 'bg-emerald-50 text-emerald-700'
                 }`}
               >
-                Last {lastScan.action === 'ZONE EXIT' ? 'Zone Exit' : 'Zone Entry'}
+                Last{' '}
+                {lastScan.action === 'ZONE EXIT' ? 'Exit' : 'Entry'}
               </span>
-              <span className="text-[10px] font-medium text-slate-400">
+              <span className="text-[10px] font-medium text-slate-400 tabular-nums">
                 {new Date(lastScan.timestamp).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -562,33 +564,33 @@ const StaffZoneAccessPage = () => {
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Attendee
                 </p>
                 <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
                   {lastScan.name}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Ticket Type
                 </p>
                 <p className="mt-0.5 truncate text-sm font-medium text-slate-600">
                   {lastScan.categoryName}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Zone
                 </p>
                 <p className="mt-0.5 truncate text-sm font-semibold text-blue-600">
                   {lastScan.zoneName}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Staff
                 </p>
                 <p className="mt-0.5 truncate text-sm font-medium text-slate-600">
@@ -598,7 +600,7 @@ const StaffZoneAccessPage = () => {
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-6 text-center">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-5 sm:py-6 text-center">
             <p className="text-xs font-medium text-slate-400">
               No successful scans yet
             </p>
@@ -613,15 +615,16 @@ const StaffZoneAccessPage = () => {
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => {
                   setActiveTab(tab.id);
                   setResult({ state: 'idle' });
                   setLogsPage(1);
                 }}
-                className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-3 text-[10px] font-semibold uppercase tracking-wider transition sm:flex-row sm:gap-1.5 sm:text-xs ${
+                className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-3 sm:py-3.5 text-[10px] font-semibold uppercase tracking-wider transition touch-manipulation sm:flex-row sm:gap-1.5 sm:text-xs ${
                   active
                     ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                    : 'text-slate-500 active:bg-slate-50 hover:bg-slate-50 hover:text-slate-800'
                 }`}
               >
                 <Icon className="h-5 w-5 shrink-0" />
@@ -632,57 +635,110 @@ const StaffZoneAccessPage = () => {
         </nav>
 
         {/* ===================== TAB CONTENT ===================== */}
-        <div className="space-y-4 sm:space-y-5">
+        <div className="space-y-3 sm:space-y-5">
           {/* SCANNER TAB */}
           {activeTab === 'scan' && (
-            <div className="space-y-5">
-              {/* Entry / Exit toggle — both blue */}
+            <div className="space-y-3 sm:space-y-5">
+              {/* Entry / Exit toggle */}
               <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setScanMode('ENTRY')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'ENTRY'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50 hover:bg-blue-50 hover:text-blue-700'
                   }`}
                 >
-                  Zone Entry
+                  Entry
                 </button>
                 <button
                   type="button"
                   onClick={() => setScanMode('EXIT')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'EXIT'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50 hover:bg-blue-50 hover:text-blue-700'
                   }`}
                 >
-                  Zone Exit
+                  Exit
                 </button>
               </div>
 
-              {/* Camera */}
+              {/* QR / RFID toggle */}
               <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
-                <button type="button" onClick={() => setReaderMode('qr')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'qr' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>QR Camera</button>
-                {rfidEnabled && <button type="button" onClick={() => setReaderMode('rfid')} className={`flex-1 rounded-xl py-3 text-xs font-semibold ${readerMode === 'rfid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><IdentificationIcon className="mr-1 inline h-4 w-4" />RFID Reader</button>}
+                <button
+                  type="button"
+                  onClick={() => setReaderMode('qr')}
+                  className={`flex-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold transition touch-manipulation ${
+                    readerMode === 'qr'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-500 active:bg-slate-50'
+                  }`}
+                >
+                  QR Camera
+                </button>
+                {rfidEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setReaderMode('rfid')}
+                    className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold transition touch-manipulation ${
+                      readerMode === 'rfid'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-500 active:bg-slate-50'
+                    }`}
+                  >
+                    <IdentificationIcon className="h-4 w-4" />
+                    RFID
+                  </button>
+                )}
               </div>
-              {readerMode === 'qr' ? <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
-                <div className="aspect-[4/3] w-full sm:aspect-video">
-                  <QRScannerComponent
-                    onScanSuccess={handleScan}
-                    onScanError={() => {}}
-                    fps={12}
-                    qrbox={260}
-                  />
+
+              {readerMode === 'qr' ? (
+                <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
+                  <div className="aspect-[4/3] w-full sm:aspect-video">
+                    <QRScannerComponent
+                      onScanSuccess={handleScan}
+                      onScanError={() => {}}
+                      fps={12}
+                      qrbox={260}
+                    />
+                  </div>
                 </div>
-              </div> : <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-8 text-center">
-                <IdentificationIcon className="mx-auto h-12 w-12 text-blue-600" />
-                <p className="mt-3 text-lg font-bold text-slate-900">RFID Reader Ready</p>
-                <p className="mt-1 text-sm text-slate-600">Tap a card to submit zone access automatically.</p>
-                <input ref={rfidInputRef} value={manualToken} onChange={(e) => setManualToken(e.target.value.replace(/\D/g, '').slice(0, 10))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(manualToken); } }} autoFocus maxLength={10} inputMode="numeric" placeholder="Waiting for card..." className="mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="mt-3 text-xs font-semibold text-blue-700">Reader focused and waiting for a card</p>
-              </div>}
+              ) : (
+                <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-5 sm:p-8 text-center">
+                  <IdentificationIcon className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-blue-600" />
+                  <p className="mt-2.5 sm:mt-3 text-base sm:text-lg font-bold text-slate-900">
+                    RFID Reader Ready
+                  </p>
+                  <p className="mt-1 text-xs sm:text-sm text-slate-600 leading-snug">
+                    Tap a card to submit zone access automatically.
+                  </p>
+                  <input
+                    ref={rfidInputRef}
+                    value={manualToken}
+                    onChange={(e) =>
+                      setManualToken(
+                        e.target.value.replace(/\D/g, '').slice(0, 10)
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleScan(manualToken);
+                      }
+                    }}
+                    autoFocus
+                    maxLength={10}
+                    inputMode="numeric"
+                    placeholder="Waiting for card..."
+                    className="mt-4 sm:mt-5 w-full rounded-xl border border-blue-300 bg-white px-3 py-3.5 sm:px-4 sm:py-4 text-center font-mono text-lg sm:text-xl tracking-[0.25em] outline-none focus:ring-2 focus:ring-blue-500 touch-manipulation"
+                  />
+                  <p className="mt-2.5 sm:mt-3 text-[11px] sm:text-xs font-semibold text-blue-700">
+                    Reader focused and waiting
+                  </p>
+                </div>
+              )}
 
               {result.state !== 'idle' && (
                 <ResultCard
@@ -698,43 +754,42 @@ const StaffZoneAccessPage = () => {
 
           {/* MANUAL TAB */}
           {activeTab === 'manual' && (
-            <div className="space-y-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:space-y-5 sm:p-6">
+            <div className="space-y-3 sm:space-y-5 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-6">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   Manual Zone Permission
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Type or paste the QR token below. Camera is paused to save
-                  battery.
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+                  Type or paste the QR token. Camera is paused to save battery.
                 </p>
               </div>
 
-              <div className="flex gap-1 rounded-2xl bg-slate-50 p-1.5">
+              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setScanMode('ENTRY')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'ENTRY'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-white hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50 hover:bg-blue-50 hover:text-blue-700'
                   }`}
                 >
-                  Zone Entry
+                  Entry
                 </button>
                 <button
                   type="button"
                   onClick={() => setScanMode('EXIT')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3.5 sm:py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'EXIT'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-white hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50 hover:bg-blue-50 hover:text-blue-700'
                   }`}
                 >
-                  Zone Exit
+                  Exit
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <SearchBar
                   value={manualToken}
                   onChange={setManualToken}
@@ -746,7 +801,7 @@ const StaffZoneAccessPage = () => {
                   type="button"
                   disabled={!manualToken.trim() || submitting}
                   onClick={() => handleScan(manualToken)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700 disabled:opacity-40"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition active:bg-blue-700 hover:bg-blue-700 disabled:opacity-40 touch-manipulation"
                 >
                   <BoltIcon className="h-5 w-5" />
                   {submitting ? 'Validating...' : 'Verify Zone Token'}
@@ -754,7 +809,7 @@ const StaffZoneAccessPage = () => {
               </div>
 
               {result.state !== 'idle' && (
-                <div className="border-t border-slate-100 pt-5">
+                <div className="border-t border-slate-100 pt-4 sm:pt-5">
                   <ResultCard
                     state={result.state}
                     attendee={result.attendee}
@@ -769,24 +824,24 @@ const StaffZoneAccessPage = () => {
 
           {/* STATS TAB */}
           {activeTab === 'stats' && (
-            <div className="space-y-4 sm:space-y-5">
+            <div className="space-y-3 sm:space-y-5">
               <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-6">
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   Active Zone Setup
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500">
                   Configure zone parameters
                 </p>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="mt-4 sm:mt-5 grid gap-3 sm:gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Select Event
                     </label>
                     <select
                       value={selectedEventId}
                       onChange={(e) => handleEventChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
                     >
                       {events.map((event) => (
                         <option key={event._id} value={event._id}>
@@ -797,96 +852,97 @@ const StaffZoneAccessPage = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Select Zone
                     </label>
                     {availableZones.length > 1 ? (
-                        // Multiple zones available for this event — show a dropdown
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : availableZones.length === 1 && zoneLocked ? (
-                        // Exactly one assigned zone for this event — show as locked label
-                        <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                          {getZoneDisplayName(zoneName)}
-                        </div>
-                      ) : availableZones.length === 1 ? (
-                        // One zone on the event but not locked — still a dropdown for clarity
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        // No event zones defined — allow free-text entry
-                        <input
-                          value={zoneInput}
-                          onChange={(e) => setZoneInput(e.target.value)}
-                          onBlur={() => setZoneName(zoneInput)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setZoneName(zoneInput);
-                          }}
-                          placeholder="Zone name"
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        />
-                      )}
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : availableZones.length === 1 && zoneLocked ? (
+                      <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-700">
+                        {getZoneDisplayName(zoneName)}
+                      </div>
+                    ) : availableZones.length === 1 ? (
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={zoneInput}
+                        onChange={(e) => setZoneInput(e.target.value)}
+                        onBlur={() => setZoneName(zoneInput)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setZoneName(zoneInput);
+                        }}
+                        placeholder="Zone name"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Metrics */}
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
-                <h2 className="text-lg font-bold text-slate-900">
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-6">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   Today’s Zone Metrics
                 </h2>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <div className="mt-4 sm:mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+                  <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-3.5 sm:px-5 sm:py-5 shadow-sm">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Scans
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-blue-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-blue-600 tabular-nums">
                       {stats.total}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Total today</p>
+                    <p className="mt-0.5 sm:mt-1 text-[9px] sm:text-xs text-slate-500">
+                      Total
+                    </p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-3.5 sm:px-5 sm:py-5 shadow-sm">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Allowed
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
                       {stats.success}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Successful</p>
+                    <p className="mt-0.5 sm:mt-1 text-[9px] sm:text-xs text-slate-500">
+                      OK
+                    </p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-3.5 sm:px-5 sm:py-5 shadow-sm">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Denied
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-rose-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-rose-600 tabular-nums">
                       {stats.failed}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Blocked</p>
+                    <p className="mt-0.5 sm:mt-1 text-[9px] sm:text-xs text-slate-500">
+                      Blocked
+                    </p>
                   </div>
                 </div>
               </div>
@@ -904,16 +960,16 @@ const StaffZoneAccessPage = () => {
               );
 
               return (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <ActivityList
-                    title={`Zone Access Scans (Page ${logsPage})`}
+                    title={`Zone Scans (Page ${logsPage})`}
                     items={pagedLogs}
                     emptyMessage="No zone scanning history today."
                   />
 
                   {logs.length > 0 && (
-                    <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-sm sm:flex-row">
-                      <p className="text-xs font-medium text-slate-500">
+                    <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 shadow-sm sm:flex-row sm:px-5 sm:py-4">
+                      <p className="text-xs font-medium text-slate-500 order-2 sm:order-1">
                         Showing{' '}
                         {logs.length === 0
                           ? 0
@@ -922,18 +978,18 @@ const StaffZoneAccessPage = () => {
                         {logs.length}
                       </p>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 order-1 sm:order-2">
                         <button
                           type="button"
                           disabled={logsPage <= 1}
                           onClick={() =>
                             setLogsPage((c) => Math.max(1, c - 1))
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="min-h-[44px] min-w-[64px] rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 transition active:bg-slate-100 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 touch-manipulation"
                         >
                           Prev
                         </button>
-                        <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
+                        <div className="rounded-xl bg-slate-100 px-3.5 py-2.5 text-xs font-semibold text-slate-700 tabular-nums">
                           {logsPage} / {totalPages}
                         </div>
                         <button
@@ -942,7 +998,7 @@ const StaffZoneAccessPage = () => {
                           onClick={() =>
                             setLogsPage((c) => Math.min(totalPages, c + 1))
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="min-h-[44px] min-w-[64px] rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 transition active:bg-slate-100 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 touch-manipulation"
                         >
                           Next
                         </button>

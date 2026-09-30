@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRightStartOnRectangleIcon,
   CheckCircleIcon,
-  MagnifyingGlassIcon,
   UserIcon,
   IdentificationIcon,
   ArrowLeftIcon,
@@ -53,7 +52,6 @@ const StaffZoneManualSearchPage = () => {
   const assignedZones = useMemo(() => getAssignedZones(user), [user]);
   const zoneLocked = assignedZones.length > 0;
 
-  // Zones available for the currently selected event, filtered to assigned zones when applicable
   const availableZones = useMemo(() => {
     const eventZones = currentEvent?.zones || [];
     if (assignedZones.length > 0) {
@@ -65,7 +63,6 @@ const StaffZoneManualSearchPage = () => {
     return eventZones;
   }, [currentEvent, assignedZones]);
 
-  // Set default active zone on first load
   useEffect(() => {
     if (assignedZones[0]) {
       setZoneName(assignedZones[0]);
@@ -80,8 +77,6 @@ const StaffZoneManualSearchPage = () => {
     }
   }, [assignedZones, availableZones]);
 
-  // Reset zone selection whenever the active event changes so the
-  // zone dropdown only shows zones belonging to the selected event.
   useEffect(() => {
     if (!selectedEventId) return;
     const nextEvent = events.find((e) => e._id === selectedEventId);
@@ -101,7 +96,7 @@ const StaffZoneManualSearchPage = () => {
       setZoneName(first.name || first.id);
       setZoneInput(first.name || first.id);
     }
-  }, [selectedEventId]); // intentionally omits `events` and `assignedZones` — runs only on event change
+  }, [selectedEventId]);
 
   useEffect(() => {
     getMyEvents().then((response) => {
@@ -223,54 +218,55 @@ const StaffZoneManualSearchPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-6xl space-y-4 px-3 pb-24 sm:space-y-5 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl space-y-3 px-3 pb-24 sm:space-y-5 sm:px-6">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
           <button
+            type="button"
             onClick={() => navigate('/staff/dashboard')}
-            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-900"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:bg-slate-100 touch-manipulation"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            Exit Console
+            <span className="hidden xs:inline">Exit</span>
           </button>
         </div>
 
         {/* Header */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-4 shadow-sm sm:px-6 sm:py-5">
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 shadow-sm sm:px-6 sm:py-5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
               Zone Operations
             </p>
-            <span className="text-[11px] font-medium text-slate-400">•</span>
-            <p className="text-[11px] font-semibold text-slate-500">
-              {getZoneDisplayName(zoneName) || 'No zone selected'}
+            <span className="text-[10px] font-medium text-slate-300">•</span>
+            <p className="text-[10px] sm:text-[11px] font-semibold text-slate-500 truncate">
+              {getZoneDisplayName(zoneName) || 'No zone'}
             </p>
           </div>
 
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-1.5 sm:mt-2 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl leading-tight">
             Zone Registry Lookup
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Search attendees and manually log zone entry or exit.
+          <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+            Search attendees and log zone entry or exit.
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-3 sm:gap-5 lg:grid-cols-[1.15fr_0.85fr]">
           {/* LEFT — Search + Results */}
-          <div className="space-y-4 sm:space-y-5">
+          <div className="space-y-3 sm:space-y-5">
             <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-6">
-              {/* Filters */}
-              <div className="grid gap-4 sm:grid-cols-[0.4fr_1fr]">
+              {/* Filters — stacked on mobile */}
+              <div className="grid gap-3 sm:gap-4 sm:grid-cols-[0.4fr_1fr]">
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Select Event
                     </label>
                     <select
                       value={selectedEventId}
                       onChange={(e) => handleEventChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
                     >
                       {events.map((event) => (
                         <option key={event._id} value={event._id}>
@@ -281,64 +277,60 @@ const StaffZoneManualSearchPage = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Select Zone
                     </label>
                     {availableZones.length > 1 ? (
-                        // Multiple zones available for this event — show a dropdown
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : availableZones.length === 1 && zoneLocked ? (
-                        // Exactly one assigned zone for this event — show as locked label
-                        <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                          {getZoneDisplayName(zoneName)}
-                        </div>
-                      ) : availableZones.length === 1 ? (
-                        // One zone on the event but not locked — still a dropdown for clarity
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        // No event zones defined — allow free-text entry
-                        <input
-                          value={zoneInput}
-                          onChange={(e) => setZoneInput(e.target.value)}
-                          onBlur={() => setZoneName(zoneInput)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setZoneName(zoneInput);
-                          }}
-                          placeholder="Zone name"
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        />
-                      )}
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : availableZones.length === 1 && zoneLocked ? (
+                      <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-700">
+                        {getZoneDisplayName(zoneName)}
+                      </div>
+                    ) : availableZones.length === 1 ? (
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={zoneInput}
+                        onChange={(e) => setZoneInput(e.target.value)}
+                        onBlur={() => setZoneName(zoneInput)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setZoneName(zoneInput);
+                        }}
+                        placeholder="Zone name"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      />
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Search Query
                   </label>
                   <SearchBar
@@ -351,33 +343,35 @@ const StaffZoneManualSearchPage = () => {
               </div>
 
               {/* Results */}
-              <div className="mt-6 space-y-3">
+              <div className="mt-4 sm:mt-6 space-y-2.5 sm:space-y-3">
                 {searching && (
-                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-10 text-sm font-medium text-slate-500">
+                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-8 sm:py-10 text-sm font-medium text-slate-500">
                     <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
-                    Searching zone registry...
+                    Searching...
                   </div>
                 )}
 
-                {!searching && search.trim().length >= 2 && results.length === 0 && (
-                  <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-12 text-center">
-                    <p className="text-sm font-medium text-slate-500">
-                      No matches found
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Verify attendee access tags or category settings
-                    </p>
-                  </div>
-                )}
+                {!searching &&
+                  search.trim().length >= 2 &&
+                  results.length === 0 && (
+                    <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-10 sm:py-12 text-center">
+                      <p className="text-sm font-medium text-slate-500">
+                        No matches found
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Check name or category settings
+                      </p>
+                    </div>
+                  )}
 
                 {!searching && search.trim().length < 2 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-12 text-center">
-                    <IdentificationIcon className="h-8 w-8 text-slate-300" />
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-10 sm:py-12 text-center">
+                    <IdentificationIcon className="h-7 w-7 sm:h-8 sm:w-8 text-slate-300" />
                     <p className="text-sm font-medium text-slate-500">
-                      Awaiting search query
+                      Awaiting search
                     </p>
                     <p className="text-xs text-slate-400">
-                      Type at least 2 characters to search
+                      Type at least 2 characters
                     </p>
                   </div>
                 )}
@@ -385,11 +379,12 @@ const StaffZoneManualSearchPage = () => {
                 {results.map((attendee) => (
                   <div
                     key={attendee._id}
-                    className="rounded-2xl border border-slate-200/70 bg-white p-4 transition hover:border-blue-200 hover:shadow-sm sm:p-5"
+                    className="rounded-2xl border border-slate-200/70 bg-white p-3.5 transition active:bg-slate-50/50 sm:p-5"
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      {/* Attendee info */}
+                      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                        <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                           {attendee.photo ? (
                             <img
                               src={buildAssetUrl(attendee.photo)}
@@ -397,21 +392,21 @@ const StaffZoneManualSearchPage = () => {
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <UserIcon className="h-7 w-7 text-slate-400" />
+                            <UserIcon className="h-6 w-6 sm:h-7 sm:w-7 text-slate-400" />
                           )}
                         </div>
 
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-semibold text-slate-900 sm:text-lg">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm sm:text-base font-semibold text-slate-900 sm:text-lg">
                             {attendee.fullName}
                           </p>
-                          <p className="mt-0.5 text-sm font-medium text-slate-500">
+                          <p className="mt-0.5 truncate text-xs sm:text-sm font-medium text-slate-500">
                             {attendee.categoryName || 'General VIP'}
                           </p>
 
-                          <div className="mt-2.5 flex flex-wrap gap-2">
+                          <div className="mt-2 flex flex-wrap gap-1.5">
                             <span
-                              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                              className={`rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider ${
                                 attendee.confirmationStatus === 'confirmed'
                                   ? 'bg-emerald-50 text-emerald-700'
                                   : 'bg-amber-50 text-amber-700'
@@ -423,22 +418,23 @@ const StaffZoneManualSearchPage = () => {
                         </div>
                       </div>
 
-                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[180px]">
+                      {/* Actions — side-by-side on mobile */}
+                      <div className="flex w-full gap-2 sm:w-auto sm:min-w-[160px] sm:flex-col">
                         <button
                           type="button"
                           onClick={() => handleZoneAction(attendee, 'ENTRY')}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700"
+                          className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-3 sm:px-4 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-white transition active:bg-blue-700 hover:bg-blue-700 touch-manipulation"
                         >
-                          <CheckCircleIcon className="h-4 w-4" />
-                          Log Zone Entry
+                          <CheckCircleIcon className="h-4 w-4 shrink-0" />
+                          Entry
                         </button>
                         <button
                           type="button"
                           onClick={() => handleZoneAction(attendee, 'EXIT')}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-700 transition hover:bg-slate-50"
+                          className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:px-4 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-700 transition active:bg-slate-100 hover:bg-slate-50 touch-manipulation"
                         >
-                          <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
-                          Log Zone Exit
+                          <ArrowRightStartOnRectangleIcon className="h-4 w-4 shrink-0" />
+                          Exit
                         </button>
                       </div>
                     </div>
@@ -458,7 +454,7 @@ const StaffZoneManualSearchPage = () => {
             );
 
             return (
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <ActivityList
                   title={`Recent Zone Actions (Page ${logsPage})`}
                   items={pagedLogs}
@@ -466,8 +462,8 @@ const StaffZoneManualSearchPage = () => {
                 />
 
                 {logs.length > 0 && (
-                  <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-4 py-4 shadow-sm sm:flex-row sm:px-5">
-                    <p className="text-xs font-medium text-slate-500">
+                  <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 shadow-sm sm:flex-row sm:px-5 sm:py-4">
+                    <p className="text-xs font-medium text-slate-500 order-2 sm:order-1">
                       Showing{' '}
                       {logs.length === 0
                         ? 0
@@ -476,18 +472,18 @@ const StaffZoneManualSearchPage = () => {
                       {logs.length}
                     </p>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 order-1 sm:order-2">
                       <button
                         type="button"
                         disabled={logsPage <= 1}
                         onClick={() =>
                           setLogsPage((c) => Math.max(1, c - 1))
                         }
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="min-h-[44px] min-w-[64px] rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 transition active:bg-slate-100 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 touch-manipulation"
                       >
                         Prev
                       </button>
-                      <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
+                      <div className="rounded-xl bg-slate-100 px-3.5 py-2.5 text-xs font-semibold text-slate-700 tabular-nums">
                         {logsPage} / {totalPages}
                       </div>
                       <button
@@ -496,7 +492,7 @@ const StaffZoneManualSearchPage = () => {
                         onClick={() =>
                           setLogsPage((c) => Math.min(totalPages, c + 1))
                         }
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="min-h-[44px] min-w-[64px] rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 transition active:bg-slate-100 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 touch-manipulation"
                       >
                         Next
                       </button>
