@@ -26,32 +26,35 @@ import {
   BanknotesIcon,
   UserPlusIcon,
   PhotoIcon,
-  EnvelopeIcon,
   ArrowUpTrayIcon,
-  QrCodeIcon,
   ArrowPathIcon,
   TrashIcon,
   MagnifyingGlassIcon,
-  ArrowLeftOnRectangleIcon,
   ArrowRightOnRectangleIcon,
-  SignalIcon,
   DocumentTextIcon,
   IdentificationIcon,
-  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 /* ───────────────────── Helpers ───────────────────── */
 
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between gap-3">
+  <Card className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3 sm:p-5">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">{value}</p>
-        {subtitle && <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>}
+        <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
+          {title}
+        </p>
+        <p className="mt-1 sm:mt-2 text-lg sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
+          {value}
+        </p>
+        {subtitle && (
+          <p className="mt-0.5 sm:mt-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+            {subtitle}
+          </p>
+        )}
       </div>
       {Icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -81,21 +84,33 @@ const CapabilityCard = ({
 
   return (
     <PermissionGuard permission={permission} fallback={null}>
-      <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneMap[tone]}`}>
-            <Icon className="h-5 w-5" />
+          <div
+            className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl ${toneMap[tone]}`}
+          >
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-slate-900">{title}</h3>
-            <p className="mt-0.5 text-xs text-slate-500">{description}</p>
-            <div className="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
-              <p className="text-xs font-semibold text-slate-700">{enabledTitle}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{enabledDesc}</p>
+            <p className="mt-0.5 text-xs text-slate-500 leading-snug">
+              {description}
+            </p>
+            <div className="mt-2.5 rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
+              <p className="text-[11px] sm:text-xs font-semibold text-slate-700">
+                {enabledTitle}
+              </p>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 leading-snug">
+                {enabledDesc}
+              </p>
             </div>
-            <div className="mt-3 flex justify-end">
-              <Link to={linkTo}>
-                <Button variant="outline" size="sm" className="border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50">
+            <div className="mt-3">
+              <Link to={linkTo} className="block sm:inline-block">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 active:bg-blue-50 touch-manipulation"
+                >
                   {linkLabel}
                 </Button>
               </Link>
@@ -104,6 +119,63 @@ const CapabilityCard = ({
         </div>
       </Card>
     </PermissionGuard>
+  );
+};
+
+const OpLinkCard = ({ to, title, description, badgeTitle, badgeDesc, icon: Icon, tone }) => {
+  const toneMap = {
+    emerald: {
+      icon: 'bg-emerald-50 text-emerald-600',
+      badge: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+      badgeSub: 'text-emerald-600',
+    },
+    purple: {
+      icon: 'bg-purple-50 text-purple-600',
+      badge: 'bg-purple-50 border-purple-100 text-purple-700',
+      badgeSub: 'text-purple-600',
+    },
+    blue: {
+      icon: 'bg-blue-50 text-blue-600',
+      badge: 'bg-blue-50 border-blue-100 text-blue-700',
+      badgeSub: 'text-blue-600',
+    },
+    amber: {
+      icon: 'bg-amber-50 text-amber-600',
+      badge: 'bg-amber-50 border-amber-100 text-amber-700',
+      badgeSub: 'text-amber-600',
+    },
+    slate: {
+      icon: 'bg-slate-50 text-slate-600',
+      badge: 'bg-slate-50 border-slate-100 text-slate-700',
+      badgeSub: 'text-slate-600',
+    },
+  };
+  const t = toneMap[tone] || toneMap.blue;
+
+  return (
+    <Link to={to} className="block touch-manipulation">
+      <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm active:border-blue-200 hover:border-blue-200 transition-all h-full p-3.5 sm:p-5">
+        <div className="flex items-start gap-2.5 sm:gap-3">
+          <div
+            className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl ${t.icon}`}
+          >
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+            <p className="mt-0.5 text-[11px] sm:text-xs text-slate-500 leading-snug line-clamp-2">
+              {description}
+            </p>
+          </div>
+        </div>
+        <div className={`mt-3 rounded-lg border px-2.5 py-2 ${t.badge}`}>
+          <p className="text-[11px] sm:text-xs font-semibold">{badgeTitle}</p>
+          <p className={`text-[10px] sm:text-[11px] mt-0.5 ${t.badgeSub}`}>
+            {badgeDesc}
+          </p>
+        </div>
+      </Card>
+    </Link>
   );
 };
 
@@ -216,7 +288,6 @@ const SubOrgDashboard = () => {
     };
   }, []);
 
-  // Initial load + auto-refresh
   useEffect(() => {
     if (!currentEventId) {
       setLoading(false);
@@ -285,10 +356,16 @@ const SubOrgDashboard = () => {
   const getEventStatus = () => {
     const event = data?.event;
     if (!event) return 'Unknown';
-    const status = event.status || event.eventStatus || event.state || event.publishedStatus;
+    const status =
+      event.status ||
+      event.eventStatus ||
+      event.state ||
+      event.publishedStatus;
     if (!status) {
-      if (event.isPublished === true || event.published === true) return 'Published';
-      if (event.isPublished === false || event.published === false) return 'Draft';
+      if (event.isPublished === true || event.published === true)
+        return 'Published';
+      if (event.isPublished === false || event.published === false)
+        return 'Draft';
     }
     return status || 'Published';
   };
@@ -302,29 +379,29 @@ const SubOrgDashboard = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
-        {/* Header with Event Overview */}
+      <div className="space-y-3 sm:space-y-6 pb-20">
+        {/* Header — compact on mobile */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-3 sm:gap-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2.5 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-2">
                   <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15 animate-pulse" />
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-                    Sub-Organiser Workspace
+                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Sub-Organiser
                   </p>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-medium text-slate-500">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] sm:text-[10px] font-medium text-slate-500">
                     Scoped
                   </span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
                   {data?.event?.name || 'Assigned Event'}
                 </h1>
-                <p className="mt-2 text-sm text-slate-500 max-w-xl">
-                  Manage your assigned zones, scan attendees for entry, and track zone access in real-time.
+                <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-500 leading-snug line-clamp-2">
+                  Zones, scans, and access for your scope.
                 </p>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                <div className="mt-2.5 sm:mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] sm:text-xs font-medium text-slate-600">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
                         isPublished()
@@ -336,36 +413,42 @@ const SubOrgDashboard = () => {
                     />
                     {eventStatus}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                    <MapPinIcon className="h-3.5 w-3.5 text-slate-400" />
-                    {data?.event?.venue?.name || 'Venue TBD'}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                    <UsersIcon className="h-3.5 w-3.5" />
-                    {loading ? '—' : data?.metrics?.totalAttendees ?? 0} Attendees
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] sm:text-xs font-medium text-slate-600 max-w-[140px] sm:max-w-none">
+                    <MapPinIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">
+                      {data?.event?.venue?.name || 'Venue TBD'}
+                    </span>
                   </span>
                 </div>
               </div>
-              <div className="flex gap-3 shrink-0 sm:flex-col sm:items-end">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-2 min-w-[90px] text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Zones</p>
-                  <p className="mt-0.5 text-lg font-bold text-slate-900">{loading ? '—' : zones.length}</p>
+              <div className="flex gap-2 sm:gap-3 shrink-0">
+                <div className="flex-1 sm:flex-none rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 sm:min-w-[90px] text-center">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Zones
+                  </p>
+                  <p className="mt-0.5 text-base sm:text-lg font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : zones.length}
+                  </p>
                 </div>
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-2 min-w-[90px] text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Checked In</p>
-                  <p className="mt-0.5 text-lg font-bold text-emerald-700">{loading ? '—' : data?.metrics?.checkedInCount ?? 0}</p>
+                <div className="flex-1 sm:flex-none rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 sm:min-w-[90px] text-center">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
+                    In
+                  </p>
+                  <p className="mt-0.5 text-base sm:text-lg font-bold text-emerald-700 tabular-nums">
+                    {loading ? '—' : data?.metrics?.checkedInCount ?? 0}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* KPI cards */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* KPI — 2×2 on mobile */}
+        <section className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-4">
           <MetricCard
-            title="Attendees in Scope"
+            title="Attendees"
             value={loading ? '—' : data?.metrics?.totalAttendees ?? 0}
-            subtitle="Assigned to your zones"
+            subtitle="In scope"
             icon={UsersIcon}
           />
           <MetricCard
@@ -376,185 +459,179 @@ const SubOrgDashboard = () => {
                 ? `${Math.min(
                     100,
                     Math.round(
-                      ((data?.metrics?.checkedInCount || 0) / (data?.metrics?.totalAttendees || 1)) * 100
+                      ((data?.metrics?.checkedInCount || 0) /
+                        (data?.metrics?.totalAttendees || 1)) *
+                        100
                     )
-                  )}% of scoped attendees`
-                : 'No attendees yet'
+                  )}%`
+                : 'None yet'
             }
             icon={CheckBadgeIcon}
           />
           <MetricCard
-            title="Pending Verification"
+            title="Pending"
             value={loading ? '—' : data?.metrics?.pendingVerifications ?? 0}
-            subtitle="Photo reviews waiting"
+            subtitle="Photos"
             icon={ClockIcon}
           />
           <MetricCard
-            title="Assigned Zones"
+            title="Zones"
             value={loading ? '—' : data?.metrics?.zoneCount ?? zones.length}
-            subtitle="Your operational scope"
+            subtitle="Assigned"
             icon={MapPinIcon}
           />
         </section>
 
-        {/* Operation Summary */}
-        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-              <DocumentTextIcon className="h-5 w-5" />
+        {/* Today's ops — compact grid */}
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5">
+          <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <DocumentTextIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Today's Operations</h2>
-              <p className="text-sm text-slate-500">Live scan statistics for your assigned zones</p>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-lg font-bold text-slate-900">
+                Today&apos;s Operations
+              </h2>
+              <p className="text-[11px] sm:text-sm text-slate-500">
+                Live scan stats
+              </p>
             </div>
           </div>
-            { !isSubOrganiser && (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7 sm:gap-3">
+            {!isSubOrganiser && (
               <>
-                <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Entry In</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryIn ?? 0}</p>
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
+                    Entry In
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : data?.operations?.entryIn ?? 0}
+                  </p>
                 </div>
-                <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Entry Out</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.entryOut ?? 0}</p>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-amber-600">
+                    Entry Out
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : data?.operations?.entryOut ?? 0}
+                  </p>
                 </div>
               </>
             )}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-              <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600">Zone In</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneIn ?? 0}</p>
-              </div>
-              <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Zone Out</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.zoneOut ?? 0}</p>
-              </div>
-              <div className="rounded-xl bg-rose-50 border border-rose-100 px-3 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-600">Denied</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.denied ?? 0}</p>
-              </div>
-              { !isSubOrganiser && (
-                <>
-                  <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">QR Scans</p>
-                    <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.qrScans ?? 0}</p>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">RFID Scans</p>
-                    <p className="mt-1 text-xl font-bold text-slate-900">{loading ? '—' : data?.operations?.rfidScans ?? 0}</p>
-                  </div>
-                </>
-              )}
+            <div className="rounded-xl bg-blue-50 border border-blue-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+              <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-blue-600">
+                Zone In
+              </p>
+              <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                {loading ? '—' : data?.operations?.zoneIn ?? 0}
+              </p>
             </div>
+            <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+              <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-indigo-600">
+                Zone Out
+              </p>
+              <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                {loading ? '—' : data?.operations?.zoneOut ?? 0}
+              </p>
+            </div>
+            <div className="rounded-xl bg-rose-50 border border-rose-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+              <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-rose-600">
+                Denied
+              </p>
+              <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                {loading ? '—' : data?.operations?.denied ?? 0}
+              </p>
+            </div>
+            {!isSubOrganiser && (
+              <>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    QR
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : data?.operations?.qrScans ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    RFID
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : data?.operations?.rfidScans ?? 0}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
         </Card>
 
-        {/* Main Operation Cards */}
-        <section className="grid gap-4 xl:grid-cols-4">
-          { !isSubOrganiser && (
+        {/* Operation links — 2 col on mobile */}
+        <section className="grid grid-cols-1 gap-2.5 sm:gap-4 xs:grid-cols-2 xl:grid-cols-4">
+          {!isSubOrganiser && (
             <PermissionGuard permission="canEntryAccess">
-              <Link to="/suborg/entry">
-                <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                      <ArrowRightOnRectangleIcon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-bold text-slate-900">Entry Scanning</h3>
-                      <p className="mt-0.5 text-xs text-slate-500">QR check-in / check-out at main gates</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
-                    <p className="text-xs font-semibold text-emerald-700">QR + RFID Support</p>
-                    <p className="text-[11px] text-emerald-600 mt-0.5">Assign RFID during entry scan</p>
-                  </div>
-                </Card>
-              </Link>
+              <OpLinkCard
+                to="/suborg/entry"
+                title="Entry Scanning"
+                description="QR check-in / out at gates"
+                badgeTitle="QR + RFID"
+                badgeDesc="Assign RFID on entry"
+                icon={ArrowRightOnRectangleIcon}
+                tone="emerald"
+              />
             </PermissionGuard>
           )}
 
           <PermissionGuard permission="canAssignRfid">
-            <Link to="/suborg/rfid-assign">
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
-                    <IdentificationIcon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">RFID Assignment</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Scan attendee QR and assign RFID</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-purple-700">QR → RFID</p>
-                  <p className="text-[11px] text-purple-600 mt-0.5">Assign RFID wristbands/tags</p>
-                </div>
-              </Card>
-            </Link>
+            <OpLinkCard
+              to="/suborg/rfid-assign"
+              title="RFID Assignment"
+              description="Scan QR, assign RFID tag"
+              badgeTitle="QR → RFID"
+              badgeDesc="Wristbands / tags"
+              icon={IdentificationIcon}
+              tone="purple"
+            />
           </PermissionGuard>
 
           <PermissionGuard permission="canScanZones">
-            <Link to="/suborg/zone-scanner">
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                    <MapPinIcon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Zone Scanning</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Validate access for VIP, backstage, and internal zones</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-blue-700">Entry + Exit Mode</p>
-                  <p className="text-[11px] text-blue-600 mt-0.5">Select from your zones</p>
-                </div>
-              </Card>
-            </Link>
+            <OpLinkCard
+              to="/suborg/zone-scanner"
+              title="Zone Scanning"
+              description="VIP, backstage, internal zones"
+              badgeTitle="Entry + Exit"
+              badgeDesc="Your zones only"
+              icon={MapPinIcon}
+              tone="blue"
+            />
           </PermissionGuard>
 
           <PermissionGuard permission="true">
-            <Link to="/suborg/manual-search">
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                    <MagnifyingGlassIcon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Manual Search</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Manual lookup by name, phone, NIC, or passport</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-amber-700">Manual lookup</p>
-                  <p className="text-[11px] text-amber-600 mt-0.5">By Name, Email, Phone</p>
-                </div>
-              </Card>
-            </Link>
+            <OpLinkCard
+              to="/suborg/manual-search"
+              title="Manual Search"
+              description="Name, phone, NIC, passport"
+              badgeTitle="Manual lookup"
+              badgeDesc="By name / email / phone"
+              icon={MagnifyingGlassIcon}
+              tone="amber"
+            />
           </PermissionGuard>
 
           <PermissionGuard permission="true">
-            <Link to="/suborg/activity-logs">
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all hover:border-blue-200 cursor-pointer h-full">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
-                    <ClockIcon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Activity Logs</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Entry audits and recent gate activity</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-slate-700">Audit log</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5">View recent scans</p>
-                </div>
-              </Card>
-            </Link>
+            <OpLinkCard
+              to="/suborg/activity-logs"
+              title="Activity Logs"
+              description="Entry audits & gate activity"
+              badgeTitle="Audit log"
+              badgeDesc="Recent scans"
+              icon={ClockIcon}
+              tone="slate"
+            />
           </PermissionGuard>
         </section>
 
-        {/* Quick control cards */}
-        <section className="grid gap-4 xl:grid-cols-3">
+        {/* Quick control — compact */}
+        <section className="grid gap-2.5 sm:gap-4 grid-cols-1 sm:grid-cols-3">
           {[
             {
               title: 'Zone Control',
@@ -562,21 +639,21 @@ const SubOrgDashboard = () => {
               count1: zones.length || 0,
               label1: 'Zones',
               count2: data?.metrics?.checkedInCount || 0,
-              label2: 'Checked-in',
+              label2: 'In',
               to: '/suborg/zones',
             },
             {
-              title: 'Ticket Control',
+              title: 'Tickets',
               sub: 'Categories & sales',
               count1: categories.length || 0,
-              label1: 'Categories',
+              label1: 'Cats',
               count2: categories.reduce((s, c) => s + (c.sold || 0), 0),
               label2: 'Sold',
               to: null,
             },
             {
               title: 'Activity',
-              sub: 'Recent operations',
+              sub: 'Recent ops',
               count1: activity.length || 0,
               label1: 'Actions',
               count2: data?.metrics?.pendingVerifications || 0,
@@ -586,27 +663,37 @@ const SubOrgDashboard = () => {
           ].map((item) => (
             <Card
               key={item.title}
-              className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
+              className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3.5 sm:p-5"
             >
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-              <p className="mt-0.5 text-xs text-slate-500">{item.sub}</p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-blue-50/80 border border-blue-100/70 px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">{item.label1}</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">{loading ? '—' : item.count1}</p>
+              <p className="mt-0.5 text-[11px] sm:text-xs text-slate-500">
+                {item.sub}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="rounded-xl bg-blue-50/80 border border-blue-100/70 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-blue-600/80">
+                    {item.label1}
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : item.count1}
+                  </p>
                 </div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{item.label2}</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">{loading ? '—' : item.count2}</p>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-2.5 py-2.5 sm:px-3 sm:py-3">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {item.label2}
+                  </p>
+                  <p className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+                    {loading ? '—' : item.count2}
+                  </p>
                 </div>
               </div>
               {item.to && (
-                <div className="mt-4 flex justify-end">
-                  <Link to={item.to}>
+                <div className="mt-3">
+                  <Link to={item.to} className="block sm:inline-block">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50"
+                      className="w-full sm:w-auto border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 touch-manipulation"
                     >
                       Open
                     </Button>
@@ -618,36 +705,43 @@ const SubOrgDashboard = () => {
         </section>
 
         {loadError && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-amber-800">
             {loadError}
           </div>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-2">
-          {/* ──────────── Left column ──────────── */}
-          <div className="space-y-5">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
+          {/* Left */}
+          <div className="space-y-3 sm:space-y-5">
             <PermissionGuard permission="canViewZones" fallback={null}>
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
-                      <MapPinIcon className="h-5 w-5" />
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+                    <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                      <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900">Assigned zones</h2>
-                      <p className="text-sm text-slate-500">Capacity and operational visibility for your scope</p>
+                    <div className="min-w-0">
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                        Assigned zones
+                      </h2>
+                      <p className="text-xs sm:text-sm text-slate-500">
+                        Your operational scope
+                      </p>
                     </div>
                   </div>
-                  <Link to="/suborg/zones" className="text-sm font-semibold text-blue-600 hover:text-blue-700 shrink-0">
-                    Open zones
+                  <Link
+                    to="/suborg/zones"
+                    className="text-xs sm:text-sm font-semibold text-blue-600 active:text-blue-700 hover:text-blue-700 shrink-0 touch-manipulation"
+                  >
+                    Open
                   </Link>
                 </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="mt-3 sm:mt-5 grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
                   {zones.map((zone) => (
                     <div
                       key={zone.id || zone.name}
-                      className="relative overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-4 transition-all hover:border-sky-200 hover:bg-sky-50/40"
+                      className="relative overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-3 sm:p-4"
                     >
                       {zone.color && (
                         <div
@@ -657,25 +751,27 @@ const SubOrgDashboard = () => {
                       )}
                       <div className={zone.color ? 'pl-2' : ''}>
                         <div className="flex items-center justify-between gap-2">
-                          <h3 className="text-sm font-bold text-slate-900 truncate">{zone.name}</h3>
-                          <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold text-sky-700">
+                          <h3 className="text-sm font-bold text-slate-900 truncate">
+                            {zone.name}
+                          </h3>
+                          <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">
                             Cap {zone.capacity || 0}
                           </span>
                         </div>
-                        <p className="mt-1.5 text-xs text-slate-500 line-clamp-2">
-                          {zone.description || 'Use entry and zone scans here only.'}
+                        <p className="mt-1 text-[11px] sm:text-xs text-slate-500 line-clamp-2">
+                          {zone.description || 'Entry & zone scans only.'}
                         </p>
                       </div>
                     </div>
                   ))}
                   {!loading && zones.length === 0 && (
-                    <div className="sm:col-span-2 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
-                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-                        <MapPinIcon className="h-6 w-6" />
-                      </div>
-                      <p className="text-sm font-semibold text-slate-700">No zones assigned yet</p>
-                      <p className="mt-1 text-xs text-slate-500 max-w-xs">
-                        Ask the main organiser to assign at least one zone to your account.
+                    <div className="sm:col-span-2 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-8 text-center">
+                      <MapPinIcon className="h-8 w-8 text-sky-500 mb-2" />
+                      <p className="text-sm font-semibold text-slate-700">
+                        No zones assigned
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Ask the main organiser to assign a zone.
                       </p>
                     </div>
                   )}
@@ -686,82 +782,86 @@ const SubOrgDashboard = () => {
             <CapabilityCard
               permission="canCollectCash"
               title="Cash Payments"
-              description="Manage cash at entrance and confirm payments"
+              description="Confirm cash at entrance"
               linkTo="/suborg/cash-payments"
               linkLabel="Manage payments"
               icon={BanknotesIcon}
               tone="emerald"
               enabledTitle="Cash collection enabled"
-              enabledDesc="You can view and confirm cash payments at the venue"
+              enabledDesc="View and confirm cash payments"
             />
 
             <CapabilityCard
               permission="canAddAttendees"
               title="Add Attendees"
-              description="Register guests directly to the event"
+              description="Register guests directly"
               linkTo="/suborg/attendees"
               linkLabel="Manage attendees"
               icon={UserPlusIcon}
               tone="blue"
-              enabledTitle="Attendee registration enabled"
-              enabledDesc="You can add new attendees directly to the event"
+              enabledTitle="Registration enabled"
+              enabledDesc="Add attendees to the event"
             />
 
             <CapabilityCard
               permission="canVerifyPhotos"
               title="Photo Verification"
-              description="Approve attendee photo uploads"
+              description="Approve photo uploads"
               linkTo="/suborg/verification"
               linkLabel="View queue"
               icon={PhotoIcon}
               tone="purple"
-              enabledTitle="Photo verification enabled"
-              enabledDesc="You can approve attendee photo uploads"
+              enabledTitle="Verification enabled"
+              enabledDesc="Approve attendee photos"
             />
 
             <CapabilityCard
               permission="canBulkUpload"
               title="Excel Bulk Imports"
-              description="Upload spreadsheets for bulk registration"
+              description="Spreadsheet bulk registration"
               linkTo="/suborg/upload"
-              linkLabel="Manage bulk upload"
+              linkLabel="Bulk upload"
               icon={ArrowUpTrayIcon}
               tone="amber"
               enabledTitle="Bulk import enabled"
-              enabledDesc="You can upload Excel files for bulk registration"
+              enabledDesc="Upload Excel for registration"
             />
 
             <CapabilityCard
               permission="true"
               title="Manual Search"
-              description="Search attendees and manual check-in/out"
+              description="Search & manual check-in/out"
               linkTo="/suborg/manual-search"
               linkLabel="Search registry"
               icon={MagnifyingGlassIcon}
               tone="blue"
-              enabledTitle="Manual operations available"
+              enabledTitle="Manual ops available"
               enabledDesc="Search by name, phone, or email"
             />
           </div>
 
-          {/* ──────────── Right column ──────────── */}
-          <div className="space-y-5">
+          {/* Right */}
+          <div className="space-y-3 sm:space-y-5">
             <PermissionGuard permission="canViewTickets" fallback={null}>
-              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                      <TicketIcon className="h-5 w-5" />
+              <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+                    <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                      <TicketIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900">Ticket Management</h2>
-                      <p className="text-sm text-slate-500">Categories delegated to you or created by you</p>
+                    <div className="min-w-0">
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                        Ticket Management
+                      </h2>
+                      <p className="text-xs sm:text-sm text-slate-500">
+                        Your categories
+                      </p>
                     </div>
                   </div>
                   <PermissionGuard permission="canEditTickets">
                     <Button
                       size="sm"
-                      className="bg-blue-600 hover:bg-blue-500 shrink-0"
+                      className="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 shrink-0 touch-manipulation"
                       onClick={() =>
                         setCategoryModal({
                           ...emptyCategory,
@@ -770,35 +870,42 @@ const SubOrgDashboard = () => {
                         })
                       }
                     >
-                      + Add Ticket
+                      + Add
                     </Button>
                   </PermissionGuard>
                 </div>
 
-                <div className="mt-5 space-y-3">
+                <div className="mt-3 sm:mt-5 space-y-2.5 sm:space-y-3">
                   {categories.map((cat) => (
                     <div
                       key={cat.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 transition-all hover:border-indigo-100 hover:bg-indigo-50/30"
+                      className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:p-4"
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="min-w-0 space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-slate-900 truncate">{cat.name}</h3>
-                            {cat.isPrivate && <Badge color="indigo">Private</Badge>}
+                            <h3 className="font-bold text-slate-900 text-sm truncate">
+                              {cat.name}
+                            </h3>
+                            {cat.isPrivate && (
+                              <Badge color="indigo">Private</Badge>
+                            )}
                           </div>
-                          <p className="text-xs text-slate-500 line-clamp-1">
-                            {cat.description || 'No description provided.'}
+                          <p className="text-[11px] sm:text-xs text-slate-500 line-clamp-1">
+                            {cat.description || 'No description.'}
                           </p>
-                          <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-medium text-slate-500">
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] sm:text-[11px] font-medium text-slate-500">
                             <span>
-                              {cat.currency || currency} {Number(cat.price || 0).toLocaleString()}
+                              {cat.currency || currency}{' '}
+                              {Number(cat.price || 0).toLocaleString()}
                             </span>
                             <span>
-                              Sold: {cat.sold || 0} / {cat.capacity || 0}
+                              Sold: {cat.sold || 0}/{cat.capacity || 0}
                             </span>
                             {cat.accessCode && (
-                              <span className="font-mono text-indigo-600">Code: {cat.accessCode}</span>
+                              <span className="font-mono text-indigo-600">
+                                {cat.accessCode}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -806,14 +913,24 @@ const SubOrgDashboard = () => {
                         <div className="flex shrink-0 gap-2">
                           {String(cat.createdBy || '') === currentUserId ? (
                             <>
-                              <Button variant="outline" size="sm" onClick={() => setCategoryModal(cat)}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="touch-manipulation"
+                                onClick={() => setCategoryModal(cat)}
+                              >
                                 Edit
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-rose-200 text-rose-700 hover:bg-rose-50"
-                                onClick={() => setDeleteConfirm({ id: cat.id, label: cat.name })}
+                                className="border-rose-200 text-rose-700 hover:bg-rose-50 touch-manipulation"
+                                onClick={() =>
+                                  setDeleteConfirm({
+                                    id: cat.id,
+                                    label: cat.name,
+                                  })
+                                }
                               >
                                 <TrashIcon className="h-4 w-4" />
                               </Button>
@@ -822,6 +939,7 @@ const SubOrgDashboard = () => {
                                   variant="outline"
                                   size="sm"
                                   title="Regenerate access code"
+                                  className="touch-manipulation"
                                   onClick={() => handleRegenerateCode(cat.id)}
                                 >
                                   <ArrowPathIcon className="h-4 w-4" />
@@ -839,13 +957,13 @@ const SubOrgDashboard = () => {
                   ))}
 
                   {!loading && categories.length === 0 && (
-                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
-                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                        <TicketIcon className="h-6 w-6" />
-                      </div>
-                      <p className="text-sm font-semibold text-slate-700">No ticket categories yet</p>
-                      <p className="mt-1 text-xs text-slate-500 max-w-xs">
-                        Create a private ticket category or wait for the organiser to assign one to you.
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-8 text-center">
+                      <TicketIcon className="h-8 w-8 text-indigo-500 mb-2" />
+                      <p className="text-sm font-semibold text-slate-700">
+                        No ticket categories
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Create one or wait for assignment.
                       </p>
                     </div>
                   )}
@@ -854,28 +972,44 @@ const SubOrgDashboard = () => {
             </PermissionGuard>
 
             {/* Recent Scans */}
-            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-              <div className="flex items-start justify-between gap-4">
+            <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Recent Scans</h2>
-                  <p className="text-sm text-slate-500">Latest entry and zone scans</p>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                    Recent Scans
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    Latest entry & zone activity
+                  </p>
                 </div>
-                <Link to="/suborg/logs" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                <Link
+                  to="/suborg/logs"
+                  className="text-xs sm:text-sm font-semibold text-blue-600 active:text-blue-700 hover:text-blue-700 touch-manipulation"
+                >
                   View all
                 </Link>
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-3 sm:mt-5 space-y-2 sm:space-y-3">
                 {activity.slice(0, 8).map((item, idx) => {
-                  const isQr = (item.detail || '').toLowerCase().includes('qr');
-                  const isRfid = (item.detail || '').toLowerCase().includes('rfid') || (item.status || '').toLowerCase().includes('rfid');
-                  const isSuccess = item.status === 'success' || item.action?.toLowerCase().includes('allowed') || item.action?.toLowerCase().includes('in');
-                  const isDenied = item.status === 'error' || item.action?.toLowerCase().includes('denied');
+                  const isQr = (item.detail || '')
+                    .toLowerCase()
+                    .includes('qr');
+                  const isRfid =
+                    (item.detail || '').toLowerCase().includes('rfid') ||
+                    (item.status || '').toLowerCase().includes('rfid');
+                  const isSuccess =
+                    item.status === 'success' ||
+                    item.action?.toLowerCase().includes('allowed') ||
+                    item.action?.toLowerCase().includes('in');
+                  const isDenied =
+                    item.status === 'error' ||
+                    item.action?.toLowerCase().includes('denied');
 
                   return (
                     <div
                       key={item.id || idx}
-                      className={`flex items-start gap-3 rounded-xl border px-3 py-3 ${
+                      className={`flex items-start gap-2.5 rounded-xl border px-2.5 py-2.5 sm:px-3 sm:py-3 ${
                         isDenied
                           ? 'border-rose-200 bg-rose-50/50'
                           : isSuccess
@@ -883,26 +1017,49 @@ const SubOrgDashboard = () => {
                           : 'border-slate-100 bg-slate-50/50'
                       }`}
                     >
-                      <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-                        isDenied ? 'bg-rose-500' : isSuccess ? 'bg-emerald-500' : 'bg-blue-500'
-                      }`} />
+                      <div
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          isDenied
+                            ? 'bg-rose-500'
+                            : isSuccess
+                            ? 'bg-emerald-500'
+                            : 'bg-blue-500'
+                        }`}
+                      />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-slate-800 line-clamp-1">
-                            {item.attendeeName || item.message || item.action || 'Action performed'}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="text-xs sm:text-sm font-medium text-slate-800 line-clamp-1">
+                            {item.attendeeName ||
+                              item.message ||
+                              item.action ||
+                              'Action'}
                           </p>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            isQr ? 'bg-blue-100 text-blue-700' : isRfid ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
-                          }`}>
+                          <span
+                            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold ${
+                              isQr
+                                ? 'bg-blue-100 text-blue-700'
+                                : isRfid
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
                             {isRfid ? 'RFID' : isQr ? 'QR' : 'MANUAL'}
                           </span>
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] sm:text-[11px] text-slate-500">
                           <span>{item.zoneName || 'Entry'}</span>
                           <span>·</span>
-                          <span>{formatTime(item.createdAt || item.timestamp)}</span>
+                          <span className="truncate">
+                            {formatTime(item.createdAt || item.timestamp)}
+                          </span>
                           <span>·</span>
-                          <span className={isDenied ? 'text-rose-600 font-medium' : 'text-emerald-600 font-medium'}>
+                          <span
+                            className={
+                              isDenied
+                                ? 'text-rose-600 font-medium'
+                                : 'text-emerald-600 font-medium'
+                            }
+                          >
                             {isDenied ? 'Denied' : 'Allowed'}
                           </span>
                         </div>
@@ -912,7 +1069,9 @@ const SubOrgDashboard = () => {
                 })}
 
                 {!loading && activity.length === 0 && (
-                  <div className="py-8 text-center text-sm text-slate-500">No recent scans</div>
+                  <div className="py-6 text-center text-sm text-slate-500">
+                    No recent scans
+                  </div>
                 )}
               </div>
             </Card>
@@ -920,54 +1079,81 @@ const SubOrgDashboard = () => {
         </div>
       </div>
 
-      {/* ──────────── Category Modal ──────────── */}
+      {/* Category Modal */}
       <Modal
         open={!!categoryModal}
         onClose={() => setCategoryModal(null)}
-        title={categoryModal?.id ? 'Edit Ticket Category' : 'Create Ticket Category'}
+        title={
+          categoryModal?.id ? 'Edit Ticket Category' : 'Create Ticket Category'
+        }
       >
         {categoryModal && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700">Name *</label>
+              <label className="block text-sm font-medium text-slate-700">
+                Name *
+              </label>
               <input
                 type="text"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 sm:py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation"
                 value={categoryModal.name}
-                onChange={(e) => setCategoryModal({ ...categoryModal, name: e.target.value })}
+                onChange={(e) =>
+                  setCategoryModal({ ...categoryModal, name: e.target.value })
+                }
                 placeholder="e.g. VIP Guest, Staff, Press"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Description</label>
+              <label className="block text-sm font-medium text-slate-700">
+                Description
+              </label>
               <textarea
                 rows={2}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 sm:py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation"
                 value={categoryModal.description}
-                onChange={(e) => setCategoryModal({ ...categoryModal, description: e.target.value })}
+                onChange={(e) =>
+                  setCategoryModal({
+                    ...categoryModal,
+                    description: e.target.value,
+                  })
+                }
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700">Price ({currency})</label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Price ({currency})
+                </label>
                 <input
                   type="number"
                   min="0"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 sm:py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation"
                   value={categoryModal.price}
-                  onChange={(e) => setCategoryModal({ ...categoryModal, price: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setCategoryModal({
+                      ...categoryModal,
+                      price: Number(e.target.value),
+                    })
+                  }
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Capacity</label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Capacity
+                </label>
                 <input
                   type="number"
                   min="0"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 sm:py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 touch-manipulation"
                   value={categoryModal.capacity}
-                  onChange={(e) => setCategoryModal({ ...categoryModal, capacity: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setCategoryModal({
+                      ...categoryModal,
+                      capacity: Number(e.target.value),
+                    })
+                  }
                 />
               </div>
             </div>
@@ -977,7 +1163,12 @@ const SubOrgDashboard = () => {
                 id="isPrivate"
                 type="checkbox"
                 checked={!!categoryModal.isPrivate}
-                onChange={(e) => setCategoryModal({ ...categoryModal, isPrivate: e.target.checked })}
+                onChange={(e) =>
+                  setCategoryModal({
+                    ...categoryModal,
+                    isPrivate: e.target.checked,
+                  })
+                }
                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <label htmlFor="isPrivate" className="text-sm text-slate-700">
@@ -985,19 +1176,31 @@ const SubOrgDashboard = () => {
               </label>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={() => setCategoryModal(null)} disabled={isSaving}>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 sm:gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto touch-manipulation"
+                onClick={() => setCategoryModal(null)}
+                disabled={isSaving}
+              >
                 Cancel
               </Button>
-              <Button onClick={saveCategory} disabled={isSaving} className="bg-blue-600 hover:bg-blue-500">
-                {isSaving ? 'Saving…' : categoryModal.id ? 'Update' : 'Create'}
+              <Button
+                onClick={saveCategory}
+                disabled={isSaving}
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
+              >
+                {isSaving
+                  ? 'Saving…'
+                  : categoryModal.id
+                  ? 'Update'
+                  : 'Create'}
               </Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* ──────────── Delete Confirmation ──────────── */}
       <Modal
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
@@ -1005,15 +1208,20 @@ const SubOrgDashboard = () => {
       >
         {deleteConfirm && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Are you sure you want to delete <strong>{deleteConfirm.label}</strong>? This action cannot be undone.
+            <p className="text-sm text-slate-600 leading-snug">
+              Delete <strong>{deleteConfirm.label}</strong>? This cannot be
+              undone.
             </p>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 sm:gap-3">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto touch-manipulation"
+                onClick={() => setDeleteConfirm(null)}
+              >
                 Cancel
               </Button>
               <Button
-                className="bg-rose-600 hover:bg-rose-500 text-white"
+                className="w-full sm:w-auto bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white touch-manipulation"
                 onClick={confirmDeleteCategory}
               >
                 Delete

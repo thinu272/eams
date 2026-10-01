@@ -23,21 +23,23 @@ import {
 } from '@heroicons/react/24/outline';
 
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between gap-3">
+  <Card className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3 sm:p-5">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
           {title}
         </p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">
+        <p className="mt-1 sm:mt-2 text-lg sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>
+          <p className="mt-0.5 sm:mt-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+            {subtitle}
+          </p>
         )}
       </div>
       {Icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -177,35 +179,34 @@ const SubOrgTickets = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
+      <div className="space-y-3 sm:space-y-6 pb-20">
         {/* Header */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-3 sm:gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     to="/suborg/dashboard"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                    className="inline-flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-blue-600 active:bg-blue-50 hover:text-blue-700 touch-manipulation"
                   >
                     <ArrowLeftIcon className="h-3.5 w-3.5" />
                     Dashboard
                   </Link>
                   <span className="text-slate-300">·</span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-                    Ticket Management
+                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Tickets
                   </p>
                 </div>
-                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                <h1 className="mt-1.5 sm:mt-2.5 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
                   {data?.event?.name || 'Assigned Event'}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Create and manage ticket categories for your assigned zones.
-                  Private tickets require a secure access code.
+                <p className="mt-1 sm:mt-2 max-w-2xl text-xs sm:text-sm text-slate-500 leading-snug">
+                  Categories for your zones. Private tickets need an access code.
                 </p>
               </div>
               <Button
-                className="bg-blue-600 hover:bg-blue-500 text-white shrink-0"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shrink-0 touch-manipulation"
                 onClick={() => setIsModalOpen(true)}
               >
                 <PlusIcon className="mr-1.5 h-4 w-4" />
@@ -215,30 +216,30 @@ const SubOrgTickets = () => {
           </div>
         </Card>
 
-        {/* Metrics */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Metrics — 3-col compact on mobile */}
+        <section className="grid grid-cols-3 gap-2 sm:gap-4">
           <MetricCard
             title="Categories"
             value={loading ? '—' : categories.length}
-            subtitle="In your scope"
+            subtitle="In scope"
             icon={TicketIcon}
           />
           <MetricCard
-            title="Tickets Sold"
+            title="Sold"
             value={loading ? '—' : totalSold}
-            subtitle="Across all categories"
+            subtitle="All cats"
             icon={CheckCircleIcon}
           />
           <MetricCard
-            title="Private Tickets"
+            title="Private"
             value={loading ? '—' : privateCount}
-            subtitle="Code-protected"
+            subtitle="Coded"
             icon={LockClosedIcon}
           />
         </section>
 
         {/* Category cards */}
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 sm:gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {categories.map((category) => {
             const sold = category.sold || 0;
             const capacity = category.capacity || 0;
@@ -250,12 +251,12 @@ const SubOrgTickets = () => {
             return (
               <Card
                 key={category.id}
-                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-blue-200 hover:shadow-md transition-all"
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-4 sm:p-5 active:border-blue-200 hover:border-blue-200 transition-all"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-900 truncate">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                         {category.name}
                       </h3>
                       {category.isPrivate ? (
@@ -264,31 +265,31 @@ const SubOrgTickets = () => {
                         <Badge color="green">Public</Badge>
                       )}
                     </div>
-                    <p className="mt-1 text-xl font-bold text-blue-600">
+                    <p className="mt-1 text-lg sm:text-xl font-bold text-blue-600 tabular-nums">
                       {currency} {Number(category.price || 0).toLocaleString()}
                     </p>
                   </div>
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                    className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border ${
                       category.isPrivate
                         ? 'bg-amber-50 text-amber-600 border-amber-100'
                         : 'bg-emerald-50 text-emerald-600 border-emerald-100'
                     }`}
                   >
                     {category.isPrivate ? (
-                      <LockClosedIcon className="h-5 w-5" />
+                      <LockClosedIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     ) : (
-                      <LockOpenIcon className="h-5 w-5" />
+                      <LockOpenIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     )}
                   </div>
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-3 sm:mt-4">
                   <div className="mb-1.5 flex items-center justify-between text-[11px]">
                     <span className="font-medium text-slate-500">
                       Sold {sold} / {capacity || '∞'}
                     </span>
-                    <span className="font-semibold text-slate-700">
+                    <span className="font-semibold text-slate-700 tabular-nums">
                       {fillPct}%
                     </span>
                   </div>
@@ -300,9 +301,9 @@ const SubOrgTickets = () => {
                   </div>
                 </div>
 
-                <div className="mt-4 border-t border-slate-100 pt-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Assigned Zones
+                <div className="mt-3 sm:mt-4 border-t border-slate-100 pt-3 sm:pt-4">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 sm:mb-2">
+                    Zones
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {(category.allowedZones || []).map((zId) => (
@@ -324,20 +325,20 @@ const SubOrgTickets = () => {
                 </div>
 
                 {category.isPrivate && (
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="mt-3 sm:mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 sm:p-3.5">
+                    <div className="flex items-center justify-between gap-2 sm:gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           Access Code
                         </p>
-                        <p className="mt-1 font-mono text-sm font-bold tracking-wider text-blue-600">
+                        <p className="mt-0.5 sm:mt-1 font-mono text-xs sm:text-sm font-bold tracking-wider text-blue-600 truncate">
                           {category.accessCode || 'Not available'}
                         </p>
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        className="shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50 active:bg-blue-50 touch-manipulation"
                         onClick={() => handleRegenerateCode(category.id)}
                       >
                         <ArrowPathIcon className="mr-1 h-3.5 w-3.5" />
@@ -351,18 +352,18 @@ const SubOrgTickets = () => {
           })}
 
           {!loading && categories.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <TicketIcon className="h-7 w-7" />
+            <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-5 py-12 sm:px-6 sm:py-16 text-center">
+              <div className="mb-3 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <TicketIcon className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>
-              <p className="text-base font-semibold text-slate-800">
+              <p className="text-sm sm:text-base font-semibold text-slate-800">
                 No ticket categories yet
               </p>
-              <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+              <p className="mt-1 max-w-sm text-xs sm:text-sm text-slate-500 leading-snug">
                 Create a category for the zones assigned to your workspace.
               </p>
               <Button
-                className="mt-5 bg-blue-600 hover:bg-blue-500 text-white"
+                className="mt-4 sm:mt-5 w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white touch-manipulation"
                 onClick={() => setIsModalOpen(true)}
               >
                 <PlusIcon className="mr-1.5 h-4 w-4" />
@@ -380,15 +381,15 @@ const SubOrgTickets = () => {
         title="New Ticket Category"
         size="lg"
       >
-        <form onSubmit={handleCreate} className="space-y-5">
+        <form onSubmit={handleCreate} className="space-y-4 sm:space-y-5">
           <label className="block space-y-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
               Category Name
             </span>
             <input
               type="text"
               required
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               placeholder="e.g. VIP Backstage"
               value={formData.name}
               onChange={(e) =>
@@ -397,16 +398,17 @@ const SubOrgTickets = () => {
             />
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 grid-cols-2">
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
                 Price ({currency})
               </span>
               <input
                 type="number"
                 required
                 min="0"
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                inputMode="decimal"
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
                 placeholder="0"
                 value={formData.price}
                 onChange={(e) =>
@@ -415,14 +417,15 @@ const SubOrgTickets = () => {
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
                 Capacity
               </span>
               <input
                 type="number"
                 required
                 min="0"
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                inputMode="numeric"
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
                 placeholder="100"
                 value={formData.capacity}
                 onChange={(e) =>
@@ -433,7 +436,7 @@ const SubOrgTickets = () => {
           </div>
 
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
               Assign to Zones
             </span>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -445,10 +448,10 @@ const SubOrgTickets = () => {
                     key={zid}
                     type="button"
                     onClick={() => toggleZone(zid)}
-                    className={`rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all ${
+                    className={`rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-all touch-manipulation ${
                       selected
                         ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50'
+                        : 'border-slate-200 bg-white text-slate-600 active:bg-blue-50'
                     }`}
                   >
                     {zone.name}
@@ -463,17 +466,17 @@ const SubOrgTickets = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 sm:p-4">
             <div className="flex items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900">
                   Private Access
                 </p>
-                <p className="text-xs text-slate-500">
-                  Require a secure code to unlock this ticket.
+                <p className="text-[11px] sm:text-xs text-slate-500 leading-snug">
+                  Require a code to unlock this ticket.
                 </p>
               </div>
-              <label className="relative inline-flex cursor-pointer items-center">
+              <label className="relative inline-flex cursor-pointer items-center shrink-0 touch-manipulation">
                 <input
                   type="checkbox"
                   className="peer sr-only"
@@ -488,13 +491,14 @@ const SubOrgTickets = () => {
             {formData.isPrivate && (
               <div className="mt-3">
                 <label className="block space-y-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Max Uses (optional)
                   </span>
                   <input
                     type="number"
                     min="0"
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    inputMode="numeric"
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
                     placeholder="Leave blank for unlimited"
                     value={formData.maxUsage}
                     onChange={(e) =>
@@ -506,17 +510,17 @@ const SubOrgTickets = () => {
             )}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 sm:p-4">
             <div className="flex items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900">
                   Visible to Public
                 </p>
-                <p className="text-xs text-slate-500">
-                  Show this ticket in the public event listing.
+                <p className="text-[11px] sm:text-xs text-slate-500 leading-snug">
+                  Show in the public event listing.
                 </p>
               </div>
-              <label className="relative inline-flex cursor-pointer items-center">
+              <label className="relative inline-flex cursor-pointer items-center shrink-0 touch-manipulation">
                 <input
                   type="checkbox"
                   className="peer sr-only"
@@ -530,22 +534,22 @@ const SubOrgTickets = () => {
             </div>
           </div>
 
-          <div className="flex gap-3 border-t border-slate-100 pt-4">
-            <Button
-              type="submit"
-              className="flex-[2] bg-blue-600 hover:bg-blue-500 py-2.5"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Creating…' : 'Create Category'}
-            </Button>
+          <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 border-t border-slate-100 pt-4">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 py-2.5"
+              className="w-full sm:flex-1 py-3 sm:py-2.5 touch-manipulation"
               onClick={() => setIsModalOpen(false)}
               disabled={isSubmitting}
             >
               Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="w-full sm:flex-[2] bg-blue-600 hover:bg-blue-500 active:bg-blue-700 py-3 sm:py-2.5 touch-manipulation"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Creating…' : 'Create Category'}
             </Button>
           </div>
         </form>
@@ -558,31 +562,31 @@ const SubOrgTickets = () => {
         title="Access Code Created"
         size="sm"
       >
-        <div className="space-y-5 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <KeyIcon className="h-7 w-7" />
+        <div className="space-y-4 sm:space-y-5 text-center">
+          <div className="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+            <KeyIcon className="h-6 w-6 sm:h-7 sm:w-7" />
           </div>
-          <p className="text-sm text-slate-500">
+          <p className="text-xs sm:text-sm text-slate-500 leading-snug">
             Share this code only with people who should unlock this private
-            ticket. It is also visible on the category card.
+            ticket.
           </p>
           <button
             type="button"
-            className="w-full rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-4 py-6 transition hover:bg-blue-50 active:scale-[0.98]"
+            className="w-full rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-4 py-5 sm:py-6 transition active:bg-blue-50 active:scale-[0.98] touch-manipulation"
             onClick={() => {
               navigator.clipboard.writeText(generatedCode);
               toast.success('Code copied to clipboard!');
             }}
           >
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Click to copy
+            <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Tap to copy
             </p>
-            <p className="font-mono text-2xl font-bold tracking-widest text-slate-900">
+            <p className="font-mono text-xl sm:text-2xl font-bold tracking-widest text-slate-900 break-all">
               {generatedCode}
             </p>
           </button>
           <Button
-            className="w-full bg-blue-600 hover:bg-blue-500 py-2.5"
+            className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 py-3 sm:py-2.5 touch-manipulation"
             onClick={() => setShowResult(false)}
           >
             <CheckCircleIcon className="mr-1.5 h-4 w-4" />

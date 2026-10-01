@@ -3,7 +3,6 @@ import { io } from 'socket.io-client';
 import { getSocketUrl } from '../../utils/backend';
 import {
   CameraIcon,
-  ShieldCheckIcon,
   SignalIcon,
   SignalSlashIcon,
   BoltIcon,
@@ -22,7 +21,6 @@ import { getZoneLogs, scanZoneAccess } from '../../api/zone';
 import { getMyEvents } from '../../api/events';
 import { useAuth } from '../../context/AuthContext';
 import {
-  getAssignedZoneLabel,
   getAssignedZones,
   parseScannedValue,
   playFeedbackTone,
@@ -63,7 +61,9 @@ const SubOrgZoneScannerPage = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('entrynex:offline-zone-scans')) || [];
+      return (
+        JSON.parse(localStorage.getItem('entrynex:offline-zone-scans')) || []
+      );
     } catch {
       return [];
     }
@@ -83,7 +83,6 @@ const SubOrgZoneScannerPage = () => {
   const assignedZones = useMemo(() => getAssignedZones(user), [user]);
   const zoneLocked = assignedZones.length > 0;
 
-  // Available zones from current event or assignments
   const availableZones = useMemo(() => {
     const eventZones = currentEvent?.zones || [];
     if (assignedZones.length > 0) {
@@ -95,7 +94,6 @@ const SubOrgZoneScannerPage = () => {
     return eventZones;
   }, [currentEvent, assignedZones]);
 
-  // Network status listeners
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -114,7 +112,6 @@ const SubOrgZoneScannerPage = () => {
     };
   }, []);
 
-  // Offline queue auto-sync
   useEffect(() => {
     if (isOnline && offlineQueue.length > 0) {
       const syncScans = async () => {
@@ -126,7 +123,9 @@ const SubOrgZoneScannerPage = () => {
         for (const scan of queueToProcess) {
           try {
             await scanZoneAccess({
-              ...(scan.method === 'rfid' ? { rfidId: scan.rfidId } : { qrToken: scan.qrToken }),
+              ...(scan.method === 'rfid'
+                ? { rfidId: scan.rfidId }
+                : { qrToken: scan.qrToken }),
               zone: scan.zone,
               eventId: scan.eventId,
               action: scan.action,
@@ -156,7 +155,6 @@ const SubOrgZoneScannerPage = () => {
     );
   }, [offlineQueue]);
 
-  // Fetch events list
   useEffect(() => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
@@ -171,7 +169,6 @@ const SubOrgZoneScannerPage = () => {
     });
   }, [selectedEventId]);
 
-  // Listen to external event selection
   useEffect(() => {
     const handleEventSelect = (event) => {
       setSelectedEventId(event.detail || '');
@@ -181,7 +178,6 @@ const SubOrgZoneScannerPage = () => {
       window.removeEventListener('entrynex:event-select', handleEventSelect);
   }, []);
 
-  // Set default active zone on first load
   useEffect(() => {
     if (assignedZones[0]) {
       setZoneName(assignedZones[0]);
@@ -196,11 +192,8 @@ const SubOrgZoneScannerPage = () => {
     }
   }, [assignedZones, availableZones]);
 
-  // Reset zone selection whenever the active event changes so the
-  // zone dropdown only shows zones belonging to the selected event.
   useEffect(() => {
     if (!selectedEventId) return;
-    // Re-derive zones directly from the newly selected event
     const nextEvent = events.find((e) => e._id === selectedEventId);
     const nextEventZones = nextEvent?.zones || [];
     if (assignedZones.length > 0) {
@@ -218,11 +211,11 @@ const SubOrgZoneScannerPage = () => {
       setZoneName(first.name || first.id);
       setZoneInput(first.name || first.id);
     }
-  }, [selectedEventId]); // intentionally omits `events` and `assignedZones` — runs only on event change
+  }, [selectedEventId]);
 
-  // Focus RFID input when switched to RFID mode
   useEffect(() => {
-    if (readerMode === 'rfid' && activeTab === 'scan') rfidInputRef.current?.focus();
+    if (readerMode === 'rfid' && activeTab === 'scan')
+      rfidInputRef.current?.focus();
   }, [readerMode, activeTab]);
 
   const handleEventChange = (nextId) => {
@@ -243,7 +236,8 @@ const SubOrgZoneScannerPage = () => {
       });
       const nextLogs = (response.data?.data?.logs || []).map((item) => ({
         id: item._id,
-        attendeeName: item.attendee?.fullName || item.snapshot?.fullName || 'Attendee',
+        attendeeName:
+          item.attendee?.fullName || item.snapshot?.fullName || 'Attendee',
         zoneName: getZoneDisplayName(item.zone || item.zoneName),
         action: item.accessGranted
           ? item.action === 'EXIT'
@@ -284,7 +278,6 @@ const SubOrgZoneScannerPage = () => {
     fetchStats();
   }, [refreshLogs, fetchStats]);
 
-  // Socket.IO real-time sync with dashboard
   useEffect(() => {
     if (!selectedEventId) return;
 
@@ -490,7 +483,7 @@ const SubOrgZoneScannerPage = () => {
   );
 
   const tabItems = [
-    { id: 'scan', label: 'Scanner', icon: CameraIcon },
+    { id: 'scan', label: 'Scan', icon: CameraIcon },
     { id: 'manual', label: 'Manual', icon: DevicePhoneMobileIcon },
     { id: 'stats', label: 'Stats', icon: ChartBarIcon },
     { id: 'logs', label: 'Logs', icon: ListBulletIcon },
@@ -498,15 +491,16 @@ const SubOrgZoneScannerPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 pb-24 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl space-y-3 sm:space-y-5 px-3 sm:px-6 pb-20 sm:pb-24">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
           <button
+            type="button"
             onClick={() => navigate('/suborg/dashboard')}
-            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-900"
+            className="flex items-center gap-1.5 rounded-lg px-1 py-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500 active:bg-slate-100 hover:text-slate-900 touch-manipulation"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            Exit Console
+            Exit
           </button>
 
           <div
@@ -525,40 +519,39 @@ const SubOrgZoneScannerPage = () => {
           </div>
         </div>
 
-        {/* Header */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+        {/* Header — compact */}
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 sm:px-6 sm:py-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
               Zone Access
             </p>
           </div>
-
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-1.5 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
             Zone Terminal
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Active zone:{' '}
+          <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500">
+            Zone:{' '}
             <span className="font-semibold text-slate-800">
               {getZoneDisplayName(zoneName)}
             </span>
           </p>
         </div>
 
-        {/* Last Scan Card */}
+        {/* Last Scan — compact */}
         {lastScan ? (
-          <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
               <span
-                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                className={`rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider ${
                   lastScan.action === 'ZONE EXIT'
                     ? 'bg-blue-50 text-blue-700'
                     : 'bg-emerald-50 text-emerald-700'
                 }`}
               >
-                Last {lastScan.action === 'ZONE EXIT' ? 'Zone Exit' : 'Zone Entry'}
+                Last {lastScan.action === 'ZONE EXIT' ? 'Exit' : 'Entry'}
               </span>
-              <span className="text-[10px] font-medium text-slate-400">
+              <span className="text-[10px] font-medium text-slate-400 tabular-nums">
                 {new Date(lastScan.timestamp).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -566,67 +559,67 @@ const SubOrgZoneScannerPage = () => {
                 })}
               </span>
             </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Attendee
                 </p>
-                <p className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                <p className="mt-0.5 truncate text-xs sm:text-sm font-semibold text-slate-900">
                   {lastScan.name}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Ticket Type
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Ticket
                 </p>
-                <p className="mt-0.5 truncate text-sm font-medium text-slate-600">
+                <p className="mt-0.5 truncate text-xs sm:text-sm font-medium text-slate-600">
                   {lastScan.categoryName}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Zone
                 </p>
-                <p className="mt-0.5 truncate text-sm font-semibold text-blue-600">
+                <p className="mt-0.5 truncate text-xs sm:text-sm font-semibold text-blue-600">
                   {lastScan.zoneName}
                 </p>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Processed By
+              <div className="min-w-0">
+                <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  By
                 </p>
-                <p className="mt-0.5 truncate text-sm font-medium text-slate-600">
+                <p className="mt-0.5 truncate text-xs sm:text-sm font-medium text-slate-600">
                   {lastScan.processedByName || 'System'}
                 </p>
               </div>
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-6 text-center">
-            <p className="text-xs font-medium text-slate-400">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-4 sm:py-6 text-center">
+            <p className="text-[11px] sm:text-xs font-medium text-slate-400">
               No successful scans yet
             </p>
           </div>
         )}
 
-        {/* Tabs */}
-        <nav className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
+        {/* Tabs — icon + short label */}
+        <nav className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1 sm:p-1.5 shadow-sm">
           {tabItems.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => {
                   setActiveTab(tab.id);
                   setResult({ state: 'idle' });
                   setLogsPage(1);
                 }}
-                className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-3 text-[10px] font-semibold uppercase tracking-wider transition sm:flex-row sm:gap-1.5 sm:text-xs ${
+                className={`flex flex-1 flex-col items-center justify-center gap-0.5 sm:gap-1 rounded-xl py-2.5 sm:py-3 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider transition touch-manipulation sm:flex-row sm:gap-1.5 sm:text-xs ${
                   active
                     ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                    : 'text-slate-500 active:bg-slate-50'
                 }`}
               >
                 <Icon className="h-5 w-5 shrink-0" />
@@ -636,43 +629,40 @@ const SubOrgZoneScannerPage = () => {
           })}
         </nav>
 
-        {/* ===================== TAB CONTENT ===================== */}
-        <div className="space-y-5">
+        <div className="space-y-3 sm:space-y-5">
           {/* SCANNER TAB */}
           {activeTab === 'scan' && (
-            <div className="space-y-5">
-              {/* Entry / Exit toggle — both blue */}
-              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
+            <div className="space-y-3 sm:space-y-5">
+              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1 sm:p-1.5 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setScanMode('ENTRY')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'ENTRY'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50'
                   }`}
                 >
-                  Zone Entry
+                  Entry
                 </button>
                 <button
                   type="button"
                   onClick={() => setScanMode('EXIT')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'EXIT'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700'
+                      : 'text-slate-500 active:bg-blue-50'
                   }`}
                 >
-                  Zone Exit
+                  Exit
                 </button>
               </div>
 
-              {/* Camera */}
-              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1.5 shadow-sm">
+              <div className="flex gap-1 rounded-2xl border border-slate-200/70 bg-white p-1 sm:p-1.5 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setReaderMode('qr')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold ${
+                  className={`flex-1 rounded-xl py-3 text-xs font-semibold touch-manipulation ${
                     readerMode === 'qr'
                       ? 'bg-blue-600 text-white'
                       : 'text-slate-500'
@@ -684,14 +674,14 @@ const SubOrgZoneScannerPage = () => {
                   <button
                     type="button"
                     onClick={() => setReaderMode('rfid')}
-                    className={`flex-1 rounded-xl py-3 text-xs font-semibold ${
+                    className={`flex-1 rounded-xl py-3 text-xs font-semibold touch-manipulation ${
                       readerMode === 'rfid'
                         ? 'bg-blue-600 text-white'
                         : 'text-slate-500'
                     }`}
                   >
                     <IdentificationIcon className="mr-1 inline h-4 w-4" />
-                    RFID Reader
+                    RFID
                   </button>
                 )}
               </div>
@@ -708,19 +698,21 @@ const SubOrgZoneScannerPage = () => {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-8 text-center">
-                  <IdentificationIcon className="mx-auto h-12 w-12 text-blue-600" />
-                  <p className="mt-3 text-lg font-bold text-slate-900">
+                <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-5 sm:p-8 text-center">
+                  <IdentificationIcon className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-blue-600" />
+                  <p className="mt-2 sm:mt-3 text-base sm:text-lg font-bold text-slate-900">
                     RFID Reader Ready
                   </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Tap a card to submit zone access automatically.
+                  <p className="mt-1 text-xs sm:text-sm text-slate-600">
+                    Tap a card to submit zone access.
                   </p>
                   <input
                     ref={rfidInputRef}
                     value={manualToken}
                     onChange={(e) =>
-                      setManualToken(e.target.value.replace(/\D/g, '').slice(0, 10))
+                      setManualToken(
+                        e.target.value.replace(/\D/g, '').slice(0, 10)
+                      )
                     }
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -732,10 +724,10 @@ const SubOrgZoneScannerPage = () => {
                     maxLength={10}
                     inputMode="numeric"
                     placeholder="Waiting for card..."
-                    className="mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500"
+                    className="mt-4 sm:mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-lg sm:text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500 touch-manipulation"
                   />
-                  <p className="mt-3 text-xs font-semibold text-blue-700">
-                    Reader focused and waiting for a card
+                  <p className="mt-2 sm:mt-3 text-[11px] sm:text-xs font-semibold text-blue-700">
+                    Reader focused — waiting for card
                   </p>
                 </div>
               )}
@@ -754,46 +746,46 @@ const SubOrgZoneScannerPage = () => {
 
           {/* MANUAL TAB */}
           {activeTab === 'manual' && (
-            <div className="space-y-5 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
+            <div className="space-y-3 sm:space-y-5 rounded-2xl border border-slate-200/70 bg-white p-4 sm:p-6 shadow-sm">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   Manual Zone Permission
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Type or paste the QR token below. Camera is paused to save battery.
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+                  Paste or type the QR token. Camera is paused.
                 </p>
               </div>
 
-              <div className="flex gap-1 rounded-2xl bg-slate-50 p-1.5">
+              <div className="flex gap-1 rounded-2xl bg-slate-50 p-1 sm:p-1.5">
                 <button
                   type="button"
                   onClick={() => setScanMode('ENTRY')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'ENTRY'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-white hover:text-blue-700'
+                      : 'text-slate-500 active:bg-white'
                   }`}
                 >
-                  Zone Entry
+                  Entry
                 </button>
                 <button
                   type="button"
                   onClick={() => setScanMode('EXIT')}
-                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition ${
+                  className={`flex-1 rounded-xl py-3 text-xs font-semibold uppercase tracking-wider transition touch-manipulation ${
                     scanMode === 'EXIT'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-white hover:text-blue-700'
+                      : 'text-slate-500 active:bg-white'
                   }`}
                 >
-                  Zone Exit
+                  Exit
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <SearchBar
                   value={manualToken}
                   onChange={setManualToken}
-                  placeholder="Paste / type QR token here..."
+                  placeholder="Paste / type QR token…"
                   autoFocus
                 />
 
@@ -801,15 +793,15 @@ const SubOrgZoneScannerPage = () => {
                   type="button"
                   disabled={!manualToken.trim() || submitting}
                   onClick={() => handleScan(manualToken)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700 disabled:opacity-40"
+                  className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-xs font-semibold uppercase tracking-wider text-white transition active:bg-blue-700 hover:bg-blue-700 disabled:opacity-40 touch-manipulation"
                 >
                   <BoltIcon className="h-5 w-5" />
-                  {submitting ? 'Validating...' : 'Verify Zone Token'}
+                  {submitting ? 'Validating…' : 'Verify Zone Token'}
                 </button>
               </div>
 
               {result.state !== 'idle' && (
-                <div className="border-t border-slate-100 pt-5">
+                <div className="border-t border-slate-100 pt-4 sm:pt-5">
                   <ResultCard
                     state={result.state}
                     attendee={result.attendee}
@@ -824,24 +816,24 @@ const SubOrgZoneScannerPage = () => {
 
           {/* STATS TAB */}
           {activeTab === 'stats' && (
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
-                <h2 className="text-lg font-bold text-slate-900">
+            <div className="space-y-3 sm:space-y-5">
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 sm:p-6 shadow-sm">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   Active Zone Setup
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Configure zone parameters
+                <p className="mt-1 text-xs sm:text-sm text-slate-500">
+                  Event and zone
                 </p>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Select Event
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Event
                     </label>
                     <select
                       value={selectedEventId}
                       onChange={(e) => handleEventChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
                     >
                       {events.map((event) => (
                         <option key={event._id} value={event._id}>
@@ -852,96 +844,88 @@ const SubOrgZoneScannerPage = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Select Zone
+                    <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Zone
                     </label>
                     {availableZones.length > 1 ? (
-                        // Multiple zones available for this event — show a dropdown
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : availableZones.length === 1 && zoneLocked ? (
-                        // Exactly one assigned zone for this event — show as locked label
-                        <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                          {getZoneDisplayName(zoneName)}
-                        </div>
-                      ) : availableZones.length === 1 ? (
-                        // One zone on the event but not locked — still a dropdown for clarity
-                        <select
-                          value={zoneName}
-                          onChange={(e) => setZoneName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        >
-                          {availableZones.map((zone) => (
-                            <option
-                              key={zone.id || zone.name}
-                              value={zone.name || zone.id}
-                            >
-                              {zone.name || zone.id}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        // No event zones defined — allow free-text entry
-                        <input
-                          value={zoneInput}
-                          onChange={(e) => setZoneInput(e.target.value)}
-                          onBlur={() => setZoneName(zoneInput)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setZoneName(zoneInput);
-                          }}
-                          placeholder="Zone name"
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-                        />
-                      )}
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : availableZones.length === 1 && zoneLocked ? (
+                      <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-700">
+                        {getZoneDisplayName(zoneName)}
+                      </div>
+                    ) : availableZones.length === 1 ? (
+                      <select
+                        value={zoneName}
+                        onChange={(e) => setZoneName(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      >
+                        {availableZones.map((zone) => (
+                          <option
+                            key={zone.id || zone.name}
+                            value={zone.name || zone.id}
+                          >
+                            {zone.name || zone.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={zoneInput}
+                        onChange={(e) => setZoneInput(e.target.value)}
+                        onBlur={() => setZoneName(zoneInput)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setZoneName(zoneInput);
+                        }}
+                        placeholder="Zone name"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Metrics */}
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6">
-                <h2 className="text-lg font-bold text-slate-900">
-                  Today’s Zone Metrics
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 sm:p-6 shadow-sm">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                  Today&apos;s Metrics
                 </h2>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <div className="mt-3 sm:mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+                  <div className="rounded-xl sm:rounded-2xl border border-slate-200/70 bg-white px-2.5 py-3 sm:px-5 sm:py-5 shadow-sm text-center sm:text-left">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Scans
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-blue-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-blue-600 tabular-nums">
                       {stats.total}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Total today</p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Allowed
+                  <div className="rounded-xl sm:rounded-2xl border border-slate-200/70 bg-white px-2.5 py-3 sm:px-5 sm:py-5 shadow-sm text-center sm:text-left">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      OK
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-emerald-600 tabular-nums">
                       {stats.success}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Successful</p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="rounded-xl sm:rounded-2xl border border-slate-200/70 bg-white px-2.5 py-3 sm:px-5 sm:py-5 shadow-sm text-center sm:text-left">
+                    <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       Denied
                     </p>
-                    <p className="mt-2 text-3xl font-bold tracking-tight text-rose-600">
+                    <p className="mt-1 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-rose-600 tabular-nums">
                       {stats.failed}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Blocked</p>
                   </div>
                 </div>
               </div>
@@ -959,37 +943,34 @@ const SubOrgZoneScannerPage = () => {
               );
 
               return (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <ActivityList
-                    title={`Zone Access Scans (Page ${logsPage})`}
+                    title={`Zone Scans (Page ${logsPage})`}
                     items={pagedLogs}
                     emptyMessage="No zone scanning history today."
                   />
 
                   {logs.length > 0 && (
-                    <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-sm sm:flex-row">
-                      <p className="text-xs font-medium text-slate-500">
-                        Showing{' '}
-                        {logs.length === 0
-                          ? 0
-                          : (logsPage - 1) * pageSize + 1}
-                        –{Math.min(logsPage * pageSize, logs.length)} of{' '}
+                    <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 shadow-sm">
+                      <p className="text-center sm:text-left text-[11px] sm:text-xs font-medium text-slate-500 order-2 sm:order-1">
+                        {(logsPage - 1) * pageSize + 1}–
+                        {Math.min(logsPage * pageSize, logs.length)} of{' '}
                         {logs.length}
                       </p>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-center gap-2 order-1 sm:order-2">
                         <button
                           type="button"
                           disabled={logsPage <= 1}
                           onClick={() =>
                             setLogsPage((c) => Math.max(1, c - 1))
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="min-h-[40px] rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 active:bg-slate-50 disabled:opacity-40 touch-manipulation"
                         >
                           Prev
                         </button>
-                        <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
-                          {logsPage} / {totalPages}
+                        <div className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 tabular-nums">
+                          {logsPage}/{totalPages}
                         </div>
                         <button
                           type="button"
@@ -997,7 +978,7 @@ const SubOrgZoneScannerPage = () => {
                           onClick={() =>
                             setLogsPage((c) => Math.min(totalPages, c + 1))
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="min-h-[40px] rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 active:bg-slate-50 disabled:opacity-40 touch-manipulation"
                         >
                           Next
                         </button>

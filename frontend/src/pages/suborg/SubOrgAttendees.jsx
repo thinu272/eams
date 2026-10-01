@@ -21,24 +21,32 @@ import {
   ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
-const emptyWorkspace = { event: null, attendees: [], total: 0, pages: 1, page: 1 };
+const emptyWorkspace = {
+  event: null,
+  attendees: [],
+  total: 0,
+  pages: 1,
+  page: 1,
+};
 
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between gap-3">
+  <Card className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3 sm:p-5">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
           {title}
         </p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">
+        <p className="mt-1 sm:mt-2 text-lg sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>
+          <p className="mt-0.5 sm:mt-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+            {subtitle}
+          </p>
         )}
       </div>
       {Icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -70,7 +78,7 @@ const SubOrgAttendees = () => {
   const [adding, setAdding] = useState(false);
   const { user } = useAuth();
   const { hasAnyPermission } = usePermissions();
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name }
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const initialAttendee = {
     fullName: '',
@@ -184,9 +192,7 @@ const SubOrgAttendees = () => {
       a.confirmationStatus === 'checked-in'
   ).length;
   const pendingCount = attendees.filter(
-    (a) =>
-      a.verificationStatus === 'pending' ||
-      a.status === 'pending'
+    (a) => a.verificationStatus === 'pending' || a.status === 'pending'
   ).length;
 
   const handleAddSubmit = async (e) => {
@@ -271,82 +277,82 @@ const SubOrgAttendees = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
+      <div className="space-y-3 sm:space-y-6 pb-20">
         {/* Header */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-3 sm:gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     to="/suborg/dashboard"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                    className="inline-flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-blue-600 active:bg-blue-50 hover:text-blue-700 touch-manipulation"
                   >
                     <ArrowLeftIcon className="h-3.5 w-3.5" />
                     Dashboard
                   </Link>
                   <span className="text-slate-300">·</span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                     Attendees
                   </p>
                 </div>
-                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                <h1 className="mt-1.5 sm:mt-2.5 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
                   {workspace.event?.name || 'Assigned Event'}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Search and manage attendees only inside your assigned zones.
+                <p className="mt-1 sm:mt-2 max-w-2xl text-xs sm:text-sm text-slate-500 leading-snug">
+                  Search and manage attendees in your assigned zones.
                 </p>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <Button
-                  className="bg-blue-600 hover:bg-blue-500 text-white"
-                  onClick={() => setAddModal(true)}
-                >
-                  <UserPlusIcon className="mr-1.5 h-4 w-4" />
-                  Add Attendee
-                </Button>
-              </div>
+              <Button
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shrink-0 touch-manipulation"
+                onClick={() => setAddModal(true)}
+              >
+                <UserPlusIcon className="mr-1.5 h-4 w-4" />
+                Add Attendee
+              </Button>
             </div>
           </div>
         </Card>
 
-        {/* Metrics */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Metrics — 3-col on mobile */}
+        <section className="grid grid-cols-3 gap-2 sm:gap-4">
           <MetricCard
-            title="Total Attendees"
+            title="Total"
             value={loading ? '—' : workspace.total || attendees.length}
-            subtitle="In your scope"
+            subtitle="In scope"
             icon={UsersIcon}
           />
           <MetricCard
-            title="Checked In"
+            title="In"
             value={loading ? '—' : checkedInCount}
-            subtitle="Marked present"
+            subtitle="Present"
             icon={CheckBadgeIcon}
           />
           <MetricCard
             title="Pending"
             value={loading ? '—' : pendingCount}
-            subtitle="Awaiting action"
+            subtitle="Waiting"
             icon={ClockIcon}
           />
         </section>
 
-        {/* Filters */}
-        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        {/* Filters — stack on mobile */}
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3.5 sm:p-5">
+          <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <input
+              type="search"
+              inputMode="search"
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               placeholder="Search name, email, phone"
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation sm:col-span-2 xl:col-span-1"
             />
             <select
               value={filters.zone}
               onChange={(e) => handleFilterChange('zone', e.target.value)}
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
-              <option value="">All assigned zones</option>
+              <option value="">All zones</option>
               {zones.map((zone) => (
                 <option key={zone.id || zone.name} value={zone.id || zone.name}>
                   {zone.name}
@@ -356,7 +362,7 @@ const SubOrgAttendees = () => {
             <select
               value={filters.category}
               onChange={(e) => handleFilterChange('category', e.target.value)}
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="">All categories</option>
               {categoryOptions.map(([value, label]) => (
@@ -368,7 +374,7 @@ const SubOrgAttendees = () => {
             <select
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="">All statuses</option>
               <option value="confirmed">Confirmed</option>
@@ -382,7 +388,7 @@ const SubOrgAttendees = () => {
               onChange={(e) =>
                 handleFilterChange('verificationStatus', e.target.value)
               }
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="">All verification</option>
               <option value="pending">Pending</option>
@@ -394,7 +400,7 @@ const SubOrgAttendees = () => {
               onChange={(e) =>
                 handleFilterChange('limit', Number(e.target.value))
               }
-              className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="10">10 rows</option>
               <option value="20">20 rows</option>
@@ -405,7 +411,7 @@ const SubOrgAttendees = () => {
         </Card>
 
         {loadError && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-amber-800">
             {loadError}
           </div>
         )}
@@ -415,14 +421,16 @@ const SubOrgAttendees = () => {
           className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
           padding={false}
         >
-          <div className="border-b border-slate-100 bg-slate-50/40 px-5 py-4">
-            <h2 className="text-lg font-bold text-slate-900">Attendee list</h2>
-            <p className="text-sm text-slate-500">
+          <div className="border-b border-slate-100 bg-slate-50/40 px-4 py-3 sm:px-5 sm:py-4">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900">
+              Attendee list
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500">
               Page {workspace.page || 1} of {workspace.pages || 1} ·{' '}
               {workspace.total || 0} total
             </p>
           </div>
-          <div className="p-0">
+          <div className="p-0 overflow-x-auto">
             <AttendeeTable
               attendees={attendees}
               loading={loading}
@@ -432,18 +440,19 @@ const SubOrgAttendees = () => {
               onDisableToggle={handleDisableToggle}
               onDelete={
                 hasAnyPermission(['canAddAttendees', 'canEditAttendees'])
-                  ? (id, attendee) => handleDeleteAttendee(id, attendee?.fullName)
+                  ? (id, attendee) =>
+                      handleDeleteAttendee(id, attendee?.fullName)
                   : undefined
               }
             />
           </div>
           {!loading && (workspace.pages || 1) > 1 && (
-            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
+            <div className="flex flex-col gap-2.5 border-t border-slate-100 bg-slate-50/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-center sm:text-left text-xs sm:text-sm text-slate-500 order-2 sm:order-1">
                 Page {workspace.page || filters.page} of {workspace.pages} ·{' '}
                 {workspace.total || 0} total
               </p>
-              <div className="flex gap-2">
+              <div className="flex justify-center gap-2 order-1 sm:order-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -454,7 +463,7 @@ const SubOrgAttendees = () => {
                       page: Math.max(1, curr.page - 1),
                     }))
                   }
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Prev
                 </Button>
@@ -468,7 +477,7 @@ const SubOrgAttendees = () => {
                       page: Math.min(workspace.pages || 1, curr.page + 1),
                     }))
                   }
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Next
                 </Button>
@@ -487,7 +496,7 @@ const SubOrgAttendees = () => {
       >
         <form onSubmit={handleAddSubmit} className="space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
               Full Name *
             </span>
             <input
@@ -496,42 +505,45 @@ const SubOrgAttendees = () => {
               onChange={(e) =>
                 setNewAttendee({ ...newAttendee, fullName: e.target.value })
               }
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               placeholder="Attendee full name"
             />
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
                 Email *
               </span>
               <input
                 type="email"
                 required
+                inputMode="email"
                 value={newAttendee.email}
                 onChange={(e) =>
                   setNewAttendee({ ...newAttendee, email: e.target.value })
                 }
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
                 placeholder="email@example.com"
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
                 Phone
               </span>
               <input
+                type="tel"
+                inputMode="tel"
                 value={newAttendee.phone}
                 onChange={(e) =>
                   setNewAttendee({ ...newAttendee, phone: e.target.value })
                 }
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
                 placeholder="+94..."
               />
             </label>
           </div>
           <label className="block space-y-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
               Category *
             </span>
             <select
@@ -540,7 +552,7 @@ const SubOrgAttendees = () => {
               onChange={(e) =>
                 setNewAttendee({ ...newAttendee, categoryId: e.target.value })
               }
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="">Select a category</option>
               {availableCategories.map((cat) => (
@@ -557,7 +569,7 @@ const SubOrgAttendees = () => {
               )}
           </label>
           <label className="block space-y-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
               Notification
             </span>
             <select
@@ -568,7 +580,7 @@ const SubOrgAttendees = () => {
                   notificationChannel: e.target.value,
                 })
               }
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="none">No notification (Pending)</option>
               <option value="email_sms">Send Invite (Email + SMS)</option>
@@ -576,22 +588,22 @@ const SubOrgAttendees = () => {
               <option value="sms">SMS Only</option>
             </select>
           </label>
-          <div className="flex gap-3 border-t border-slate-100 pt-4">
-            <Button
-              type="submit"
-              className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5"
-              disabled={adding}
-            >
-              {adding ? 'Creating…' : 'Create Attendee'}
-            </Button>
+          <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 border-t border-slate-100 pt-4">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 py-2.5"
+              className="w-full sm:flex-1 py-3 sm:py-2.5 touch-manipulation"
               onClick={() => setAddModal(false)}
               disabled={adding}
             >
               Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 py-3 sm:py-2.5 touch-manipulation"
+              disabled={adding}
+            >
+              {adding ? 'Creating…' : 'Create Attendee'}
             </Button>
           </div>
         </form>
@@ -611,16 +623,16 @@ const SubOrgAttendees = () => {
                 <img
                   src={getAssetUrl(selected.photo)}
                   alt={selected.fullName || 'Attendee'}
-                  className="h-64 w-full object-cover"
+                  className="h-48 sm:h-64 w-full object-cover"
                 />
               ) : (
-                <div className="flex h-40 items-center justify-center text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <div className="flex h-32 sm:h-40 items-center justify-center text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400">
                   No verification photo
                 </div>
               )}
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Name
               </p>
               <p className="mt-1 text-base font-semibold text-slate-900">
@@ -637,18 +649,18 @@ const SubOrgAttendees = () => {
                 { label: 'Email', value: selected.email },
                 { label: 'Phone', value: selected.phone },
               ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <div key={item.label} className="min-w-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     {item.label}
                   </p>
-                  <p className="mt-1 text-sm text-slate-700">
+                  <p className="mt-1 text-xs sm:text-sm text-slate-700 break-words">
                     {item.value || '—'}
                   </p>
                 </div>
               ))}
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                 Allowed zones
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -666,22 +678,22 @@ const SubOrgAttendees = () => {
                 )}
               </div>
             </div>
-            <div className="flex gap-2 border-t border-slate-100 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-2 border-t border-slate-100 pt-4">
               <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-500"
+                variant="outline"
+                className="w-full sm:flex-1 touch-manipulation"
+                onClick={() => setSelected(null)}
+              >
+                Close
+              </Button>
+              <Button
+                className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
                 onClick={() => {
                   handleMarkAttendance(selected);
                   setSelected(null);
                 }}
               >
                 Mark attendance
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setSelected(null)}
-              >
-                Close
               </Button>
             </div>
           </div>
@@ -695,39 +707,37 @@ const SubOrgAttendees = () => {
         size="sm"
       >
         {deleteConfirm && (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
-              <p className="text-sm text-slate-700">
-                Are you sure you want to delete{' '}
+          <div className="space-y-4 sm:space-y-5">
+            <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-3.5 sm:p-4">
+              <p className="text-sm text-slate-700 leading-snug">
+                Delete{' '}
                 <span className="font-semibold text-slate-900">
                   {deleteConfirm.name}
                 </span>
                 ?
               </p>
-              <p className="mt-1.5 text-xs text-slate-500">
-                This will permanently remove the attendee and their ticket access.
-                This cannot be undone.
+              <p className="mt-1.5 text-xs text-slate-500 leading-snug">
+                This permanently removes the attendee and ticket access.
               </p>
             </div>
-            <div className="flex gap-3">
-              <Button
-                className="flex-1 bg-rose-600 hover:bg-rose-500 py-2.5"
-                onClick={confirmDeleteAttendee}
-              >
-                Delete
-              </Button>
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
               <Button
                 variant="outline"
-                className="flex-1 py-2.5"
+                className="w-full sm:flex-1 py-3 sm:py-2.5 touch-manipulation"
                 onClick={() => setDeleteConfirm(null)}
               >
                 Cancel
+              </Button>
+              <Button
+                className="w-full sm:flex-1 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 py-3 sm:py-2.5 touch-manipulation"
+                onClick={confirmDeleteAttendee}
+              >
+                Delete
               </Button>
             </div>
           </div>
         )}
       </Modal>
-
     </DashboardLayout>
   );
 };

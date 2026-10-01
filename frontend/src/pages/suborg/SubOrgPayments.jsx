@@ -30,16 +30,24 @@ import {
 } from '@heroicons/react/24/outline';
 
 const statusConfig = {
-  pending: { label: 'Pending', color: 'amber' },
-  pending_verification: { label: 'Pending Verification', color: 'amber' },
-  awaiting_payment: { label: 'Awaiting Payment', color: 'blue' },
-  paid: { label: 'Paid', color: 'green' },
-  success: { label: 'Approved', color: 'green' },
-  approved: { label: 'Approved', color: 'green' },
-  verified: { label: 'Verified', color: 'green' },
-  rejected: { label: 'Rejected', color: 'red' },
-  failed: { label: 'Failed', color: 'red' },
-  needs_info: { label: 'Needs Info', color: 'blue' },
+  pending: { label: 'Pending', shortLabel: 'Pending', color: 'amber' },
+  pending_verification: {
+    label: 'Pending Verification',
+    shortLabel: 'Verifying',
+    color: 'amber',
+  },
+  awaiting_payment: {
+    label: 'Awaiting Payment',
+    shortLabel: 'Awaiting',
+    color: 'blue',
+  },
+  paid: { label: 'Paid', shortLabel: 'Paid', color: 'green' },
+  success: { label: 'Approved', shortLabel: 'Approved', color: 'green' },
+  approved: { label: 'Approved', shortLabel: 'Approved', color: 'green' },
+  verified: { label: 'Verified', shortLabel: 'Verified', color: 'green' },
+  rejected: { label: 'Rejected', shortLabel: 'Rejected', color: 'red' },
+  failed: { label: 'Failed', shortLabel: 'Failed', color: 'red' },
+  needs_info: { label: 'Needs Info', shortLabel: 'Needs Info', color: 'blue' },
 };
 
 const resolveCurrency = (...sources) => {
@@ -79,10 +87,25 @@ const formatDate = (dateString) => {
   });
 };
 
+const formatDateShort = (dateString) => {
+  if (!dateString) return '—';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
 const formatMethod = (m) => {
   if (m === 'card') return 'Card';
   if (m === 'bank_transfer') return 'Bank Transfer';
   if (m === 'cash_at_entrance' || m === 'cash_on_entrance') return 'Cash at Venue';
+  return m || '—';
+};
+
+const formatMethodShort = (m) => {
+  if (m === 'card') return 'Card';
+  if (m === 'bank_transfer') return 'Bank';
+  if (m === 'cash_at_entrance' || m === 'cash_on_entrance') return 'Cash';
   return m || '—';
 };
 
@@ -93,21 +116,23 @@ const normalizeStatus = (status) => {
 };
 
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between gap-3">
+  <Card className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3 sm:p-5">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
           {title}
         </p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">
+        <p className="mt-1 sm:mt-2 text-base sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>
+          <p className="mt-0.5 sm:mt-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+            {subtitle}
+          </p>
         )}
       </div>
       {Icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -153,7 +178,6 @@ const SubOrgPayments = () => {
     localStorage.getItem('lastEventCurrency') || 'LKR'
   );
 
-  // Use refs to store current filter values for stable fetch functions
   const filterRefs = useRef({
     statusFilter,
     methodFilter,
@@ -162,7 +186,6 @@ const SubOrgPayments = () => {
     currentEventId,
   });
 
-  // Update refs when values change
   useEffect(() => {
     filterRefs.current = {
       statusFilter,
@@ -191,8 +214,14 @@ const SubOrgPayments = () => {
     if (isInitial) setLoading(true);
     setError(null);
     try {
-      const { statusFilter, methodFilter, searchQuery, pagination, currentEventId } = filterRefs.current;
-      
+      const {
+        statusFilter,
+        methodFilter,
+        searchQuery,
+        pagination,
+        currentEventId,
+      } = filterRefs.current;
+
       const cleanId =
         currentEventId &&
         currentEventId !== 'undefined' &&
@@ -218,7 +247,12 @@ const SubOrgPayments = () => {
       const backendPagination = data.pagination || {};
       const total = Number(data.total ?? backendPagination.total ?? 0);
       const limit = Number(backendPagination.limit || pagination.limit || 10);
-      const pages = Number(data.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
+      const pages = Number(
+        data.pages ||
+          backendPagination.pages ||
+          Math.ceil(total / limit) ||
+          1
+      );
 
       setPagination((prev) => ({
         ...prev,
@@ -240,7 +274,7 @@ const SubOrgPayments = () => {
     if (isInitial) setStatsLoading(true);
     try {
       const { currentEventId } = filterRefs.current;
-      
+
       const cleanId =
         currentEventId &&
         currentEventId !== 'undefined' &&
@@ -261,23 +295,25 @@ const SubOrgPayments = () => {
   }, []);
 
   useEffect(() => {
-    // Initial data fetch
     let mounted = true;
-    
+
     const loadInitialData = async () => {
       if (!currentEventId) return;
-      
+
       setLoading(true);
       setStatsLoading(true);
-      
-      try {
-        const { statusFilter, methodFilter, searchQuery, pagination } = filterRefs.current;
-        
-        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null' 
-          ? currentEventId 
-          : undefined;
 
-        // Fetch payments and stats in parallel
+      try {
+        const { statusFilter, methodFilter, searchQuery, pagination } =
+          filterRefs.current;
+
+        const cleanId =
+          currentEventId &&
+          currentEventId !== 'undefined' &&
+          currentEventId !== 'null'
+            ? currentEventId
+            : undefined;
+
         const [paymentsRes, statsRes] = await Promise.all([
           getSubOrgPayments({
             page: pagination.page,
@@ -292,24 +328,34 @@ const SubOrgPayments = () => {
 
         if (!mounted) return;
 
-        // Handle payments
         const paymentsData = paymentsRes.data?.data || {};
         setPayments(paymentsData.payments || []);
 
         const backendPagination = paymentsData.pagination || {};
-        const total = Number(paymentsData.total ?? backendPagination.total ?? 0);
-        const limit = Number(backendPagination.limit || pagination.limit || 10);
-        const pages = Number(paymentsData.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
+        const total = Number(
+          paymentsData.total ?? backendPagination.total ?? 0
+        );
+        const limit = Number(
+          backendPagination.limit || pagination.limit || 10
+        );
+        const pages = Number(
+          paymentsData.pages ||
+            backendPagination.pages ||
+            Math.ceil(total / limit) ||
+            1
+        );
 
         setPagination((prev) => ({
           ...prev,
-          page: paymentsData.page || Number(backendPagination.page) || prev.page,
+          page:
+            paymentsData.page ||
+            Number(backendPagination.page) ||
+            prev.page,
           limit,
           total,
           pages,
         }));
 
-        // Handle statistics
         const statsData = statsRes.data?.data || {};
         setStatistics(statsData.overview || {});
         rememberCurrency(resolveCurrency(statsData, statsData.overview));
@@ -335,16 +381,18 @@ const SubOrgPayments = () => {
     };
   }, [currentEventId]);
 
-  // Trigger data refresh when filters change (use ref to avoid stale closures)
   useEffect(() => {
     if (!currentEventId) return;
 
     const fetchFilteredData = async () => {
       setLoading(true);
       try {
-        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null'
-          ? currentEventId
-          : undefined;
+        const cleanId =
+          currentEventId &&
+          currentEventId !== 'undefined' &&
+          currentEventId !== 'null'
+            ? currentEventId
+            : undefined;
 
         const res = await getSubOrgPayments({
           page: pagination.page,
@@ -360,8 +408,15 @@ const SubOrgPayments = () => {
 
         const backendPagination = data.pagination || {};
         const total = Number(data.total ?? backendPagination.total ?? 0);
-        const limit = Number(backendPagination.limit || pagination.limit || 10);
-        const pages = Number(data.pages || backendPagination.pages || Math.ceil(total / limit) || 1);
+        const limit = Number(
+          backendPagination.limit || pagination.limit || 10
+        );
+        const pages = Number(
+          data.pages ||
+            backendPagination.pages ||
+            Math.ceil(total / limit) ||
+            1
+        );
 
         setPagination((prev) => ({
           ...prev,
@@ -379,28 +434,33 @@ const SubOrgPayments = () => {
 
     const timeoutId = setTimeout(fetchFilteredData, 300);
     return () => clearTimeout(timeoutId);
-  }, [statusFilter, methodFilter, searchQuery, pagination.page, pagination.limit, currentEventId]);
+  }, [
+    statusFilter,
+    methodFilter,
+    searchQuery,
+    pagination.page,
+    pagination.limit,
+    currentEventId,
+  ]);
 
-  // Set up periodic refresh and currency sync
   useEffect(() => {
     if (!currentEventId) return;
 
-    // Initial load of currency from dashboard
     const loadCurrency = async () => {
       try {
-        const cleanId = currentEventId && currentEventId !== 'undefined' && currentEventId !== 'null'
-          ? currentEventId
-          : undefined;
+        const cleanId =
+          currentEventId &&
+          currentEventId !== 'undefined' &&
+          currentEventId !== 'null'
+            ? currentEventId
+            : undefined;
         const response = await getSubDashboard({ eventId: cleanId });
         rememberCurrency(resolveCurrency(response.data?.data));
-      } catch (e) {
-        // Silent fail for currency
-      }
+      } catch (e) {}
     };
 
     loadCurrency();
 
-    // Periodic refresh every 60 seconds
     const intervalId = setInterval(() => {
       fetchStats(false);
     }, 60000);
@@ -532,135 +592,226 @@ const SubOrgPayments = () => {
     }
   };
 
+  const renderPaymentActions = (payment, displayStatus, mobile = false) => {
+    const btnPad = mobile ? 'p-2.5' : 'p-1.5';
+    return (
+      <div
+        className={`flex items-center gap-1.5 ${
+          mobile ? 'w-full justify-stretch' : 'justify-end'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => handleViewDetails(payment)}
+          className={`rounded-xl ${btnPad} text-slate-500 active:bg-blue-50 hover:bg-blue-50 hover:text-blue-600 touch-manipulation ${
+            mobile ? 'flex-1 border border-slate-200 bg-white justify-center inline-flex' : ''
+          }`}
+          title="View details"
+        >
+          <EyeIcon className="h-4 w-4" />
+          {mobile && (
+            <span className="ml-1.5 text-xs font-semibold">Details</span>
+          )}
+        </button>
+        {payment.paymentMethod === 'bank_transfer' &&
+          (displayStatus === 'pending' ||
+            displayStatus === 'pending_verification') && (
+            <>
+              <button
+                type="button"
+                onClick={() => openApproveConfirm(payment)}
+                disabled={
+                  actionLoading === (payment.submissionId || payment._id)
+                }
+                className={`rounded-xl ${btnPad} text-emerald-600 active:bg-emerald-50 hover:bg-emerald-50 touch-manipulation ${
+                  mobile
+                    ? 'flex-1 border border-emerald-200 bg-emerald-50 justify-center inline-flex'
+                    : ''
+                }`}
+                title="Approve"
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                {mobile && (
+                  <span className="ml-1.5 text-xs font-semibold">Approve</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPayment(payment);
+                  setShowRejectModal(true);
+                }}
+                className={`rounded-xl ${btnPad} text-rose-500 active:bg-rose-50 hover:bg-rose-50 touch-manipulation ${
+                  mobile
+                    ? 'flex-1 border border-rose-200 bg-rose-50 justify-center inline-flex'
+                    : ''
+                }`}
+                title="Reject"
+              >
+                <XCircleIcon className="h-4 w-4" />
+                {mobile && (
+                  <span className="ml-1.5 text-xs font-semibold">Reject</span>
+                )}
+              </button>
+            </>
+          )}
+        {(payment.paymentMethod === 'cash_at_entrance' ||
+          payment.paymentMethod === 'cash_on_entrance') &&
+          (displayStatus === 'pending' ||
+            displayStatus === 'awaiting_payment') && (
+            <Button
+              size="sm"
+              className={`bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs touch-manipulation ${
+                mobile ? 'flex-1 py-2.5' : ''
+              }`}
+              onClick={() => {
+                setSelectedPayment(payment);
+                setShowConfirmCashModal(true);
+              }}
+              disabled={
+                actionLoading === (payment.submissionId || payment._id)
+              }
+            >
+              Confirm
+            </Button>
+          )}
+      </div>
+    );
+  };
+
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
+      <div className="space-y-3 sm:space-y-6 pb-20">
         {/* Header */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <Link
-                    to="/suborg/dashboard"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
-                  >
-                    <ArrowLeftIcon className="h-3.5 w-3.5" />
-                    Dashboard
-                  </Link>
-                  <span className="text-slate-300">·</span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-                    Payment Management
-                  </p>
-                </div>
-                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-2 sm:gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  to="/suborg/dashboard"
+                  className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-blue-600 active:bg-blue-50 hover:text-blue-700 touch-manipulation"
+                >
+                  <ArrowLeftIcon className="h-3.5 w-3.5" />
+                  Dashboard
+                </Link>
+                <span className="text-slate-300">·</span>
+                <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Payments
+                </p>
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
                   Payments
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Review, approve and manage payments for your assigned event
-                  scope.
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+                  Review and approve payments for your event scope.
                 </p>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Auto-refresh indicator */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
-          <span className="inline-flex items-center gap-2">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
-            Auto-updating payment data
+        {/* Live indicator */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-sm text-slate-500 px-0.5">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+            Live
           </span>
-          {lastUpdated && <span>Updated {new Date(lastUpdated).toLocaleTimeString()}</span>}
+          {lastUpdated && (
+            <span className="tabular-nums">
+              Updated {new Date(lastUpdated).toLocaleTimeString()}
+            </span>
+          )}
         </div>
 
-        {/* Metrics — 4 then 4 */}
+        {/* Metrics — 2×2 on mobile, less scroll */}
         {!statsLoading && Object.keys(statistics || {}).length === 0 ? (
-          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-6">
+          <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 sm:p-6">
             <div className="flex flex-col items-center justify-center text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                <ExclamationTriangleIcon className="h-6 w-6" />
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <ExclamationTriangleIcon className="h-5 w-5" />
               </div>
-              <p className="text-base font-semibold text-slate-800">
+              <p className="text-sm font-semibold text-slate-800">
                 No payment statistics available
               </p>
-              <p className="mt-1 text-sm text-slate-500">
-                You may not have any ticket categories assigned to you. Please contact the event organizer to assign categories.
+              <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+                You may not have ticket categories assigned. Contact the event
+                organizer.
               </p>
             </div>
           </Card>
         ) : (
-          <>
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                title="Total Assigned"
-                value={statsLoading ? '—' : statistics?.totalPayments || 0}
-                subtitle="Transactions"
-                icon={BanknotesIcon}
-              />
-              <MetricCard
-                title="Total Paid"
-                value={
-                  statsLoading
-                    ? '—'
-                    : formatCurrency(statistics?.approvedAmount || 0, currency)
-                }
-                subtitle="Confirmed revenue"
-                icon={CheckCircleIcon}
-              />
-              <MetricCard
-                title="Pending Bank"
-                value={statsLoading ? '—' : statistics?.pendingBankTransfers || 0}
-                subtitle="Awaiting review"
-                icon={ClockIcon}
-              />
-              <MetricCard
-                title="Approved Bank"
-                value={statsLoading ? '—' : statistics?.approvedBankTransfers || 0}
-                subtitle="Verified transfers"
-                icon={CheckCircleIcon}
-              />
-            </section>
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                title="Cash Reservations"
-                value={statsLoading ? '—' : statistics?.cashReservations || 0}
-                subtitle="At entrance"
-                icon={ClockIcon}
-              />
-              <MetricCard
-                title="Cash Collected"
-                value={
-                  statsLoading
-                    ? '—'
-                    : formatCurrency(statistics?.cashCollected || 0, currency)
-                }
-                subtitle="Confirmed cash"
-                icon={BanknotesIcon}
-              />
-              <MetricCard
-                title="Awaiting Info"
-                value={statsLoading ? '—' : statistics?.needsInfoPayments || 0}
-                subtitle="Buyer response needed"
-                icon={ExclamationTriangleIcon}
-              />
-              <MetricCard
-                title="Rejected"
-                value={statsLoading ? '—' : statistics?.rejectedPayments || 0}
-                subtitle="Declined payments"
-                icon={XCircleIcon}
-              />
-            </section>
-          </>
+          <section className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-4">
+            <MetricCard
+              title="Total"
+              value={statsLoading ? '—' : statistics?.totalPayments || 0}
+              subtitle="Transactions"
+              icon={BanknotesIcon}
+            />
+            <MetricCard
+              title="Paid"
+              value={
+                statsLoading
+                  ? '—'
+                  : formatCurrency(statistics?.approvedAmount || 0, currency)
+              }
+              subtitle="Confirmed"
+              icon={CheckCircleIcon}
+            />
+            <MetricCard
+              title="Pending Bank"
+              value={
+                statsLoading ? '—' : statistics?.pendingBankTransfers || 0
+              }
+              subtitle="Review"
+              icon={ClockIcon}
+            />
+            <MetricCard
+              title="Cash Due"
+              value={statsLoading ? '—' : statistics?.cashReservations || 0}
+              subtitle="At entrance"
+              icon={ClockIcon}
+            />
+            <MetricCard
+              title="Bank OK"
+              value={
+                statsLoading ? '—' : statistics?.approvedBankTransfers || 0
+              }
+              subtitle="Verified"
+              icon={CheckCircleIcon}
+            />
+            <MetricCard
+              title="Cash In"
+              value={
+                statsLoading
+                  ? '—'
+                  : formatCurrency(statistics?.cashCollected || 0, currency)
+              }
+              subtitle="Collected"
+              icon={BanknotesIcon}
+            />
+            <MetricCard
+              title="Needs Info"
+              value={statsLoading ? '—' : statistics?.needsInfoPayments || 0}
+              subtitle="Buyer reply"
+              icon={ExclamationTriangleIcon}
+            />
+            <MetricCard
+              title="Rejected"
+              value={statsLoading ? '—' : statistics?.rejectedPayments || 0}
+              subtitle="Declined"
+              icon={XCircleIcon}
+            />
+          </section>
         )}
 
         {/* Filters */}
-        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+        <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3.5 sm:p-5">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5">
             {[
-              { key: 'all', label: 'All Methods' },
-              { key: 'bank_transfer', label: 'Bank Transfer' },
-              { key: 'cash_at_entrance', label: 'Cash at Entrance' },
+              { key: 'all', label: 'All' },
+              { key: 'bank_transfer', label: 'Bank' },
+              { key: 'cash_at_entrance', label: 'Cash' },
               { key: 'card', label: 'Card' },
             ].map(({ key, label }) => (
               <button
@@ -670,21 +821,22 @@ const SubOrgPayments = () => {
                   setMethodFilter(key);
                   setPagination((p) => ({ ...p, page: 1 }));
                 }}
-                className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition-all ${
+                className={`shrink-0 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition touch-manipulation ${
                   methodFilter === key
                     ? 'bg-blue-600 text-white shadow-sm'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                    : 'border border-slate-200 bg-white text-slate-600 active:bg-slate-50'
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
             <input
-              type="text"
-              placeholder="Search by order number, email…"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              type="search"
+              inputMode="search"
+              placeholder="Search order #, email…"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -699,7 +851,7 @@ const SubOrgPayments = () => {
                 setStatusFilter(e.target.value);
                 setPagination((p) => ({ ...p, page: 1 }));
               }}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -712,183 +864,184 @@ const SubOrgPayments = () => {
           </div>
         </Card>
 
-        {/* Table */}
+        {/* Payments list */}
         <Card
           className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
           padding={false}
         >
-          <div className="border-b border-slate-100 bg-slate-50/40 px-5 py-4">
-            <h2 className="text-lg font-bold text-slate-900">
-              Payment Submissions
+          <div className="border-b border-slate-100 bg-slate-50/40 px-4 py-3 sm:px-5 sm:py-4">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900">
+              Submissions
             </h2>
-            <p className="text-sm text-slate-500">
+            <p className="text-xs sm:text-sm text-slate-500">
               {pagination.total} payment
-              {pagination.total !== 1 ? 's' : ''} found
+              {pagination.total !== 1 ? 's' : ''}
             </p>
           </div>
 
           {loading ? (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <LoadingSkeleton />
             </div>
           ) : error ? (
-            <div className="p-8 text-center text-sm text-rose-600">{error}</div>
+            <div className="p-6 text-center text-sm text-rose-600">{error}</div>
           ) : payments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <BanknotesIcon className="h-7 w-7" />
+            <div className="flex flex-col items-center justify-center px-5 py-12 sm:py-16 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <BanknotesIcon className="h-6 w-6" />
               </div>
-              <p className="text-base font-semibold text-slate-800">
+              <p className="text-sm font-semibold text-slate-800">
                 No payments found
               </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Try adjusting your filters
-              </p>
+              <p className="mt-1 text-xs text-slate-500">Try adjusting filters</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[800px]">
-                <thead>
-                  <Tr>
-                    <Th>Order #</Th>
-                    <Th>Method</Th>
-                    <Th>Payer</Th>
-                    <Th>Amount</Th>
-                    <Th>Date</Th>
-                    <Th>Status</Th>
-                    <Th className="text-right">Actions</Th>
-                  </Tr>
-                </thead>
-                <tbody>
-                  {payments.map((payment) => {
-                    const displayStatus = normalizeStatus(
-                      payment.verificationStatus || payment.paymentStatus
-                    );
-                    const info = statusConfig[displayStatus] || {
-                      label: displayStatus,
-                      color: 'gray',
-                    };
+            <>
+              {/* Mobile cards */}
+              <div className="divide-y divide-slate-100 sm:hidden">
+                {payments.map((payment) => {
+                  const displayStatus = normalizeStatus(
+                    payment.verificationStatus || payment.paymentStatus
+                  );
+                  const info = statusConfig[displayStatus] || {
+                    label: displayStatus,
+                    shortLabel: displayStatus,
+                    color: 'gray',
+                  };
 
-                    return (
-                      <Tr key={payment._id}>
-                        <Td>
-                          <span className="font-mono text-sm font-medium text-slate-900">
+                  return (
+                    <div key={payment._id} className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono text-sm font-semibold text-slate-900">
                             {payment.orderNumber ||
                               payment.orderId?.orderNumber ||
                               '—'}
-                          </span>
-                        </Td>
-                        <Td>
-                          <p className="text-sm font-medium text-slate-900">
-                            {formatMethod(payment.paymentMethod)}
                           </p>
-                          {(payment.gatewayUsed || payment.bankUsed) && (
-                            <p className="text-xs text-slate-500 uppercase">
-                              {payment.gatewayUsed || payment.bankUsed}
-                            </p>
-                          )}
-                        </Td>
-                        <Td>
-                          <p className="text-sm font-medium text-slate-900">
-                            {payment.buyer?.name || payment.buyerName || '—'}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {payment.buyer?.email || payment.buyerEmail || '—'}
-                          </p>
-                        </Td>
-                        <Td>
-                          <span className="text-sm font-semibold text-slate-900">
-                            {formatCurrency(
-                              payment.totalAmount || payment.amountPaid,
-                              getCurrency(payment, statistics)
-                            )}
-                          </span>
-                        </Td>
-                        <Td>
-                          <p className="text-sm text-slate-600">
-                            {formatDate(
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {formatDateShort(
                               payment.submittedAt || payment.createdAt
-                            )}
+                            )}{' '}
+                            · {formatMethodShort(payment.paymentMethod)}
                           </p>
-                        </Td>
-                        <Td>
-                          <Badge color={info.color}>{info.label}</Badge>
-                        </Td>
-                        <Td className="text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleViewDetails(payment)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                              title="View details"
-                            >
-                              <EyeIcon className="h-4 w-4" />
-                            </button>
-                            {payment.paymentMethod === 'bank_transfer' &&
-                              (displayStatus === 'pending' ||
-                                displayStatus === 'pending_verification') && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openApproveConfirm(payment)}
-                                    disabled={
-                                      actionLoading ===
-                                      (payment.submissionId || payment._id)
-                                    }
-                                    className="rounded-lg p-1.5 text-emerald-500 hover:bg-emerald-50"
-                                    title="Approve"
-                                  >
-                                    <CheckCircleIcon className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedPayment(payment);
-                                      setShowRejectModal(true);
-                                    }}
-                                    className="rounded-lg p-1.5 text-rose-400 hover:bg-rose-50"
-                                    title="Reject"
-                                  >
-                                    <XCircleIcon className="h-4 w-4" />
-                                  </button>
-                                </>
+                        </div>
+                        <Badge color={info.color}>
+                          {info.shortLabel || info.label}
+                        </Badge>
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {payment.buyer?.name || payment.buyerName || '—'}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {payment.buyer?.email || payment.buyerEmail || '—'}
+                        </p>
+                      </div>
+
+                      <p className="text-sm font-bold text-slate-900 tabular-nums">
+                        {formatCurrency(
+                          payment.totalAmount || payment.amountPaid,
+                          getCurrency(payment, statistics)
+                        )}
+                      </p>
+
+                      {renderPaymentActions(payment, displayStatus, true)}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <Table className="min-w-[800px]">
+                  <thead>
+                    <Tr>
+                      <Th>Order #</Th>
+                      <Th>Method</Th>
+                      <Th>Payer</Th>
+                      <Th>Amount</Th>
+                      <Th>Date</Th>
+                      <Th>Status</Th>
+                      <Th className="text-right">Actions</Th>
+                    </Tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((payment) => {
+                      const displayStatus = normalizeStatus(
+                        payment.verificationStatus || payment.paymentStatus
+                      );
+                      const info = statusConfig[displayStatus] || {
+                        label: displayStatus,
+                        color: 'gray',
+                      };
+
+                      return (
+                        <Tr key={payment._id}>
+                          <Td>
+                            <span className="font-mono text-sm font-medium text-slate-900">
+                              {payment.orderNumber ||
+                                payment.orderId?.orderNumber ||
+                                '—'}
+                            </span>
+                          </Td>
+                          <Td>
+                            <p className="text-sm font-medium text-slate-900">
+                              {formatMethod(payment.paymentMethod)}
+                            </p>
+                            {(payment.gatewayUsed || payment.bankUsed) && (
+                              <p className="text-xs text-slate-500 uppercase">
+                                {payment.gatewayUsed || payment.bankUsed}
+                              </p>
+                            )}
+                          </Td>
+                          <Td>
+                            <p className="text-sm font-medium text-slate-900">
+                              {payment.buyer?.name || payment.buyerName || '—'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {payment.buyer?.email ||
+                                payment.buyerEmail ||
+                                '—'}
+                            </p>
+                          </Td>
+                          <Td>
+                            <span className="text-sm font-semibold text-slate-900">
+                              {formatCurrency(
+                                payment.totalAmount || payment.amountPaid,
+                                getCurrency(payment, statistics)
                               )}
-                            {(payment.paymentMethod === 'cash_at_entrance' ||
-                              payment.paymentMethod === 'cash_on_entrance') &&
-                              (displayStatus === 'pending' ||
-                                displayStatus === 'awaiting_payment') && (
-                                <Button
-                                  size="sm"
-                                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
-                                  onClick={() => {
-                                    setSelectedPayment(payment);
-                                    setShowConfirmCashModal(true);
-                                  }}
-                                  disabled={
-                                    actionLoading ===
-                                    (payment.submissionId || payment._id)
-                                  }
-                                >
-                                  Confirm
-                                </Button>
+                            </span>
+                          </Td>
+                          <Td>
+                            <p className="text-sm text-slate-600">
+                              {formatDate(
+                                payment.submittedAt || payment.createdAt
                               )}
-                          </div>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
+                            </p>
+                          </Td>
+                          <Td>
+                            <Badge color={info.color}>{info.label}</Badge>
+                          </Td>
+                          <Td className="text-right">
+                            {renderPaymentActions(payment, displayStatus, false)}
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
+            </>
           )}
 
           {pagination.pages > 1 && (
-            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
+            <div className="flex flex-col gap-2.5 border-t border-slate-100 bg-slate-50/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-center sm:text-left text-xs sm:text-sm text-slate-500 order-2 sm:order-1">
                 Page {pagination.page} of {pagination.pages} ·{' '}
                 {pagination.total} total
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2 order-1 sm:order-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -896,7 +1049,7 @@ const SubOrgPayments = () => {
                   onClick={() =>
                     setPagination((p) => ({ ...p, page: p.page - 1 }))
                   }
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Prev
                 </Button>
@@ -907,7 +1060,7 @@ const SubOrgPayments = () => {
                   onClick={() =>
                     setPagination((p) => ({ ...p, page: p.page + 1 }))
                   }
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Next
                 </Button>
@@ -917,7 +1070,7 @@ const SubOrgPayments = () => {
         </Card>
       </div>
 
-      {/* Details modal */}
+      {/* Details modal — logic unchanged; tighter mobile spacing */}
       {selectedPayment &&
         !showRejectModal &&
         !showRequestInfoModal &&
@@ -929,8 +1082,8 @@ const SubOrgPayments = () => {
                 <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
               </div>
             ) : paymentDetails ? (
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4 sm:space-y-5">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   {[
                     {
                       label: 'Order Number',
@@ -940,14 +1093,20 @@ const SubOrgPayments = () => {
                       label: 'Amount',
                       value: formatCurrency(
                         paymentDetails.order?.totalAmount,
-                        getCurrency(paymentDetails, selectedPayment, statistics)
+                        getCurrency(
+                          paymentDetails,
+                          selectedPayment,
+                          statistics
+                        )
                       ),
                     },
                     {
                       label: 'Payment Method',
                       value:
-                        paymentDetails.order?.paymentMethod?.replace(/_/g, ' ') ||
-                        '—',
+                        paymentDetails.order?.paymentMethod?.replace(
+                          /_/g,
+                          ' '
+                        ) || '—',
                     },
                     {
                       label: 'Date Created',
@@ -956,12 +1115,12 @@ const SubOrgPayments = () => {
                   ].map((item) => (
                     <div
                       key={item.label}
-                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5"
+                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5"
                     >
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         {item.label}
                       </p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900 capitalize">
+                      <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 capitalize break-words">
                         {item.value}
                       </p>
                     </div>
@@ -969,39 +1128,39 @@ const SubOrgPayments = () => {
                   {paymentDetails.order?.paymentMethod === 'bank_transfer' &&
                     paymentDetails.paymentSubmission && (
                       <>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5">
+                          <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             Bank Used
                           </p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                          <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900">
                             {paymentDetails.paymentSubmission.bankUsed || '—'}
                           </p>
                         </div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5">
+                          <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             Reference
                           </p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {paymentDetails.paymentSubmission.referenceNumber ||
-                              '—'}
+                          <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 break-all">
+                            {paymentDetails.paymentSubmission
+                              .referenceNumber || '—'}
                           </p>
                         </div>
                       </>
                     )}
                 </div>
 
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <div className="rounded-xl border border-slate-200 p-3.5 sm:p-4">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                     Buyer
                   </p>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-sm">
                     <p>
                       <span className="text-slate-500">Name:</span>{' '}
                       <span className="font-semibold text-slate-900">
                         {paymentDetails.order?.buyerName || '—'}
                       </span>
                     </p>
-                    <p>
+                    <p className="truncate">
                       <span className="text-slate-500">Email:</span>{' '}
                       <span className="font-semibold text-slate-900">
                         {paymentDetails.order?.buyerEmail || '—'}
@@ -1017,8 +1176,8 @@ const SubOrgPayments = () => {
                 </div>
 
                 {paymentDetails.paymentSubmission?.receiptFile && (
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  <div className="rounded-xl border border-slate-200 p-3.5 sm:p-4">
+                    <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                       Receipt
                     </p>
                     <button
@@ -1031,7 +1190,7 @@ const SubOrgPayments = () => {
                         )
                       }
                       disabled={viewingReceipt}
-                      className="text-sm font-semibold text-blue-600 hover:underline"
+                      className="text-sm font-semibold text-blue-600 active:text-blue-700 hover:underline touch-manipulation"
                     >
                       View receipt →
                     </button>
@@ -1049,9 +1208,9 @@ const SubOrgPayments = () => {
                     s === 'awaiting_payment';
                   if (!isPending) return null;
                   return (
-                    <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 border-t border-slate-100 pt-4">
                       <Button
-                        className="bg-blue-600 hover:bg-blue-500"
+                        className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
                         onClick={() => {
                           if (
                             paymentDetails.order?.paymentMethod ===
@@ -1080,14 +1239,14 @@ const SubOrgPayments = () => {
                       </Button>
                       <Button
                         variant="outline"
-                        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        className="w-full sm:w-auto border-blue-200 text-blue-700 hover:bg-blue-50 touch-manipulation"
                         onClick={() => setShowRequestInfoModal(true)}
                       >
                         Request info
                       </Button>
                       <Button
                         variant="outline"
-                        className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                        className="w-full sm:w-auto text-rose-600 border-rose-200 hover:bg-rose-50 touch-manipulation"
                         onClick={() => setShowRejectModal(true)}
                       >
                         <XCircleIcon className="mr-1.5 h-4 w-4" />
@@ -1105,116 +1264,104 @@ const SubOrgPayments = () => {
           </Modal>
         )}
 
-      {/* Reject */}
+      {/* Reject / Request info / Cash / Approve modals — same logic, full-width buttons on mobile */}
       <Modal
         open={showRejectModal}
         onClose={() => {
           setShowRejectModal(false);
-          if (!paymentDetails) {
-            closeDetails();
-          }
+          if (!paymentDetails) closeDetails();
         }}
         title="Reject Payment"
         size="md"
       >
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">
-            Provide a reason for rejecting this payment. The buyer will see
-            this message.
+          <p className="text-sm text-slate-600 leading-snug">
+            Provide a reason for rejecting this payment. The buyer will see this
+            message.
           </p>
           <textarea
             value={actionMessage}
             onChange={(e) => setActionMessage(e.target.value)}
             placeholder="Rejection reason…"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             rows={4}
           />
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
             <Button
-              className="flex-1 bg-rose-600 hover:bg-rose-500"
+              variant="outline"
+              className="flex-1 touch-manipulation"
+              onClick={() => {
+                setShowRejectModal(false);
+                if (!paymentDetails) closeDetails();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 touch-manipulation"
               onClick={handleReject}
               disabled={actionLoading === 'reject'}
             >
               Reject payment
             </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                setShowRejectModal(false);
-                if (!paymentDetails) {
-                  closeDetails();
-                }
-              }}
-            >
-              Cancel
-            </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Request info */}
       <Modal
         open={showRequestInfoModal}
         onClose={() => {
           setShowRequestInfoModal(false);
-          if (!paymentDetails) {
-            closeDetails();
-          }
+          if (!paymentDetails) closeDetails();
         }}
         title="Request More Information"
         size="md"
       >
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 leading-snug">
             Ask the buyer for additional information or documentation.
           </p>
           <textarea
             value={actionMessage}
             onChange={(e) => setActionMessage(e.target.value)}
             placeholder="What information do you need?"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
             rows={4}
           />
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
             <Button
-              className="flex-1 bg-blue-600 hover:bg-blue-500"
+              variant="outline"
+              className="flex-1 touch-manipulation"
+              onClick={() => {
+                setShowRequestInfoModal(false);
+                if (!paymentDetails) closeDetails();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
               onClick={handleRequestInfo}
               disabled={actionLoading === 'request_info'}
             >
               Send request
             </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                setShowRequestInfoModal(false);
-                if (!paymentDetails) {
-                  closeDetails();
-                }
-              }}
-            >
-              Cancel
-            </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Confirm cash */}
       <Modal
         open={!!showConfirmCashModal && !!selectedPayment}
         onClose={() => {
           setShowConfirmCashModal(false);
-          if (!paymentDetails) {
-            closeDetails();
-          }
+          if (!paymentDetails) closeDetails();
         }}
         title="Confirm Cash Payment"
         size="md"
       >
         {selectedPayment && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 leading-snug">
               Confirm you received{' '}
               <span className="font-semibold text-slate-900">
                 {formatCurrency(
@@ -1230,9 +1377,19 @@ const SubOrgPayments = () => {
               </span>
               ?
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
               <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-500"
+                variant="outline"
+                className="flex-1 touch-manipulation"
+                onClick={() => {
+                  setShowConfirmCashModal(false);
+                  if (!paymentDetails) closeDetails();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
                 onClick={() =>
                   handleApprove(
                     selectedPayment.submissionId || selectedPayment._id
@@ -1248,38 +1405,23 @@ const SubOrgPayments = () => {
                   ? 'Confirming…'
                   : 'Confirm received'}
               </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowConfirmCashModal(false);
-                  if (!paymentDetails) {
-                    closeDetails();
-                  }
-                }}
-              >
-                Cancel
-              </Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Confirm Bank Transfer Approve */}
       <Modal
         open={!!showConfirmApproveModal && !!selectedPayment}
         onClose={() => {
           setShowConfirmApproveModal(false);
-          if (!paymentDetails) {
-            closeDetails();
-          }
+          if (!paymentDetails) closeDetails();
         }}
         title="Confirm Payment Approval"
         size="md"
       >
         {selectedPayment && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 leading-snug">
               Approve this payment? This will confirm the order and activate
               tickets.
             </p>
@@ -1302,9 +1444,19 @@ const SubOrgPayments = () => {
                 </span>
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
               <Button
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+                variant="outline"
+                className="flex-1 touch-manipulation"
+                onClick={() => {
+                  setShowConfirmApproveModal(false);
+                  if (!paymentDetails) closeDetails();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 touch-manipulation"
                 onClick={() =>
                   handleApprove(
                     selectedPayment.submissionId || selectedPayment._id
@@ -1319,18 +1471,6 @@ const SubOrgPayments = () => {
                 (selectedPayment.submissionId || selectedPayment._id)
                   ? 'Approving…'
                   : 'Confirm Approve'}
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowConfirmApproveModal(false);
-                  if (!paymentDetails) {
-                    closeDetails();
-                  }
-                }}
-              >
-                Cancel
               </Button>
             </div>
           </div>
