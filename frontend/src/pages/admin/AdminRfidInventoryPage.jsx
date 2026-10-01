@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { addInventoryRfid, getRfidInventory, uploadInventoryRfid, disableRfidTag, enableRfidTag, deleteRfidFromInventory, unassignRfidTag } from '../../api/rfid';
 import toast from 'react-hot-toast';
@@ -61,6 +61,43 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [eventFilter, setEventFilter] = useState('ALL');
+
+  // Unique event names for the event filter dropdown
+  const eventNames = useMemo(() => {
+    const names = tags
+      .map((t) => t.event?.name)
+      .filter(Boolean);
+    return ['ALL', ...Array.from(new Set(names)).sort()];
+  }, [tags]);
+
+  // Filtered tags
+  const filteredTags = useMemo(() => {
+    return tags.filter((tag) => {
+      const matchesSearch =
+        searchTerm === '' ||
+        tag.rfidTag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        tag.attendee?.fullName?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus =
+        statusFilter === 'ALL' || tag.status === statusFilter;
+      const matchesEvent =
+        eventFilter === 'ALL' ||
+        (eventFilter === 'UNASSIGNED' ? !tag.event?.name : tag.event?.name === eventFilter);
+      return matchesSearch && matchesStatus && matchesEvent;
+    });
+  }, [tags, searchTerm, statusFilter, eventFilter]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    setEventFilter('ALL');
+  };
+
+  const hasActiveFilters = searchTerm !== '' || statusFilter !== 'ALL' || eventFilter !== 'ALL';
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -239,37 +276,147 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
           </div>
         </div>
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-5 py-4 font-bold text-slate-900 flex justify-between items-center">
-            <span>RFID inventory</span>
-            <span className="text-xs font-normal text-slate-500">{tags.length} tags</span>
+          {/* Table header + filter bar */}
+          <div className="border-b border-slate-100 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-bold text-slate-900">RFID Inventory</span>
+              <span className="text-xs font-normal text-slate-500">
+                {filteredTags.length} of {tags.length} tags
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {/* Search */}
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by RFID or attendee..."
+                className="flex-1 min-w-[180px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+              {/* Status filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="AVAILABLE">Available</option>
+                <option value="ASSIGNED">Assigned</option>
+                <option value="DISABLED">Disabled</option>
+              </select>
+              {/* Event filter */}
+              {eventNames.length > 1 && (
+                <select
+                  value={eventFilter}
+                  onChange={(e) => setEventFilter(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="ALL">All Events</option>
+                  <option value="UNASSIGNED">No Event</option>
+                  {eventNames.slice(1).map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              )}
+              {/* Clear filters */}
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           </div>
-          <div className="max-h-[28rem] overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">RFID</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Event</th><th className="px-5 py-3">Attendee</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{tags.map((tag) => <tr key={tag._id} className="border-t border-slate-100"><td className="px-5 py-3 font-mono">{tag.rfidTag}</td><td className="px-5 py-3"><span className={tag.status === 'ASSIGNED' ? 'text-blue-600 font-medium' : tag.status === 'DISABLED' ? 'text-amber-600 font-medium' : 'text-emerald-600 font-medium'}>{tag.status}</span></td><td className="px-5 py-3">{tag.event?.name || '-'}</td><td className="px-5 py-3">{tag.attendee?.fullName || '-'}</td><td className="px-5 py-3">
-                {tag.status === 'ASSIGNED' && (
-                  <button onClick={() => handleUnassign(tag.rfidTag)} disabled={actionLoading === tag.rfidTag} className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">
-                    <ArrowPathIcon className="h-3.5 w-3.5" /> Unassign
-                  </button>
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-5 py-3">RFID</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Event</th>
+                  <th className="px-5 py-3">Attendee</th>
+                  <th className="px-5 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTags.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-400">
+                      {hasActiveFilters ? 'No tags match the current filters.' : 'No RFID tags in inventory.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTags.map((tag) => (
+                    <tr key={tag._id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3 font-mono">{tag.rfidTag}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          tag.status === 'ASSIGNED'
+                            ? 'bg-blue-50 text-blue-700'
+                            : tag.status === 'DISABLED'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          {tag.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-slate-600">{tag.event?.name || '-'}</td>
+                      <td className="px-5 py-3 text-slate-600">{tag.attendee?.fullName || '-'}</td>
+                      <td className="px-5 py-3">
+                        {tag.status === 'ASSIGNED' && (
+                          <button
+                            onClick={() => handleUnassign(tag.rfidTag)}
+                            disabled={actionLoading === tag.rfidTag}
+                            className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50"
+                          >
+                            <ArrowPathIcon className="h-3.5 w-3.5" /> Unassign
+                          </button>
+                        )}
+                        {tag.status === 'AVAILABLE' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDisable(tag.rfidTag)}
+                              disabled={actionLoading === tag.rfidTag}
+                              className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50"
+                            >
+                              <XMarkIcon className="h-3.5 w-3.5" /> Disable
+                            </button>
+                            <button
+                              onClick={() => handleDelete(tag.rfidTag)}
+                              disabled={actionLoading === tag.rfidTag}
+                              className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                            >
+                              <TrashIcon className="h-3.5 w-3.5" /> Delete
+                            </button>
+                          </div>
+                        )}
+                        {tag.status === 'DISABLED' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEnable(tag.rfidTag)}
+                              disabled={actionLoading === tag.rfidTag}
+                              className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium disabled:opacity-50"
+                            >
+                              <ArrowPathIcon className="h-3.5 w-3.5" /> Enable
+                            </button>
+                            <button
+                              onClick={() => handleDelete(tag.rfidTag)}
+                              disabled={actionLoading === tag.rfidTag}
+                              className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                            >
+                              <TrashIcon className="h-3.5 w-3.5" /> Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {tag.status === 'AVAILABLE' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => handleDisable(tag.rfidTag)} disabled={actionLoading === tag.rfidTag} className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">
-                      <XMarkIcon className="h-3.5 w-3.5" /> Disable
-                    </button>
-                    <button onClick={() => handleDelete(tag.rfidTag)} disabled={actionLoading === tag.rfidTag} className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50">
-                      <TrashIcon className="h-3.5 w-3.5" /> Delete
-                    </button>
-                  </div>
-                )}
-                {tag.status === 'DISABLED' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => handleEnable(tag.rfidTag)} disabled={actionLoading === tag.rfidTag} className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium disabled:opacity-50">
-                      <ArrowPathIcon className="h-3.5 w-3.5" /> Enable
-                    </button>
-                    <button onClick={() => handleDelete(tag.rfidTag)} disabled={actionLoading === tag.rfidTag} className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50">
-                      <TrashIcon className="h-3.5 w-3.5" /> Delete
-                    </button>
-                  </div>
-                )}
-              </td></tr>)}</tbody></table></div>
+              </tbody>
+            </table>
+          </div>
         </div>
         {/* Action Modal */}
         <ActionModal
