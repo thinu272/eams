@@ -10,7 +10,6 @@ import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import {
   ArrowLeftIcon,
-  ClockIcon,
   MapPinIcon,
 } from '@heroicons/react/24/outline';
 
@@ -149,28 +148,28 @@ const SubOrgActivityLogsPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
+      <div className="space-y-3 sm:space-y-6 pb-20">
         {/* Header */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-wrap items-center gap-2.5">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-wrap items-center gap-2">
               <Link
                 to="/suborg/dashboard"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                className="inline-flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-blue-600 active:bg-blue-50 hover:text-blue-700 touch-manipulation"
               >
                 <ArrowLeftIcon className="h-3.5 w-3.5" />
                 Dashboard
               </Link>
               <span className="text-slate-300">·</span>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-                Activity Logs
+              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Logs
               </p>
             </div>
-            <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+            <h1 className="mt-1.5 sm:mt-2.5 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
               Event activity scopes
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              Track zone/gate access and event actions in your scope.
+            <p className="mt-1 sm:mt-2 max-w-2xl text-xs sm:text-sm text-slate-500 leading-snug">
+              Zone/gate access and event actions in your scope.
             </p>
           </div>
         </Card>
@@ -178,17 +177,17 @@ const SubOrgActivityLogsPage = () => {
         {/* Tabs */}
         <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50/80 p-1">
           {[
-            { key: 'access', label: 'Access validation' },
-            { key: 'activity', label: 'Event action activity' },
+            { key: 'access', label: 'Access' },
+            { key: 'activity', label: 'Activity' },
           ].map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+              className={`flex-1 min-h-[44px] rounded-lg px-3 py-2.5 text-xs sm:text-sm font-semibold transition touch-manipulation ${
                 activeTab === tab.key
                   ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                  : 'text-slate-600 active:bg-white'
               }`}
             >
               {tab.label}
@@ -197,15 +196,15 @@ const SubOrgActivityLogsPage = () => {
         </div>
 
         {loadError && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-amber-800">
             {loadError}
           </div>
         )}
 
         {/* Access logs */}
         {activeTab === 'access' && (
-          <div className="space-y-4">
-            <div className="flex justify-end">
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex justify-stretch sm:justify-end">
               <select
                 value={zone}
                 onChange={(e) => {
@@ -213,7 +212,7 @@ const SubOrgActivityLogsPage = () => {
                   setZone(nextZone);
                   load(nextZone);
                 }}
-                className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full sm:w-auto rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               >
                 <option value="">All assigned zones</option>
                 {zones.map((item) => (
@@ -228,9 +227,9 @@ const SubOrgActivityLogsPage = () => {
             </div>
 
             {logs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                  <MapPinIcon className="h-6 w-6" />
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-5 py-12 sm:px-6 sm:py-16 text-center">
+                <div className="mb-2.5 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <MapPinIcon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <p className="text-sm font-semibold text-slate-700">
                   No logs found
@@ -244,29 +243,29 @@ const SubOrgActivityLogsPage = () => {
                 {paginatedAccessLogs.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-xl border border-slate-100 bg-white px-4 py-3.5 shadow-sm transition hover:border-blue-100 hover:bg-blue-50/20"
+                    className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 sm:px-4 sm:py-3.5 shadow-sm"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900">
                           {item.action}
                         </p>
-                        <p className="mt-1 text-sm text-slate-600">
+                        <p className="mt-0.5 text-xs sm:text-sm text-slate-600">
                           {item.attendeeName}
                           {item.zoneName ? ` · ${item.zoneName}` : ''}
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                          Handled by {item.actorName || '—'}
+                        <p className="mt-0.5 text-[11px] sm:text-xs text-slate-400">
+                          By {item.actorName || '—'}
                         </p>
                         {item.detail && (
-                          <p className="mt-1.5 text-xs text-slate-500">
+                          <p className="mt-1 text-[11px] sm:text-xs text-slate-500 leading-snug">
                             {item.detail}
                           </p>
                         )}
                       </div>
-                      <div className="shrink-0 text-left sm:text-right">
+                      <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
                             item.status === 'success'
                               ? 'bg-emerald-100 text-emerald-700'
                               : 'bg-rose-100 text-rose-700'
@@ -274,7 +273,7 @@ const SubOrgActivityLogsPage = () => {
                         >
                           {item.status}
                         </span>
-                        <p className="mt-1.5 text-[11px] text-slate-400">
+                        <p className="text-[10px] sm:text-[11px] text-slate-400 tabular-nums">
                           {formatTime(item.timestamp)}
                         </p>
                       </div>
@@ -283,18 +282,18 @@ const SubOrgActivityLogsPage = () => {
                 ))}
 
                 {totalAccessPages > 1 && (
-                  <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-slate-500">
+                  <div className="flex flex-col gap-2.5 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-center sm:text-left text-xs sm:text-sm text-slate-500 order-2 sm:order-1">
                       Page {accessPage} of {totalAccessPages} · {logs.length}{' '}
                       total
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex justify-center gap-2 order-1 sm:order-2">
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={accessPage <= 1}
                         onClick={() => setAccessPage((p) => p - 1)}
-                        className="h-8 rounded-lg px-3 text-xs"
+                        className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                       >
                         Prev
                       </Button>
@@ -303,7 +302,7 @@ const SubOrgActivityLogsPage = () => {
                         size="sm"
                         disabled={accessPage >= totalAccessPages}
                         onClick={() => setAccessPage((p) => p + 1)}
-                        className="h-8 rounded-lg px-3 text-xs"
+                        className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                       >
                         Next
                       </Button>
@@ -321,16 +320,16 @@ const SubOrgActivityLogsPage = () => {
             className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
             padding={false}
           >
-            <div className="border-b border-slate-100 bg-slate-50/40 px-5 py-4">
-              <h2 className="text-lg font-bold text-slate-900">
+            <div className="border-b border-slate-100 bg-slate-50/40 px-4 py-3 sm:px-5 sm:py-4">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
                 Activity logs
               </h2>
-              <p className="text-sm text-slate-500">
-                Platform actions scoped to this event
+              <p className="text-xs sm:text-sm text-slate-500">
+                Platform actions for this event
               </p>
             </div>
 
-            <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-2.5 border-b border-slate-100 p-3.5 sm:p-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
               <input
                 value={search}
                 onChange={(e) => {
@@ -338,7 +337,7 @@ const SubOrgActivityLogsPage = () => {
                   setPage(1);
                 }}
                 placeholder="Search operator, details…"
-                className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               />
               <select
                 value={action}
@@ -346,7 +345,7 @@ const SubOrgActivityLogsPage = () => {
                   setAction(e.target.value);
                   setPage(1);
                 }}
-                className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               >
                 <option value="">All action types</option>
                 <option value="login">Login</option>
@@ -366,7 +365,7 @@ const SubOrgActivityLogsPage = () => {
                   setFrom(e.target.value);
                   setPage(1);
                 }}
-                className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               />
               <input
                 type="date"
@@ -375,11 +374,61 @@ const SubOrgActivityLogsPage = () => {
                   setTo(e.target.value);
                   setPage(1);
                 }}
-                className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="rounded-xl border border-slate-200 px-3.5 py-3 sm:py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 touch-manipulation"
               />
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile cards */}
+            <div className="divide-y divide-slate-100 sm:hidden">
+              {sysLoading ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  Loading activity logs…
+                </p>
+              ) : (sysLogsData?.logs || []).length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  No activity logs match these filters.
+                </p>
+              ) : (
+                (sysLogsData?.logs || []).map((log) => (
+                  <div key={log._id} className="p-3.5 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <Badge color={logActionColor[log.action] || 'gray'}>
+                        {String(log.action || '')
+                          .replace(/_/g, ' ')
+                          .toUpperCase()}
+                      </Badge>
+                      <div className="text-right shrink-0">
+                        <p className="text-[11px] text-slate-700">
+                          {new Date(log.createdAt).toLocaleDateString()}
+                        </p>
+                        <p className="font-mono text-[10px] text-slate-400">
+                          {new Date(log.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {log.userEmail || 'system'}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-md border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                        {log.userRole || 'System'}
+                      </span>
+                      {log.ipAddress && (
+                        <span className="font-mono text-[10px] text-slate-400">
+                          {log.ipAddress}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600 leading-snug break-words">
+                      {log.details?.message || '—'}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
               <Table className="min-w-[800px]">
                 <thead>
                   <Tr>
@@ -453,18 +502,18 @@ const SubOrgActivityLogsPage = () => {
               </Table>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/40 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">
+            <div className="flex flex-col gap-2.5 border-t border-slate-100 bg-slate-50/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-center sm:text-left text-xs sm:text-sm text-slate-500 order-2 sm:order-1">
                 Page {sysLogsData?.page || page} of {sysLogsData?.pages || 1} ·{' '}
                 {sysLogsData?.total || 0} total
               </p>
-              <div className="flex gap-2">
+              <div className="flex justify-center gap-2 order-1 sm:order-2">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={page <= 1}
                   onClick={() => setPage(page - 1)}
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Prev
                 </Button>
@@ -473,7 +522,7 @@ const SubOrgActivityLogsPage = () => {
                   size="sm"
                   disabled={page >= (sysLogsData?.pages || 1)}
                   onClick={() => setPage(page + 1)}
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="min-h-[40px] rounded-xl px-4 text-xs touch-manipulation"
                 >
                   Next
                 </Button>

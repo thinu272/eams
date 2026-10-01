@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   ArrowLeftIcon,
   QrCodeIcon,
@@ -11,7 +11,11 @@ import {
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import QRScannerComponent from '../../components/events/QRScannerComponent';
 import { getMyEvents } from '../../api/events';
-import { getAttendeeByQr, getEventRfidStatus, assignRfidToAttendee } from '../../api/entry';
+import {
+  getAttendeeByQr,
+  getEventRfidStatus,
+  assignRfidToAttendee,
+} from '../../api/entry';
 import { validateRfidTag, unassignRfidTag } from '../../api/rfid';
 import { useAuth } from '../../context/AuthContext';
 import { playFeedbackTone, triggerHaptic } from './suborgUtils';
@@ -28,7 +32,7 @@ const SubOrgRfidAssignmentPage = () => {
   );
   const [eventRfidStatus, setEventRfidStatus] = useState(null);
 
-  const [scanStep, setScanStep] = useState('qr'); // 'qr' | 'rfid' | 'complete'
+  const [scanStep, setScanStep] = useState('qr');
   const [qrToken, setQrToken] = useState('');
   const [attendee, setAttendee] = useState(null);
   const [rfidTag, setRfidTag] = useState('');
@@ -40,7 +44,6 @@ const SubOrgRfidAssignmentPage = () => {
 
   const rfidInputRef = useRef(null);
 
-  // Load events
   useEffect(() => {
     getMyEvents().then((response) => {
       const nextEvents = response.data?.data?.events || [];
@@ -57,7 +60,6 @@ const SubOrgRfidAssignmentPage = () => {
     });
   }, []);
 
-  // Fetch RFID status when event changes
   useEffect(() => {
     if (selectedEventId) {
       getEventRfidStatus(selectedEventId)
@@ -70,7 +72,6 @@ const SubOrgRfidAssignmentPage = () => {
     }
   }, [selectedEventId]);
 
-  // Focus RFID input when in RFID step
   useEffect(() => {
     if (scanStep === 'rfid' && rfidInputRef.current) {
       setTimeout(() => rfidInputRef.current?.focus(), 100);
@@ -107,15 +108,16 @@ const SubOrgRfidAssignmentPage = () => {
       const data = response.data?.data;
 
       if (data && data.attendee) {
-        // Check if attendee already has RFID assigned (constraint enforcement)
         if (data.attendee.rfidTag) {
           playFeedbackTone(false);
           triggerHaptic(false);
-          toast.error('This attendee already has an RFID tag assigned. Cannot assign another.');
+          toast.error(
+            'This attendee already has an RFID tag assigned. Cannot assign another.'
+          );
           setQrToken('');
           return;
         }
-        
+
         setAttendee(data.attendee);
         playFeedbackTone(true);
         triggerHaptic(true);
@@ -141,7 +143,6 @@ const SubOrgRfidAssignmentPage = () => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 10);
     setRfidTag(value);
 
-    // Auto-validate when 10 digits entered
     if (value.length === 10 && attendee) {
       await validateRfid(value);
     }
@@ -210,7 +211,10 @@ const SubOrgRfidAssignmentPage = () => {
 
     setIsProcessing(true);
     try {
-      await unassignRfidTag(attendee.rfidTag, 'Sub-organiser initiated unassignment');
+      await unassignRfidTag(
+        attendee.rfidTag,
+        'Sub-organiser initiated unassignment'
+      );
       setAttendee((prev) => ({ ...prev, rfidTag: null }));
       toast.success('RFID tag unassigned');
       playFeedbackTone(true);
@@ -228,70 +232,72 @@ const SubOrgRfidAssignmentPage = () => {
     resetAssignment();
   };
 
-  const currentEvent = events.find((e) => e._id === selectedEventId);
-  const canProceedToRfid = scanStep === 'rfid' && rfidTag.length === 10 && rfidValidation?.valid && rfidValidation?.available;
+  const canProceedToRfid =
+    scanStep === 'rfid' &&
+    rfidTag.length === 10 &&
+    rfidValidation?.valid &&
+    rfidValidation?.available;
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 pb-24 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl space-y-3 sm:space-y-5 px-3 sm:px-6 pb-20 sm:pb-24">
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3">
           <button
+            type="button"
             onClick={() => navigate('/suborg/dashboard')}
-            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-900"
+            className="flex items-center gap-1.5 rounded-lg px-1 py-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500 active:bg-slate-100 hover:text-slate-900 touch-manipulation"
           >
             <ArrowLeftIcon className="h-4 w-4" />
-            Exit RFID Console
+            Exit
           </button>
         </div>
 
         {/* Header */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-sm sm:px-6">
+        <div className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3.5 sm:px-6 sm:py-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-500/20" />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+            <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
               RFID Assignment
             </p>
           </div>
-
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-1.5 sm:mt-2 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
             QR-to-RFID Assignment
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Scan attendee QR code, then assign an available RFID tag
+          <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+            Scan QR, then assign an available RFID tag
           </p>
         </div>
 
         {/* Event selector */}
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Select Event
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Event
             </label>
             {eventRfidStatus && (
-              <span className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold ${
-                eventRfidStatus.rfidEnabled
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-amber-50 text-amber-700'
-              }`}>
-                {eventRfidStatus.rfidEnabled ? (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    RFID Enabled
-                  </>
-                ) : (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    RFID Disabled
-                  </>
-                )}
+              <span
+                className={`flex items-center gap-1.5 rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold ${
+                  eventRfidStatus.rfidEnabled
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    eventRfidStatus.rfidEnabled
+                      ? 'bg-emerald-500'
+                      : 'bg-amber-500'
+                  }`}
+                />
+                {eventRfidStatus.rfidEnabled ? 'RFID On' : 'RFID Off'}
               </span>
             )}
           </div>
           <select
             value={selectedEventId}
             onChange={(e) => handleEventChange(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
           >
             <option value="">Select an event</option>
             {events.map((event) => (
@@ -302,36 +308,66 @@ const SubOrgRfidAssignmentPage = () => {
           </select>
         </div>
 
-        {/* Progress steps */}
+        {/* Progress — compact on mobile */}
         {selectedEventId && (
-          <div className="flex items-center justify-center gap-4">
-            <div className={`flex items-center gap-2 ${scanStep === 'qr' ? 'text-blue-600' : 'text-slate-400'}`}>
+          <div className="flex items-center justify-between gap-1 sm:justify-center sm:gap-4 px-1">
+            <div
+              className={`flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 ${
+                scanStep === 'qr' ? 'text-blue-600' : 'text-slate-400'
+              }`}
+            >
               <QrCodeIcon className="h-5 w-5" />
-              <span className="text-xs font-semibold">1. Scan QR</span>
+              <span className="text-[9px] sm:text-xs font-semibold">1. QR</span>
             </div>
-            <div className={`h-0.5 w-16 ${scanStep !== 'qr' ? 'bg-blue-600' : 'bg-slate-200'}`} />
-            <div className={`flex items-center gap-2 ${scanStep === 'rfid' ? 'text-blue-600' : scanStep === 'complete' ? 'text-emerald-600' : 'text-slate-400'}`}>
+            <div
+              className={`h-0.5 flex-1 max-w-[2.5rem] sm:max-w-none sm:w-16 ${
+                scanStep !== 'qr' ? 'bg-blue-600' : 'bg-slate-200'
+              }`}
+            />
+            <div
+              className={`flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 ${
+                scanStep === 'rfid'
+                  ? 'text-blue-600'
+                  : scanStep === 'complete'
+                  ? 'text-emerald-600'
+                  : 'text-slate-400'
+              }`}
+            >
               <IdentificationIcon className="h-5 w-5" />
-              <span className="text-xs font-semibold">2. Scan RFID</span>
+              <span className="text-[9px] sm:text-xs font-semibold">
+                2. RFID
+              </span>
             </div>
-            <div className={`h-0.5 w-16 ${scanStep === 'complete' ? 'bg-emerald-600' : 'bg-slate-200'}`} />
-            <div className={`flex items-center gap-2 ${scanStep === 'complete' ? 'text-emerald-600' : 'text-slate-400'}`}>
+            <div
+              className={`h-0.5 flex-1 max-w-[2.5rem] sm:max-w-none sm:w-16 ${
+                scanStep === 'complete' ? 'bg-emerald-600' : 'bg-slate-200'
+              }`}
+            />
+            <div
+              className={`flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 ${
+                scanStep === 'complete' ? 'text-emerald-600' : 'text-slate-400'
+              }`}
+            >
               <CheckCircleIcon className="h-5 w-5" />
-              <span className="text-xs font-semibold">3. Complete</span>
+              <span className="text-[9px] sm:text-xs font-semibold">
+                3. Done
+              </span>
             </div>
           </div>
         )}
 
         {/* Step 1: QR Scanner */}
         {selectedEventId && scanStep === 'qr' && (
-          <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-bold text-slate-900">Step 1: Scan Attendee QR Code</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Position the QR code within the scanner frame
+          <div className="space-y-3 sm:space-y-5">
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                Step 1: Scan QR
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm text-slate-500">
+                Position the QR code in the frame
               </p>
 
-              <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
+              <div className="mt-3 sm:mt-5 overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-900 shadow-sm">
                 <div className="aspect-[4/3] w-full sm:aspect-video">
                   <QRScannerComponent
                     onScanSuccess={(value) => handleQrScan(value)}
@@ -343,16 +379,17 @@ const SubOrgRfidAssignmentPage = () => {
               </div>
 
               {isProcessing && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-blue-600">
+                <div className="mt-3 sm:mt-4 flex items-center justify-center gap-2 text-blue-600">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-                  <span className="text-sm font-medium">Looking up attendee...</span>
+                  <span className="text-sm font-medium">Looking up…</span>
                 </div>
               )}
             </div>
 
-            {/* Manual QR entry */}
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">Manual QR Entry</h3>
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900">
+                Manual QR Entry
+              </h3>
               <input
                 type="text"
                 value={qrToken}
@@ -360,52 +397,53 @@ const SubOrgRfidAssignmentPage = () => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && qrToken) handleQrScan(qrToken);
                 }}
-                placeholder="Paste or type QR token..."
-                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-sm"
+                placeholder="Paste or type QR token…"
+                className="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 font-mono text-sm touch-manipulation"
                 disabled={isProcessing}
               />
               <button
                 type="button"
                 onClick={() => handleQrScan(qrToken)}
                 disabled={!qrToken || isProcessing}
-                className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700 disabled:opacity-40"
+                className="mt-3 w-full min-h-[48px] rounded-xl bg-blue-600 py-3 text-xs font-semibold uppercase tracking-wider text-white active:bg-blue-700 hover:bg-blue-700 disabled:opacity-40 touch-manipulation"
               >
-                {isProcessing ? 'Looking up...' : 'Lookup Attendee'}
+                {isProcessing ? 'Looking up…' : 'Lookup Attendee'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: RFID Scanner */}
+        {/* Step 2: RFID */}
         {scanStep === 'rfid' && attendee && (
-          <div className="space-y-5">
-            {/* Attendee info */}
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                  <UserIcon className="h-6 w-6" />
+          <div className="space-y-3 sm:space-y-5">
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <UserIcon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
-                <div className="flex-1">
-                  <h2 className="text-lg font-bold text-slate-900">{attendee.fullName}</h2>
-                  <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 truncate">
+                    {attendee.fullName}
+                  </h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-slate-600">
                       {attendee.categoryName || 'General'}
                     </span>
                     {attendee.rfidTag ? (
-                      <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-emerald-700">
                         <CheckCircleIcon className="h-3.5 w-3.5" />
                         RFID: {attendee.rfidTag}
                       </span>
                     ) : (
-                      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                        No RFID assigned
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-amber-700">
+                        No RFID
                       </span>
                     )}
                   </div>
                   {attendee.checkedIn && (
-                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-600">
+                    <p className="mt-1.5 flex items-center gap-1 text-[11px] sm:text-xs font-medium text-emerald-600">
                       <ClockIcon className="h-3.5 w-3.5" />
-                      Currently inside venue
+                      Inside venue
                     </p>
                   )}
                 </div>
@@ -414,41 +452,47 @@ const SubOrgRfidAssignmentPage = () => {
                     type="button"
                     onClick={handleUnassignRfid}
                     disabled={isProcessing}
-                    className="text-xs font-medium text-rose-600 hover:text-rose-700"
+                    className="shrink-0 text-[11px] sm:text-xs font-medium text-rose-600 active:text-rose-700 touch-manipulation"
                   >
-                    Unassign RFID
+                    Unassign
                   </button>
                 )}
               </div>
             </div>
 
-            {/* RFID Disabled Message */}
             {!eventRfidStatus?.rfidEnabled ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 sm:p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
                     <XCircleIcon className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-amber-800">RFID Access Disabled</h3>
-                    <p className="mt-1 text-sm text-amber-700">
-                      RFID access control is not enabled for this event. Please enable it in Event Settings first.
+                    <h3 className="text-sm sm:text-base font-semibold text-amber-800">
+                      RFID Disabled
+                    </h3>
+                    <p className="mt-1 text-xs sm:text-sm text-amber-700 leading-snug">
+                      Enable RFID in Event Settings before assigning tags.
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              /* RFID Scanner for enabled events */
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-bold text-slate-900">Step 2: Scan Available RFID Tag</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Tap or scan an available RFID tag (10-digit)
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-3.5 sm:p-5 shadow-sm">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                  Step 2: Scan RFID
+                </h2>
+                <p className="mt-0.5 text-xs sm:text-sm text-slate-500">
+                  Tap or enter a 10-digit tag
                 </p>
 
-                <div className="mt-5 rounded-2xl border-2 border-blue-200 bg-blue-50 p-6 text-center">
-                  <IdentificationIcon className="mx-auto h-12 w-12 text-blue-600" />
-                  <p className="mt-3 font-semibold text-slate-900">RFID Reader Ready</p>
-                  <p className="mt-1 text-sm text-slate-600">Tap a card or enter the 10-digit tag ID</p>
+                <div className="mt-3 sm:mt-5 rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 sm:p-6 text-center">
+                  <IdentificationIcon className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-blue-600" />
+                  <p className="mt-2 sm:mt-3 font-semibold text-slate-900 text-sm sm:text-base">
+                    RFID Reader Ready
+                  </p>
+                  <p className="mt-1 text-xs sm:text-sm text-slate-600">
+                    Tap a card or enter the tag ID
+                  </p>
 
                   <input
                     ref={rfidInputRef}
@@ -456,46 +500,60 @@ const SubOrgRfidAssignmentPage = () => {
                     value={rfidTag}
                     onChange={handleRfidInputChange}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && canProceedToRfid) handleAssignRfid();
+                      if (e.key === 'Enter' && canProceedToRfid)
+                        handleAssignRfid();
                     }}
                     maxLength={10}
                     inputMode="numeric"
-                    placeholder="Waiting for RFID..."
-                    className="mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Waiting for RFID…"
+                    className="mt-4 sm:mt-5 w-full rounded-xl border border-blue-300 bg-white px-4 py-4 text-center font-mono text-lg sm:text-xl tracking-[0.3em] outline-none focus:ring-2 focus:ring-blue-500 touch-manipulation"
                   />
 
-                  {/* Validation status */}
                   {isValidatingRfid && (
-                    <p className="mt-3 text-sm text-blue-600">Validating tag...</p>
+                    <p className="mt-3 text-sm text-blue-600">Validating…</p>
                   )}
                   {rfidValidation && !isValidatingRfid && (
-                    <div className={`mt-3 flex items-center justify-center gap-2 ${rfidValidation.valid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <div
+                      className={`mt-3 flex items-center justify-center gap-2 ${
+                        rfidValidation.valid
+                          ? 'text-emerald-600'
+                          : 'text-rose-600'
+                      }`}
+                    >
                       {rfidValidation.valid ? (
                         <>
                           <CheckCircleIcon className="h-5 w-5" />
-                          <span className="text-sm font-medium">{rfidValidation.message || 'Tag available'}</span>
+                          <span className="text-sm font-medium">
+                            {rfidValidation.message || 'Tag available'}
+                          </span>
                         </>
                       ) : (
                         <>
                           <XCircleIcon className="h-5 w-5" />
-                          <span className="text-sm font-medium">{rfidValidation.message || 'Tag not available'}</span>
+                          <span className="text-sm font-medium">
+                            {rfidValidation.message || 'Tag not available'}
+                          </span>
                         </>
                       )}
                     </div>
                   )}
                   {!rfidValidation && rfidTag.length === 10 && (
-                    <p className="mt-3 text-sm text-amber-600">Waiting for validation...</p>
+                    <p className="mt-3 text-sm text-amber-600">
+                      Waiting for validation…
+                    </p>
                   )}
                   {rfidTag.length !== 10 && (
-                    <p className="mt-3 text-sm text-slate-500">Enter 10-digit RFID tag to continue</p>
+                    <p className="mt-3 text-xs sm:text-sm text-slate-500">
+                      Enter 10-digit RFID tag
+                    </p>
                   )}
                 </div>
 
-                <div className="mt-5 flex gap-3">
+                <div className="mt-4 sm:mt-5 flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
                   <button
                     type="button"
                     onClick={resetAssignment}
-                    className="flex-1 rounded-xl border border-slate-200 py-3 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:bg-slate-50"
+                    className="w-full sm:flex-1 min-h-[48px] rounded-xl border border-slate-200 py-3 text-xs font-semibold uppercase tracking-wider text-slate-600 active:bg-slate-50 touch-manipulation"
                   >
                     Cancel
                   </button>
@@ -503,9 +561,9 @@ const SubOrgRfidAssignmentPage = () => {
                     type="button"
                     onClick={handleAssignRfid}
                     disabled={rfidTag.length !== 10 || isAssigning}
-                    className="flex-1 rounded-xl bg-blue-600 py-3 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700 disabled:opacity-40"
+                    className="w-full sm:flex-1 min-h-[48px] rounded-xl bg-blue-600 py-3 text-xs font-semibold uppercase tracking-wider text-white active:bg-blue-700 hover:bg-blue-700 disabled:opacity-40 touch-manipulation"
                   >
-                    {isAssigning ? 'Assigning...' : 'Assign RFID'}
+                    {isAssigning ? 'Assigning…' : 'Assign RFID'}
                   </button>
                 </div>
               </div>
@@ -515,37 +573,65 @@ const SubOrgRfidAssignmentPage = () => {
 
         {/* Step 3: Complete */}
         {scanStep === 'complete' && assignmentResult && (
-          <div className="space-y-5">
-            <div className={`rounded-2xl border p-5 shadow-sm ${assignmentResult.success ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
-              <div className="flex items-center gap-3">
+          <div className="space-y-3 sm:space-y-5">
+            <div
+              className={`rounded-2xl border p-3.5 sm:p-5 shadow-sm ${
+                assignmentResult.success
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-rose-200 bg-rose-50'
+              }`}
+            >
+              <div className="flex items-start gap-3">
                 {assignmentResult.success ? (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                    <CheckCircleIcon className="h-7 w-7" />
+                  <div className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <CheckCircleIcon className="h-6 w-6 sm:h-7 sm:w-7" />
                   </div>
                 ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
-                    <XCircleIcon className="h-7 w-7" />
+                  <div className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                    <XCircleIcon className="h-6 w-6 sm:h-7 sm:w-7" />
                   </div>
                 )}
-                <div>
-                  <h2 className={`text-lg font-bold ${assignmentResult.success ? 'text-emerald-900' : 'text-rose-900'}`}>
-                    {assignmentResult.success ? 'RFID Assigned Successfully' : 'Assignment Failed'}
+                <div className="min-w-0">
+                  <h2
+                    className={`text-base sm:text-lg font-bold ${
+                      assignmentResult.success
+                        ? 'text-emerald-900'
+                        : 'text-rose-900'
+                    }`}
+                  >
+                    {assignmentResult.success
+                      ? 'RFID Assigned'
+                      : 'Assignment Failed'}
                   </h2>
-                  <p className={`text-sm ${assignmentResult.success ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  <p
+                    className={`text-xs sm:text-sm leading-snug ${
+                      assignmentResult.success
+                        ? 'text-emerald-700'
+                        : 'text-rose-700'
+                    }`}
+                  >
                     {assignmentResult.message}
                   </p>
                 </div>
               </div>
 
               {assignmentResult.success && (
-                <div className="mt-4 rounded-xl bg-white/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-600">RFID Tag</span>
-                    <span className="font-mono text-lg font-bold text-emerald-700">{assignmentResult.rfidTag}</span>
+                <div className="mt-3 sm:mt-4 rounded-xl bg-white/60 p-3 sm:p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm font-medium text-slate-600">
+                      RFID Tag
+                    </span>
+                    <span className="font-mono text-base sm:text-lg font-bold text-emerald-700">
+                      {assignmentResult.rfidTag}
+                    </span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-600">Attendee</span>
-                    <span className="font-medium text-slate-900">{assignmentResult.attendee?.fullName}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm font-medium text-slate-600">
+                      Attendee
+                    </span>
+                    <span className="text-sm font-medium text-slate-900 truncate max-w-[60%]">
+                      {assignmentResult.attendee?.fullName}
+                    </span>
                   </div>
                 </div>
               )}
@@ -554,7 +640,7 @@ const SubOrgRfidAssignmentPage = () => {
             <button
               type="button"
               onClick={handleStartNewAssignment}
-              className="w-full rounded-xl bg-blue-600 py-4 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-blue-700"
+              className="w-full min-h-[48px] rounded-xl bg-blue-600 py-3.5 sm:py-4 text-xs font-semibold uppercase tracking-wider text-white active:bg-blue-700 hover:bg-blue-700 touch-manipulation"
             >
               Assign Another RFID
             </button>

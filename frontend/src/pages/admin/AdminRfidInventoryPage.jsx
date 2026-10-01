@@ -218,11 +218,6 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
 
   const content = (
       <div className="mx-auto max-w-6xl space-y-6">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-600">Event Operations</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">RFID Inventory</h1>
-          <p className="mt-1 text-sm text-slate-500">Register physical RFID tags here. Tags remain available until an operator assigns them after scanning an attendee QR code.</p>
-        </div>
         <div className="grid gap-4 sm:grid-cols-4">
           {[['Total', counts.total, 'text-slate-900'], ['Available', counts.available, 'text-emerald-600'], ['Assigned', counts.assigned, 'text-blue-600'], ['Disabled', counts.disabled, 'text-amber-600']].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className={`mt-2 text-2xl font-bold ${color}`}>{value}</p></div>)}
         </div>

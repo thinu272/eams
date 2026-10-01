@@ -14,21 +14,23 @@ import {
 } from '@heroicons/react/24/outline';
 
 const MetricCard = ({ title, value, subtitle, icon: Icon }) => (
-  <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between gap-3">
+  <Card className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white shadow-sm p-3 sm:p-5">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400 leading-none">
           {title}
         </p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl truncate">
+        <p className="mt-1 sm:mt-2 text-lg sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="mt-1.5 text-xs text-slate-500 truncate">{subtitle}</p>
+          <p className="mt-0.5 sm:mt-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+            {subtitle}
+          </p>
         )}
       </div>
       {Icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -104,47 +106,46 @@ const SubOrgZonesPage = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 pb-20">
-        {/* Header */}
+      <div className="space-y-3 sm:space-y-6 pb-20">
+        {/* Header — compact on mobile */}
         <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-6 sm:px-8 sm:py-7">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-4 py-3.5 sm:px-8 sm:py-7">
+            <div className="flex flex-col gap-3 sm:gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     to="/suborg/dashboard"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:text-blue-700"
+                    className="inline-flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-blue-600 active:bg-blue-50 hover:text-blue-700 touch-manipulation"
                   >
                     <ArrowLeftIcon className="h-3.5 w-3.5" />
                     Dashboard
                   </Link>
                   <span className="text-slate-300">·</span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                  <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                     My Zones
                   </p>
                 </div>
-                <h1 className="mt-2.5 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate">
+                <h1 className="mt-1.5 sm:mt-2.5 text-xl sm:text-3xl font-bold tracking-tight text-slate-900 truncate leading-tight">
                   {workspace.event?.name || 'Assigned Event'}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Monitor only the zones assigned to your role. Each card keeps
-                  the key operational numbers close at hand.
+                <p className="mt-1 sm:mt-2 max-w-2xl text-xs sm:text-sm text-slate-500 leading-snug">
+                  Zones in your scope — capacity and occupancy at a glance.
                 </p>
               </div>
-              <div className="flex gap-3 shrink-0">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="flex gap-2 sm:gap-3 shrink-0">
+                <div className="flex-1 sm:flex-none rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 sm:px-4 sm:py-3 sm:min-w-[100px] text-center">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                     Zones
                   </p>
-                  <p className="mt-0.5 text-xl font-bold text-slate-900">
+                  <p className="mt-0.5 text-base sm:text-xl font-bold text-slate-900 tabular-nums">
                     {loading ? '—' : zones.length}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 min-w-[100px] text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <div className="flex-1 sm:flex-none rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 sm:px-4 sm:py-3 sm:min-w-[100px] text-center">
+                  <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                     Capacity
                   </p>
-                  <p className="mt-0.5 text-xl font-bold text-slate-900">
+                  <p className="mt-0.5 text-base sm:text-xl font-bold text-slate-900 tabular-nums">
                     {loading ? '—' : totalCapacity || '—'}
                   </p>
                 </div>
@@ -153,73 +154,73 @@ const SubOrgZonesPage = () => {
           </div>
         </Card>
 
-        {/* KPI cards — same MetricCard pattern as organiser */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* KPI — 3-col on mobile (compact) */}
+        <section className="grid grid-cols-3 gap-2 sm:gap-4">
           <MetricCard
-            title="Assigned Zones"
+            title="Zones"
             value={loading ? '—' : zones.length}
-            subtitle="In your scope"
+            subtitle="Assigned"
             icon={MapPinIcon}
           />
           <MetricCard
-            title="Total Capacity"
+            title="Capacity"
             value={loading ? '—' : totalCapacity || 0}
-            subtitle="Across assigned zones"
+            subtitle="Total"
             icon={UsersIcon}
           />
           <MetricCard
-            title="Checked In"
+            title="In"
             value={loading ? '—' : totalCheckedIn}
             subtitle={
               totalCapacity > 0
                 ? `${Math.min(
                     100,
                     Math.round((totalCheckedIn / totalCapacity) * 100)
-                  )}% of capacity`
-                : 'No capacity set'
+                  )}%`
+                : 'No cap'
             }
             icon={CheckBadgeIcon}
           />
         </section>
 
         {loadError && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm text-amber-800">
             {loadError}
           </div>
         )}
 
         {/* Zone grid */}
         {loading ? (
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-3 sm:gap-5 lg:grid-cols-2">
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="h-52 animate-pulse rounded-2xl border border-slate-100 bg-slate-50"
+                className="h-40 sm:h-52 animate-pulse rounded-2xl border border-slate-100 bg-slate-50"
               />
             ))}
           </div>
         ) : zones.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <MapPinIcon className="h-7 w-7" />
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-5 py-12 sm:px-6 sm:py-16 text-center">
+            <div className="mb-3 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <MapPinIcon className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
-            <p className="text-base font-semibold text-slate-800">
+            <p className="text-sm sm:text-base font-semibold text-slate-800">
               No zones assigned yet
             </p>
-            <p className="mt-1.5 max-w-sm text-sm text-slate-500">
+            <p className="mt-1 max-w-sm text-xs sm:text-sm text-slate-500 leading-snug">
               Ask the main organiser to assign at least one zone to your
               account.
             </p>
             <Button
               size="sm"
-              className="mt-5 bg-blue-600 hover:bg-blue-500 text-white"
+              className="mt-4 sm:mt-5 w-full sm:w-auto bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white touch-manipulation"
               onClick={() => navigate('/suborg')}
             >
               Back to dashboard
             </Button>
           </div>
         ) : (
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-3 sm:gap-5 lg:grid-cols-2">
             {zones.map((zone) => (
               <ZoneCard
                 key={zone.id || zone._id || zone.name}
