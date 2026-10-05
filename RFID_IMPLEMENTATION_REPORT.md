@@ -1,6 +1,7 @@
 # RFID Workflow Implementation Report
 
 **Date:** September 14, 2026  
+**Last Updated:** October 1, 2026  
 **Project:** ENTRYNEX Event Management System  
 **Objective:** Refactor RFID to be an optional feature controlled at the event level
 
@@ -556,6 +557,137 @@ if (scanMethod === 'rfid' && attendee.event?.settings?.rfidEnabled !== true) {
 
 ### Query Optimization
 - RFID lookup uses indexed fields
+- Inventory queries use compound indexes
+
+---
+
+## 16. Recent Updates (October 1, 2026)
+
+### Event Filtering Fix
+**Issue:** Event filter dropdowns in RFID pages were not showing all events and filtering was not working correctly.
+
+**Root Cause:**
+- Frontend was using `getMyEvents()` which only returns events assigned to the current user
+- Event filter was using event names instead of event IDs
+- Client-side filtering by event name was not working because backend returns event IDs
+- Backend supports `eventId` parameter but frontend wasn't using it
+
+**Fix Applied:**
+1. **RFID Inventory Page** (`frontend/src/pages/admin/AdminRfidInventoryPage.jsx`)
+   - Changed to use `getAllEventsAdmin()` to fetch all events in the system
+   - Updated event filter to use event IDs instead of names
+   - Implemented server-side filtering by sending `eventId` parameter to backend
+   - Removed client-side event filtering (now handled by backend)
+
+2. **RFID Assignments Page** (`frontend/src/pages/admin/AdminRfidAssignmentsPage.jsx`)
+   - Changed to use `getAllEventsAdmin()` to fetch all events
+   - Already uses event IDs correctly
+
+3. **RFID Access Logs Page** (`frontend/src/pages/admin/AdminRfidAccessLogsPage.jsx`)
+   - Changed to use `getAllEventsAdmin()` to fetch all events
+   - Already uses event IDs correctly
+
+### Backward Compatibility for Legacy Data
+**Issue:** RFID Assignments and Access Logs were showing 0 records because existing data was stored in deprecated fields on the `RfidTag` model, not the new `RfidAssignment` model.
+
+**Root Cause:**
+- New architecture uses `RfidAssignment` model for assignment tracking
+- Existing data was in deprecated fields on `RfidTag` model (event, attendee, ticket, assignedAt, assignedBy)
+- Backend only queried new `RfidAssignment` model, ignoring legacy data
+
+**Fix Applied:**
+
+1. **RFID Assignments Endpoint** (`backend/src/routes/rfid.js`)
+   - Added query to deprecated `RfidTag` fields for legacy assignments
+   - Converts legacy RfidTag records to RfidAssignment format
+   - Merges new and legacy assignments, removing duplicates
+   - Adds `isLegacy: true` flag to identify legacy data
+   - Sorts by assignedAt (newest first)
+   - Applies pagination to merged results
+
+2. **RFID Access Logs Endpoint** (`backend/src/routes/rfid.js`)
+   - Added assignment events as "access logs" for comprehensive activity tracking
+   - Includes:
+     - Actual RFID scans (gate/zone access)
+     - Assignment events (when RFID assigned to attendee)
+     - Unassignment events (when RFID released from attendee)
+     - Legacy assignments from deprecated RfidTag fields
+   - Differentiates log types: ASSIGNMENT, UNASSIGNMENT, LEGACY_ASSIGNMENT
+   - Shows "Assignment" or "Unassignment" in Event/Location column for assignment events
+   - Merges and sorts all logs by timestamp
+
+### Backend Changes Summary
+
+**File:** `backend/src/routes/rfid.js`
+
+**Modified Endpoints:**
+
+1. **GET /api/rfid/assignments**
+   - Now queries both `RfidAssignment` and deprecated `RfidTag` fields
+   - Merges results and removes duplicates
+   - Converts legacy data to expected format
+   - Total count includes both sources
+
+2. **GET /api/rfid/access-logs**
+   - Now includes assignment/unassignment events in addition to gate scans
+   - Queries `RfidAssignment` for assignment activity
+   - Queries deprecated `RfidTag` fields for legacy assignments
+   - Converts assignments to log format with logType metadata
+   - Merges scan logs and assignment logs
+   - Sorts by timestamp (newest first)
+
+### Frontend Changes Summary
+
+**Files Modified:**
+1. `frontend/src/pages/admin/AdminRfidInventoryPage.jsx`
+2. `frontend/src/pages/admin/AdminRfidAssignmentsPage.jsx`
+3. `frontend/src/pages/admin/AdminRfidAccessLogsPage.jsx`
+
+**Key Changes:**
+- Import `getAllEventsAdmin` instead of `getMyEvents`
+- Call `getAllEventsAdmin({ limit: 1000 })` to fetch all events
+- Event filter dropdown now shows all events in the system
+- Event filter uses event IDs as values and event names as labels
+- Server-side filtering implemented for event and status filters
+
+### Testing Verification
+
+**Event Filtering:**
+- [x] All events appear in dropdown (not just assigned events)
+- [x] Selecting an event filters the data correctly
+- [x] "All Events" option shows all data
+- [x] Backend receives `eventId` parameter correctly
+
+**Backward Compatibility:**
+- [x] Legacy RfidTag assignments appear in Assignments page
+- [x] Legacy RfidTag assignments appear in Access Logs page
+- [x] New RfidAssignment records appear correctly
+- [x] Duplicate assignments are removed
+- [x] Data is sorted by assignedAt/timestamp
+- [x] Pagination works correctly with merged data
+
+**Access Logs Enhancement:**
+- [x] Assignment events appear in Access Logs
+- [x] Unassignment events appear in Access Logs
+- [x] Gate scans appear in Access Logs
+- [x] Log type is identified (ASSIGNMENT, UNASSIGNMENT, LEGACY_ASSIGNMENT)
+- [x] All logs are sorted by timestamp
+- [x] Event/Location shows appropriate context
+
+### Migration Notes
+
+**Deprecation Status:**
+- `RfidTag.event`, `RfidTag.attendee`, `RfidTag.ticket`, `RfidTag.assignedAt`, `RfidTag.assignedBy` fields are deprecated
+- New code should use `RfidAssignment` model
+- Legacy data is supported for backward compatibility
+- Future migration script should convert legacy data to `RfidAssignment` format
+
+**Recommendation:**
+- Plan a data migration to move all legacy RfidTag assignments to RfidAssignment model
+- After migration, deprecated fields can be removed from RfidTag schema
+- Update documentation to reflect new architecture
+
+---
 - Inventory queries use compound indexes
 - Population limited to avoid N+1 queries
 - Pagination implemented for large inventories

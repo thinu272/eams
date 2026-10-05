@@ -4,10 +4,11 @@ const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
 const Ticket = require('../models/Ticket');
 const ZoneLog = require('../models/ZoneLog');
+const RfidAccessLog = require('../models/RfidAccessLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
 const { normalizeRole, ROLES } = require('../utils/rbac');
-const { enforceRfidToggle } = require('../services/credentialService');
+const { enforceRfidToggle, resolveAttendee } = require('../services/credentialService');
 
 /**
  * Check if a ticket is valid for entry.
@@ -219,11 +220,7 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
       return res.status(400).json({ success: false, reason: 'TOKEN_REQUIRED', message: 'qrToken or rfidId is required.' });
     }
 
-    const attendee = await Attendee.findOne(
-      qrToken ? { qrToken } : { event: requestedEventId, $or: [{ rfidTag: rfidId }, { wristbandId: rfidId }] }
-    )
-      .populate('event', 'name createdBy zones')
-      .populate('ticket', 'status categoryId categoryName allowedZones');
+    const attendee = await resolveAttendee({ qrToken, rfidId, eventId: requestedEventId });
 
     if (!attendee) {
       return res.status(404).json({
@@ -442,6 +439,21 @@ router.post('/scan', protect, restrictTo('main_admin', 'main_organiser', 'sub_or
         allowedZones,
       },
     });
+
+    if (rfidId || (!qrToken && attendee.rfidTag)) {
+      RfidAccessLog.create({
+        event: event._id,
+        attendee: attendee._id,
+        rfidIdentifierSnapshot: String(rfidId || attendee.rfidTag || 'UNKNOWN').trim(),
+        assignment: attendee._rfidAssignment?._id,
+        ticket: attendee.ticket?._id || attendee.ticket,
+        zoneName,
+        reader: 'Zone Scanner',
+        scanMethod: 'RFID',
+        result: 'GRANTED',
+        performedBy: req.user._id,
+      }).catch((err) => console.error('Failed to write RfidAccessLog for zone scan:', err));
+    }
 
     // Update main-entry status
     if (isMainEntryZone) {

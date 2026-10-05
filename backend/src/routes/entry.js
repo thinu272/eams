@@ -4,6 +4,7 @@ const EntryLog = require('../models/EntryLog');
 const Attendee = require('../models/Attendee');
 const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
+const RfidAccessLog = require('../models/RfidAccessLog');
 const mongoose = require('mongoose');
 const { protect, restrictTo } = require('../middleware/auth');
 const { emitDashboardEvent } = require('../utils/socket');
@@ -518,6 +519,26 @@ router.post(
           processedBy: req.user._id,
         })
       );
+
+      // Record immutable RfidAccessLog if scanned using RFID
+      if (scanMethod === 'rfid' || rfidId) {
+        RfidAccessLog.create({
+          event: attendee.event._id || attendee.event,
+          attendee: finalAttendee._id,
+          rfidIdentifierSnapshot: String(rfidId || finalAttendee.rfidTag || 'UNKNOWN').trim(),
+          assignment: attendee._rfidAssignment?._id,
+          ticket: attendee.ticket?._id || attendee.ticket,
+          gateId: resolvedGate,
+          gateName: resolvedGate,
+          zoneId,
+          zoneName,
+          reader: deviceId || 'Entry Scanner',
+          scanMethod: 'RFID',
+          result: accessGranted ? 'GRANTED' : 'DENIED',
+          denialReason: denialReason || undefined,
+          performedBy: req.user._id,
+        }).catch((err) => console.error('Failed to write RfidAccessLog:', err));
+      }
 
       emitDashboardEvent(io, 'entry_update', attendee.event._id.toString(), {
         source: 'entry',
