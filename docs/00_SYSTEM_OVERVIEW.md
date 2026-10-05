@@ -78,14 +78,13 @@ External Integrations:
 | **MainOrganiser** | Company/event owner | Create events, manage team, view all event data, RFID registry |
 | **SubOrganiser** | Event-specific organiser | Manage assigned events, scan entries/zones, assign RFID, view payments |
 | **Staff** | On-site operations | Scan tickets, manage zones, assign RFID, cash collection |
-| **Volunteer** | Limited helper | Read-only scanning, basic event info |
 | **Auditor** | System auditor | Read-only access to all logs and reports |
 | **Sponsor** | Event sponsor | View sponsorship details, upload assets |
 | **Attendee** | Ticket buyer | Purchase tickets, manage personal tickets, receive notifications |
 
 ### Role Hierarchy
 ```
-MainAdmin > MainOrganiser > SubOrganiser > Staff > Volunteer > Attendee
+MainAdmin > MainOrganiser > SubOrganiser > Staff > Attendee
 Auditor (parallel, read-only)
 Sponsor (parallel, limited read)
 ```
@@ -113,7 +112,7 @@ Enable RFID feature (optional)
     ↓
 Add RFID inventory (if enabled)
     ↓
-Assign team (SubOrganisers, Staff, Volunteers)
+Assign team (SubOrganisers, Staff)
     ↓
 Publish event
 ```
