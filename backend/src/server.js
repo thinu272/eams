@@ -242,6 +242,9 @@ mongoose
     // Start cash-at-entrance reservation expiry job
     const { startExpiryJob } = require('./jobs/expireReservations');
     startExpiryJob();
+    // Start RFID archive & release job
+    const { startRfidArchiveJob } = require('./jobs/rfidArchiveRelease');
+    startRfidArchiveJob();
   })
   .catch((err) => console.log("MongoDB connection error:", err));
 

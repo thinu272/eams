@@ -32,7 +32,7 @@ const Header = ({ onMenuClick }) => {
     user?.role
   );
   const isSuperAdminWorkspace = user?.role === 'MainAdmin';
-  const isStaffWorkspace = user?.role === 'Staff';
+  const isStaffWorkspace = ['Staff', 'Volunteer'].includes(user?.role);
   const assignedGateText = (user?.assignedGates || []).filter(Boolean).join(', ');
   const getEventObjectId = (event) => event?._id || event?.id || '';
 
@@ -77,7 +77,7 @@ const Header = ({ onMenuClick }) => {
   }, [user]);
 
   useEffect(() => {
-    if (!isOrganiserWorkspace) return;
+    if (!isOrganiserWorkspace && !isStaffWorkspace) return;
     getMyEvents()
       .then((response) => {
         const nextEvents = response.data?.data?.events || [];
@@ -105,7 +105,7 @@ const Header = ({ onMenuClick }) => {
         }
       })
       .catch(() => {});
-  }, [isOrganiserWorkspace]);
+  }, [isOrganiserWorkspace, isStaffWorkspace]);
 
   const handleMarkAll = async () => {
     try {
@@ -177,8 +177,8 @@ const Header = ({ onMenuClick }) => {
 
         {/* Right: controls */}
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          {/* Event selector (organiser) */}
-          {isOrganiserWorkspace && events.length > 0 && (
+          {/* Event selector (organiser and staff) */}
+          {(isOrganiserWorkspace || isStaffWorkspace) && events.length > 0 && (
             <select
               value={selectedEventId}
               onChange={(e) => handleEventChange(e.target.value)}
@@ -290,8 +290,8 @@ const Header = ({ onMenuClick }) => {
         </div>
       </div>
 
-      {/* Mobile event selector (organiser) */}
-      {isOrganiserWorkspace && events.length > 0 && (
+      {/* Mobile event selector (organiser and staff) */}
+      {(isOrganiserWorkspace || isStaffWorkspace) && events.length > 0 && (
         <div className="border-t border-slate-100 px-4 py-2 md:hidden">
           <select
             value={selectedEventId}

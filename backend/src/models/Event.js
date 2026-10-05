@@ -85,7 +85,7 @@ const eventSchema = new mongoose.Schema({
   gatesOpenTime: { type: Date },
   status: {
     type: String,
-    enum: ['draft', 'published', 'ongoing', 'completed', 'cancelled'],
+    enum: ['draft', 'published', 'ongoing', 'completed', 'cancelled', 'archived'],
     default: 'draft',
   },
   timezone: { type: String, default: 'Asia/Colombo' },

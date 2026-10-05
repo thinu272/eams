@@ -243,10 +243,10 @@ const BuyerDashboardPage = () => {
 
   return (
     <BuyerLayout>
-      <div className="space-y-4 sm:space-y-6 pb-16 sm:pb-20">
+      <div className="mx-auto w-full max-w-6xl space-y-4 sm:space-y-5 lg:space-y-6 pb-16 sm:pb-20">
         {/* ── Header ── */}
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+          <div className="px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -258,7 +258,7 @@ const BuyerDashboardPage = () => {
                 <h1 className="mt-1.5 sm:mt-2 text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
                   Ticket Progress
                 </h1>
-                <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-lg leading-snug">
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-xl leading-snug">
                   Track activation and filter by payment method.
                 </p>
               </div>
@@ -267,7 +267,7 @@ const BuyerDashboardPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowFilters((v) => !v)}
-                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 sm:py-2 text-sm font-medium text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 transition lg:hidden touch-manipulation"
+                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 sm:py-2.5 text-sm font-medium text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 transition lg:hidden touch-manipulation min-h-[44px]"
                 >
                   <FunnelIcon className="h-4 w-4" />
                   Filters
@@ -278,7 +278,7 @@ const BuyerDashboardPage = () => {
 
                 <Link
                   to="/events"
-                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
+                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation min-h-[44px]"
                 >
                   Browse Events
                   <ArrowRightIcon className="h-4 w-4" />
@@ -288,25 +288,26 @@ const BuyerDashboardPage = () => {
           </div>
         </div>
 
-        {/* ── Filters ── */}
+        {/* ── Filters (collapsible on phone, always visible tablet+) ── */}
         <div
-          className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden transition-all ${
+          className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden ${
             showFilters ? 'block' : 'hidden lg:block'
           }`}
         >
-          <div className="px-4 py-3.5 sm:px-6 sm:py-4">
+          <div className="px-4 py-3.5 sm:px-5 sm:py-4 lg:px-6">
             <div className="flex items-center justify-between mb-3 lg:hidden">
               <p className="text-sm font-semibold text-slate-800">Filters</p>
               <button
                 type="button"
                 onClick={() => setShowFilters(false)}
-                className="rounded-xl p-2 text-slate-400 active:bg-slate-100 hover:bg-slate-100 touch-manipulation"
+                className="rounded-xl p-2.5 text-slate-400 active:bg-slate-100 hover:bg-slate-100 touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Close filters"
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-6">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-3">
               <select
                 value={filterMethod}
                 onChange={(e) => {
@@ -346,7 +347,7 @@ const BuyerDashboardPage = () => {
                   setFilterEvent(e.target.value || 'all');
                   setCurrentPage(1);
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation sm:col-span-2 lg:col-span-1"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 touch-manipulation sm:col-span-2 md:col-span-1"
               />
 
               <input
@@ -373,7 +374,7 @@ const BuyerDashboardPage = () => {
                 type="button"
                 onClick={clearFilters}
                 disabled={!hasActiveFilters}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:py-2.5 text-sm font-medium text-slate-600 active:bg-slate-100 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:py-2.5 text-sm font-medium text-slate-600 active:bg-slate-100 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation min-h-[44px]"
               >
                 Clear filters
               </button>
@@ -387,7 +388,7 @@ const BuyerDashboardPage = () => {
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="h-36 sm:h-44 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
+                className="h-36 sm:h-40 lg:h-36 rounded-2xl bg-slate-100 animate-pulse border border-slate-200/60"
               />
             ))}
           </div>
@@ -395,11 +396,11 @@ const BuyerDashboardPage = () => {
 
         {/* ── Empty ── */}
         {!loading && paginatedOrders.length === 0 && (
-          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm px-5 py-12 sm:px-6 sm:py-16 text-center">
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm px-5 py-12 sm:px-8 sm:py-16 text-center">
             <div className="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
               <TicketIcon className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-900">
+            <h3 className="mt-4 text-base sm:text-lg font-semibold text-slate-900">
               No orders found
             </h3>
             <p className="mt-1.5 text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
@@ -407,19 +408,19 @@ const BuyerDashboardPage = () => {
                 ? 'No orders match the selected filters. Try adjusting or clearing them.'
                 : 'You haven’t purchased any tickets yet.'}
             </p>
-            <div className="mt-5 sm:mt-6 flex flex-col xs:flex-row flex-wrap items-stretch xs:items-center justify-center gap-2.5 sm:gap-3">
+            <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-2.5 sm:gap-3">
               {hasActiveFilters && (
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 active:bg-slate-50 hover:bg-slate-50 touch-manipulation"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 sm:py-2.5 text-sm font-medium text-slate-700 active:bg-slate-50 hover:bg-slate-50 touch-manipulation min-h-[44px]"
                 >
                   Clear filters
                 </button>
               )}
               <Link
                 to="/events"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2 text-sm font-semibold text-white hover:bg-blue-500 active:bg-blue-700 touch-manipulation"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 sm:py-2.5 text-sm font-semibold text-white hover:bg-blue-500 active:bg-blue-700 touch-manipulation min-h-[44px]"
               >
                 Browse Events
               </Link>
@@ -429,7 +430,7 @@ const BuyerDashboardPage = () => {
 
         {/* ── Orders ── */}
         {!loading && paginatedOrders.length > 0 && (
-          <div className="space-y-3 sm:space-y-5">
+          <div className="space-y-3 sm:space-y-4 lg:space-y-5">
             {paginatedOrders.map((order) => {
               const total = order.stats?.total || 0;
               const assigned = order.stats?.assigned || 0;
@@ -470,9 +471,10 @@ const BuyerDashboardPage = () => {
                   className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
                 >
                   <div className="p-4 sm:p-5 lg:p-6">
-                    <div className="flex flex-col gap-4 sm:gap-5">
+                    {/* Phone: stack · Tablet+: side-by-side */}
+                    <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:gap-6 lg:gap-8">
                       {/* Event info */}
-                      <div className="min-w-0 space-y-2.5 sm:space-y-3">
+                      <div className="min-w-0 flex-1 space-y-2.5 sm:space-y-3">
                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                           <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-slate-600">
                             #{order.orderNumber}
@@ -493,11 +495,11 @@ const BuyerDashboardPage = () => {
                           )}
                         </div>
 
-                        <h3 className="text-base sm:text-xl font-bold text-slate-900 leading-snug">
+                        <h3 className="text-base sm:text-lg lg:text-xl font-bold text-slate-900 leading-snug">
                           {order.event?.name || order.eventName || 'Event'}
                         </h3>
 
-                        <div className="flex flex-col xs:flex-row xs:flex-wrap gap-1 xs:gap-x-4 xs:gap-y-1.5 text-xs sm:text-sm text-slate-500">
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-4 sm:gap-y-1.5 text-xs sm:text-sm text-slate-500">
                           <span className="inline-flex items-center gap-1.5 min-w-0">
                             <CalendarIcon className="h-4 w-4 text-blue-500 shrink-0" />
                             <span className="truncate">
@@ -513,7 +515,7 @@ const BuyerDashboardPage = () => {
                         </div>
 
                         {isAwaitingPayment && (
-                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2.5">
+                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2.5 md:max-w-md">
                             <p className="text-xs font-medium text-amber-800 leading-snug">
                               Ticket features unlock after payment is verified.
                             </p>
@@ -521,9 +523,9 @@ const BuyerDashboardPage = () => {
                         )}
                       </div>
 
-                      {/* Progress + Actions */}
-                      <div className="space-y-3 sm:space-y-4 border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
-                        <div className="space-y-1.5 sm:space-y-2">
+                      {/* Progress + actions — full width on phone, fixed column on md+ */}
+                      <div className="w-full md:w-[240px] lg:w-[280px] shrink-0 space-y-3 border-t border-slate-100 pt-3 md:border-t-0 md:pt-0 md:border-l md:pl-6 lg:pl-8">
+                        <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-[11px] sm:text-xs font-semibold text-slate-700">
                             <span>Activation</span>
                             <span className="tabular-nums">
@@ -549,14 +551,16 @@ const BuyerDashboardPage = () => {
                           <button
                             type="button"
                             onClick={() => handleDownloadOrder(order._id)}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2 text-xs font-semibold text-slate-700 active:bg-slate-50 hover:bg-slate-50 transition touch-manipulation"
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-slate-700 active:bg-slate-50 hover:bg-slate-50 transition touch-manipulation min-h-[44px]"
                           >
                             <ArrowDownTrayIcon className="h-4 w-4" />
-                            Summary
+                            <span className="hidden xs:inline sm:inline">
+                              Summary
+                            </span>
                           </button>
                           <Link
                             to={`/buyer/orders/${order._id}`}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-3 sm:py-2 text-xs font-semibold text-white hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation"
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white hover:bg-blue-500 active:bg-blue-700 transition touch-manipulation min-h-[44px]"
                           >
                             View Tickets
                             <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -583,10 +587,10 @@ const BuyerDashboardPage = () => {
                     type="button"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="inline-flex min-h-[44px] items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                   >
-                    <ChevronLeftIcon className="h-3.5 w-3.5" />
-                    <span className="hidden xs:inline">Prev</span>
+                    <ChevronLeftIcon className="h-4 w-4" />
+                    <span className="hidden sm:inline">Prev</span>
                   </button>
 
                   <div className="flex items-center gap-1">
@@ -612,7 +616,7 @@ const BuyerDashboardPage = () => {
                             <button
                               type="button"
                               onClick={() => handlePageChange(page)}
-                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition touch-manipulation ${
+                              className={`inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-xl text-xs font-bold transition touch-manipulation ${
                                 currentPage === page
                                   ? 'bg-blue-600 text-white shadow-sm'
                                   : 'bg-white text-slate-700 border border-slate-200 active:bg-slate-50 hover:bg-slate-50'
@@ -629,10 +633,10 @@ const BuyerDashboardPage = () => {
                     type="button"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="inline-flex min-h-[44px] items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm active:bg-slate-50 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition touch-manipulation"
                   >
-                    <span className="hidden xs:inline">Next</span>
-                    <ChevronRightIcon className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRightIcon className="h-4 w-4" />
                   </button>
                 </div>
               </div>

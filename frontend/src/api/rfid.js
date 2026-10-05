@@ -32,3 +32,9 @@ export const deleteRfidFromInventory = (rfidTag) => api.delete(`/rfid/inventory/
 export const assignInventoryRfid = (attendeeId, rfidTag, replaceExisting = false) => {
   return api.post(`/attendees/${attendeeId}/rfid`, { rfidTag, replaceExisting });
 };
+
+// New RFID Architecture Endpoints
+export const getRfidAssignments = (params) => api.get('/rfid/assignments', { params });
+export const getRfidAccessLogs = (params) => api.get('/rfid/access-logs', { params });
+export const getRfidTagHistory = (rfidTag) => api.get(`/rfid/tags/${rfidTag}/history`);
+export const getEventRfidOverview = (eventId) => api.get(`/rfid/events/${eventId}/overview`);

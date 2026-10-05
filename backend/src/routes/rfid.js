@@ -5,6 +5,9 @@ const mongoose = require('mongoose');
 const Event = require('../models/Event');
 const Attendee = require('../models/Attendee');
 const RfidTag = require('../models/RfidTag');
+const RfidAssignment = require('../models/RfidAssignment');
+const RfidAccessLog = require('../models/RfidAccessLog');
+const AuditLog = require('../models/AuditLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const { normalizeRfidTag, isValidRfidTag, assignRfidToAttendee, unassignRfidFromAttendee } = require('../services/rfidService');
 
@@ -52,21 +55,43 @@ router.get('/inventory', protect, restrictTo('main_admin', 'main_organiser'), as
   } catch (err) { next(err); }
 });
 
-const insertInventoryTags = async (values) => {
+const insertInventoryTags = async (values, meta = {}, user = null) => {
   const normalized = values.map(normalizeRfidTag);
   const valid = normalized.filter(isValidRfidTag);
   const unique = [...new Set(valid)];
   const existing = new Set((await RfidTag.find({ rfidTag: { $in: unique } }).select('rfidTag').lean()).map((tag) => tag.rfidTag));
-  const docs = unique.filter((value) => !existing.has(value)).map((rfidTag) => ({ rfidTag, status: 'AVAILABLE' }));
+  
+  const docs = unique.filter((value) => !existing.has(value)).map((rfidTag) => ({
+    rfidTag,
+    status: 'AVAILABLE',
+    vendor: meta.vendor || 'unknown',
+    technology: meta.technology || 'unknown',
+    tagType: meta.tagType || 'card',
+    registeredAt: new Date(),
+    registeredBy: user?._id,
+    notes: meta.notes || '',
+  }));
+  
   if (docs.length) await RfidTag.insertMany(docs, { ordered: false });
-  return { imported: values.length, duplicates: values.length - valid.length + (valid.length - unique.length) + existing.size, invalid: values.length - valid.length, added: docs.length };
+  return {
+    imported: values.length,
+    duplicates: values.length - valid.length + (valid.length - unique.length) + existing.size,
+    invalid: values.length - valid.length,
+    added: docs.length,
+  };
 };
 
 router.post('/inventory', protect, restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
   try {
     const values = Array.isArray(req.body.rfidTags) ? req.body.rfidTags : [req.body.rfidTag];
-    if (!values.some(isValidRfidTag)) return res.status(400).json({ success: false, message: 'At least one valid 10-digit RFID is required.' });
-    res.json({ success: true, data: await insertInventoryTags(values) });
+    if (!values.some(isValidRfidTag)) return res.status(400).json({ success: false, message: 'At least one valid RFID identifier is required.' });
+    const meta = {
+      vendor: req.body.vendor,
+      technology: req.body.technology,
+      tagType: req.body.tagType,
+      notes: req.body.notes,
+    };
+    res.json({ success: true, data: await insertInventoryTags(values, meta, req.user) });
   } catch (err) { next(err); }
 });
 
@@ -76,7 +101,13 @@ router.post('/inventory/bulk', protect, restrictTo('main_admin', 'main_organiser
     const workbook = XLSX.read(req.file.buffer);
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
     const values = rows.slice(1).map((row) => row[0]).filter(Boolean);
-    res.json({ success: true, data: await insertInventoryTags(values) });
+    const meta = {
+      vendor: req.body.vendor,
+      technology: req.body.technology,
+      tagType: req.body.tagType,
+      notes: req.body.notes,
+    };
+    res.json({ success: true, data: await insertInventoryTags(values, meta, req.user) });
   } catch (err) { next(err); }
 });
 
@@ -410,7 +441,6 @@ router.get('/assignment/:attendeeId', protect, restrictTo(...operationalRoles), 
   } catch (err) { next(err); }
 });
 
-module.exports = router;
 // PATCH /api/rfid/inventory/:rfidTag/disable - Disable an RFID tag (make unavailable)
 router.patch('/inventory/:rfidTag/disable', protect, restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
   try {
@@ -418,7 +448,7 @@ router.patch('/inventory/:rfidTag/disable', protect, restrictTo('main_admin', 'm
     const { reason } = req.body;
 
     if (!isValidRfidTag(rfidTag)) {
-      return res.status(400).json({ success: false, message: 'RFID tag must be exactly 10 digits.' });
+      return res.status(400).json({ success: false, message: 'RFID tag identifier format is invalid.' });
     }
 
     const normalizedTag = normalizeRfidTag(rfidTag);
@@ -445,7 +475,7 @@ router.patch('/inventory/:rfidTag/enable', protect, restrictTo('main_admin', 'ma
     const { rfidTag } = req.params;
 
     if (!isValidRfidTag(rfidTag)) {
-      return res.status(400).json({ success: false, message: 'RFID tag must be exactly 10 digits.' });
+      return res.status(400).json({ success: false, message: 'RFID tag identifier format is invalid.' });
     }
 
     const normalizedTag = normalizeRfidTag(rfidTag);
@@ -472,7 +502,7 @@ router.delete('/inventory/:rfidTag', protect, restrictTo('main_admin'), async (r
     const { rfidTag } = req.params;
 
     if (!isValidRfidTag(rfidTag)) {
-      return res.status(400).json({ success: false, message: 'RFID tag must be exactly 10 digits.' });
+      return res.status(400).json({ success: false, message: 'RFID tag identifier format is invalid.' });
     }
 
     const normalizedTag = normalizeRfidTag(rfidTag);
@@ -488,3 +518,360 @@ router.delete('/inventory/:rfidTag', protect, restrictTo('main_admin'), async (r
     res.json({ success: true, message: 'RFID tag deleted from inventory.' });
   } catch (err) { next(err); }
 });
+
+// ─── NEW ARCHITECTURE ENDPOINTS ───────────────────────────────────────────────
+
+// GET /api/rfid/assignments - List assignments with filter & pagination
+router.get('/assignments', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser'), async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.eventId) {
+      if (!(await userHasEventAccess(req.user, req.query.eventId))) {
+        return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+      }
+      filter.event = req.query.eventId;
+    } else if (req.user.role !== 'main_admin') {
+      // Non-main admin must specify or be scoped to their assigned events
+      filter.event = { $in: req.user.assignedEvents || [] };
+    }
+
+    if (req.query.status) {
+      filter.status = req.query.status.toUpperCase();
+    }
+
+    if (req.query.search) {
+      filter.rfidIdentifierSnapshot = { $regex: normalizeRfidTag(req.query.search), $options: 'i' };
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    // Query new RfidAssignment model
+    const [newAssignments, newTotal] = await Promise.all([
+      RfidAssignment.find(filter)
+        .sort({ assignedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('event', 'name')
+        .populate('attendee', 'fullName email phone categoryName')
+        .populate('ticket', 'ticketNumber categoryName')
+        .populate('assignedBy', 'name email')
+        .populate('releasedBy', 'name email')
+        .populate('rfidTagId', 'vendor technology tagType status')
+        .lean(),
+      RfidAssignment.countDocuments(filter),
+    ]);
+
+    // Also query deprecated RfidTag records for backward compatibility
+    const legacyFilter = {};
+    if (req.query.eventId) legacyFilter.event = req.query.eventId;
+    if (req.query.status) {
+      // Map status to RfidTag status enum
+      legacyFilter.status = req.query.status.toUpperCase();
+    } else {
+      // Only show assigned tags from legacy data
+      legacyFilter.status = 'ASSIGNED';
+    }
+    if (req.query.search) {
+      legacyFilter.rfidTag = { $regex: normalizeRfidTag(req.query.search), $options: 'i' };
+    }
+    // Only show tags that have deprecated assignment fields populated
+    legacyFilter.attendee = { $exists: true, $ne: null };
+
+    const legacyTags = await RfidTag.find(legacyFilter)
+      .sort({ assignedAt: -1 })
+      .populate('event', 'name')
+      .populate('attendee', 'fullName email phone categoryName')
+      .populate('ticket', 'ticketNumber categoryName')
+      .populate('assignedBy', 'name email')
+      .lean();
+
+    // Convert legacy RfidTag records to RfidAssignment format
+    const legacyAssignments = legacyTags.map((tag) => ({
+      _id: tag._id,
+      rfidTagId: { _id: tag._id, vendor: tag.vendor, technology: tag.technology, tagType: tag.tagType, status: tag.status },
+      rfidIdentifierSnapshot: tag.rfidTag,
+      event: tag.event,
+      attendee: tag.attendee,
+      ticket: tag.ticket,
+      categoryId: tag.categoryId,
+      status: tag.status === 'ASSIGNED' ? 'ACTIVE' : 'RELEASED',
+      assignedAt: tag.assignedAt,
+      assignedBy: tag.assignedBy,
+      releasedAt: null,
+      releasedBy: null,
+      releaseReason: null,
+      notes: 'Legacy assignment (deprecated RfidTag fields)',
+      isLegacy: true,
+    }));
+
+    // Merge new and legacy assignments, remove duplicates by rfidTag
+    const seenRfidTags = new Set();
+    const mergedAssignments = [];
+
+    // Add new assignments first
+    for (const assignment of newAssignments) {
+      const rfidId = assignment.rfidTagId?._id?.toString() || assignment.rfidIdentifierSnapshot;
+      if (!seenRfidTags.has(rfidId)) {
+        seenRfidTags.add(rfidId);
+        mergedAssignments.push(assignment);
+      }
+    }
+
+    // Add legacy assignments that aren't already in new assignments
+    for (const legacy of legacyAssignments) {
+      const rfidId = legacy.rfidTagId?._id?.toString() || legacy.rfidIdentifierSnapshot;
+      if (!seenRfidTags.has(rfidId)) {
+        seenRfidTags.add(rfidId);
+        mergedAssignments.push(legacy);
+      }
+    }
+
+    // Sort by assignedAt (newest first)
+    mergedAssignments.sort((a, b) => {
+      const dateA = a.assignedAt ? new Date(a.assignedAt).getTime() : 0;
+      const dateB = b.assignedAt ? new Date(b.assignedAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Apply pagination to merged results
+    const total = newTotal + legacyTags.length;
+    const paginatedAssignments = mergedAssignments.slice(skip, skip + limit);
+
+    res.json({
+      success: true,
+      data: {
+        assignments: paginatedAssignments,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit) || 1,
+        },
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/rfid/access-logs - List access logs with filter & pagination
+router.get('/access-logs', protect, restrictTo('main_admin', 'main_organiser', 'sub_organiser', 'staff'), async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.eventId) {
+      if (!(await userHasEventAccess(req.user, req.query.eventId))) {
+        return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+      }
+      filter.event = req.query.eventId;
+    } else if (req.user.role !== 'main_admin') {
+      filter.event = { $in: req.user.assignedEvents || [] };
+    }
+
+    if (req.query.result) {
+      filter.result = req.query.result.toUpperCase();
+    }
+    if (req.query.gateId) filter.gateId = req.query.gateId;
+    if (req.query.zoneId) filter.zoneId = req.query.zoneId;
+    if (req.query.search) {
+      filter.rfidIdentifierSnapshot = { $regex: normalizeRfidTag(req.query.search), $options: 'i' };
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
+    const skip = (page - 1) * limit;
+
+    // Query actual RfidAccessLog records (gate scans)
+    const [scanLogs, scanTotal] = await Promise.all([
+      RfidAccessLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('event', 'name')
+        .populate('attendee', 'fullName email categoryName')
+        .populate('performedBy', 'name email')
+        .lean(),
+      RfidAccessLog.countDocuments(filter),
+    ]);
+
+    // Also include assignment events as "access logs" for backward compatibility
+    const assignmentFilter = {};
+    if (req.query.eventId) assignmentFilter.event = req.query.eventId;
+    if (req.query.search) {
+      assignmentFilter.rfidIdentifierSnapshot = { $regex: normalizeRfidTag(req.query.search), $options: 'i' };
+    }
+
+    const assignments = await RfidAssignment.find(assignmentFilter)
+      .sort({ assignedAt: -1 })
+      .populate('event', 'name')
+      .populate('attendee', 'fullName email categoryName')
+      .populate('assignedBy', 'name email')
+      .populate('releasedBy', 'name email')
+      .lean();
+
+    // Convert assignments to log format
+    const assignmentLogs = [];
+    for (const assignment of assignments) {
+      // Add assignment event
+      assignmentLogs.push({
+        _id: `assign-${assignment._id}`,
+        timestamp: assignment.assignedAt,
+        rfidIdentifierSnapshot: assignment.rfidIdentifierSnapshot,
+        result: 'GRANTED',
+        attendee: assignment.attendee,
+        event: assignment.event,
+        gateName: 'Assignment',
+        zoneName: 'System',
+        performedBy: assignment.assignedBy,
+        denialReason: null,
+        logType: 'ASSIGNMENT',
+      });
+
+      // Add release event if applicable
+      if (assignment.status === 'RELEASED' && assignment.releasedAt) {
+        assignmentLogs.push({
+          _id: `release-${assignment._id}`,
+          timestamp: assignment.releasedAt,
+          rfidIdentifierSnapshot: assignment.rfidIdentifierSnapshot,
+          result: 'GRANTED',
+          attendee: assignment.attendee,
+          event: assignment.event,
+          gateName: 'Unassignment',
+          zoneName: 'System',
+          performedBy: assignment.releasedBy,
+          denialReason: assignment.releaseReason || 'Released',
+          logType: 'UNASSIGNMENT',
+        });
+      }
+    }
+
+    // Also include legacy RfidTag assignments
+    const legacyFilter = {};
+    if (req.query.eventId) legacyFilter.event = req.query.eventId;
+    if (req.query.search) {
+      legacyFilter.rfidTag = { $regex: normalizeRfidTag(req.query.search), $options: 'i' };
+    }
+    legacyFilter.attendee = { $exists: true, $ne: null };
+
+    const legacyTags = await RfidTag.find(legacyFilter)
+      .sort({ assignedAt: -1 })
+      .populate('event', 'name')
+      .populate('attendee', 'fullName email categoryName')
+      .populate('assignedBy', 'name email')
+      .lean();
+
+    for (const tag of legacyTags) {
+      assignmentLogs.push({
+        _id: `legacy-assign-${tag._id}`,
+        timestamp: tag.assignedAt,
+        rfidIdentifierSnapshot: tag.rfidTag,
+        result: 'GRANTED',
+        attendee: tag.attendee,
+        event: tag.event,
+        gateName: 'Assignment (Legacy)',
+        zoneName: 'System',
+        performedBy: tag.assignedBy,
+        denialReason: null,
+        logType: 'LEGACY_ASSIGNMENT',
+      });
+    }
+
+    // Merge scan logs and assignment logs
+    const allLogs = [...scanLogs, ...assignmentLogs];
+
+    // Sort by timestamp (newest first)
+    allLogs.sort((a, b) => {
+      const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Apply pagination to merged results
+    const total = scanTotal + assignmentLogs.length;
+    const paginatedLogs = allLogs.slice(skip, skip + limit);
+
+    res.json({
+      success: true,
+      data: {
+        logs: paginatedLogs,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit) || 1,
+        },
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/rfid/tags/:rfidTag/history - Complete lifecycle and assignment history of a physical tag
+router.get('/tags/:rfidTag/history', protect, restrictTo('main_admin', 'main_organiser'), async (req, res, next) => {
+  try {
+    const normalized = normalizeRfidTag(req.params.rfidTag);
+    const tag = await RfidTag.findOne({ rfidTag: normalized }).lean();
+    if (!tag) {
+      return res.status(404).json({ success: false, message: 'RFID tag not found in inventory.' });
+    }
+
+    const [assignments, accessLogs] = await Promise.all([
+      RfidAssignment.find({ rfidTagId: tag._id })
+        .sort({ assignedAt: -1 })
+        .populate('event', 'name startDate endDate')
+        .populate('attendee', 'fullName email categoryName')
+        .populate('assignedBy', 'name email')
+        .populate('releasedBy', 'name email')
+        .lean(),
+      RfidAccessLog.find({ rfidTagId: tag._id })
+        .sort({ timestamp: -1 })
+        .limit(50)
+        .populate('event', 'name')
+        .populate('performedBy', 'name email')
+        .lean(),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        tag,
+        assignments,
+        accessLogs,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/rfid/events/:eventId/overview - Event-specific RFID statistics
+router.get('/events/:eventId/overview', protect, restrictTo(...operationalRoles), async (req, res, next) => {
+  try {
+    const { eventId } = req.params;
+    if (!(await userHasEventAccess(req.user, eventId))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+    }
+
+    const [activeCount, releasedCount, totalScans, grantedScans, deniedScans] = await Promise.all([
+      RfidAssignment.countDocuments({ event: eventId, status: 'ACTIVE' }),
+      RfidAssignment.countDocuments({ event: eventId, status: 'RELEASED' }),
+      RfidAccessLog.countDocuments({ event: eventId }),
+      RfidAccessLog.countDocuments({ event: eventId, result: 'GRANTED' }),
+      RfidAccessLog.countDocuments({ event: eventId, result: 'DENIED' }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        assignments: {
+          active: activeCount,
+          released: releasedCount,
+          total: activeCount + releasedCount,
+        },
+        scans: {
+          total: totalScans,
+          granted: grantedScans,
+          denied: deniedScans,
+        },
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+module.exports = router;

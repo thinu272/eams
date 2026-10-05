@@ -1,13 +1,18 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { addInventoryRfid, getRfidInventory, uploadInventoryRfid, disableRfidTag, enableRfidTag, deleteRfidFromInventory, unassignRfidTag } from '../../api/rfid';
+import { getAllEventsAdmin } from '../../api/events';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import AdminRfidAssignmentsPage from './AdminRfidAssignmentsPage';
+import AdminRfidAccessLogsPage from './AdminRfidAccessLogsPage';
 import {
   XMarkIcon,
   TrashIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 const ActionModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, confirmStyle, loading }) => {
@@ -54,47 +59,177 @@ const ActionModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, 
 
 const AdminRfidInventoryPage = ({ embedded = false }) => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(
+    ['inventory', 'assignments', 'access-logs'].includes(tabParam) ? tabParam : 'inventory'
+  );
+
+  useEffect(() => {
+    if (tabParam && ['inventory', 'assignments', 'access-logs'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tabKey);
+    setSearchParams(newParams, { replace: true });
+  };
+
   const [tags, setTags] = useState([]);
   const [counts, setCounts] = useState({ total: 0, available: 0, assigned: 0, disabled: 0 });
+  const [events, setEvents] = useState([]);
   const [manualTags, setManualTags] = useState('');
   const [singleTag, setSingleTag] = useState('');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
+  const [selectedTags, setSelectedTags] = useState(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   // Filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [eventFilter, setEventFilter] = useState('ALL');
+  const [eventFilter, setEventFilter] = useState('ALL'); // eventId or 'ALL'
 
   // Unique event names for the event filter dropdown
   const eventNames = useMemo(() => {
-    const names = tags
-      .map((t) => t.event?.name)
-      .filter(Boolean);
-    return ['ALL', ...Array.from(new Set(names)).sort()];
-  }, [tags]);
+    return events.sort((a, b) => a.name.localeCompare(b.name));
+  }, [events]);
 
-  // Filtered tags
-  const filteredTags = useMemo(() => {
-    return tags.filter((tag) => {
-      const matchesSearch =
-        searchTerm === '' ||
-        tag.rfidTag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tag.attendee?.fullName?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus =
-        statusFilter === 'ALL' || tag.status === statusFilter;
-      const matchesEvent =
-        eventFilter === 'ALL' ||
-        (eventFilter === 'UNASSIGNED' ? !tag.event?.name : tag.event?.name === eventFilter);
-      return matchesSearch && matchesStatus && matchesEvent;
-    });
-  }, [tags, searchTerm, statusFilter, eventFilter]);
+  // Filtered tags (server-side filtering only)
+  const filteredTags = tags;
 
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('ALL');
     setEventFilter('ALL');
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTags.size === filteredTags.length) {
+      setSelectedTags(new Set());
+    } else {
+      setSelectedTags(new Set(filteredTags.map((t) => t._id)));
+    }
+  };
+
+  const handleSelectTag = (tagId) => {
+    const newSelected = new Set(selectedTags);
+    if (newSelected.has(tagId)) {
+      newSelected.delete(tagId);
+    } else {
+      newSelected.add(tagId);
+    }
+    setSelectedTags(newSelected);
+  };
+
+  const handleBulkUnassign = async () => {
+    if (selectedTags.size === 0) return toast.error('No tags selected');
+    setBulkActionLoading(true);
+    try {
+      const selectedTagData = filteredTags.filter((t) => selectedTags.has(t._id));
+      const assignedTags = selectedTagData.filter((t) => t.status === 'ASSIGNED');
+      
+      if (assignedTags.length === 0) {
+        return toast.error('No assigned tags selected');
+      }
+
+      let successCount = 0;
+      for (const tag of assignedTags) {
+        try {
+          await unassignRfidTag(tag.rfidTag, 'Bulk unassigned by admin');
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to unassign ${tag.rfidTag}:`, err);
+        }
+      }
+
+      toast.success(`Unassigned ${successCount} of ${assignedTags.length} tags`);
+      setSelectedTags(new Set());
+      loadTags();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to bulk unassign tags');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDisable = async () => {
+    if (selectedTags.size === 0) return toast.error('No tags selected');
+    setBulkActionLoading(true);
+    try {
+      const selectedTagData = filteredTags.filter((t) => selectedTags.has(t._id));
+      const availableTags = selectedTagData.filter((t) => t.status === 'AVAILABLE');
+      
+      if (availableTags.length === 0) {
+        return toast.error('No available tags selected (cannot disable assigned tags)');
+      }
+
+      let successCount = 0;
+      for (const tag of availableTags) {
+        try {
+          await disableRfidTag(tag.rfidTag, 'Bulk disabled by admin');
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to disable ${tag.rfidTag}:`, err);
+        }
+      }
+
+      toast.success(`Disabled ${successCount} of ${availableTags.length} tags`);
+      setSelectedTags(new Set());
+      loadTags();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to bulk disable tags');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedTags.size === 0) return toast.error('No tags selected');
+    setModalConfig({
+      title: 'Delete Selected RFID Tags',
+      message: `Are you sure you want to delete ${selectedTags.size} RFID tag(s) from inventory? This action cannot be undone.`,
+      confirmText: 'Delete',
+      confirmStyle: 'bg-red-600 hover:bg-red-700',
+      action: async () => {
+        setBulkActionLoading(true);
+        try {
+          const selectedTagData = filteredTags.filter((t) => selectedTags.has(t._id));
+          const deletableTags = selectedTagData.filter((t) => t.status !== 'ASSIGNED');
+          
+          if (deletableTags.length === 0) {
+            setBulkActionLoading(false);
+            setModalOpen(false);
+            return toast.error('Cannot delete assigned tags. Please unassign them first.');
+          }
+
+          let successCount = 0;
+          for (const tag of deletableTags) {
+            try {
+              await deleteRfidFromInventory(tag.rfidTag);
+              successCount++;
+            } catch (err) {
+              console.error(`Failed to delete ${tag.rfidTag}:`, err);
+            }
+          }
+
+          toast.success(`Deleted ${successCount} of ${deletableTags.length} tags`);
+          setSelectedTags(new Set());
+          loadTags();
+        } catch (error) {
+          toast.error(error.response?.data?.message || 'Failed to bulk delete tags');
+        } finally {
+          setBulkActionLoading(false);
+          setModalOpen(false);
+        }
+      },
+      actionData: null,
+    });
+    setModalOpen(true);
   };
 
   const hasActiveFilters = searchTerm !== '' || statusFilter !== 'ALL' || eventFilter !== 'ALL';
@@ -112,7 +247,12 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
 
   const loadTags = async () => {
     try {
-      const response = await getRfidInventory();
+      const params = {};
+      if (eventFilter !== 'ALL') params.eventId = eventFilter;
+      if (statusFilter !== 'ALL') params.status = statusFilter;
+      if (searchTerm) params.search = searchTerm;
+
+      const response = await getRfidInventory(params);
       setTags(response.data?.data?.tags || []);
       setCounts(response.data?.data?.counts || { total: 0, available: 0, assigned: 0, disabled: 0 });
     } catch (error) {
@@ -120,7 +260,40 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
     }
   };
 
-  useEffect(() => { loadTags(); }, []);
+  const loadEvents = async () => {
+    try {
+      const response = await getAllEventsAdmin({ limit: 1000 });
+      setEvents(response.data?.data?.events || []);
+    } catch (error) {
+      console.error('Failed to load events:', error);
+    }
+  };
+
+  useEffect(() => { loadTags(); loadEvents(); }, []);
+
+  // Reload tags when filters change
+  useEffect(() => {
+    const params = {};
+    if (eventFilter !== 'ALL') params.eventId = eventFilter;
+    if (statusFilter !== 'ALL') params.status = statusFilter;
+    if (searchTerm) params.search = searchTerm;
+
+    getRfidInventory(params)
+      .then((response) => {
+        setTags(response.data?.data?.tags || []);
+        setCounts(response.data?.data?.counts || { total: 0, available: 0, assigned: 0, disabled: 0 });
+      })
+      .catch((error) => {
+        toast.error(error.response?.data?.message || 'Failed to load RFID inventory');
+      });
+  }, [eventFilter, statusFilter, searchTerm]);
+
+  // Re-fetch inventory whenever the inventory tab is activated
+  useEffect(() => {
+    if (activeTab === 'inventory') {
+      loadTags();
+    }
+  }, [activeTab]);
 
   const addManual = async (e) => {
     e.preventDefault();
@@ -255,6 +428,47 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
 
   const content = (
       <div className="mx-auto max-w-6xl space-y-6">
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-slate-200">
+          <button
+            onClick={() => handleTabChange('inventory')}
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'inventory'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+            }`}
+          >
+            Physical Tag Inventory
+          </button>
+          <button
+            onClick={() => handleTabChange('assignments')}
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'assignments'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+            }`}
+          >
+            Tag Assignments
+          </button>
+          <button
+            onClick={() => handleTabChange('access-logs')}
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === 'access-logs'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+            }`}
+          >
+            RFID Access Logs
+          </button>
+        </div>
+
+        {activeTab === 'assignments' ? (
+          <AdminRfidAssignmentsPage embedded />
+        ) : activeTab === 'access-logs' ? (
+          <AdminRfidAccessLogsPage embedded />
+        ) : (
+          <>
+
         <div className="grid gap-4 sm:grid-cols-4">
           {[['Total', counts.total, 'text-slate-900'], ['Available', counts.available, 'text-emerald-600'], ['Assigned', counts.assigned, 'text-blue-600'], ['Disabled', counts.disabled, 'text-amber-600']].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className={`mt-2 text-2xl font-bold ${color}`}>{value}</p></div>)}
         </div>
@@ -305,16 +519,17 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
                 <option value="DISABLED">Disabled</option>
               </select>
               {/* Event filter */}
-              {eventNames.length > 1 && (
+              {events.length > 0 && (
                 <select
                   value={eventFilter}
                   onChange={(e) => setEventFilter(e.target.value)}
                   className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="ALL">All Events</option>
-                  <option value="UNASSIGNED">No Event</option>
-                  {eventNames.slice(1).map((name) => (
-                    <option key={name} value={name}>{name}</option>
+                  {events.map((ev) => (
+                    <option key={ev._id} value={ev._id}>
+                      {ev.name}
+                    </option>
                   ))}
                 </select>
               )}
@@ -330,9 +545,56 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
             </div>
           </div>
           <div className="max-h-[28rem] overflow-auto">
+            {/* Bulk action bar */}
+            {selectedTags.size > 0 && (
+              <div className="sticky top-0 z-10 border-b border-slate-200 bg-blue-50 px-5 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-blue-900">
+                    {selectedTags.size} tag{selectedTags.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    onClick={() => setSelectedTags(new Set())}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBulkUnassign}
+                    disabled={bulkActionLoading}
+                    className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                  >
+                    Unassign All
+                  </button>
+                  <button
+                    onClick={handleBulkDisable}
+                    disabled={bulkActionLoading}
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Disable All
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkActionLoading}
+                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    Delete All
+                  </button>
+                </div>
+              </div>
+            )}
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
+                  <th className="px-5 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedTags.size === filteredTags.length && filteredTags.length > 0}
+                      onChange={handleSelectAll}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
                   <th className="px-5 py-3">RFID</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Event</th>
@@ -343,13 +605,21 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
               <tbody>
                 {filteredTags.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-400">
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-400">
                       {hasActiveFilters ? 'No tags match the current filters.' : 'No RFID tags in inventory.'}
                     </td>
                   </tr>
                 ) : (
                   filteredTags.map((tag) => (
                     <tr key={tag._id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedTags.has(tag._id)}
+                          onChange={() => handleSelectTag(tag._id)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-5 py-3 font-mono">{tag.rfidTag}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -429,6 +699,8 @@ const AdminRfidInventoryPage = ({ embedded = false }) => {
           confirmStyle={modalConfig.confirmStyle}
           loading={actionLoading !== null}
         />
+        </>
+        )}
       </div>
   );
 

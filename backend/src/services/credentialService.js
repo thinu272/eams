@@ -8,26 +8,68 @@
 const Attendee = require('../models/Attendee');
 const Event = require('../models/Event');
 
+const RfidAssignment = require('../models/RfidAssignment');
+
 /**
  * Resolve an attendee based on provided QR token or RFID identifier.
  * Returns the attendee document populated with `event` and `ticket`.
+ * Checks both the new active RfidAssignment collection and the Attendee rfidTag/wristbandId fallback.
  */
 async function resolveAttendee({ qrToken, rfidId, eventId }) {
   if (!qrToken && !rfidId) {
     return null;
   }
 
-  const query = qrToken
-    ? { qrToken: String(qrToken).trim() }
-    : {
+  if (qrToken) {
+    return Attendee.findOne({ qrToken: String(qrToken).trim() })
+      .populate('event')
+      .populate('ticket');
+  }
+
+  const cleanRfid = String(rfidId).trim();
+
+  // 1. Try finding an active assignment for this RFID tag within the event
+  const assignmentQuery = {
+    rfidIdentifierSnapshot: cleanRfid,
+    status: 'ACTIVE',
+  };
+  if (eventId) {
+    assignmentQuery.event = eventId;
+  }
+
+  const activeAssignment = await RfidAssignment.findOne(assignmentQuery)
+    .populate('attendee')
+    .populate('event')
+    .populate('ticket');
+
+  if (activeAssignment?.attendee) {
+    // Populate event and ticket if not populated
+    const attendee = await Attendee.findById(activeAssignment.attendee._id || activeAssignment.attendee)
+      .populate('event')
+      .populate('ticket');
+    if (attendee) {
+      attendee._rfidAssignment = activeAssignment;
+      return attendee;
+    }
+  }
+
+  // 2. Fallback to Attendee model (for legacy records or direct fields)
+  const attendeeQuery = eventId
+    ? {
         event: eventId,
         $or: [
-          { rfidTag: String(rfidId).trim() },
-          { wristbandId: String(rfidId).trim() },
+          { rfidTag: cleanRfid },
+          { wristbandId: cleanRfid },
+        ],
+      }
+    : {
+        $or: [
+          { rfidTag: cleanRfid },
+          { wristbandId: cleanRfid },
         ],
       };
 
-  return Attendee.findOne(query)
+  return Attendee.findOne(attendeeQuery)
     .populate('event')
     .populate('ticket');
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
@@ -103,6 +103,16 @@ const StaffDashboardPage = () => {
     deps: [user],
   });
 
+  // Listen for event changes from the header
+  useEffect(() => {
+    const handleEventSelect = () => {
+      initDashboard();
+    };
+
+    window.addEventListener('entrynex:event-select', handleEventSelect);
+    return () => window.removeEventListener('entrynex:event-select', handleEventSelect);
+  }, [initDashboard]);
+
   const actions = [
     {
       title: 'Ticket Scanner',
@@ -167,31 +177,33 @@ const StaffDashboardPage = () => {
         {/* ========== HEADER ========== */}
         <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-4 sm:px-7 sm:py-7">
-            {/* Status row */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
-              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.25em] text-slate-400">
-                Staff Terminal
-              </p>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                  isOnline
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'animate-pulse border-rose-200 bg-rose-50 text-rose-700'
-                }`}
-              >
-                {isOnline ? (
-                  <>
-                    <SignalIcon className="h-3 w-3" />
-                    Online
-                  </>
-                ) : (
-                  <>
-                    <SignalSlashIcon className="h-3 w-3" />
-                    Offline
-                  </>
-                )}
-              </span>
+            {/* Status row with event selector */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
+                <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.25em] text-slate-400">
+                  Staff Terminal
+                </p>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    isOnline
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'animate-pulse border-rose-200 bg-rose-50 text-rose-700'
+                  }`}
+                >
+                  {isOnline ? (
+                    <>
+                      <SignalIcon className="h-3 w-3" />
+                      Online
+                    </>
+                  ) : (
+                    <>
+                      <SignalSlashIcon className="h-3 w-3" />
+                      Offline
+                    </>
+                  )}
+                </span>
+              </div>
             </div>
 
             <h1 className="mt-2.5 sm:mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-3xl leading-tight">
