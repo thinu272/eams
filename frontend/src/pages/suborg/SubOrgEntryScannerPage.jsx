@@ -62,7 +62,6 @@ const SubOrgEntryScannerPage = () => {
   const [result, setResult] = useState({ state: 'idle' });
   const [logs, setLogs] = useState([]);
   const [logsPage, setLogsPage] = useState(1);
-  const [gateInput, setGateInput] = useState('');
   const rfidInputRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState('scan');
@@ -89,20 +88,31 @@ const SubOrgEntryScannerPage = () => {
   );
   const gateLocked = availableGates.length > 0;
 
+  // Get event-specific gates or fallback to assigned gates or default
+  const eventGates = useMemo(() => {
+    if (gateLocked && availableGates.length > 0) {
+      return availableGates;
+    }
+    // Use event-specific gates if available, otherwise fallback to default
+    const eventGatesList = currentEvent?.gates;
+    if (eventGatesList && eventGatesList.length > 0) {
+      return eventGatesList;
+    }
+    return ['Gate A', 'Gate B', 'Gate C', 'VIP Entry'];
+  }, [currentEvent, availableGates, gateLocked]);
+
   // Focus RFID input when mode changes
   useEffect(() => {
     if (readerMode === 'rfid' && activeTab === 'scan') rfidInputRef.current?.focus();
   }, [readerMode, activeTab]);
 
   useEffect(() => {
-    if (availableGates[0]) {
-      setGateName(availableGates[0]);
-      setGateInput(availableGates[0]);
+    if (eventGates[0]) {
+      setGateName(eventGates[0]);
     } else {
       setGateName('Main Gate');
-      setGateInput('Main Gate');
     }
-  }, [availableGates]);
+  }, [eventGates]);
 
   const handleEventChange = (nextId) => {
     setSelectedEventId(nextId);
@@ -821,13 +831,13 @@ const SubOrgEntryScannerPage = () => {
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Select Gate
                   </label>
-                  {availableGates.length > 0 ? (
+                  {eventGates.length > 0 ? (
                     <select
                       value={gateName}
                       onChange={(e) => setGateName(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
                     >
-                      {availableGates.map((gate) => (
+                      {eventGates.map((gate) => (
                         <option key={gate} value={gate}>
                           {gate}
                         </option>
@@ -835,7 +845,7 @@ const SubOrgEntryScannerPage = () => {
                     </select>
                   ) : (
                     <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                      No gates assigned
+                      No gates available
                     </div>
                   )}
                 </div>

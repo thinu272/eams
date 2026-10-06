@@ -63,7 +63,6 @@ const StaffScanPage = () => {
   const [result, setResult] = useState({ state: 'idle' });
   const [logs, setLogs] = useState([]);
   const [logsPage, setLogsPage] = useState(1);
-  const [gateInput, setGateInput] = useState('');
   const rfidInputRef = React.useRef(null);
 
   const [activeTab, setActiveTab] = useState('scan');
@@ -92,6 +91,19 @@ const StaffScanPage = () => {
     [user]
   );
   const gateLocked = availableGates.length > 0;
+
+  // Get event-specific gates or fallback to assigned gates or default
+  const eventGates = useMemo(() => {
+    if (gateLocked && availableGates.length > 0) {
+      return availableGates;
+    }
+    // Use event-specific gates if available, otherwise fallback to default
+    const eventGatesList = currentEvent?.gates;
+    if (eventGatesList && eventGatesList.length > 0) {
+      return eventGatesList;
+    }
+    return ['Gate A', 'Gate B', 'Gate C', 'VIP Entry'];
+  }, [currentEvent, availableGates, gateLocked]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -181,14 +193,12 @@ const StaffScanPage = () => {
   }, []);
 
   useEffect(() => {
-    if (availableGates[0]) {
-      setGateName(availableGates[0]);
-      setGateInput(availableGates[0]);
+    if (eventGates[0]) {
+      setGateName(eventGates[0]);
     } else {
       setGateName('Main Gate');
-      setGateInput('Main Gate');
     }
-  }, [availableGates]);
+  }, [eventGates]);
 
   useEffect(() => {
     if (readerMode === 'rfid' && activeTab === 'scan')
@@ -987,13 +997,13 @@ const StaffScanPage = () => {
                       Select Gate
                     </label>
                     {gateLocked ? (
-                      availableGates.length > 1 ? (
+                      eventGates.length > 1 ? (
                         <select
                           value={gateName}
                           onChange={(e) => setGateName(e.target.value)}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
                         >
-                          {availableGates.map((gate) => (
+                          {eventGates.map((gate) => (
                             <option key={gate} value={gate}>
                               {gate}
                             </option>
@@ -1005,16 +1015,17 @@ const StaffScanPage = () => {
                         </div>
                       )
                     ) : (
-                      <input
-                        value={gateInput}
-                        onChange={(e) => setGateInput(e.target.value)}
-                        onBlur={() => setGateName(gateInput)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') setGateName(gateInput);
-                        }}
-                        placeholder="Gate name"
+                      <select
+                        value={gateName}
+                        onChange={(e) => setGateName(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white touch-manipulation"
-                      />
+                      >
+                        {eventGates.map((gate) => (
+                          <option key={gate} value={gate}>
+                            {gate}
+                          </option>
+                        ))}
+                      </select>
                     )}
                   </div>
                 </div>

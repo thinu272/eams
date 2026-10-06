@@ -77,7 +77,10 @@ const StaffDashboardPage = () => {
 
       if (current) {
         setActiveEvent(current);
-        const gate = (user?.assignedGates || [])[0] || 'Main Gate';
+        // Use event-specific gates if available, otherwise fallback to assigned gates or default
+        const eventGates = current?.gates;
+        const assignedGates = user?.assignedGates || [];
+        const gate = (assignedGates.length > 0 ? assignedGates[0] : (eventGates?.length > 0 ? eventGates[0] : 'Gate A'));
         const statsRes = await getEntryStats({
           eventId: current._id,
           gateId: gate,
