@@ -321,6 +321,22 @@ const EntryScannerPage = () => {
   const assignedGates = useMemo(() => (user?.assignedGates || []).filter(Boolean), [user]);
   const gateLocked = ['staff', 'volunteer'].includes(user?.role) && assignedGates.length > 0;
 
+  // Get the selected event object
+  const selectedEventData = useMemo(() => events.find((e) => e._id === selectedEvent), [events, selectedEvent]);
+
+  // Get available gates for the selected event
+  const availableGates = useMemo(() => {
+    if (gateLocked && assignedGates.length > 0) {
+      return assignedGates;
+    }
+    // Use event-specific gates if available, otherwise fallback to default
+    const eventGates = selectedEventData?.gates;
+    if (eventGates && eventGates.length > 0) {
+      return eventGates;
+    }
+    return ['Gate A', 'Gate B', 'Gate C', 'VIP Entry'];
+  }, [selectedEventData, assignedGates, gateLocked]);
+
   // Load events
   useEffect(() => {
     getMyEvents().then((r) => {
@@ -330,10 +346,16 @@ const EntryScannerPage = () => {
     });
   }, []);
 
-  // Default gate
+  // Set default gate when event changes or when assigned gates change
   useEffect(() => {
-    if (assignedGates.length > 0) setGateId(assignedGates[0]);
-  }, [assignedGates]);
+    if (assignedGates.length > 0) {
+      setGateId(assignedGates[0]);
+    } else if (selectedEventData?.gates && selectedEventData.gates.length > 0) {
+      setGateId(selectedEventData.gates[0]);
+    } else {
+      setGateId('Gate A');
+    }
+  }, [selectedEvent, assignedGates, selectedEventData]);
 
   // Load stats
   const loadStats = useCallback(async () => {
@@ -433,8 +455,6 @@ const EntryScannerPage = () => {
     if ((mode === 'text' || mode === 'rfid') && inputRef.current) setTimeout(() => inputRef.current?.focus(), 50);
   }, [mode]);
 
-  const selectedEventData = events.find((e) => e._id === selectedEvent);
-
   return (
     <div className="fixed inset-0 overflow-hidden bg-gray-950 text-white select-none" style={{ fontFamily: "'Inter', sans-serif" }}>
 
@@ -496,7 +516,7 @@ const EntryScannerPage = () => {
                   onChange={(e) => setGateId(e.target.value)}
                   className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {(assignedGates.length > 0 ? assignedGates : ['Gate A', 'Gate B', 'Gate C', 'VIP Entry']).map((g) => (
+                  {availableGates.map((g) => (
                     <option key={g} value={g}>{g}</option>
                   ))}
                 </select>
@@ -676,7 +696,7 @@ const EntryScannerPage = () => {
               <div className="rounded-3xl border border-gray-800 bg-gray-900 p-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-3">Switch Gate</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {(assignedGates.length > 0 ? assignedGates : ['Gate A', 'Gate B', 'Gate C', 'VIP Entry']).map((g) => (
+                  {availableGates.map((g) => (
                     <button
                       key={g}
                       onClick={() => setGateId(g)}

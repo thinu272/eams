@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, forwardRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
@@ -65,10 +65,16 @@ const emptyCategory = {
 const emptySubOrg = {
   name: '', email: '', phone: '', password: '', role: 'SubOrganiser',
   permissions: {
-    canAddAttendees: true, canVerifyPhotos: true, canInviteAttendees: true,
-    canBulkUpload: false, canEntryAccess: false,
+    canEntryAccess: false,
+    canScanZones: false,
+    canAddAttendees: true,
+    canVerifyPhotos: true,
+    canBulkUpload: false,
+    canInviteAttendees: true,
+    canCollectCash: false,
   },
   assignedZones: [],
+  assignedGates: [],
   assignedCategories: [],
 };
 const emptyZone = { name: '', description: '', capacity: 0, color: '#2563eb' };
@@ -297,7 +303,18 @@ const OrganiserDashboard = () => {
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [bulkUploadModal, setBulkUploadModal] = useState(false);
+  const [bulkUploadFile, setBulkUploadFile] = useState(null);
   const [eventRfidStatus, setEventRfidStatus] = useState(null);
+  // Tracks unsaved gate edits so soft-refresh does not overwrite typing,
+  // but server gates ARE applied when the form is clean (fixes stale UI after DB save).
+  const gatesDirtyRef = useRef(false);
+  // Dedicated gates state (per current event) — NOT stored only inside customizationForm,
+  // so workspace reloads cannot silently replace saved gates with stale API data.
+  const [eventGates, setEventGates] = useState([]);
+  const eventGatesEventIdRef = useRef(''); // which eventId eventGates belongs to
+  const gatesLockedUntilRef = useRef(0); // after save, ignore server gates briefly
+  const lastSavedGatesRef = useRef(null);
 
   useEffect(() => {
     if (!logoImageFile) {
@@ -338,10 +355,26 @@ const OrganiserDashboard = () => {
     if (!nextEventId) {
       localStorage.removeItem('lastSelectedEventId');
       setEventId('');
+      gatesDirtyRef.current = false;
+      gatesLockedUntilRef.current = 0;
+      lastSavedGatesRef.current = null;
+      setEventGates([]);
+      eventGatesEventIdRef.current = '';
+      setCustomizationForm(null);
       return '';
     }
 
-    setEventId(nextEventId);
+    setEventId((prev) => {
+      if (prev && prev !== nextEventId) {
+        gatesDirtyRef.current = false;
+        gatesLockedUntilRef.current = 0;
+        lastSavedGatesRef.current = null;
+        setEventGates([]);
+        eventGatesEventIdRef.current = '';
+        setCustomizationForm(null);
+      }
+      return nextEventId;
+    });
     localStorage.setItem('lastSelectedEventId', nextEventId);
     return nextEventId;
   };
@@ -399,8 +432,7 @@ const OrganiserDashboard = () => {
 
   const loadWorkspace = async (selectedEventId = eventId, options = {}) => {
     if (!selectedEventId) return;
-    const soft = !!options.soft; // soft = don't wipe customizationForm while editing
-    const skipForm = soft || options.preserveCustomization || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('section') === 'customization' && !!options.fromRefresh);
+    const soft = !!options.soft;
     if (!soft) setLoading(true);
     try {
       const response = await getOrganiserWorkspace({
@@ -418,33 +450,58 @@ const OrganiserDashboard = () => {
         limit: params.get('limit') || undefined,
       });
       const nextData = response.data?.data || null;
+      if (!nextData) return;
+
+      // Gates for THIS event only (from server)
+      const serverGates = Array.isArray(nextData?.event?.gates)
+        ? nextData.event.gates
+            .map((g) => (typeof g === 'string' ? g : g?.name || ''))
+            .map((g) => String(g).trim())
+            .filter(Boolean)
+        : [];
+
       setWorkspace(nextData);
       const loadedEventId = getEventObjectId(nextData?.event);
       if (loadedEventId && loadedEventId !== selectedEventId) {
         rememberSelectedEvent(loadedEventId);
       }
+
+      // Sync dedicated gates state (never cross-event; never overwrite mid-edit or post-save lock)
+      const gatesBelongToThisEvent = String(eventGatesEventIdRef.current) === String(selectedEventId);
+      const locked =
+        Date.now() < gatesLockedUntilRef.current &&
+        Array.isArray(lastSavedGatesRef.current) &&
+        gatesBelongToThisEvent;
+
+      if (locked) {
+        // Keep what we just saved
+        setEventGates([...lastSavedGatesRef.current]);
+      } else if (!gatesDirtyRef.current || !gatesBelongToThisEvent) {
+        setEventGates([...serverGates]);
+        eventGatesEventIdRef.current = String(selectedEventId);
+      }
+
       const rawSettings = nextData?.settings || {};
-      // Never overwrite forms while user is editing customization (prevents typing disappearing)
-      const sectionNow = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('section')) || '';
-      const preserveForms = soft || sectionNow === 'customization';
-      if (!preserveForms) {
-      console.log('Workspace rawSettings:', JSON.stringify(rawSettings, null, 2));
-      setSettingsForm({
-        ...rawSettings,
-        emailTemplates: rawSettings.emailTemplates || {},
-        smsTemplates: rawSettings.smsTemplates || {},
-      });
-      setCustomizationForm({
+      const sectionNow =
+        (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('section')) ||
+        '';
+      const isInCustomization = sectionNow === 'customization';
+
+      // Soft + customization + user is mid-edit → keep local form fields
+      // Gates come from eventGates state (synced above)
+      const keepLocalEdits = soft && isInCustomization && gatesDirtyRef.current;
+
+      const buildCustomizationForm = () => ({
         basicInfo: {
           name: nextData?.event?.name || '',
           description: nextData?.event?.description || '',
           eventType: nextData?.event?.eventType || '',
           customEventType: nextData?.event?.customEventType || '',
           venue: normalizeVenue(nextData?.event),
-
+          // Mirror dedicated gates into form for any code still reading basicInfo.gates
+          gates: (!gatesDirtyRef.current || !gatesBelongToThisEvent) ? [...serverGates] : (nextData?.event?.gates || []),
           currency: nextData?.settings?.currency || nextData?.event?.settings?.currency || 'LKR',
         },
-        // Ensure venue object exists even if nextData doesn't have it
         branding: {
           themeColor: nextData?.event?.branding?.themeColor || '#2563EB',
           logoImage: nextData?.event?.branding?.logoImage || nextData?.event?.logoImage || '',
@@ -460,16 +517,35 @@ const OrganiserDashboard = () => {
         },
         status: nextData?.event?.status || 'draft',
       });
-      } // end !preserveForms
+
+      if (keepLocalEdits) {
+        // Do not touch customizationForm — user is typing / editing gates
+        setSettingsForm((prev) =>
+          prev
+            ? prev
+            : {
+                ...rawSettings,
+                emailTemplates: rawSettings.emailTemplates || {},
+                smsTemplates: rawSettings.smsTemplates || {},
+              }
+        );
+      } else {
+        setSettingsForm({
+          ...rawSettings,
+          emailTemplates: rawSettings.emailTemplates || {},
+          smsTemplates: rawSettings.smsTemplates || {},
+        });
+        setCustomizationForm(buildCustomizationForm());
+        gatesDirtyRef.current = false;
+      }
+
       const zoneMap = {};
       (nextData?.event?.zones || []).forEach((zone) => {
-        zoneMap[zone.id] = (nextData?.tickets || []).filter((ticket) => (ticket.allowedZones || []).includes(zone.id)).map((ticket) => ticket.id);
+        zoneMap[zone.id] = (nextData?.tickets || [])
+          .filter((ticket) => (ticket.allowedZones || []).includes(zone.id))
+          .map((ticket) => ticket.id);
       });
-      if (!preserveForms) setZoneAssignments(zoneMap);
-      else {
-        // still update zone map for other sections without resetting forms
-        setZoneAssignments(zoneMap);
-      }
+      setZoneAssignments(zoneMap);
     } catch (error) {
       if (error.response?.status === 404) {
         const fallbackEventId = events
@@ -527,13 +603,13 @@ const OrganiserDashboard = () => {
 
   useEffect(() => {
     if (!eventId) return;
-    // Avoid full form reload on every query tweak while editing customization
-    if (activeSection === 'customization') {
-      // Only load if we have no form yet
-      if (!customizationForm) loadWorkspace(eventId);
-      return;
-    }
-    loadWorkspace(eventId);
+    // One load path only — avoids race between parallel forceRefresh + soft calls
+    // that was painting old gates after save.
+    const section = params.get('section') || '';
+    loadWorkspace(eventId, {
+      // Soft only when already editing customization (keep unsaved gate edits)
+      soft: section === 'customization' && gatesDirtyRef.current,
+    });
   }, [eventId, params.toString()]);
 
   // Fetch RFID status for current event
@@ -772,22 +848,9 @@ const OrganiserDashboard = () => {
     return counts;
   }, [teamMembers]);
 
-  useAutoRefresh(
-    () => {
-      if (!autoUpdateEnabled) return;
-      loadWorkspaceRef.current();
-      setLastUpdateTime(new Date());
-    },
-    {
-      enabled: autoUpdateEnabled,
-      interval: autoUpdateInterval,
-      immediate: false,
-      deps: [autoUpdateEnabled, autoUpdateInterval],
-    }
-  );
-
   const handleManualRefresh = () => {
-    loadWorkspaceRef.current();
+    gatesDirtyRef.current = false;
+    loadWorkspaceRef.current(eventId, { soft: false });
     setLastUpdateTime(new Date());
     toast.success('Analytics updated successfully');
   };
@@ -834,8 +897,14 @@ const OrganiserDashboard = () => {
   }, [filteredTeamMembers]);
   const attendeeCategoryOptions = useMemo(() => categories.map((item) => ({ value: item.id, label: item.name })), [categories]);
 
-  const saveAttendee = () =>
-    runAction(() => updateOrganiserAttendee(attendeeModal._id, { ...attendeeModal, eventId }), {
+  const saveAttendee = () => {
+    if (!attendeeModal) return;
+    const attendeeId = attendeeModal._id || attendeeModal.id;
+    if (!attendeeId) {
+      toast.error('Creating a single attendee is not supported here. Use Bulk Upload or invite an existing attendee.');
+      return;
+    }
+    return runAction(() => updateOrganiserAttendee(attendeeId, { ...attendeeModal, eventId }), {
       successMessage: 'Attendee updated',
       errorMessage: 'Failed to update attendee',
       onSuccess: () => {
@@ -843,6 +912,7 @@ const OrganiserDashboard = () => {
         loadWorkspace();
       },
     });
+  };
 
   const removeAttendee = (id) =>
     runAction(() => deleteOrganiserAttendee(id, eventId), {
@@ -873,14 +943,41 @@ const OrganiserDashboard = () => {
     });
 
   const handleBulkUpload = async (file) => {
+    if (!file) {
+      toast.error('Please select a file to upload');
+      return;
+    }
+    if (!eventId) {
+      toast.error('Select an event before bulk upload');
+      return;
+    }
     const formData = new FormData();
     formData.append('eventId', eventId);
     formData.append('file', file);
-    await runAction(() => uploadOrganiserBulk(formData), {
+    const ok = await runAction(() => uploadOrganiserBulk(formData), {
       successMessage: 'Bulk upload complete',
       errorMessage: 'Bulk upload failed',
       onSuccess: loadWorkspace,
     });
+    if (ok) {
+      setBulkUploadModal(false);
+      setBulkUploadFile(null);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    if (!eventId) {
+      toast.error('Select an event first');
+      return;
+    }
+    await runAction(
+      async () => {
+        const res = await downloadOrganiserTemplate(eventId);
+        const blob = res?.data instanceof Blob ? res.data : new Blob([res.data]);
+        downloadBlob(blob, `attendee-template-${eventId}.csv`);
+      },
+      { successMessage: 'Template downloaded', errorMessage: 'Failed to download template' }
+    );
   };
 
   const saveCategory = () =>
@@ -952,6 +1049,9 @@ const OrganiserDashboard = () => {
     }
   });
 
+  // Gates: get assigned gates
+  const gateSet = new Set(member.assignedGates || []);
+
   // Categories: from ticket.assignedSubOrganisers AND member.assignedCategories
   const memberIdStr = toId(member._id || member.id);
   const catIdSet = new Set();
@@ -978,6 +1078,7 @@ const OrganiserDashboard = () => {
     role: member.role || 'SubOrganiser',
     permissions: { ...emptySubOrg.permissions, ...(member.permissions || {}) },
     assignedZones: Array.from(zoneIdSet),
+    assignedGates: Array.from(gateSet),
     assignedCategories: Array.from(catIdSet),
     _id: member._id || member.id,
   });
@@ -989,15 +1090,32 @@ const OrganiserDashboard = () => {
       await saveSubOrganiser();
       return;
     }
-    await runAction(() => updateSubOrganiser(subOrgForm._id, { ...subOrgForm, eventId }), {
-      successMessage: 'Team member updated',
-      errorMessage: 'Update failed',
-      onSuccess: () => {
-        setSubOrgModal(false);
-        setSubOrgForm(emptySubOrg);
-        loadWorkspace();
-      },
-    });
+    const response = await updateSubOrganiser(subOrgForm._id, { ...subOrgForm, eventId });
+    const updatedUser = response.data?.data?.user;
+    if (updatedUser) {
+      // Immediately update local state with fresh server data
+      setWorkspace(prev => {
+        if (!prev?.teamMembers) return prev;
+        return {
+          ...prev,
+          teamMembers: (prev.teamMembers || []).map(member => {
+            if (String(member._id) === String(updatedUser._id)) {
+              return {
+                ...member,
+                ...updatedUser,
+                permissions: updatedUser.permissions || member.permissions,
+              };
+            }
+            return member;
+          }),
+        };
+      });
+    }
+    setSubOrgModal(false);
+    setSubOrgForm(emptySubOrg);
+    toast.success('Team member updated');
+    // Force fresh data load to ensure persistence
+    loadWorkspace();
   };
 
   const toggleTeamMemberStatus = (member) =>
@@ -1077,9 +1195,28 @@ const OrganiserDashboard = () => {
       const formData = new FormData();
       formData.append('eventId', activeEventId);
 
-      // Basic info
-      const basicInfoPayload = customizationForm.basicInfo || {};
+      // Gates source of truth = dedicated eventGates state
+      const normalizedGates = [
+        ...new Set(
+          (Array.isArray(eventGates) ? eventGates : [])
+            .map((g) => (typeof g === 'string' ? g : g?.name || '').trim())
+            .filter(Boolean)
+        ),
+      ];
+      console.log('[saveCustomization] eventId=', activeEventId, 'gates=', normalizedGates);
+
+      const basicInfoPayload = {
+        name: customizationForm.basicInfo?.name || '',
+        description: customizationForm.basicInfo?.description || '',
+        eventType: customizationForm.basicInfo?.eventType || '',
+        customEventType: customizationForm.basicInfo?.customEventType || '',
+        venue: customizationForm.basicInfo?.venue || {},
+        currency: customizationForm.basicInfo?.currency || 'LKR',
+        gates: normalizedGates,
+      };
       formData.append('basicInfo', JSON.stringify(basicInfoPayload));
+      formData.append('gates', JSON.stringify(normalizedGates));
+      formData.append('eventGates', JSON.stringify(normalizedGates));
 
       // Branding (files are sent separately)
       const brandingPayload = { ...customizationForm.branding };
@@ -1215,22 +1352,16 @@ const OrganiserDashboard = () => {
       // ─── Save ───
       const response = await updateOrganiserEventCustomization(formData);
 
-      // Also push payment methods via settings endpoint
-      try {
-        await updateOrganiserSettings({
-          eventId: activeEventId,
-          settings: {
-            ...(settingsForm || {}),
-            paymentMethods: paymentMethodsPayload,
-          },
-        });
-      } catch (settingsErr) {
-        console.warn('Settings paymentMethods update failed:', settingsErr);
-      }
-
       toast.success('Event customization updated');
 
-      // Clear temporary file state
+      // Optimistic UI — dedicated eventGates is the only gates UI source
+      const gatesToKeep = [...normalizedGates];
+      setEventGates(gatesToKeep);
+      eventGatesEventIdRef.current = String(activeEventId);
+      lastSavedGatesRef.current = gatesToKeep;
+      gatesLockedUntilRef.current = Date.now() + 30000; // 30s ignore stale GET
+      gatesDirtyRef.current = false;
+
       setCoverImageFile(null);
       setLogoImageFile(null);
       setBannerImageFile(null);
@@ -1238,8 +1369,30 @@ const OrganiserDashboard = () => {
       setRemoveLogo(false);
       setRemoveBanner(false);
 
-      // ─── CRITICAL FIX: reload workspace so public listing and dashboard state reflect the change ───
-      await loadWorkspace(activeEventId, { soft: false });
+      const savedEvent = response?.data?.data?.event || response?.data?.event || null;
+
+      setCustomizationForm((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          basicInfo: {
+            ...prev.basicInfo,
+            gates: gatesToKeep,
+          },
+        };
+      });
+
+      setWorkspace((prev) => {
+        if (!prev?.event) return prev;
+        return {
+          ...prev,
+          event: {
+            ...prev.event,
+            ...(savedEvent || {}),
+            gates: gatesToKeep,
+          },
+        };
+      });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update event customization');
     }
@@ -1449,7 +1602,8 @@ const OrganiserDashboard = () => {
               <MetricCard title="Tickets Sold" value={stats.ticketsSold || 0} subtitle={`${soldProgress}% of capacity`} icon={FireIcon} />
               <MetricCard
                 title="Total Revenue"
-                value={`${eventCurrency} ${Number(stats.totalRevenue || 0).toLocaleString()}`}                subtitle="Confirmed order value"
+                value={`${eventCurrency} ${Number(stats.totalRevenue || eventStats.revenue || 0).toLocaleString()}`}
+                subtitle="Confirmed order value"
                 icon={BanknotesIcon}
               />
               <MetricCard title="Checked-In" value={stats.checkedInCount || 0} subtitle={`${checkInProgress}% check-in rate`} icon={CheckBadgeIcon} />
@@ -1672,7 +1826,7 @@ const OrganiserDashboard = () => {
 
             {/* Tabs */}
             <div className="mb-6 flex gap-6 border-b border-slate-200">
-              {['general', 'branding', 'payment'].map((tab) => (
+              {['general', 'branding', 'payment', 'gates'].map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -1683,7 +1837,7 @@ const OrganiserDashboard = () => {
                       : 'text-slate-500'
                   }`}
                 >
-                  {tab}
+                  {tab === 'gates' ? 'Gates' : tab}
                 </button>
               ))}
             </div>
@@ -2029,8 +2183,91 @@ const OrganiserDashboard = () => {
               </div>
             </div>
           )}
-          </Card>
-        )}
+          {customizationTab === 'gates' && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-slate-200 p-5">
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-2">Main Entry Gates</h4>
+                  <p className="text-xs text-blue-700">
+                    Configure the physical gates at the venue entrance where attendees check in/out.
+                    Changes are saved when you click <strong>Save Customization</strong>.
+                  </p>
+                </div>
+
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-semibold text-slate-700">Gate Names</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      gatesDirtyRef.current = true;
+                      setEventGates((gates) => {
+                        const list = Array.isArray(gates) ? gates : [];
+                        const nextIndex = list.length;
+                        const label = `Gate ${String.fromCharCode(65 + (nextIndex % 26))}${nextIndex >= 26 ? Math.floor(nextIndex / 26) : ''}`;
+                        return [...list, label];
+                      });
+                    }}
+                  >
+                    + Add Gate
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {eventGates.map((gate, idx) => (
+                    <div
+                      key={`gate-row-${idx}`}
+                      className="p-4 border border-slate-200 rounded-lg bg-slate-50 flex gap-3 items-center"
+                    >
+                      <div className="flex-1">
+                        <label className="block text-xs text-slate-500 mb-1">Gate Name *</label>
+                        <input
+                          required
+                          value={typeof gate === 'string' ? gate : (gate?.name || '')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            gatesDirtyRef.current = true;
+                            setEventGates((list) => {
+                              const next = [...(list || [])];
+                              next[idx] = val;
+                              return next;
+                            });
+                          }}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          placeholder="e.g., Gate A, Main Entrance, VIP Entry"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          gatesDirtyRef.current = true;
+                          setEventGates((list) => {
+                            const next = [...(list || [])];
+                            next.splice(idx, 1);
+                            return next;
+                          });
+                        }}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                {eventGates.length === 0 && (
+                  <div className="text-center py-8 text-slate-500 text-sm">
+                    No gates configured. Click &quot;+ Add Gate&quot; to add the first gate.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
         {activeSection === 'attendees' && (
           <PermissionGuard permission="canViewAttendees" fallback={null}>
             <Card className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden" padding={false}>
@@ -2041,7 +2278,7 @@ const OrganiserDashboard = () => {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <PermissionGuard permission="canAddAttendees">
-                    <Button size="sm" onClick={() => setAttendeeModal({})}>Add Attendee</Button>
+                    <Button size="sm" onClick={() => setAttendeeModal({ ...emptyAttendee })}>Add Attendee</Button>
                   </PermissionGuard>
                   <PermissionGuard permission="canExcelBulkImports">
                     <Button size="sm" variant="outline" onClick={() => { setBulkUploadModal(true); }}>
@@ -2689,8 +2926,19 @@ const OrganiserDashboard = () => {
                               </Badge>
                             </Td>
                             <Td className="text-xs text-slate-600">
-                              {[...(member.assignedGates || []), ...(member.assignedZones || [])].join(', ') ||
-                                'General'}
+                              {/* Show only gates/zones that belong to current event */}
+                              {(() => {
+                                const currentEventGates = selectedEvent?.gates || [];
+                                const currentEventZones = selectedEvent?.zones || [];
+                                const memberGates = (member.assignedGates || []).filter(g =>
+                                  currentEventGates.includes(g)
+                                );
+                                const memberZones = (member.assignedZones || []).filter(z =>
+                                  currentEventZones.some(z2 => (z2.id || z2.name) === z)
+                                );
+                                const display = [...memberGates, ...memberZones];
+                                return display.length > 0 ? display.join(', ') : 'General';
+                              })()}
                             </Td>
                             <Td>
                               <div className="flex flex-wrap gap-2">
@@ -2820,33 +3068,48 @@ const OrganiserDashboard = () => {
                                       </Td>
                                       <Td>
                                         <div className="flex flex-wrap gap-1">
-                                          {(member.assignedGates || []).length > 0 && (
+                                          {(member.assignedGates || []).filter(g =>
+                                            (selectedEvent?.gates || []).includes(g)
+                                          ).length > 0 && (
                                             <span className="rounded-full bg-sky-50 border border-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
                                               Entry
                                             </span>
                                           )}
-                                          {(member.assignedZones || []).length > 0 && (
+                                          {(member.assignedZones || []).filter(z =>
+                                            (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                          ).length > 0 && (
                                             <span className="rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
                                               Zone
                                             </span>
                                           )}
-                                          {!(member.assignedGates || []).length &&
-                                            !(member.assignedZones || []).length && (
+                                          {!(member.assignedGates || []).filter(g =>
+                                            (selectedEvent?.gates || []).includes(g)
+                                          ).length && !(member.assignedZones || []).filter(z =>
+                                            (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                          ).length && (
                                               <span className="text-xs text-slate-400">General</span>
                                             )}
                                         </div>
                                       </Td>
                                       <Td className="text-xs text-slate-600">
                                         {[
-                                          (member.assignedGates || []).length
-                                            ? `Gates: ${(member.assignedGates || []).join(', ')}`
+                                          (member.assignedGates || []).filter(g =>
+                                            (selectedEvent?.gates || []).includes(g)
+                                          ).length
+                                            ? `Gates: ${(member.assignedGates || []).filter(g =>
+                                                (selectedEvent?.gates || []).includes(g)
+                                              ).join(', ')}`
                                             : '',
-                                          (member.assignedZones || []).length
-                                            ? `Zones: ${(member.assignedZones || []).join(', ')}`
-                                            : 'No zone access',
+                                          (member.assignedZones || []).filter(z =>
+                                            (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                          ).length
+                                            ? `Zones: ${(member.assignedZones || []).filter(z =>
+                                                (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                              ).join(', ')}`
+                                            : '',
                                         ]
                                           .filter(Boolean)
-                                          .join(' | ')}
+                                          .join(' | ') || 'No zone access'}
                                       </Td>
                                       <Td>
                                         <div className="flex flex-wrap gap-2">
@@ -2952,15 +3215,23 @@ const OrganiserDashboard = () => {
                                 </Td>
                                 <Td className="text-xs text-slate-600">
                                   {[
-                                    (member.assignedGates || []).length
-                                      ? `Gates: ${(member.assignedGates || []).join(', ')}`
+                                    (member.assignedGates || []).filter(g =>
+                                      (selectedEvent?.gates || []).includes(g)
+                                    ).length
+                                      ? `Gates: ${(member.assignedGates || []).filter(g =>
+                                          (selectedEvent?.gates || []).includes(g)
+                                        ).join(', ')}`
                                       : '',
-                                    (member.assignedZones || []).length
-                                      ? `Zones: ${(member.assignedZones || []).join(', ')}`
-                                      : 'No zone access',
+                                    (member.assignedZones || []).filter(z =>
+                                      (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                    ).length
+                                      ? `Zones: ${(member.assignedZones || []).filter(z =>
+                                          (selectedEvent?.zones || []).some(z2 => (z2.id || z2.name) === z)
+                                        ).join(', ')}`
+                                      : '',
                                   ]
                                     .filter(Boolean)
-                                    .join(' | ')}
+                                    .join(' | ') || 'No zone access'}
                                 </Td>
                                 <Td>
                                   <div className="flex flex-wrap gap-2">
@@ -3810,7 +4081,143 @@ const OrganiserDashboard = () => {
         )}
       </div>
 
-      <Modal open={!!zoneModal} onClose={() => setZoneModal(null)} title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'} size="md">
+      
+      <Modal
+        open={!!attendeeModal}
+        onClose={() => setAttendeeModal(null)}
+        title={attendeeModal?._id || attendeeModal?.id ? 'Edit Attendee' : 'Add Attendee'}
+        size="lg"
+      >
+        {attendeeModal && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Full name">
+                <Input
+                  value={attendeeModal.fullName || ''}
+                  onChange={(e) => setAttendeeModal((c) => ({ ...c, fullName: e.target.value }))}
+                  placeholder="Full name"
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={attendeeModal.email || ''}
+                  onChange={(e) => setAttendeeModal((c) => ({ ...c, email: e.target.value }))}
+                  placeholder="Email"
+                />
+              </Field>
+              <Field label="Phone">
+                <Input
+                  value={attendeeModal.phone || ''}
+                  onChange={(e) => setAttendeeModal((c) => ({ ...c, phone: e.target.value }))}
+                  placeholder="Phone"
+                />
+              </Field>
+              <Field label="National ID">
+                <Input
+                  value={attendeeModal.nationalId || ''}
+                  onChange={(e) => setAttendeeModal((c) => ({ ...c, nationalId: e.target.value }))}
+                  placeholder="National ID"
+                />
+              </Field>
+              <Field label="Category">
+                <Select
+                  value={attendeeModal.categoryId || ''}
+                  onChange={(e) => setAttendeeModal((c) => ({ ...c, categoryId: e.target.value }))}
+                >
+                  <option value="">Select category</option>
+                  {categories.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Field label="Notes">
+              <textarea
+                rows={3}
+                value={attendeeModal.notes || ''}
+                onChange={(e) => setAttendeeModal((c) => ({ ...c, notes: e.target.value }))}
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                placeholder="Optional notes"
+              />
+            </Field>
+            {!(attendeeModal._id || attendeeModal.id) && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                Single attendee creation is not available via this form. Use <strong>Bulk Upload</strong> to add new attendees, or edit an existing one.
+              </p>
+            )}
+            <div className="flex gap-3 border-t border-slate-100 pt-4">
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5"
+                onClick={saveAttendee}
+                disabled={!(attendeeModal._id || attendeeModal.id)}
+              >
+                Save changes
+              </Button>
+              <Button variant="outline" className="flex-1 py-2.5" onClick={() => setAttendeeModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={bulkUploadModal}
+        onClose={() => {
+          setBulkUploadModal(false);
+          setBulkUploadFile(null);
+        }}
+        title="Bulk Upload Attendees"
+        size="md"
+      >
+        <div className="space-y-5">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <p className="text-sm font-semibold text-blue-900">Upload a spreadsheet</p>
+            <p className="mt-1 text-xs text-blue-700">
+              Use the template CSV/Excel format. Required columns typically include name, email, phone, and category.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+              Download template
+            </Button>
+          </div>
+          <Field label="File">
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => setBulkUploadFile(e.target.files?.[0] || null)}
+              className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+            />
+          </Field>
+          {bulkUploadFile && (
+            <p className="text-xs text-slate-500">Selected: {bulkUploadFile.name}</p>
+          )}
+          <div className="flex gap-3 border-t border-slate-100 pt-4">
+            <Button
+              className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5"
+              onClick={() => handleBulkUpload(bulkUploadFile)}
+              disabled={!bulkUploadFile}
+            >
+              Upload
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 py-2.5"
+              onClick={() => {
+                setBulkUploadModal(false);
+                setBulkUploadFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+<Modal open={!!zoneModal} onClose={() => setZoneModal(null)} title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'} size="md">
         {zoneModal && (
           <div className="space-y-5">
             <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50/60 p-4">
@@ -4041,14 +4448,17 @@ const OrganiserDashboard = () => {
                 value={subOrgForm.role}
                 onChange={(e) => {
                   const role = e.target.value;
-                  let permissions = { 
-                    canAddAttendees: false, 
-                    canVerifyPhotos: false, 
-                    canInviteAttendees: false, 
-                    canBulkUpload: false, 
-                    canEntryAccess: false 
+                  let permissions = {
+                    canAddAttendees: false,
+                    canVerifyPhotos: false,
+                    canInviteAttendees: false,
+                    canBulkUpload: false,
+                    canEntryAccess: false,
+                    canScanZones: false,
+                    canCollectCash: false
                   };
                   let assignedZones = subOrgForm.assignedZones || [];
+                  let assignedGates = subOrgForm.assignedGates || [];
 
                   if (role === 'SubOrganiser') {
                     permissions = {
@@ -4056,40 +4466,52 @@ const OrganiserDashboard = () => {
                       canVerifyPhotos: true,
                       canInviteAttendees: true,
                       canBulkUpload: true,
-                      canEntryAccess: true
+                      canEntryAccess: true,
+                      canScanZones: true,
+                      canCollectCash: true
                     };
                     // full sub-organiser default
                     assignedZones = assignedZones || [];
+                    assignedGates = assignedGates || [];
                   } else if (role === 'Staff') {
                     permissions = {
                       canAddAttendees: true,
                       canVerifyPhotos: true,
                       canInviteAttendees: true,
                       canBulkUpload: false,
-                      canEntryAccess: true
+                      canEntryAccess: true,
+                      canScanZones: false,
+                      canCollectCash: false
                     };
                     assignedZones = assignedZones || [];
+                    assignedGates = assignedGates || [];
                   } else if (role === 'Volunteer') {
                     permissions = {
                       canAddAttendees: false,
                       canVerifyPhotos: false,
                       canInviteAttendees: false,
                       canBulkUpload: false,
-                      canEntryAccess: true
+                      canEntryAccess: true,
+                      canScanZones: false,
+                      canCollectCash: false
                     };
                     assignedZones = assignedZones || [];
+                    assignedGates = assignedGates || [];
                   } else if (role === 'Auditor') {
                     permissions = {
                       canAddAttendees: false,
                       canVerifyPhotos: false,
                       canInviteAttendees: false,
                       canBulkUpload: false,
-                      canEntryAccess: false
+                      canEntryAccess: false,
+                      canScanZones: false,
+                      canCollectCash: false
                     };
                     assignedZones = assignedZones || [];
+                    assignedGates = [];
                   }
 
-                  setSubOrgForm(curr => ({ ...curr, role, permissions, assignedZones }));
+                  setSubOrgForm(curr => ({ ...curr, role, permissions, assignedZones, assignedGates }));
                 }}
               >
                 <option value="SubOrganiser">Sub-Organiser</option>
@@ -4114,55 +4536,203 @@ const OrganiserDashboard = () => {
           </div>
 
           <div className="rounded-2xl border border-slate-200 p-4">
+            <span className="text-xs font-bold uppercase text-slate-500">Checkpoint Assignment</span>
+            <p className="text-[11px] text-slate-500 mt-1 mb-3">Assign specific gates for entry/exit operations</p>
+            {(() => {
+              const allGates = selectedEvent?.gates || [];
+              const assignedGates = subOrgForm.assignedGates || [];
+              const isAllChecked = allGates.length > 0 && allGates.every(gate => assignedGates.includes(gate));
+              
+              return (
+                <>
+                  {allGates.length > 0 && (
+                    <div className="mb-3">
+                      <label className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isAllChecked ? 'border-indigo-200 bg-indigo-50/20 font-semibold text-indigo-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                        <input
+                          type="checkbox"
+                          checked={isAllChecked}
+                          onChange={(e) => {
+                            const next = e.target.checked ? [...allGates] : [];
+                            setSubOrgForm(curr => ({ ...curr, assignedGates: next }));
+                          }}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        All Gates (Select / Deselect All)
+                      </label>
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {allGates.length > 0 ? allGates.map((gate) => {
+                      const isChecked = assignedGates.includes(gate);
+                      return (
+                        <label key={gate} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...new Set([...assignedGates, gate])]
+                                : assignedGates.filter(item => item !== gate);
+                              setSubOrgForm(curr => ({ ...curr, assignedGates: next }));
+                            }}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          {gate}
+                        </label>
+                      );
+                    }) : (
+                      <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No gates configured for this event.</div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 p-4">
             <span className="text-xs font-bold uppercase text-slate-500">Zone Access Scope</span>
             <p className="text-[11px] text-slate-500 mt-1 mb-3">Allow checking attendees in/out of specific zones</p>
-            {(selectedEvent?.zones || []).length > 0 && (
-              <div className="mb-3">
-                {(() => {
-                  const allZones = selectedEvent?.zones || [];
-                  const allZoneIds = allZones.map(z => z.id || z.name);
-                  const isAllChecked = allZoneIds.length > 0 && allZoneIds.every(zid => (subOrgForm.assignedZones || []).includes(zid));
-                  return (
-                    <label className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isAllChecked ? 'border-indigo-200 bg-indigo-50/20 font-semibold text-indigo-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
-                      <input
-                        type="checkbox"
-                        checked={isAllChecked}
-                        onChange={(e) => {
-                          const next = e.target.checked ? allZoneIds : [];
-                          setSubOrgForm(curr => ({ ...curr, assignedZones: next }));
-                        }}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      All Zones (Select / Deselect All)
-                    </label>
-                  );
-                })()}
-              </div>
-            )}
-            <div className="grid gap-2 sm:grid-cols-2">
-              {(selectedEvent?.zones || []).map((zone) => {
-                const zid = zone.id || zone.name;
-                const isChecked = (subOrgForm.assignedZones || []).includes(zid);
-                return (
-                  <label key={zone.id} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        const next = e.target.checked 
-                          ? [...new Set([...(subOrgForm.assignedZones || []), zid])]
-                          : (subOrgForm.assignedZones || []).filter(item => item !== zid);
-                        setSubOrgForm(curr => ({ ...curr, assignedZones: next }));
-                      }}
-                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    {zone.name}
-                  </label>
-                );
-              })}
-              {(selectedEvent?.zones || []).length === 0 && (
-                <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No custom zones configured yet.</div>
-              )}
+            {(() => {
+              const allZones = selectedEvent?.zones || [];
+              const assignedZones = subOrgForm.assignedZones || [];
+              const allZoneIds = allZones.map(z => z.id || z.name);
+              const isAllChecked = allZoneIds.length > 0 && allZoneIds.every(zid => assignedZones.includes(zid));
+              
+              return (
+                <>
+                  {allZones.length > 0 && (
+                    <div className="mb-3">
+                      <label className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isAllChecked ? 'border-indigo-200 bg-indigo-50/20 font-semibold text-indigo-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                        <input
+                          type="checkbox"
+                          checked={isAllChecked}
+                          onChange={(e) => {
+                            const next = e.target.checked ? [...allZoneIds] : [];
+                            setSubOrgForm(curr => ({ ...curr, assignedZones: next }));
+                          }}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        All Zones (Select / Deselect All)
+                      </label>
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {allZones.length > 0 ? allZones.map((zone) => {
+                      const zid = zone.id || zone.name;
+                      const isChecked = assignedZones.includes(zid);
+                      return (
+                        <label key={zone.id || zid} className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs cursor-pointer transition-all ${isChecked ? 'border-blue-200 bg-blue-50/20 font-semibold text-blue-900' : 'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-slate-200'}`}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const next = e.target.checked
+                                ? [...new Set([...assignedZones, zid])]
+                                : assignedZones.filter(item => item !== zid);
+                              setSubOrgForm(curr => ({ ...curr, assignedZones: next }));
+                            }}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          {zone.name}
+                        </label>
+                      );
+                    }) : (
+                      <div className="sm:col-span-2 text-xs italic text-slate-400 text-center py-2">No zones configured for this event.</div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 p-4">
+            <span className="text-xs font-bold uppercase text-slate-500">Capabilities</span>
+            <p className="text-[11px] text-slate-500 mt-1 mb-3">Actions this member can perform</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canEntryAccess}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canEntryAccess: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Entry Access</span>
+                  <span className="text-xs text-slate-500">Check-in/out at gates</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canScanZones}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canScanZones: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Zone Scanning</span>
+                  <span className="text-xs text-slate-500">Validate access to VIP/backstage zones</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canAddAttendees}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canAddAttendees: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Add Attendees</span>
+                  <span className="text-xs text-slate-500">Register guests directly</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canVerifyPhotos}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canVerifyPhotos: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Photo Verification</span>
+                  <span className="text-xs text-slate-500">Approve attendee photo uploads</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canBulkUpload}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canBulkUpload: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Bulk Upload</span>
+                  <span className="text-xs text-slate-500">Excel spreadsheet imports</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canInviteAttendees}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canInviteAttendees: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Invite Attendees</span>
+                  <span className="text-xs text-slate-500">Send invitation links</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!subOrgForm.permissions?.canCollectCash}
+                  onChange={(e) => setSubOrgForm(curr => ({ ...curr, permissions: { ...curr.permissions, canCollectCash: e.target.checked } }))}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div className="flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">Cash Collection</span>
+                  <span className="text-xs text-slate-500">Confirm cash payments at entrance</span>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -4252,139 +4822,6 @@ const OrganiserDashboard = () => {
               <textarea value={sponsorModal.notes || ''} onChange={(e) => setSponsorModal((current) => ({ ...current, notes: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none" placeholder="Notes" rows={4} />
             </Field>
             <Button onClick={saveSponsor}>Create Sponsor</Button>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        open={!!zoneModal}
-        onClose={() => setZoneModal(null)}
-        title={zoneModal?.id ? 'Edit Zone' : 'Create Zone'}
-        size="md"
-      >
-        {zoneModal && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50/60 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                <MapPinIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-blue-900">Zone setup</p>
-                <p className="text-xs text-blue-700">
-                  Name the area, set capacity, and pick a colour for maps &amp; badges
-                </p>
-              </div>
-            </div>
-
-            <Field label="Zone name">
-              <Input
-                value={zoneModal.name || ''}
-                onChange={(e) =>
-                  setZoneModal((current) => ({ ...current, name: e.target.value }))
-                }
-                placeholder="e.g. VIP Lounge, Gate A, Media Centre"
-              />
-            </Field>
-
-            <Field label="Description">
-              <Input
-                value={zoneModal.description || ''}
-                onChange={(e) =>
-                  setZoneModal((current) => ({
-                    ...current,
-                    description: e.target.value,
-                  }))
-                }
-                placeholder="Optional short description"
-              />
-            </Field>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Capacity">
-                <Input
-                  type="number"
-                  min="0"
-                  value={zoneModal.capacity || 0}
-                  onChange={(e) =>
-                    setZoneModal((current) => ({
-                      ...current,
-                      capacity: Number(e.target.value),
-                    }))
-                  }
-                  placeholder="0 = unlimited"
-                />
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Leave 0 for no hard limit
-                </p>
-              </Field>
-
-              <Field label="Colour">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={zoneModal.color || '#2563eb'}
-                    onChange={(e) =>
-                      setZoneModal((current) => ({
-                        ...current,
-                        color: e.target.value,
-                      }))
-                    }
-                    className="h-11 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
-                    title="Zone colour"
-                  />
-                  <Input
-                    value={zoneModal.color || '#2563eb'}
-                    onChange={(e) =>
-                      setZoneModal((current) => ({
-                        ...current,
-                        color: e.target.value,
-                      }))
-                    }
-                    placeholder="#2563eb"
-                    className="font-mono text-sm"
-                  />
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Used on maps, badges and the zone list
-                </p>
-              </Field>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Preview
-              </p>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
-                <span
-                  className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
-                  style={{ backgroundColor: zoneModal.color || '#2563eb' }}
-                />
-                <span className="text-sm font-semibold text-slate-800">
-                  {zoneModal.name?.trim() || 'Zone name'}
-                </span>
-                {Number(zoneModal.capacity) > 0 && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                    Cap {zoneModal.capacity}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-3 border-t border-slate-100 pt-4">
-              <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-500 py-2.5"
-                onClick={saveZone}
-              >
-                {zoneModal.id ? 'Save changes' : 'Create zone'}
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 py-2.5"
-                onClick={() => setZoneModal(null)}
-              >
-                Cancel
-              </Button>
-            </div>
           </div>
         )}
       </Modal>

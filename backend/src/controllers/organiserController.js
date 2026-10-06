@@ -103,10 +103,10 @@ const listSubOrganisers = async (req, res, next) => {
 const createSubOrganiser = async (req, res, next) => {
   try {
     const eventId = resolveEventId(req.user);
-    const { 
-      canCollectCash, 
+    const {
+      canCollectCash,
       canConfirmCashPayments,
-      canApproveBankTransfer, 
+      canApproveBankTransfer,
       canViewPayments,
       canProcessRefunds,
       canManagePaymentMethods,
@@ -131,10 +131,19 @@ const createSubOrganiser = async (req, res, next) => {
       canExportReports,
       canViewRevenue,
       canSendNotifications,
-      assignedCategories, 
-      ...rest 
+      // New permission names from frontend
+      canEntryAccess,
+      canScanZones,
+      canVerifyPhotos,
+      canBulkUpload,
+      canInviteAttendees,
+      canScanZones,
+      assignedGates,
+      assignedCategories,
+      ...rest
     } = req.body;
-    
+
+    // Map frontend permission names to backend names
     const permissions = {
       canCollectCash: canCollectCash || false,
       canConfirmCashPayments: canConfirmCashPayments || false,
@@ -163,8 +172,14 @@ const createSubOrganiser = async (req, res, next) => {
       canExportReports: canExportReports || false,
       canViewRevenue: canViewRevenue || false,
       canSendNotifications: canSendNotifications || false,
+      // Map new frontend names to backend names
+      canEntryAccess: canEntryAccess || canGateScanAccess || false,
+      canScanZones: canScanZones || false,
+      canVerifyPhotos: canVerifyPhotos || canPhotoVerification || false,
+      canBulkUpload: canBulkUpload || canExcelBulkImports || false,
+      canInviteAttendees: canInviteAttendees || canSendInvitations || false,
     };
-    
+
     // Also set individual permission fields for backward compatibility
     const permissionFields = {
       canCollectCash: canCollectCash || false,
@@ -194,13 +209,21 @@ const createSubOrganiser = async (req, res, next) => {
       canExportReports: canExportReports || false,
       canViewRevenue: canViewRevenue || false,
       canSendNotifications: canSendNotifications || false,
+      // New permission fields
+      canEntryAccess: canEntryAccess || canGateScanAccess || false,
+      canScanZones: canScanZones || false,
+      canVerifyPhotos: canVerifyPhotos || canPhotoVerification || false,
+      canBulkUpload: canBulkUpload || canExcelBulkImports || false,
+      canInviteAttendees: canInviteAttendees || canSendInvitations || false,
     };
-    
+
     const payload = {
       ...rest,
       role: normalizeRole('SubOrganiser'),
       assignedEvents: [eventId],
       status: 'Active',
+      assignedGates: assignedGates || [],
+      assignedZones: assignedZones || [],
       canCollectCash: canCollectCash || false,
       canConfirmCashPayments: canConfirmCashPayments || false,
       canApproveBankTransfer: canApproveBankTransfer || false,
@@ -304,6 +327,8 @@ const updateSubOrganiserStatus = async (req, res, next) => {
       canViewRevenue,
       canSendNotifications,
       permissions,
+      assignedGates,
+      assignedZones,
       assignedCategories 
     } = req.body;
     
@@ -318,6 +343,8 @@ const updateSubOrganiserStatus = async (req, res, next) => {
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (password) updateData.password = password;
+    if (assignedGates && Array.isArray(assignedGates)) updateData.assignedGates = assignedGates;
+    if (assignedZones && Array.isArray(assignedZones)) updateData.assignedZones = assignedZones;
     
     // Handle individual permission flags
     if (canCollectCash !== undefined) {

@@ -108,6 +108,9 @@ const eventSchema = new mongoose.Schema({
   // Physical zones inside the venue
   zones: [zoneSchema],
 
+  // Main entry gates for the event
+  gates: [String],
+
   // Custom fields to collect per attendee
   customFields: [{
     name: { type: String },

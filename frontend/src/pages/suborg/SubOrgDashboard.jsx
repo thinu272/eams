@@ -348,7 +348,14 @@ const SubOrgDashboard = () => {
   };
 
   const currency = getCurrency(data);
-  const zones = data?.zones || [];
+  const allZones = data?.zones || [];
+  // Filter zones to only show user's assigned zones from current event
+  const userZoneIds = user?.assignedZones || [];
+  const userZoneIdsLegacy = user?.responsibilities?.zoneIds || [];
+  const zones = allZones.filter(z => {
+    const zid = z.id || z.name;
+    return userZoneIds.includes(zid) || userZoneIdsLegacy.includes(zid);
+  });
   const categories = data?.categories || [];
   const activity = data?.activity || [];
   const currentUserId = String(user?._id || '');
@@ -595,7 +602,7 @@ const SubOrgDashboard = () => {
 
           <PermissionGuard permission="canScanZones">
             <OpLinkCard
-              to="/suborg/zone-scanner"
+              to="/suborg/zone-scan"
               title="Zone Scanning"
               description="VIP, backstage, internal zones"
               badgeTitle="Entry + Exit"
