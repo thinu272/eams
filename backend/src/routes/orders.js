@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
 const Order = require('../models/Order');
@@ -11,7 +12,7 @@ const { sendCashReservationEmail } = require('../utils/email');
 const { generatePayHereData, createPaymentSession, getActiveGateways } = require('../services/paymentService');
 const { sendBuyerOrderCreatedEmail } = require('../services/ticketDeliveryService');
 const SystemConfig = require('../models/SystemConfig');
-const { optionalProtect } = require('../middleware/auth'); // I'll assume optionalProtect might be useful or I'll just use req.user if present
+const { optionalProtect } = require('../middleware/auth');
 const { allocateRfid } = require('../services/rfidService');
 
 // POST /api/orders - Create new order
@@ -28,10 +29,15 @@ router.post('/', [
   body('tickets.*.price').isNumeric().withMessage('Price must be a number'),
   body('buyerId').optional().isMongoId().withMessage('Invalid buyer ID'),
 ], async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -41,9 +47,11 @@ router.post('/', [
 
     const { eventId, buyerName, buyerEmail, buyerPhone, tickets, notificationChannel, buyerId, paymentMethod, gateway } = req.body;
 
-    // Validate event exists
-    const event = await Event.findById(eventId);
+    // Validate event exists with session
+    const event = await Event.findById(eventId).session(session);
     if (!event) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: 'Event not found'
@@ -52,6 +60,8 @@ router.post('/', [
 
     // Check if event is published
     if (event.status !== 'published') {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'Event is not available for ticket purchase'
@@ -60,6 +70,8 @@ router.post('/', [
 
     // Check if event is overdue
     if (event.endDate && new Date(event.endDate) < new Date()) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'This event has ended. Ticket booking is no longer available.'
@@ -71,6 +83,8 @@ router.post('/', [
     const emailRequired = !!(event.settings?.communicationChannels?.email);
 
     if (smsRequired && !buyerPhone) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'Phone number is required for this event because SMS notifications are enabled'
@@ -78,13 +92,15 @@ router.post('/', [
     }
 
     if (emailRequired && !buyerEmail) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'Email is required for this event because email notifications are enabled'
       });
     }
 
-    // Calculate total on backend (don't trust frontend)
+    // Calculate total on backend and validate capacity ATOMICALLY
     let totalAmount = 0;
     const validatedTickets = [];
 
@@ -93,18 +109,22 @@ router.post('/', [
       const category = event.categories.find((cat) => String(cat.id) === String(ticket.categoryId))
         || event.categories.find((cat) => cat.name === ticket.categoryName);
       if (!category) {
+        await session.abortTransaction();
+        session.endSession();
         return res.status(400).json({
           success: false,
           message: `Category "${ticket.categoryName}" not found in event`
         });
       }
 
-      // Check availability
-      const remaining = category.capacity - category.sold;
-      if (ticket.quantity > remaining) {
+      // ATOMIC CAPACITY CHECK: Use findOneAndUpdate with conditions to prevent overselling
+      const remainingBefore = category.capacity - category.sold;
+      if (ticket.quantity > remainingBefore) {
+        await session.abortTransaction();
+        session.endSession();
         return res.status(400).json({
           success: false,
-          message: `Only ${remaining} tickets remaining for ${ticket.categoryName}`
+          message: `Only ${remainingBefore} tickets remaining for ${ticket.categoryName}`
         });
       }
 
@@ -158,13 +178,12 @@ router.post('/', [
       confirmationToken
     });
 
-    await order.save();
+    await order.save({ session });
 
     // Create individual ticket documents
     const ticketPromises = [];
     let slotIndex = 1;
     for (const ticketSummary of validatedTickets) {
-      // Find the category to get its ID
       const category = event.categories.find((cat) => String(cat.id) === String(ticketSummary.categoryId))
         || event.categories.find((cat) => cat.name === ticketSummary.categoryName);
       
@@ -179,15 +198,15 @@ router.post('/', [
           status: ticketStatus,
           slotIndex: slotIndex,
           ticketNumber: `${order.orderNumber}-${slotIndex}`,
-          qrCode: null, // QR code should be inactive for reserved orders
+          qrCode: null,
         });
-        ticketPromises.push(ticket.save());
+        ticketPromises.push(ticket.save({ session }));
         slotIndex++;
       }
     }
     await Promise.all(ticketPromises);
 
-    // Update sold counts and usage counts for each category using MongoDB $inc
+    // Update sold counts ATOMICALLY within the transaction
     for (const ticket of validatedTickets) {
       const category = event.categories.find((c) => String(c.id) === String(ticket.categoryId))
         || event.categories.find((c) => c.name === ticket.categoryName);
@@ -200,10 +219,14 @@ router.post('/', [
       await Event.updateOne(
         { _id: eventId, 'categories.id': category.id },
         { $inc: updateData }
-      );
+      ).session(session);
     }
 
-    // BROADCAST REAL-TIME AVAILABILITY UPDATE
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // BROADCAST REAL-TIME AVAILABILITY UPDATE (outside transaction)
     const { emitDashboardEvent } = require('../utils/socket');
     const io = req.app.get('io');
     emitDashboardEvent(io, 'event_update', eventId, {
@@ -259,6 +282,9 @@ router.post('/', [
     });
 
   } catch (error) {
+    // Rollback on any error
+    await session.abortTransaction();
+    session.endSession();
     console.error('Order creation error:', error);
     console.error('Error stack:', error.stack);
     console.error('Request body:', req.body);

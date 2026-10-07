@@ -106,8 +106,10 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
         return res.status(400).send(`Webhook Error: ${err.message}`);
       }
     } else {
-      // No webhook secret configured — accept the payload as-is (dev mode)
-      event = JSON.parse(req.body.toString());
+      // CRITICAL: Fail webhook if endpointSecret is not configured
+      // In production, this MUST be configured for security
+      console.error('Stripe webhook received but endpointSecret is not configured. Rejecting request.');
+      return res.status(500).send('Webhook secret not configured');
     }
 
     if (event.type === 'checkout.session.completed') {
@@ -212,7 +214,14 @@ router.post('/notify', async (req, res) => {
       custom_2: eventId
     } = req.body;
 
-    // 1. Verify the signature
+    // 1. Verify the merchant_id matches our configured merchant ID
+    const configuredMerchantId = process.env.PAYHERE_MERCHANT_ID;
+    if (configuredMerchantId && merchant_id !== configuredMerchantId) {
+      console.error('INVALID MERCHANT_ID in PayHere webhook:', merchant_id);
+      return res.status(400).send('Invalid merchant ID');
+    }
+
+    // 2. Verify the signature
     console.log('PAYHERE webhook payload:', req.body);
     const merchantSecret = process.env.PAYHERE_SECRET;
     if (!merchantSecret) {
@@ -248,6 +257,20 @@ router.post('/notify', async (req, res) => {
 
     if (status_code === '2') {
       // SUCCESS
+      // IDEMPOTENCY: Check if this transaction was already processed
+      if (order.paymentDetails?.transactionId === req.body.payment_id) {
+        console.log('PAYMENT ALREADY PROCESSED: Order', order.orderNumber, '- Transaction', req.body.payment_id);
+        return res.status(200).send('OK');
+      }
+
+      // AMOUNT VALIDATION: Verify payhere_amount matches order.totalAmount
+      const expectedAmount = parseFloat(order.totalAmount).toFixed(2);
+      const callbackAmount = parseFloat(payhere_amount).toFixed(2);
+      if (expectedAmount !== callbackAmount) {
+        console.error('PAYMENT AMOUNT MISMATCH: Order', order.orderNumber, '- Expected', expectedAmount, '- Got', callbackAmount);
+        return res.status(400).send('Amount mismatch');
+      }
+
       if (order.paymentStatus !== 'success') {
         order.paymentStatus = 'success';
         order.status = 'CONFIRMED';

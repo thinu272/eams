@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const TokenBlocklist = require('../models/TokenBlocklist');
 const mongoose = require('mongoose');
 const { checkRoleMatch, getCanonicalRole, normalizeRole, ROLES } = require('../utils/rbac');
 const UserDevice = require('../models/UserDevice');
@@ -14,6 +15,13 @@ const protect = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ success: false, message: 'Not authorised. No token.' });
     }
+
+    // Check if token is in blocklist
+    const isBlocked = await TokenBlocklist.isTokenBlocked(token);
+    if (isBlocked) {
+      return res.status(401).json({ success: false, message: 'Token has been invalidated.' });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
@@ -83,10 +91,10 @@ const requireEventAccess = async (req, res, next) => {
     const requestedEventProvided = rawId !== undefined && rawId !== null && rawId !== '' && rawId !== 'undefined';
     let eventId = requestedEventProvided ? rawId : null;
 
-    // Root Authority bypass (Admins and Main Organisers have global scope)
+    // Root Authority bypass (MainAdmin only has global scope)
     const canonicalRole = normalizeRole(user.role);
-    if (canonicalRole === ROLES.MAIN_ADMIN || canonicalRole === ROLES.MAIN_ORGANISER) {
-      // Even without eventId, allow Main Admins/Organisers to proceed
+    if (canonicalRole === ROLES.MAIN_ADMIN) {
+      // MainAdmin can access any event
       if (!eventId) {
         // Try to get any event for context
         const Event = require('../models/Event');
@@ -98,6 +106,32 @@ const requireEventAccess = async (req, res, next) => {
       } else {
         req.resolvedEventId = eventId;
       }
+      return next();
+    }
+
+    // MainOrganiser: must verify they are assigned to the event
+    if (canonicalRole === ROLES.MAIN_ORGANISER) {
+      if (!eventId) {
+        return res.status(400).json({ success: false, message: 'Event ID required.' });
+      }
+
+      // Verify the event exists and user is in event.mainOrganisers OR event.createdBy
+      const Event = require('../models/Event');
+      const event = await Event.findById(eventId).select('createdBy mainOrganisers assignedOrganisers');
+      if (!event) {
+        return res.status(404).json({ success: false, message: 'Event not found.' });
+      }
+
+      const isCreator = event.createdBy?.toString() === user._id.toString();
+      const isMainOrganiser = event.mainOrganisers?.some(id => id.toString() === user._id.toString());
+      const isAssigned = event.assignedOrganisers?.some(id => id.toString() === user._id.toString());
+
+      if (!isCreator && !isMainOrganiser && !isAssigned) {
+        console.warn(`MainOrganiser ${user._id} attempted unauthorized access to event ${eventId}`);
+        return res.status(403).json({ success: false, message: 'You are not authorized for this event.' });
+      }
+
+      req.resolvedEventId = eventId;
       return next();
     }
 
