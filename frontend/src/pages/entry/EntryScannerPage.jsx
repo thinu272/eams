@@ -326,14 +326,28 @@ const EntryScannerPage = () => {
 
   // Get available gates for the selected event
   const availableGates = useMemo(() => {
+    const eventGates = selectedEventData?.gates || [];
+    
+    // If user has assigned gates (and is staff/volunteer), show only the intersection with event gates
     if (gateLocked && assignedGates.length > 0) {
+      if (eventGates.length > 0) {
+        // Return only gates that are both assigned to user AND exist in the event
+        const intersection = assignedGates.filter(gate => 
+          eventGates.includes(gate)
+        );
+        // If intersection is empty, show event gates (user's assigned gates don't match this event)
+        return intersection.length > 0 ? intersection : eventGates;
+      }
+      // If event has no gates configured, use assigned gates
       return assignedGates;
     }
-    // Use event-specific gates if available, otherwise fallback to default
-    const eventGates = selectedEventData?.gates;
-    if (eventGates && eventGates.length > 0) {
+    
+    // If user has no assigned gates (or is not staff/volunteer), use event-specific gates
+    if (eventGates.length > 0) {
       return eventGates;
     }
+    
+    // Fallback to default gates
     return ['Gate A', 'Gate B', 'Gate C', 'VIP Entry'];
   }, [selectedEventData, assignedGates, gateLocked]);
 
@@ -348,11 +362,21 @@ const EntryScannerPage = () => {
 
   // Set default gate when event changes or when assigned gates change
   useEffect(() => {
+    const eventGates = selectedEventData?.gates || [];
+    
     if (assignedGates.length > 0) {
-      setGateId(assignedGates[0]);
-    } else if (selectedEventData?.gates && selectedEventData.gates.length > 0) {
-      setGateId(selectedEventData.gates[0]);
+      // If user has assigned gates, find intersection with event gates
+      if (eventGates.length > 0) {
+        const intersection = assignedGates.filter(g => eventGates.includes(g));
+        setGateId(intersection.length > 0 ? intersection[0] : assignedGates[0]);
+      } else {
+        setGateId(assignedGates[0]);
+      }
+    } else if (eventGates.length > 0) {
+      // If no assigned gates, use event gates
+      setGateId(eventGates[0]);
     } else {
+      // Fallback to default
       setGateId('Gate A');
     }
   }, [selectedEvent, assignedGates, selectedEventData]);
