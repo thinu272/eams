@@ -92,16 +92,30 @@ const StaffScanPage = () => {
   );
   const gateLocked = availableGates.length > 0;
 
-  // Get event-specific gates or fallback to assigned gates or default
+  // Get event-specific gates intersected with assigned gates, or fallback to event gates or default
   const eventGates = useMemo(() => {
+    const eventGatesList = currentEvent?.gates || [];
+    
+    // If user has assigned gates, show only the intersection with event gates
     if (gateLocked && availableGates.length > 0) {
+      if (eventGatesList.length > 0) {
+        // Return only gates that are both assigned to user AND exist in the event
+        const intersection = availableGates.filter(gate => 
+          eventGatesList.includes(gate)
+        );
+        // If intersection is empty, show event gates (user's assigned gates don't match this event)
+        return intersection.length > 0 ? intersection : eventGatesList;
+      }
+      // If event has no gates configured, use assigned gates
       return availableGates;
     }
-    // Use event-specific gates if available, otherwise fallback to default
-    const eventGatesList = currentEvent?.gates;
-    if (eventGatesList && eventGatesList.length > 0) {
+    
+    // If user has no assigned gates, use event-specific gates
+    if (eventGatesList.length > 0) {
       return eventGatesList;
     }
+    
+    // Fallback to default gates
     return ['Gate A', 'Gate B', 'Gate C', 'VIP Entry'];
   }, [currentEvent, availableGates, gateLocked]);
 
@@ -193,12 +207,13 @@ const StaffScanPage = () => {
   }, []);
 
   useEffect(() => {
-    if (eventGates[0]) {
+    // Reset gate to first available gate when event changes
+    if (eventGates.length > 0) {
       setGateName(eventGates[0]);
     } else {
       setGateName('Main Gate');
     }
-  }, [eventGates]);
+  }, [selectedEventId, eventGates]);
 
   useEffect(() => {
     if (readerMode === 'rfid' && activeTab === 'scan')

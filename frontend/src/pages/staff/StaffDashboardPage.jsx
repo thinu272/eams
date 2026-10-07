@@ -77,10 +77,25 @@ const StaffDashboardPage = () => {
 
       if (current) {
         setActiveEvent(current);
-        // Use event-specific gates if available, otherwise fallback to assigned gates or default
-        const eventGates = current?.gates;
+        // Use event-specific gates intersected with assigned gates, or fallback to event gates or default
+        const eventGates = current?.gates || [];
         const assignedGates = user?.assignedGates || [];
-        const gate = (assignedGates.length > 0 ? assignedGates[0] : (eventGates?.length > 0 ? eventGates[0] : 'Gate A'));
+        
+        let gate;
+        if (assignedGates.length > 0) {
+          // If user has assigned gates, find intersection with event gates
+          if (eventGates.length > 0) {
+            const intersection = assignedGates.filter(g => eventGates.includes(g));
+            // If intersection is empty, use event gates (user's assigned gates don't match this event)
+            gate = intersection.length > 0 ? intersection[0] : eventGates[0];
+          } else {
+            gate = assignedGates[0];
+          }
+        } else {
+          // If no assigned gates, use event gates or default
+          gate = eventGates.length > 0 ? eventGates[0] : 'Gate A';
+        }
+        
         const statsRes = await getEntryStats({
           eventId: current._id,
           gateId: gate,
