@@ -167,6 +167,33 @@ exports.confirmCashPayment = async (req, res) => {
     if (order.paymentMethod !== 'cash_at_entrance') {
       return res.status(400).json({ success: false, message: 'Not a cash‑at‑entrance order' });
     }
+
+    // EVENT ACCESS CHECK: Verify user has access to this event
+    const eventId = order.eventId?._id || order.eventId;
+    if (!eventId) {
+      return res.status(400).json({ success: false, message: 'Invalid order: missing event reference' });
+    }
+
+    // MainAdmin bypass
+    if (role !== ROLES.MAIN_ADMIN) {
+      const userId = String(req.user._id);
+      const eventObj = order.eventId._id ? order.eventId : await Event.findById(eventId);
+      
+      const isCreator = String(eventObj.createdBy) === userId;
+      const isMainOrganiser = (eventObj.mainOrganisers || []).some(id => String(id) === userId);
+      const isAssigned = (eventObj.assignedOrganisers || []).some(id => String(id) === userId);
+      const hasEventAccess = isCreator || isMainOrganiser || isAssigned || 
+        (req.user.assignedEvents || []).some(eId => String(eId) === String(eventId));
+      
+      if (!hasEventAccess) {
+        return res.status(403).json({ success: false, message: 'You do not have access to this event.' });
+      }
+    }
+
+    // IDEMPOTENCY: Check if already confirmed
+    if (order.paymentStatus === 'paid' && order.status === 'CONFIRMED') {
+      return res.status(400).json({ success: false, message: 'Cash payment already confirmed for this order.' });
+    }
     // Update order status
     order.paymentStatus = 'paid';
     order.status = 'CONFIRMED';

@@ -44,11 +44,27 @@ const validateNewPassword = async (newPassword, userObject = null) => {
   }
 };
 
-const signAccessToken = (id, ttlHours = 24) =>
-  jwt.sign({ id }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: `${ttlHours}h` });
+// Validate JWT_SECRET at startup - fail in production if not configured
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required in production');
+  process.exit(1);
+}
 
-const signRefreshToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
+const signAccessToken = (id, ttlHours = 24) => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+  return jwt.sign({ id }, secret, { expiresIn: `${ttlHours}h` });
+};
+
+const signRefreshToken = (id) => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+  return jwt.sign({ id }, secret, { expiresIn: '7d' });
+};
 
 const sendTokens = async (user, statusCode, res) => {
   const config = await SystemConfig.findOne({ key: 'global' }).lean() || {};
@@ -419,6 +435,13 @@ router.post('/logout', protect, async (req, res, next) => {
       });
       user.refreshToken = undefined;
       await user.save({ validateBeforeSave: false });
+    }
+    
+    // Block the current access token
+    const TokenBlocklist = require('../models/TokenBlocklist');
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      await TokenBlocklist.blockToken(token, req.user.id, 'logout');
     }
     
     res.cookie('refreshToken', 'none', {
